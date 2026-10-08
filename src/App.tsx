@@ -808,6 +808,7 @@ function App() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
+  const splashStartedAt = useRef<number | null>(Date.now());
   const [view, setView] = useState<'Scores' | 'Players' | 'Den' | 'Profile'>('Scores');
   const [profileReturnView, setProfileReturnView] = useState<'Scores' | 'Players' | 'Den'>('Scores');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
@@ -848,7 +849,9 @@ function App() {
       return undefined;
     }
     setShowSplash(true);
-    const timer = window.setTimeout(() => setShowSplash(false), 2600);
+    const startedAt = splashStartedAt.current ?? Date.now();
+    splashStartedAt.current = null;
+    const timer = window.setTimeout(() => setShowSplash(false), Math.max(0, 3000 - (Date.now() - startedAt)));
     return () => window.clearTimeout(timer);
   }, [authLoading, authUser?.id]);
 
