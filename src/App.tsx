@@ -15,6 +15,7 @@ import {
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLGameLeaders, fetchScoreboards, fetchSoccerLineups, findNFLTeamsForPlayerSearch } from './services/sportsData';
 import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLGameLeader, NFLPlayerStatKey, NFLSkillPlayer, SoccerLineup, SoccerPlayer, Team } from './services/sportsData';
 import AuthScreen from './AuthScreen';
+import SplashScreen from './SplashScreen';
 import ProfilePage from './ProfilePage';
 import { supabase } from './services/supabaseClient';
 
@@ -806,6 +807,7 @@ function TheDen({ favorites, items, plays, livePlayerGames, loadingNews, onToggl
 function App() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
   const [view, setView] = useState<'Scores' | 'Players' | 'Den' | 'Profile'>('Scores');
   const [profileReturnView, setProfileReturnView] = useState<'Scores' | 'Players' | 'Den'>('Scores');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
@@ -838,6 +840,17 @@ function App() {
   const nflPlayFavoritesKey = nflPlayFavorites.map((favorite) => favorite.key).sort().join('|');
   const playPollInputs = useRef({ games: livePlayerGames, favorites: nflPlayFavorites });
   playPollInputs.current = { games: livePlayerGames, favorites: nflPlayFavorites };
+
+  useEffect(() => {
+    if (authLoading) return undefined;
+    if (supabase && !authUser) {
+      setShowSplash(false);
+      return undefined;
+    }
+    setShowSplash(true);
+    const timer = window.setTimeout(() => setShowSplash(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [authLoading, authUser?.id]);
 
   useEffect(() => {
     if (!supabase) {
@@ -1080,7 +1093,7 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (supabase && authLoading) return <main className="auth-loading" aria-live="polite">Loading your account…</main>;
+  if (showSplash || (supabase && authLoading)) return <SplashScreen />;
   if (supabase && !authUser) return <AuthScreen />;
 
   return (
