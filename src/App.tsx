@@ -239,8 +239,22 @@ function DraggableTabs<T extends string>({
 }) {
   const dragState = useRef({ pointerId: null as number | null, startX: 0, startScrollLeft: 0, moved: false, suppressClick: false, pressedKey: undefined as T | undefined });
 
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return undefined;
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || strip.scrollWidth <= strip.clientWidth) return;
+      event.preventDefault();
+      strip.scrollLeft += event.deltaY;
+    };
+    strip.addEventListener('wheel', onWheel, { passive: false });
+    return () => strip.removeEventListener('wheel', onWheel);
+  }, []);
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
     dragState.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -277,6 +291,7 @@ function DraggableTabs<T extends string>({
   };
 
   return <div
+    ref={stripRef}
     className={className}
     role="tablist"
     aria-label={ariaLabel}
