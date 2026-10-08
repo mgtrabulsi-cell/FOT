@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createWebPushServer, isExpiredPushSubscription, sendWebPush } from '../_shared/webpush.ts';
+import { buildPlayAlerts, summaryPlayIds, type PlayFavorite } from '../_shared/plays.ts';
 
 type TeamScore = { id: string; abbreviation: string; score: number };
 type GameState = { status: string; period: number; clock: string; awayScore: number; homeScore: number };
@@ -59,6 +60,67 @@ function periodLabel(period: number) {
   return period > 5 ? `OT${period - 4}` : 'Live game';
 }
 
+async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames: Array<{ id: string; away: TeamScore; home: TeamScore }>) {
+  const playStateIds = liveGames.map((game) => `plays:${game.id}`);
+  const { data: playStates, error: playStateError } = await admin.from('push_game_states').select('event_id,state').in('event_id', playStateIds);
+  if (playStateError) throw playStateError;
+  const seenByEvent = new Map((playStates ?? []).map((row) => [row.event_id as string, new Set(asArray(asRecord(row.state).seen).map(String))]));
+
+  const [{ data: favoriteRows, error: favoritesError }, { data: subscriptions, error: subscriptionsError }] = await Promise.all([
+    admin.from('user_favorites').select('user_id,favorites'),
+    admin.from('user_push_subscriptions').select('user_id,endpoint,subscription,notify_scores'),
+  ]);
+  if (favoritesError) throw favoritesError;
+  if (subscriptionsError) throw subscriptionsError;
+
+  const pushServer = await createWebPushServer();
+  let sent = 0;
+  for (const game of liveGames) {
+    const summaryResponse = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(game.id)}`, { cache: 'no-store' });
+    if (!summaryResponse.ok) continue;
+    const summary = await summaryResponse.json();
+    const allPlayIds = summaryPlayIds(summary);
+    const previouslySeen = seenByEvent.get(`plays:${game.id}`);
+    const newPlayIds = new Set(previouslySeen ? allPlayIds.filter((id) => !previouslySeen.has(id)) : []);
+    await admin.from('push_game_states').upsert({
+      event_id: `plays:${game.id}`,
+      state: { seen: allPlayIds },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'event_id' });
+    if (newPlayIds.size === 0) continue;
+
+    for (const row of favoriteRows ?? []) {
+      const favorites = asArray(row.favorites).map((value) => asRecord(value) as PlayFavorite & { key: string })
+        .filter((favorite) => favorite.feedPath === 'football/nfl');
+      const alerts = buildPlayAlerts(summary, game, favorites, newPlayIds);
+      const alertsByPlay = new Map<string, (typeof alerts)[number]>();
+      for (const alert of alerts) {
+        const existing = alertsByPlay.get(alert.playId);
+        if (!existing || (alert.isPlayerAlert && !existing.isPlayerAlert)) alertsByPlay.set(alert.playId, alert);
+      }
+      const targets = (subscriptions ?? []).filter((subscription) => subscription.user_id === row.user_id && subscription.notify_scores);
+      for (const alert of alertsByPlay.values()) {
+        for (const target of targets) {
+          try {
+            await sendWebPush(pushServer, target.subscription, {
+              title: alert.title,
+              body: alert.body,
+              url: '/#scores',
+              tag: `gamewire-play-${game.id}-${alert.playId}`,
+            });
+            sent += 1;
+          } catch (error) {
+            if (isExpiredPushSubscription(error)) {
+              await admin.from('user_push_subscriptions').delete().eq('user_id', target.user_id).eq('endpoint', target.endpoint);
+            }
+          }
+        }
+      }
+    }
+  }
+  return sent;
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return new Response('Method not allowed.', { status: 405 });
   const cronSecret = Deno.env.get('GAMEWIRE_CRON_SECRET');
@@ -109,7 +171,9 @@ Deno.serve(async (request) => {
     }));
     const { error: upsertError } = await admin.from('push_game_states').upsert(nextStates, { onConflict: 'event_id' });
     if (upsertError) throw upsertError;
-    if (changedGames.length === 0) return Response.json({ checked: games.length, sent: 0 });
+    const liveGames = games.filter((game) => game.state === 'in');
+    const playSent = liveGames.length ? await sendPlayAlerts(admin, liveGames) : 0;
+    if (changedGames.length === 0) return Response.json({ checked: games.length, sent: 0, playSent });
 
     const [{ data: favoriteRows, error: favoritesError }, { data: subscriptions, error: subscriptionsError }] = await Promise.all([
       admin.from('user_favorites').select('user_id,favorites'),
@@ -150,7 +214,7 @@ Deno.serve(async (request) => {
         }
       }
     }
-    return Response.json({ checked: games.length, changed: changedGames.length, sent });
+    return Response.json({ checked: games.length, changed: changedGames.length, sent, playSent });
   } catch (error) {
     console.error('Live game notification poll failed.', error);
     return Response.json({ error: 'Live game notifications could not be checked.' }, { status: 500 });

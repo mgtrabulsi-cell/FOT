@@ -93,6 +93,7 @@ button { color: inherit; }
 .account-setting-form > button { justify-self: start; min-height: 34px; padding: 0 11px; border: 0; border-radius: 4px; background: #344968; color: #fff; font-size: 10px; font-weight: 600; cursor: pointer; }
 .account-setting-form > button:disabled { opacity: .6; cursor: wait; }
 .page-wrap { max-width: 1440px; padding: 31px 36px 25px; margin: 0 auto; }
+@media (min-width: 761px) { .page-wrap.players-zoom { zoom: 1.25; } }
 .page-heading { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
 .date-line, .eyebrow { color: #78849a; font: 10px var(--mono); letter-spacing: .45px; }
 .date-line { display: flex; gap: 10px; align-items: center; }
@@ -368,7 +369,7 @@ button { color: inherit; }
 .nfl-directory-team { min-width: 0; padding: 13px; border: 1px solid #e1e6df; border-radius: 4px; background: #fff; }
 .nfl-directory-team > header { display: flex; align-items: center; gap: 9px; padding-bottom: 10px; border-bottom: 1px solid #e9ede8; }
 .nfl-directory-team > header .team-mark { width: 30px; height: 30px; }
-.nfl-directory-team > header span:last-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.nfl-directory-team > header span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .nfl-directory-team > header b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .nfl-directory-team > header small { color: #879188; font: 9px var(--mono); }
 .nfl-directory-player-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding-top: 7px; }
