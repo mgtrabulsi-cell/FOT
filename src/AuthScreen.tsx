@@ -39,7 +39,7 @@ export default function AuthScreen() {
 
   return <main className="auth-page">
     <section className="auth-panel">
-      <div className="auth-brand"><img className="brand-logo" src="/gamewire-mark.png" alt="" /><span>GAMEWIRE</span></div>
+      <div className="auth-brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" /><span>GAMEWIRE</span></div>
       {!supabase ? <>
         <span className="eyebrow">ACCOUNT SETUP</span>
         <h1>Connect your Supabase project</h1>
