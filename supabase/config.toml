@@ -1,0 +1,5 @@
+[functions.send-test-push]
+verify_jwt = true
+
+[functions.poll-live-games]
+verify_jwt = false

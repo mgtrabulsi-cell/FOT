@@ -1,0 +1,18 @@
+{
+  "name": "GameWire",
+  "short_name": "GameWire",
+  "description": "NFL scores, player stats, and game alerts.",
+  "start_url": "/#scores",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b111c",
+  "theme_color": "#0b111c",
+  "icons": [
+    {
+      "src": "/gamewire-pwa.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
