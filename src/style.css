@@ -50,6 +50,8 @@ button { color: inherit; }
 .auth-form { display: grid; gap: 13px; }
 .auth-form label { display: grid; gap: 6px; color: #536177; font-size: 10px; font-weight: 600; }
 .auth-form input { width: 100%; min-height: 39px; padding: 0 10px; border: 1px solid #dbe2ec; border-radius: 4px; outline: none; background: #fff; color: #243149; font-size: 12px; }
+.auth-form label.auth-remember { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.auth-form .auth-remember input { width: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: #566f94; }
 .auth-form input:focus { border-color: #566f94; box-shadow: 0 0 0 2px #566f9420; }
 .auth-submit { min-height: 41px; display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 3px; border: 0; border-radius: 4px; background: #344968; color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; }
 .auth-submit:disabled { opacity: .6; cursor: wait; }

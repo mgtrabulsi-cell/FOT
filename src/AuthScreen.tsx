@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { LogIn, UserPlus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
+import { getRememberDevice, setRememberDevice } from './services/authStorage';
 
 export default function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -10,6 +11,7 @@ export default function AuthScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [remember, setRemember] = useState(getRememberDevice);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -17,6 +19,7 @@ export default function AuthScreen() {
     setBusy(true);
     setError('');
     setNotice('');
+    setRememberDevice(remember);
     try {
       if (mode === 'signup') {
         const { data, error: authError } = await supabase.auth.signUp({
@@ -53,6 +56,7 @@ export default function AuthScreen() {
           {mode === 'signup' && <label>Display name<input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required maxLength={60} /></label>}
           <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label>Password<input type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} /></label>
+          <label className="auth-remember"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span>Remember this device</span></label>
           {error && <p className="auth-error" role="alert">{error}</p>}
           {notice && <p className="auth-notice" role="status">{notice}</p>}
           <button className="auth-submit" type="submit" disabled={busy}>{mode === 'signup' ? <UserPlus size={16} /> : <LogIn size={16} />}{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}</button>
