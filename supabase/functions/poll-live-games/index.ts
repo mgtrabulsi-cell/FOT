@@ -103,7 +103,7 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
         for (const target of targets) {
           try {
             await sendWebPush(pushServer, target.subscription, {
-              title: alert.title,
+              title: 'GameWire',
               body: alert.body,
               url: '/#scores',
               tag: `gamewire-play-${game.id}-${alert.playId}`,
@@ -195,13 +195,13 @@ Deno.serve(async (request) => {
       const targets = (subscriptions ?? []).filter((subscription) => matchingUsers.has(subscription.user_id) && subscription.notify_scores);
       const previous = priorById.get(game.id);
       const scoreChanged = previous && (previous.awayScore !== game.away.score || previous.homeScore !== game.home.score);
-      const title = game.state === 'post' ? 'NFL game final' : scoreChanged ? 'NFL score update' : 'NFL game update';
-      const body = `${game.away.abbreviation} ${game.away.score} - ${game.home.score} ${game.home.abbreviation} · ${periodLabel(game.period)} ${game.clock}`;
+      const label = game.state === 'post' ? 'Final' : scoreChanged ? 'Score update' : 'Game update';
+      const body = `${label}: ${game.away.abbreviation} ${game.away.score} - ${game.home.score} ${game.home.abbreviation} · ${periodLabel(game.period)} ${game.clock}`;
 
       for (const target of targets) {
         try {
           await sendWebPush(pushServer, target.subscription, {
-            title,
+            title: 'GameWire',
             body,
             url: '/#scores',
             tag: `gamewire-${game.id}`,

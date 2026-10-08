@@ -42,8 +42,8 @@ Deno.serve(async (request) => {
     const results = await Promise.allSettled(subscriptions.map(async (entry) => {
       try {
         await sendWebPush(server, entry.subscription, {
-          title: 'GameWire notifications are on',
-          body: 'You will receive score updates for games you follow.',
+          title: 'GameWire',
+          body: 'Notifications are on. You will receive score updates for games you follow.',
           url: '/#scores',
           tag: 'gamewire-test',
         });

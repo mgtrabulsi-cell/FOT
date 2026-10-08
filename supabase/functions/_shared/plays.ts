@@ -1,6 +1,6 @@
 export type PlayFavorite = { type?: string; id?: string; teamId?: string; name?: string; position?: string; feedPath?: string };
 export type PlayGame = { id: string; away: { id: string; abbreviation: string }; home: { id: string; abbreviation: string } };
-export type PlayAlert = { playId: string; favoriteKey: string; title: string; body: string; isPlayerAlert: boolean };
+export type PlayAlert = { playId: string; favoriteKey: string; body: string; isPlayerAlert: boolean };
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
@@ -97,7 +97,7 @@ export function buildPlayAlerts(summary: unknown, game: PlayGame, favorites: Arr
         } else if ((position === 'RB' || position === 'WR' || position === 'TE') && isCatch && yards > 25) {
           body = `${name} just caught a ${yards} yard reception`;
         }
-        return body ? [{ playId, favoriteKey: String(favorite.key), title: `${teamAbbr} big play`, body, isPlayerAlert: true }] : [];
+        return body ? [{ playId, favoriteKey: String(favorite.key), body, isPlayerAlert: true }] : [];
       }
 
       const onDefense = defenseTeamId === teamId;
@@ -108,7 +108,7 @@ export function buildPlayAlerts(summary: unknown, game: PlayGame, favorites: Arr
       else if (onOffense && isPass && yards > 50) label = `${yards} yard pass`;
       else if (onOffense && isCatch && yards > 25) label = `${yards} yard catch`;
       else if (onOffense && isRush && yards > 25) label = `${yards} yard run`;
-      return label ? [{ playId, favoriteKey: String(favorite.key), title: `${teamAbbr}: ${label}`, body: description, isPlayerAlert: false }] : [];
+      return label ? [{ playId, favoriteKey: String(favorite.key), body: `${teamAbbr} ${label}: ${description}`, isPlayerAlert: false }] : [];
     });
   });
 }
