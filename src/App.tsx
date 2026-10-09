@@ -853,7 +853,7 @@ function App() {
     setShowSplash(true);
     const startedAt = splashStartedAt.current ?? Date.now();
     splashStartedAt.current = null;
-    const timer = window.setTimeout(() => setShowSplash(false), Math.max(0, 3000 - (Date.now() - startedAt)));
+    const timer = window.setTimeout(() => setShowSplash(false), Math.max(0, 1000 - (Date.now() - startedAt)));
     return () => window.clearTimeout(timer);
   }, [authLoading, authUser?.id, splashReplay]);
 
