@@ -12,7 +12,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLGameLeaders, fetchScoreboards, fetchSoccerLineups, findNFLTeamsForPlayerSearch } from './services/sportsData';
+import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLGameLeaders, fetchNFLLivePlayerStats, fetchScoreboards, fetchSoccerLineups, findNFLTeamsForPlayerSearch } from './services/sportsData';
 import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLGameLeader, NFLPlayerStatKey, NFLSkillPlayer, SoccerLineup, SoccerPlayer, Team } from './services/sportsData';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
@@ -516,6 +516,29 @@ function GeneralGameCenter({ game, favorites, onToggleFavorite }: { game: Game; 
   );
 }
 
+function formatLiveStatLine(position: string, stats: Partial<Record<NFLPlayerStatKey, number>> | undefined) {
+  if (!stats || Object.keys(stats).length === 0) return 'No stats yet';
+  const parts: string[] = [];
+  if (position === 'QB') {
+    if (stats.attempts !== undefined) parts.push(`${stats.completions ?? 0}/${stats.attempts}`);
+    if (stats.passingYards !== undefined) parts.push(`${stats.passingYards} YDS`);
+    if (stats.passingTouchdowns) parts.push(`${stats.passingTouchdowns} TD`);
+    if (stats.interceptions) parts.push(`${stats.interceptions} INT`);
+    if (stats.rushingYards) parts.push(`${stats.rushingYards} RUSH`);
+  } else if (position === 'RB') {
+    if (stats.carries !== undefined) parts.push(`${stats.carries} CAR`);
+    if (stats.rushingYards !== undefined) parts.push(`${stats.rushingYards} YDS`);
+    if (stats.rushingTouchdowns) parts.push(`${stats.rushingTouchdowns} TD`);
+    if (stats.receptions) parts.push(`${stats.receptions} REC ${stats.receivingYards ?? 0} YDS`);
+  } else {
+    if (stats.receptions !== undefined) parts.push(`${stats.receptions} REC`);
+    if (stats.targets !== undefined) parts.push(`${stats.targets} TGT`);
+    if (stats.receivingYards !== undefined) parts.push(`${stats.receivingYards} YDS`);
+    if (stats.receivingTouchdowns) parts.push(`${stats.receivingTouchdowns} TD`);
+  }
+  return parts.length ? parts.join(' · ') : 'No stats yet';
+}
+
 function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId }: { games: Game[]; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; initialGameId: string | null }) {
   const nflGames = games.filter((game) => game.sport === 'Football');
   const [selectedGameId, setSelectedGameId] = useState(initialGameId && nflGames.some((game) => game.id === initialGameId) ? initialGameId : nflGames[0]?.id ?? '');
@@ -619,6 +642,32 @@ function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId
     players: group.players.filter((player) => position === 'All' || player.position === position),
   })) : [];
   const visiblePlayerCount = teamGroups.reduce((total, group) => total + group.players.length, 0);
+  const livePlayerRefs = game && details ? getNFLGamePlayerPools(game, details).flatMap((group) => group.players.map((player) => ({ teamId: group.team.id, id: player.id }))) : [];
+  const livePlayerKey = livePlayerRefs.map((player) => `${player.teamId}:${player.id}`).join('|');
+  const isLiveGame = game?.status === 'LIVE';
+  const [liveStats, setLiveStats] = useState<Record<string, Partial<Record<NFLPlayerStatKey, number>>>>({});
+
+  useEffect(() => {
+    setLiveStats({});
+    if (!isLiveGame || !feedPath || !eventId || !livePlayerKey) return undefined;
+    let current = true;
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const result = await fetchNFLLivePlayerStats(feedPath, eventId, livePlayerRefs, controller.signal);
+        if (current) setLiveStats(result);
+      } catch {
+        // Keep the last successful stats on a failed poll.
+      }
+    };
+    void refresh();
+    const refreshId = window.setInterval(() => void refresh(), 15_000);
+    return () => {
+      current = false;
+      controller.abort();
+      window.clearInterval(refreshId);
+    };
+  }, [isLiveGame, feedPath, eventId, livePlayerKey]);
 
   return <div className="nfl-players-directory">
     <div className="nfl-directory-controls">
@@ -626,9 +675,9 @@ function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId
       {game ? <NFLGameWheel games={nflGames} selectedGame={game} onSelect={setSelectedGameId} /> : <p className="nfl-empty-note">No NFL games are available.</p>}
     </div>
     {searchStatus && <p className="nfl-player-search-status" role="status">{searchStatus}</p>}
-    <div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter players by position">{['All', 'QB', 'RB', 'WR', 'TE'].map((item) => <button key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div><span>{visiblePlayerCount} players with recent usage</span></div>
+    <div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter players by position">{['All', 'QB', 'RB', 'WR', 'TE'].map((item) => <button key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div>{isLiveGame ? <span className="live-clock">LIVE · updates every 15s</span> : <span>{visiblePlayerCount} players with recent usage</span>}</div>
     {failed && <div className="feed-warning">Could not load this game’s players. Try selecting the game again later.</div>}
-    {loading ? <div className="empty-games">Loading active rosters and recent player usage…</div> : <div className="nfl-directory-grid">{teamGroups.map((group) => <section className="nfl-directory-team" key={group.team.id}><header><TeamMark team={group.team} /><span><b>{group.team.name}</b><small>{group.side} · {group.team.record}</small></span>{game && <TeamFavoriteButton game={game} team={group.team} favorites={favorites} onToggleFavorite={onToggleFavorite} />}</header><div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => { setSelectedPlayer(player); setSelectedTeam(group.team); }}><span className="nfl-player-avatar">{player.headshot ? <img src={player.headshot} alt="" /> : player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{player.name}</b><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small></span></button><FavoriteStarButton favorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(player, group.team).key)} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, group.team))} /></div>)}</div>{group.players.length === 0 && <p className="nfl-empty-note">No players match these filters.</p>}</section>)}</div>}
+    {loading ? <div className="empty-games">Loading active rosters and recent player usage…</div> : <div className="nfl-directory-grid">{teamGroups.map((group) => <section className="nfl-directory-team" key={group.team.id}><header><TeamMark team={group.team} /><span><b>{group.team.name}</b><small>{group.side} · {group.team.record}</small></span>{game && <TeamFavoriteButton game={game} team={group.team} favorites={favorites} onToggleFavorite={onToggleFavorite} />}</header><div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => { setSelectedPlayer(player); setSelectedTeam(group.team); }}><span className="nfl-player-avatar">{player.headshot ? <img src={player.headshot} alt="" /> : player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{player.name}</b><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small>{isLiveGame && <small className="nfl-live-statline">{formatLiveStatLine(player.position, liveStats[player.id])}</small>}</span></button><FavoriteStarButton favorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(player, group.team).key)} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, group.team))} /></div>)}</div>{group.players.length === 0 && <p className="nfl-empty-note">No players match these filters.</p>}</section>)}</div>}
     <p className="nfl-data-note">ESPN's public feed does not publish an official depth chart or fantasy projections. Players are selected from active rosters by recent usage: 1 QB, 2 RBs, 1 TE, and up to 4 WRs per team.</p>
     {selectedPlayer && selectedTeam && <NFLPlayerMiniWindow key={selectedPlayer.id} player={selectedPlayer} team={selectedTeam} isFavorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(selectedPlayer, selectedTeam).key)} onToggleFavorite={onToggleFavorite} onClose={() => { setSelectedPlayer(null); setSelectedTeam(null); }} />}
   </div>;

@@ -803,6 +803,18 @@ export async function fetchNFLGameLeaders(feedPath: string, eventId: string, sig
   return readNFLGameLeaders(await response.json());
 }
 
+export async function fetchNFLLivePlayerStats(
+  feedPath: string,
+  eventId: string,
+  players: Array<{ teamId: string; id: string }>,
+  signal?: AbortSignal,
+): Promise<Record<string, Partial<Record<NFLPlayerStatKey, number>>>> {
+  const response = await fetch(`${apiBase}/${feedPath}/summary?event=${encodeURIComponent(eventId)}`, { signal, cache: 'no-store' });
+  if (!response.ok) throw new Error(`Live player stats returned HTTP ${response.status}`);
+  const summary = await response.json();
+  return Object.fromEntries(players.map((player) => [player.id, readNFLPlayerGameStats(summary, player.teamId, player.id)]));
+}
+
 const nflDefenseRankCache = new Map<string, Promise<NFLDefenseRanks>>();
 
 function fetchNFLTeamDefenseRanks(feedPath: string, teamId: string, seasonYear: number): Promise<NFLDefenseRanks> {
