@@ -770,3 +770,8 @@ td:first-child { color: #828c84; }
 @media (pointer: coarse) {
   input:not([type='checkbox']):not([type='radio']), select, textarea { font-size: 16px !important; }
 }
+
+.password-field { position: relative; display: block; }
+.password-field input { width: 100%; padding-right: 44px; box-sizing: border-box; }
+.password-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: grid; place-items: center; background: transparent; border: 0; color: inherit; opacity: .75; cursor: pointer; padding: 0; }
+.password-toggle:hover { opacity: 1; }
