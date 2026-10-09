@@ -809,6 +809,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const splashStartedAt = useRef<number | null>(Date.now());
+  const [splashReplay, setSplashReplay] = useState(0);
   const [view, setView] = useState<'Scores' | 'Players' | 'Den' | 'Profile'>('Scores');
   const [profileReturnView, setProfileReturnView] = useState<'Scores' | 'Players' | 'Den'>('Scores');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
@@ -853,7 +854,26 @@ function App() {
     splashStartedAt.current = null;
     const timer = window.setTimeout(() => setShowSplash(false), Math.max(0, 3000 - (Date.now() - startedAt)));
     return () => window.clearTimeout(timer);
-  }, [authLoading, authUser?.id]);
+  }, [authLoading, authUser?.id, splashReplay]);
+
+  const signedInRef = useRef(false);
+  signedInRef.current = !supabase || Boolean(authUser);
+
+  useEffect(() => {
+    let hiddenAt: number | null = null;
+    const replayAfterAbsence = () => {
+      if (hiddenAt !== null && Date.now() - hiddenAt >= 5000 && signedInRef.current) {
+        setSplashReplay((count) => count + 1);
+      }
+      hiddenAt = null;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+      else replayAfterAbsence();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
