@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLGameLeaders, fetchScoreboards, fetchSoccerLineups, findNFLTeamsForPlayerSearch } from './services/sportsData';
 import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLGameLeader, NFLPlayerStatKey, NFLSkillPlayer, SoccerLineup, SoccerPlayer, Team } from './services/sportsData';
-import AuthScreen from './AuthScreen';
+import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
 import ProfilePage from './ProfilePage';
 import { supabase } from './services/supabaseClient';
@@ -810,6 +810,7 @@ function App() {
   const [showSplash, setShowSplash] = useState(true);
   const splashStartedAt = useRef<number | null>(Date.now());
   const [splashReplay, setSplashReplay] = useState(0);
+  const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [view, setView] = useState<'Scores' | 'Players' | 'Den' | 'Profile'>('Scores');
   const [profileReturnView, setProfileReturnView] = useState<'Scores' | 'Players' | 'Den'>('Scores');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
@@ -881,8 +882,9 @@ function App() {
       return;
     }
     let active = true;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
+      if (event === 'PASSWORD_RECOVERY') setRecoveringPassword(true);
       setAuthUser(session?.user ?? null);
       setAuthLoading(false);
     });
@@ -1116,6 +1118,7 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  if (recoveringPassword && authUser) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
   if (showSplash || (supabase && authLoading)) return <SplashScreen />;
   if (supabase && !authUser) return <AuthScreen />;
 

@@ -3,6 +3,45 @@ import { Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { getRememberDevice, setRememberDevice } from './services/authStorage';
 
+export function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+    setBusy(true);
+    setError('');
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (updateError) setError(updateError.message);
+    else onDone();
+  };
+
+  return <main className="auth-page">
+    <section className="auth-panel">
+      <div className="auth-brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" /><span>GAMEWIRE</span></div>
+      <span className="eyebrow">NFL · GAMEWIRE</span>
+      <h1>Choose a new password</h1>
+      <p className="auth-description">Enter a new password for your account.</p>
+      <form className="auth-form" onSubmit={submit}>
+        <label>New password
+          <span className="password-field">
+            <input type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} />
+            <button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </span>
+        </label>
+        {error && <p className="auth-error" role="alert">{error}</p>}
+        <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : 'Save new password'}</button>
+      </form>
+    </section>
+  </main>;
+}
+
 export default function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [displayName, setDisplayName] = useState('');
@@ -41,6 +80,22 @@ export default function AuthScreen() {
     }
   };
 
+  const forgotPassword = async () => {
+    if (!supabase) return;
+    setError('');
+    setNotice('');
+    if (!email.trim()) {
+      setError('Enter your email above, then tap Forgot my password.');
+      return;
+    }
+    setBusy(true);
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    setBusy(false);
+    if (resetError) setError(resetError.message);
+    else setNotice('If an account exists for that email, a reset link is on its way. Check your inbox.');
+  };
+
   return <main className="auth-page">
     <section className="auth-panel">
       <div className="auth-brand"><img className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" /><span>GAMEWIRE</span></div>
@@ -68,6 +123,7 @@ export default function AuthScreen() {
           {error && <p className="auth-error" role="alert">{error}</p>}
           {notice && <p className="auth-notice" role="status">{notice}</p>}
           <button className="auth-submit" type="submit" disabled={busy}>{mode === 'signup' ? <UserPlus size={16} /> : <LogIn size={16} />}{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}</button>
+          {mode === 'login' && <button className="auth-mode-toggle" type="button" disabled={busy} onClick={forgotPassword}>Forgot my password</button>}
         </form>
         <button className="auth-mode-toggle" type="button" onClick={() => { setMode(mode === 'signup' ? 'login' : 'signup'); setError(''); setNotice(''); }}>{mode === 'signup' ? 'Already have an account? Sign in' : 'New to GameWire? Create an account'}</button>
       </>}
