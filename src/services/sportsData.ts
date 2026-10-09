@@ -673,10 +673,13 @@ export async function fetchNFLGameDetails(
   const boxscoreTeams = asArray(asObject(summary.boxscore).teams).map(asObject);
   const recentGroups = asArray(summary.lastFiveGames).map(asObject);
   const atsGroups = asArray(summary.againstTheSpread).map(asObject);
-  const recentEventsByTeam = new Map(teams.map((team) => {
+  const recentEventsByTeam = new Map(await Promise.all(teams.map(async (team) => {
     const recentGroup = recentGroups.find((entry) => text(asObject(entry.team).id, text(entry.team)) === team.id);
-    return [team.id, asArray(recentGroup?.events).map(asObject)] as const;
-  }));
+    const events = asArray(recentGroup?.events).map(asObject);
+    if (events.length) return [team.id, events] as const;
+    // ESPN drops lastFiveGames while a game is in progress, so rebuild it from the team schedule.
+    return [team.id, await fetchNFLRecentScheduleEvents(feedPath, team.id, seasonYear, eventId).catch(() => [])] as const;
+  })));
   const allRecentEvents = new Map<string, Record<string, unknown>>();
   recentEventsByTeam.forEach((events) => events.forEach((event) => allRecentEvents.set(text(event.id), event)));
   const rosterTeamIds = new Set(teams.map((team) => team.id));
@@ -801,6 +804,34 @@ export async function fetchNFLGameLeaders(feedPath: string, eventId: string, sig
   const response = await fetch(`${apiBase}/${feedPath}/summary?event=${encodeURIComponent(eventId)}`, { signal, cache: 'no-store' });
   if (!response.ok) throw new Error(`Live player stats returned HTTP ${response.status}`);
   return readNFLGameLeaders(await response.json());
+}
+
+async function fetchNFLRecentScheduleEvents(feedPath: string, teamId: string, seasonYear: number, currentEventId: string): Promise<Array<Record<string, unknown>>> {
+  const response = await fetch(`${apiBase}/${feedPath}/teams/${teamId}/schedule?season=${seasonYear}`);
+  if (!response.ok) throw new Error(`Team schedule returned HTTP ${response.status}`);
+  const events = asArray(asObject(await response.json()).events).map(asObject)
+    .filter((event) => text(event.id) !== currentEventId && text(asObject(asObject(asArray(event.competitions)[0]).status).type ? asObject(asObject(asObject(asArray(event.competitions)[0]).status).type).state : '') === 'post')
+    .sort((first, second) => Date.parse(text(second.date)) - Date.parse(text(first.date)))
+    .slice(0, 5);
+  return events.flatMap((event) => {
+    const competitors = asArray(asObject(asArray(event.competitions)[0]).competitors).map(asObject);
+    const own = competitors.find((entry) => text(entry.id, text(asObject(entry.team).id)) === teamId);
+    const opponent = competitors.find((entry) => entry !== own);
+    if (!own || !opponent) return [];
+    const scoreOf = (entry: Record<string, unknown>) => text(asObject(entry.score).displayValue, text(entry.score));
+    const home = own.homeAway === 'home' ? own : opponent;
+    const away = home === own ? opponent : own;
+    const opponentTeam = asObject(opponent.team);
+    return [{
+      id: text(event.id),
+      gameDate: text(event.date),
+      homeTeamId: text(asObject(home.team).id, text(home.id)),
+      homeTeamScore: scoreOf(home),
+      awayTeamScore: scoreOf(away),
+      gameResult: own.winner === true ? 'W' : opponent.winner === true ? 'L' : 'T',
+      opponent: { id: text(opponentTeam.id, text(opponent.id)), displayName: text(opponentTeam.displayName), abbreviation: text(opponentTeam.abbreviation) },
+    }];
+  });
 }
 
 export async function fetchNFLLivePlayerStats(
