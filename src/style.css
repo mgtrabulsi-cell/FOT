@@ -765,3 +765,8 @@ td:first-child { color: #828c84; }
 .nfl-score-rule { background: #7486a3; }
 .team-mark { background: color-mix(in srgb, var(--team-color) 28%, #172337); }
 .game-card-main:focus-visible, .game-center-team-players:focus-visible, .nfl-directory-player-main:focus-visible { outline-color: #e05a62; }
+
+/* iOS Safari auto-zooms into any field under 16px; keep fields at 16px on touch devices so the page never zooms. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']), select, textarea { font-size: 16px !important; }
+}
