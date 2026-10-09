@@ -875,6 +875,8 @@ function App() {
   const [failedLeagues, setFailedLeagues] = useState<string[]>([]);
   const [newsItems, setNewsItems] = useState<DenNewsFeedItem[]>([]);
   const [scoreUpdates, setScoreUpdates] = useState<DenScoreItem[]>([]);
+  const scoreUpdatesRef = useRef(scoreUpdates);
+  scoreUpdatesRef.current = scoreUpdates;
   const [playUpdates, setPlayUpdates] = useState<DenPlayItem[]>([]);
   const [loadingNews, setLoadingNews] = useState(false);
   const previousGameStates = useRef(new Map<string, string>());
@@ -1069,29 +1071,30 @@ function App() {
         const changedItems: DenScoreItem[] = [];
         result.games.forEach((game) => {
           const previousState = previousGameStates.current.get(game.id);
-          const nextState = `${game.away.score}:${game.home.score}:${game.status}:${game.period}:${game.clock}`;
+          const nextState = `${game.away.score}:${game.home.score}`;
           previousGameStates.current.set(game.id, nextState);
           if (!previousState || previousState === nextState) return;
-          [game.away, game.home].forEach((team) => {
-            const matchingFavorites = favoritesRef.current.filter((favorite) => favorite.type === 'team'
-              ? favorite.key === teamFavoriteTarget(team, game.feedPath).key
-              : favorite.teamId === team.id && favorite.feedPath === game.feedPath);
-            matchingFavorites.forEach((favorite) => changedItems.push({
-              id: `score:${game.id}:${nextState}:${favorite.key}`,
-              kind: 'score',
-              favoriteKey: favorite.key,
-              favoriteName: favorite.name,
-              timestamp: new Date().toISOString(),
-              league: game.league,
-              away: game.away,
-              home: game.home,
-              status: game.status,
-              period: game.period,
-              clock: game.clock,
-            }));
+          const matchingFavorite = favoritesRef.current.find((favorite) => [game.away, game.home].some((team) => favorite.type === 'team'
+            ? favorite.key === teamFavoriteTarget(team, game.feedPath).key
+            : favorite.teamId === team.id && favorite.feedPath === game.feedPath));
+          if (!matchingFavorite) return;
+          changedItems.push({
+            id: `score:${game.id}:${nextState}`,
+            kind: 'score',
+            favoriteKey: matchingFavorite.key,
+            favoriteName: matchingFavorite.name,
+            timestamp: new Date().toISOString(),
+            league: game.league,
+            away: game.away,
+            home: game.home,
+            status: game.status,
+            period: game.period,
+            clock: game.clock,
           });
         });
-        if (changedItems.length) setScoreUpdates((current) => [...changedItems, ...current].slice(0, 100));
+        const knownIds = new Set(scoreUpdatesRef.current.map((item) => item.id));
+        const freshItems = changedItems.filter((item) => !knownIds.has(item.id));
+        if (freshItems.length) setScoreUpdates((current) => [...freshItems, ...current].slice(0, 100));
         setGames(result.games);
         setFailedLeagues(result.failedLeagues);
         setLoadingScores(false);
