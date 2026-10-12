@@ -476,6 +476,26 @@ function parsePlayYards(play: Record<string, unknown>, playText: string) {
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
+export function getTuesdayCutoff(now = new Date()): number {
+  const cutoff = new Date(now);
+  const day = cutoff.getDay();
+  let daysBack = (day - 2 + 7) % 7;
+  if (day === 2 && cutoff.getHours() < 9) {
+    daysBack = 7;
+  }
+  cutoff.setDate(cutoff.getDate() - daysBack);
+  cutoff.setHours(9, 0, 0, 0);
+  return cutoff.getTime();
+}
+
+export function isPastTuesdayCutoff(timestamp: string | number, now = new Date()): boolean {
+  const time = typeof timestamp === 'number' ? timestamp : Date.parse(timestamp);
+  if (!Number.isFinite(time)) return true;
+  return time < getTuesdayCutoff(now);
+}
+
+const finalSummaryCache = new Map<string, { summary: unknown; cachedAt: number }>();
+
 export async function fetchNFLFavoritePlays(
   games: Game[],
   favorites: FavoriteTarget[],
@@ -484,13 +504,23 @@ export async function fetchNFLFavoritePlays(
   const nflFavorites = favorites.filter((favorite) => favorite.feedPath === 'football/nfl'
     && (favorite.type === 'team' || (favorite.teamId && ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? ''))));
   const favoriteTeamId = (favorite: FavoriteTarget) => favorite.type === 'team' ? favorite.id : favorite.teamId ?? '';
+  const cutoff = getTuesdayCutoff();
   const relevantGames = games.filter((game) => game.sport === 'Football'
-    && game.status === 'LIVE'
+    && (game.status === 'LIVE' || (game.status === 'FINAL' && (!game.date || Date.parse(game.date) >= cutoff)))
     && nflFavorites.some((favorite) => favoriteTeamId(favorite) === game.home.id || favoriteTeamId(favorite) === game.away.id));
   const results = await Promise.allSettled(relevantGames.map(async (game) => {
-    const response = await fetch(`${apiBase}/${game.feedPath}/summary?event=${encodeURIComponent(game.eventId)}`, { signal });
-    if (!response.ok) throw new Error(`Live play summary returned HTTP ${response.status}`);
-    const summary = asObject(await response.json());
+    let summary: Record<string, unknown>;
+    const cached = finalSummaryCache.get(game.eventId);
+    if (game.status === 'FINAL' && cached && cached.cachedAt >= cutoff) {
+      summary = cached.summary as Record<string, unknown>;
+    } else {
+      const response = await fetch(`${apiBase}/${game.feedPath}/summary?event=${encodeURIComponent(game.eventId)}`, { signal });
+      if (!response.ok) throw new Error(`Live play summary returned HTTP ${response.status}`);
+      summary = asObject(await response.json());
+      if (game.status === 'FINAL') {
+        finalSummaryCache.set(game.eventId, { summary, cachedAt: Date.now() });
+      }
+    }
     const drives = asObject(summary.drives);
     const scoringTeamByPlayId = new Map(asArray(summary.scoringPlays).map(asObject)
       .map((scoringPlay) => [text(scoringPlay.id), text(asObject(scoringPlay.team).id)] as const));
@@ -512,7 +542,8 @@ export async function fetchNFLFavoritePlays(
       const isTurnover = play.isTurnover === true;
       const yards = parsePlayYards(play, description);
       const happenedAt = Date.parse(text(play.wallclock, text(play.modified)));
-      const timestamp = Number.isFinite(happenedAt) ? new Date(happenedAt).toISOString() : new Date().toISOString();
+      const timestamp = Number.isFinite(happenedAt) ? new Date(happenedAt).toISOString() : (game.date || new Date().toISOString());
+      if (Date.parse(timestamp) < cutoff) return [];
       const participants = asArray(play.teamParticipants).map(asObject);
       const offenseTeamId = text(participants.find((participant) => text(participant.type).toLowerCase() === 'offense')?.id, driveTeamId);
       const defenseTeamId = text(participants.find((participant) => text(participant.type).toLowerCase() === 'defense')?.id,

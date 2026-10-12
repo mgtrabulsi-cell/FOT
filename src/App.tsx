@@ -12,7 +12,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLGameLeaders, fetchNFLLivePlayerStats, fetchScoreboards, fetchSoccerLineups, findNFLTeamsForPlayerSearch } from './services/sportsData';
+import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLGameLeaders, fetchNFLLivePlayerStats, fetchScoreboards, fetchSoccerLineups, findNFLTeamsForPlayerSearch, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
 import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLGameLeader, NFLPlayerStatKey, NFLSkillPlayer, SoccerLineup, SoccerPlayer, Team } from './services/sportsData';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
@@ -39,6 +39,24 @@ type DenPlayItem = NFLFavoritePlay & { kind: 'play' };
 type DenItem = DenNewsFeedItem | DenScoreItem;
 
 const guestFavoriteStorageKey = 'fieldhouse:favorites:v1';
+const lockerRoomScoresStorageKey = 'gamewire:locker:scores:v1';
+const lockerRoomPlaysStorageKey = 'gamewire:locker:plays:v1';
+
+function loadStoredLockerRoomUpdates<T extends { timestamp: string }>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const cutoff = getTuesdayCutoff();
+    return parsed.filter((item): item is T => {
+      const time = Date.parse(item?.timestamp);
+      return Number.isFinite(time) && time >= cutoff;
+    });
+  } catch {
+    return [];
+  }
+}
 
 function parseFavorites(value: unknown): FavoriteTarget[] {
   if (!Array.isArray(value)) return [];
@@ -844,7 +862,7 @@ function TheDen({ favorites, items, plays, livePlayerGames, loadingNews, onToggl
         <button id="den-plays-tab" role="tab" aria-controls="den-plays-panel" aria-selected={denTab === 'plays'} className={denTab === 'plays' ? 'active' : ''} onClick={() => setDenTab('plays')}>Latest plays</button>
         <button id="den-updates-tab" role="tab" aria-controls="den-updates-panel" aria-selected={denTab === 'updates'} className={denTab === 'updates' ? 'active' : ''} onClick={() => setDenTab('updates')}>Latest updates</button>
       </div>
-      {denTab === 'plays' ? <section className="den-timeline den-tab-panel" id="den-plays-panel" role="tabpanel" aria-labelledby="den-plays-tab"><div className="den-timeline-heading"><div><span className="eyebrow">{livePlayerGames ? 'LIVE NFL' : 'NFL PLAY WATCH'}</span><h2>Latest plays</h2></div><span className="den-refresh">{livePlayerGames ? 'Checks every 15 sec' : 'Waiting for a favorited team or player’s live game'}</span></div>{visiblePlays.length ? <div className="den-play-list">{visiblePlays.map((play) => <article className="den-play-item" key={play.id}><span className="den-play-avatar">{play.headshot ? <img src={play.headshot} alt="" /> : play.teamLogo ? <img src={play.teamLogo} alt="" /> : play.favoriteName.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><div className="den-play-copy"><header><b>{play.favoriteName}</b><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(play.timestamp))}</time><span className="den-feed-type">{play.isDefensive ? 'DEFENSE' : play.isTouchdown ? 'TOUCHDOWN' : 'BIG PLAY'}</span></header><strong>{play.playLabel}</strong><p>{play.teamAbbr} vs {play.opponentAbbr} · {play.description}</p></div></article>)}</div> : <div className="den-plays-empty"><b>{hasNFLFavorite ? livePlayerGames ? 'No qualifying plays yet' : 'No favorited NFL team or player is in a live game' : 'Favorite an NFL team or player to follow their plays'}</b><p>Tracks offensive big plays and scores, plus defensive turnovers and scoring plays.</p></div>}</section> : <section className="den-timeline den-tab-panel" id="den-updates-panel" role="tabpanel" aria-labelledby="den-updates-tab"><div className="den-timeline-heading"><div><span className="eyebrow">YOUR LOCKER ROOM</span><h2>Latest updates</h2></div><span className="den-refresh">Scores check every 30 sec · News checks every 5 min</span></div>{favorites.length === 0 ? <div className="den-empty-main"><span className="den-empty-mark"><Star size={20} /></span><b>Your favorites live here</b><p>Follow a team or player and their score updates and related headlines will collect in this feed.</p></div> : visibleItems.length === 0 ? <div className="den-empty-main"><span className="live-indicator"><i /></span><b>{loadingNews ? 'Checking your favorite news…' : 'You’re all caught up'}</b><p>New score changes and matching headlines appear here as they arrive.</p></div> : <div className="den-feed-list">{visibleItems.map((item) => <article className="den-feed-item" key={item.id}>
+      {denTab === 'plays' ? <section className="den-timeline den-tab-panel" id="den-plays-panel" role="tabpanel" aria-labelledby="den-plays-tab"><div className="den-timeline-heading"><div><span className="eyebrow">{livePlayerGames ? 'LIVE NFL' : 'NFL PLAY WATCH'}</span><h2>Latest plays</h2></div><span className="den-refresh">{livePlayerGames ? 'Checks every 15 sec · Stays until Tuesday 9 AM' : 'Updates stay in Locker Room until Tuesday 9 AM'}</span></div>{visiblePlays.length ? <div className="den-play-list">{visiblePlays.map((play) => <article className="den-play-item" key={play.id}><span className="den-play-avatar">{play.headshot ? <img src={play.headshot} alt="" /> : play.teamLogo ? <img src={play.teamLogo} alt="" /> : play.favoriteName.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><div className="den-play-copy"><header><b>{play.favoriteName}</b><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(play.timestamp))}</time><span className="den-feed-type">{play.isDefensive ? 'DEFENSE' : play.isTouchdown ? 'TOUCHDOWN' : 'BIG PLAY'}</span></header><strong>{play.playLabel}</strong><p>{play.teamAbbr} vs {play.opponentAbbr} · {play.description}</p></div></article>)}</div> : <div className="den-plays-empty"><b>{hasNFLFavorite ? (livePlayerGames ? 'No qualifying plays yet' : 'No qualifying plays for your favorites this week yet') : 'Favorite an NFL team or player to follow their plays'}</b><p>Tracks offensive big plays and scores, plus defensive turnovers and scoring plays. Updates stay until Tuesday 9 AM.</p></div>}</section> : <section className="den-timeline den-tab-panel" id="den-updates-panel" role="tabpanel" aria-labelledby="den-updates-tab"><div className="den-timeline-heading"><div><span className="eyebrow">YOUR LOCKER ROOM</span><h2>Latest updates</h2></div><span className="den-refresh">Scores check every 30 sec · Updates stay until Tuesday 9 AM</span></div>{favorites.length === 0 ? <div className="den-empty-main"><span className="den-empty-mark"><Star size={20} /></span><b>Your favorites live here</b><p>Follow a team or player and their score updates and related headlines will collect in this feed.</p></div> : visibleItems.length === 0 ? <div className="den-empty-main"><span className="live-indicator"><i /></span><b>{loadingNews ? 'Checking your favorite news…' : 'You’re all caught up'}</b><p>New score changes and matching headlines appear here as they arrive and stay until Tuesday 9 AM.</p></div> : <div className="den-feed-list">{visibleItems.map((item) => <article className="den-feed-item" key={item.id}>
         <div className="den-feed-marker">{item.kind === 'score' ? <Activity size={15} /> : <Star size={14} />}</div><div className="den-feed-content"><header><span>{item.favoriteName}</span><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(item.kind === 'news' ? item.published : item.timestamp))}</time><span className="den-feed-type">{item.kind === 'score' ? 'SCORE UPDATE' : 'NEWS'}</span></header>
           {item.kind === 'score' ? <div className="den-score-update"><div><TeamMark team={item.away} /><b>{item.away.abbr} {item.away.score}</b><TeamMark team={item.home} /><b>{item.home.abbr} {item.home.score}</b></div><p>{item.league} · {item.status === 'LIVE' ? `${item.period} ${item.clock}` : item.status === 'FINAL' ? 'Final' : 'Game update'}</p></div> : <div className="den-news-update">{item.image && <img src={item.image} alt="" />}{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.headline}</a> : <b>{item.headline}</b>}{item.description && <p>{item.description}</p>}</div>}
         </div>
@@ -874,26 +892,60 @@ function App() {
   const [loadingScores, setLoadingScores] = useState(true);
   const [failedLeagues, setFailedLeagues] = useState<string[]>([]);
   const [newsItems, setNewsItems] = useState<DenNewsFeedItem[]>([]);
-  const [scoreUpdates, setScoreUpdates] = useState<DenScoreItem[]>([]);
+  const [scoreUpdates, setScoreUpdates] = useState<DenScoreItem[]>(() => loadStoredLockerRoomUpdates<DenScoreItem>(lockerRoomScoresStorageKey));
   const scoreUpdatesRef = useRef(scoreUpdates);
   scoreUpdatesRef.current = scoreUpdates;
-  const [playUpdates, setPlayUpdates] = useState<DenPlayItem[]>([]);
+  const [playUpdates, setPlayUpdates] = useState<DenPlayItem[]>(() => loadStoredLockerRoomUpdates<DenPlayItem>(lockerRoomPlaysStorageKey));
+  const playUpdatesRef = useRef(playUpdates);
+  playUpdatesRef.current = playUpdates;
   const [loadingNews, setLoadingNews] = useState(false);
   const previousGameStates = useRef(new Map<string, string>());
   const favoritesRef = useRef(favorites);
-  const seenPlayIds = useRef(new Set<string>());
   const nflPlayFavorites = favorites.filter((favorite) => favorite.feedPath === 'football/nfl'
     && (favorite.type === 'team' || (favorite.type === 'player'
       && favorite.teamId
       && ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? ''))));
   const favoriteTeamId = (favorite: FavoriteTarget) => favorite.type === 'team' ? favorite.id : favorite.teamId ?? '';
-  const livePlayerGames = games.filter((game) => game.sport === 'Football'
-    && game.status === 'LIVE'
+  const weeklyPlayerGames = games.filter((game) => game.sport === 'Football'
+    && (game.status === 'LIVE' || (game.status === 'FINAL' && (!game.date || !isPastTuesdayCutoff(game.date))))
     && nflPlayFavorites.some((favorite) => favoriteTeamId(favorite) === game.home.id || favoriteTeamId(favorite) === game.away.id));
-  const livePlayGameKey = livePlayerGames.map((game) => game.eventId).sort().join('|');
+  const livePlayerGames = weeklyPlayerGames.filter((game) => game.status === 'LIVE');
+  const weeklyPlayGameKey = weeklyPlayerGames.map((game) => `${game.eventId}:${game.status}`).sort().join('|');
   const nflPlayFavoritesKey = nflPlayFavorites.map((favorite) => favorite.key).sort().join('|');
-  const playPollInputs = useRef({ games: livePlayerGames, favorites: nflPlayFavorites });
-  playPollInputs.current = { games: livePlayerGames, favorites: nflPlayFavorites };
+  const playPollInputs = useRef({ games: weeklyPlayerGames, favorites: nflPlayFavorites });
+  playPollInputs.current = { games: weeklyPlayerGames, favorites: nflPlayFavorites };
+
+  const pruneExpiredLockerRoomUpdates = () => {
+    const cutoff = getTuesdayCutoff();
+    setScoreUpdates((current) => {
+      const valid = current.filter((item) => Date.parse(item.timestamp) >= cutoff);
+      return valid.length === current.length ? current : valid;
+    });
+    setPlayUpdates((current) => {
+      const valid = current.filter((item) => Date.parse(item.timestamp) >= cutoff);
+      return valid.length === current.length ? current : valid;
+    });
+  };
+
+  useEffect(() => {
+    const cutoff = getTuesdayCutoff();
+    const valid = scoreUpdates.filter((item) => Date.parse(item.timestamp) >= cutoff);
+    try {
+      localStorage.setItem(lockerRoomScoresStorageKey, JSON.stringify(valid.slice(0, 100)));
+    } catch {
+      // Ignore quota errors
+    }
+  }, [scoreUpdates]);
+
+  useEffect(() => {
+    const cutoff = getTuesdayCutoff();
+    const valid = playUpdates.filter((item) => Date.parse(item.timestamp) >= cutoff);
+    try {
+      localStorage.setItem(lockerRoomPlaysStorageKey, JSON.stringify(valid.slice(0, 100)));
+    } catch {
+      // Ignore quota errors
+    }
+  }, [playUpdates]);
 
   useEffect(() => {
     if (authLoading) return undefined;
@@ -921,7 +973,10 @@ function App() {
     };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-      else replayAfterAbsence();
+      else {
+        pruneExpiredLockerRoomUpdates();
+        replayAfterAbsence();
+      }
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
@@ -994,7 +1049,7 @@ function App() {
   }, [favorites]);
 
   useEffect(() => {
-    if (!livePlayGameKey || !nflPlayFavoritesKey) return;
+    if (!weeklyPlayGameKey || !nflPlayFavoritesKey) return;
     let current = true;
     let refreshing = false;
     const controller = new AbortController();
@@ -1002,16 +1057,24 @@ function App() {
       if (refreshing) return;
       refreshing = true;
       try {
-        const { games: liveGames, favorites: playerFavorites } = playPollInputs.current;
-        const result = await fetchNFLFavoritePlays(liveGames, playerFavorites, controller.signal);
+        const { games: activeGames, favorites: playerFavorites } = playPollInputs.current;
+        const result = await fetchNFLFavoritePlays(activeGames, playerFavorites, controller.signal);
         if (!current || controller.signal.aborted) return;
-        const unseen = result.filter((play) => !seenPlayIds.current.has(play.id));
-        unseen.forEach((play) => seenPlayIds.current.add(play.id));
-        if (unseen.length) {
-          setPlayUpdates((previous) => [...unseen.map((play) => ({ ...play, kind: 'play' as const })), ...previous]
+        const cutoff = getTuesdayCutoff();
+        setPlayUpdates((previous) => {
+          const map = new Map<string, DenPlayItem>();
+          previous.forEach((play) => {
+            if (Date.parse(play.timestamp) >= cutoff) map.set(play.id, play);
+          });
+          result.forEach((play) => {
+            if (Date.parse(play.timestamp) >= cutoff) {
+              map.set(play.id, { ...play, kind: 'play' as const });
+            }
+          });
+          return Array.from(map.values())
             .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))
-            .slice(0, 50));
-        }
+            .slice(0, 100);
+        });
       } catch {
         if (controller.signal.aborted) return;
       } finally {
@@ -1019,13 +1082,18 @@ function App() {
       }
     };
     void refreshPlays();
-    const refreshId = window.setInterval(() => void refreshPlays(), 15_000);
+    const refreshId = window.setInterval(() => {
+      pruneExpiredLockerRoomUpdates();
+      if (playPollInputs.current.games.some((game) => game.status === 'LIVE')) {
+        void refreshPlays();
+      }
+    }, 15_000);
     return () => {
       current = false;
       controller.abort();
       window.clearInterval(refreshId);
     };
-  }, [livePlayGameKey, nflPlayFavoritesKey]);
+  }, [weeklyPlayGameKey, nflPlayFavoritesKey]);
 
   const toggleFavorite = (favorite: FavoriteTarget) => {
     if (favorites.some((item) => item.key === favorite.key)) {
@@ -1033,17 +1101,20 @@ function App() {
       return;
     }
     setFavorites((current) => [...current, favorite]);
-    const matchingGames = games.filter((game) => game.status !== 'UPCOMING' && (
-      game.feedPath === favorite.feedPath && (favorite.type === 'team'
-        ? game.away.id === favorite.id || game.home.id === favorite.id
-        : favorite.teamId === game.away.id || favorite.teamId === game.home.id)
-    ));
+    const cutoff = getTuesdayCutoff();
+    const matchingGames = games.filter((game) => game.status !== 'UPCOMING'
+      && (!game.date || Date.parse(game.date) >= cutoff)
+      && (
+        game.feedPath === favorite.feedPath && (favorite.type === 'team'
+          ? game.away.id === favorite.id || game.home.id === favorite.id
+          : favorite.teamId === game.away.id || favorite.teamId === game.home.id)
+      ));
     const snapshots: DenScoreItem[] = matchingGames.map((game) => ({
-      id: `score:${game.id}:follow:${favorite.key}:${Date.now()}`,
+      id: `score:${game.id}:${game.away.score}:${game.home.score}${game.status === 'FINAL' ? ':final' : ''}`,
       kind: 'score',
       favoriteKey: favorite.key,
       favoriteName: favorite.name,
-      timestamp: new Date().toISOString(),
+      timestamp: game.date || new Date().toISOString(),
       league: game.league,
       away: game.away,
       home: game.home,
@@ -1051,7 +1122,20 @@ function App() {
       period: game.period,
       clock: game.clock,
     }));
-    if (snapshots.length) setScoreUpdates((current) => [...snapshots, ...current].slice(0, 100));
+    if (snapshots.length) {
+      setScoreUpdates((current) => {
+        const map = new Map<string, DenScoreItem>();
+        current.forEach((item) => {
+          if (Date.parse(item.timestamp) >= cutoff) map.set(item.id, item);
+        });
+        snapshots.forEach((item) => {
+          if (Date.parse(item.timestamp) >= cutoff) map.set(item.id, item);
+        });
+        return Array.from(map.values())
+          .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))
+          .slice(0, 100);
+      });
+    }
   };
 
   useEffect(() => {
@@ -1069,32 +1153,72 @@ function App() {
         if (!current) return;
         setCurrentNFLWeek(result.nflWeek);
         const changedItems: DenScoreItem[] = [];
+        const cutoff = getTuesdayCutoff();
         result.games.forEach((game) => {
-          const previousState = previousGameStates.current.get(game.id);
-          const nextState = `${game.away.score}:${game.home.score}`;
-          previousGameStates.current.set(game.id, nextState);
-          if (!previousState || previousState === nextState) return;
           const matchingFavorite = favoritesRef.current.find((favorite) => [game.away, game.home].some((team) => favorite.type === 'team'
             ? favorite.key === teamFavoriteTarget(team, game.feedPath).key
             : favorite.teamId === team.id && favorite.feedPath === game.feedPath));
           if (!matchingFavorite) return;
-          changedItems.push({
-            id: `score:${game.id}:${nextState}`,
-            kind: 'score',
-            favoriteKey: matchingFavorite.key,
-            favoriteName: matchingFavorite.name,
-            timestamp: new Date().toISOString(),
-            league: game.league,
-            away: game.away,
-            home: game.home,
-            status: game.status,
-            period: game.period,
-            clock: game.clock,
-          });
+          if (game.status === 'UPCOMING') return;
+          if (game.date && isPastTuesdayCutoff(game.date)) return;
+
+          const previousState = previousGameStates.current.get(game.id);
+          const nextScore = `${game.away.score}:${game.home.score}`;
+          const isFinal = game.status === 'FINAL';
+          const nextState = isFinal ? `${nextScore}:final` : nextScore;
+
+          if (!previousState) {
+            previousGameStates.current.set(game.id, nextState);
+            const alreadyHasUpdateForGame = scoreUpdatesRef.current.some((item) => item.id.startsWith(`score:${game.id}:`));
+            if (!alreadyHasUpdateForGame) {
+              changedItems.push({
+                id: `score:${game.id}:${nextState}`,
+                kind: 'score',
+                favoriteKey: matchingFavorite.key,
+                favoriteName: matchingFavorite.name,
+                timestamp: game.date || new Date().toISOString(),
+                league: game.league,
+                away: game.away,
+                home: game.home,
+                status: game.status,
+                period: game.period,
+                clock: game.clock,
+              });
+            }
+            return;
+          }
+
+          if (previousState !== nextState) {
+            previousGameStates.current.set(game.id, nextState);
+            changedItems.push({
+              id: `score:${game.id}:${nextState}`,
+              kind: 'score',
+              favoriteKey: matchingFavorite.key,
+              favoriteName: matchingFavorite.name,
+              timestamp: new Date().toISOString(),
+              league: game.league,
+              away: game.away,
+              home: game.home,
+              status: game.status,
+              period: game.period,
+              clock: game.clock,
+            });
+          }
         });
-        const knownIds = new Set(scoreUpdatesRef.current.map((item) => item.id));
-        const freshItems = changedItems.filter((item) => !knownIds.has(item.id));
-        if (freshItems.length) setScoreUpdates((current) => [...freshItems, ...current].slice(0, 100));
+        if (changedItems.length) {
+          setScoreUpdates((current) => {
+            const map = new Map<string, DenScoreItem>();
+            current.forEach((item) => {
+              if (Date.parse(item.timestamp) >= cutoff) map.set(item.id, item);
+            });
+            changedItems.forEach((item) => {
+              if (Date.parse(item.timestamp) >= cutoff) map.set(item.id, item);
+            });
+            return Array.from(map.values())
+              .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))
+              .slice(0, 100);
+          });
+        }
         setGames(result.games);
         setFailedLeagues(result.failedLeagues);
         setLoadingScores(false);
@@ -1108,7 +1232,10 @@ function App() {
     };
 
     void refresh();
-    const refreshId = window.setInterval(() => void refresh(), 30_000);
+    const refreshId = window.setInterval(() => {
+      pruneExpiredLockerRoomUpdates();
+      void refresh();
+    }, 30_000);
     return () => {
       current = false;
       controller.abort();
