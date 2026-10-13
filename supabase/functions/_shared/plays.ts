@@ -109,21 +109,22 @@ export function buildPlayAlerts(summary: unknown, game: PlayGame, favorites: Arr
 
         let body = '';
         if (isTouchdown) {
-          if (role.isPasser) {
-            body = `${name} just threw a ${yards > 0 ? `${yards} yard ` : ''}touchdown pass`;
-          } else if (role.isReceiver) {
-            body = `${name} just caught a ${yards > 0 ? `${yards} yard ` : ''}touchdown`;
+          const yardLabel = yards > 0 ? `${yards} Yard ` : '';
+          if (role.isReceiver) {
+            body = `TOUCHDOWN! ${name} ${yardLabel}catch`;
           } else if (role.isRunner) {
-            body = `${name} just ran for a ${yards > 0 ? `${yards} yard ` : ''}touchdown`;
+            body = `TOUCHDOWN! ${name} ${yardLabel}run`;
+          } else if (role.isPasser) {
+            body = `TOUCHDOWN! ${name} ${yardLabel}pass`;
           } else {
-            body = `${name} just scored a touchdown`;
+            body = `TOUCHDOWN! ${name}${yards > 0 ? ` ${yards} Yard return` : ''}`;
           }
         } else if (role.isPasser && yards > 50) {
-          body = `${name} just threw a ${yards} yard pass`;
+          body = `${name} ${yards} Yard pass`;
         } else if (role.isReceiver && yards > 25) {
-          body = `${name} just caught a ${yards} yard reception`;
+          body = `${name} ${yards} Yard catch`;
         } else if (role.isRunner && yards > 25) {
-          body = `${name} just ran for ${yards} yards`;
+          body = `${name} ${yards} Yard run`;
         }
         return body ? [{ playId, favoriteKey: String(favorite.key), body, isPlayerAlert: true }] : [];
       }

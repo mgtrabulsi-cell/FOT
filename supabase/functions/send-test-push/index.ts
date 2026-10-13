@@ -44,7 +44,7 @@ Deno.serve(async (request) => {
         await sendWebPush(server, entry.subscription, {
           title: 'Gamewire',
           body: 'Notifications are on. You will receive score updates for games you follow.',
-          url: '/#scores',
+          url: '/#wire',
           tag: 'gamewire-test',
         });
       } catch (error) {

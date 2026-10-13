@@ -2,21 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
   Activity,
-  ArrowUpRight,
   ChevronRight,
   Clock3,
   LogOut,
   Search,
   Star,
-  Trophy,
-  Users,
   X,
 } from 'lucide-react';
-import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLGameLeaders, fetchNFLLivePlayerStats, fetchScoreboards, fetchSoccerLineups, findNFLTeamsForPlayerSearch, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
-import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLGameLeader, NFLPlayerStatKey, NFLSkillPlayer, SoccerLineup, SoccerPlayer, Team } from './services/sportsData';
+import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchScoreboards, findAutomaticNFLGame, findNFLTeamsForPlayerSearch, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
+import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, Team } from './services/sportsData';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
 import ProfilePage from './ProfilePage';
+import TheWire from './TheWire';
 import { supabase } from './services/supabaseClient';
 
 
@@ -146,101 +144,6 @@ function getNFLGamePlayerPools(game: Game | undefined, details: NFLGameDetails |
     });
     return { team, players };
   });
-}
-
-function GameCard({ game, selected, onSelect, onOpenPlayers }: { game: Game; selected: boolean; onSelect: () => void; onOpenPlayers: () => void }) {
-  const live = game.status === 'LIVE';
-  return (
-    <article className={`game-card${selected ? ' selected' : ''}`} onClick={onSelect}>
-      <button className="game-card-main" onClick={(event) => { event.stopPropagation(); onSelect(); }} aria-pressed={selected}>
-        <div className="game-card-top"><span className="league-name">{game.league}</span><span className={`game-state ${live ? 'is-live' : ''}`}>{live && <i />}{game.status === 'UPCOMING' ? formatGameTime(game) : game.status === 'FINAL' ? 'FINAL' : `${game.period} · ${game.clock}`}</span></div>
-        {[game.away, game.home].map((team, index) => (
-          <div className={`score-row${index === 1 ? ' home-team' : ''}`} key={team.abbr}>
-            <TeamMark team={team} />
-            <span className="team-name">{team.name}</span>
-            <span className="team-record">{team.record}</span>
-            <strong className="team-score">{game.status === 'UPCOMING' ? '–' : team.score}</strong>
-          </div>
-        ))}
-      </button>
-      <div className="card-bottom"><span>{game.venue}</span><button className="game-card-players" aria-label={`Open ${game.away.abbr} vs ${game.home.abbr} player stats`} title="View game players" onClick={(event) => { event.stopPropagation(); onOpenPlayers(); }}><ChevronRight size={16} /></button></div>
-    </article>
-  );
-}
-
-function SoccerLineups({ game }: { game: Game }) {
-  const [lineups, setLineups] = useState<SoccerLineup[]>([]);
-  const [selectedPlayer, setSelectedPlayer] = useState<SoccerPlayer | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const gameId = game.id;
-  const eventId = game.eventId;
-  const feedPath = game.feedPath;
-  const homeTeamId = game.home.id;
-  const homeTeamName = game.home.name;
-  const awayTeamId = game.away.id;
-  const awayTeamName = game.away.name;
-
-  useEffect(() => {
-    let current = true;
-    const controller = new AbortController();
-    const loadLineups = async () => {
-      try {
-        const result = await fetchSoccerLineups({
-          eventId,
-          feedPath,
-          home: { id: homeTeamId, name: homeTeamName },
-          away: { id: awayTeamId, name: awayTeamName },
-        }, controller.signal);
-        if (current) {
-          setLineups(result);
-          setFailed(false);
-          setLoading(false);
-        }
-      } catch {
-        if (current && !controller.signal.aborted) {
-          setFailed(true);
-          setLoading(false);
-        }
-      }
-    };
-
-    setLineups([]);
-    setSelectedPlayer(null);
-    setLoading(true);
-    void loadLineups();
-    const refreshId = window.setInterval(() => void loadLineups(), 30_000);
-    return () => {
-      current = false;
-      controller.abort();
-      window.clearInterval(refreshId);
-    };
-  }, [gameId, eventId, feedPath, homeTeamId, homeTeamName, awayTeamId, awayTeamName]);
-
-  if (loading) return <p className="lineup-message">Loading confirmed starting lineups…</p>;
-  if (failed) return <p className="lineup-message">Match details are unavailable right now. Retrying automatically.</p>;
-  if (lineups.length === 0) return <p className="lineup-message">Starting XIs have not been published yet. This panel checks for updates every 30 seconds.</p>;
-
-  return (
-    <div className="lineup-content">
-      <div className="lineup-grid">{lineups.map((lineup) => (
-        <section className="lineup-team" key={lineup.teamId}>
-          <header><TeamMark team={lineup.side === 'home' ? game.home : game.away} /><span><b>{lineup.teamName}</b><small>{lineup.formation || 'Starting XI'}</small></span></header>
-          <div className="lineup-player-list">{lineup.players.map((player) => <button key={player.id} className={`lineup-player${selectedPlayer?.id === player.id ? ' selected' : ''}`} onClick={() => setSelectedPlayer(player)} aria-pressed={selectedPlayer?.id === player.id}>
-            <span className="lineup-player-icon">{player.headshot ? <img src={player.headshot} alt="" /> : player.initials}</span><span className="lineup-player-copy"><b>{player.name}</b><small>{player.position || 'Player'}{player.jersey && ` · #${player.jersey}`}</small></span><ChevronRight size={14} />
-          </button>)}</div>
-        </section>
-      ))}</div>
-      {selectedPlayer && <PlayerMatchStats player={selectedPlayer} />}
-    </div>
-  );
-}
-
-function PlayerMatchStats({ player }: { player: SoccerPlayer }) {
-  const stats = [
-    ['MIN', player.minutes], ['SHOTS', player.shots], ['ON TARGET', player.shotsOnTarget], ['GOALS', player.goals], ['ASSISTS', player.assists],
-  ];
-  return <section className="player-match-stats"><div className="player-match-heading"><span className="lineup-player-icon">{player.headshot ? <img src={player.headshot} alt="" /> : player.initials}</span><div><span className="eyebrow">PLAYER MATCH STATS</span><h3>{player.name}</h3></div><span className="player-position">{player.position}{player.jersey && ` · #${player.jersey}`}</span></div><div className="match-stat-grid">{stats.map(([label, value]) => <div key={label}><span>{label}</span><b>{value === '0' ? '0' : value || '—'}</b></div>)}</div></section>;
 }
 
 function DraggableTabs<T extends string>({
@@ -399,162 +302,9 @@ function NFLPlayerMiniWindow({ player, team, isFavorite, onToggleFavorite, onClo
   </div>;
 }
 
-function formatSpread(value: number) {
-  return value === 0 ? 'PK' : value > 0 ? `+${value}` : String(value);
-}
-
 function formatNFLDate(value: string) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(parsed);
-}
-
-function NFLTrends({ game, details, liveLeaders }: { game: Game; details: NFLGameDetails | null; liveLeaders: NFLGameLeader[] }) {
-  const awayForm = details?.teamForms.find((form) => form.teamId === game.away.id);
-  const homeForm = details?.teamForms.find((form) => form.teamId === game.home.id);
-  const stats = [
-    ['Points per game', 'totalPointsPerGame'],
-    ['Points allowed', 'totalPointsPerGameAllowed'],
-    ['Passing yards / game', 'passingYardsPerGame'],
-    ['Rushing yards / game', 'rushingYardsPerGame'],
-    ['Total yards / game', 'yardsPerGame'],
-  ];
-  const spread = game.nflMarket?.spread;
-
-  return <div className="nfl-trends-content">
-    <section className="nfl-market"><div className="nfl-market-heading"><span className="eyebrow">MARKET LINES</span><span>{game.nflMarket?.provider ?? 'ESPN feed'} · informational</span></div>{game.nflMarket ? <div className="nfl-market-grid"><div><span>SPREAD</span><b>{game.home.abbr} {formatSpread(spread ?? 0)}</b><small>{game.away.abbr} {formatSpread(-(spread ?? 0))}</small></div><div><span>TOTAL</span><b>{game.nflMarket.total === null ? '—' : game.nflMarket.total.toFixed(1)}</b><small>Over / under points</small></div><div><span>MONEYLINE</span><b>{game.away.abbr} {game.nflMarket.awayMoneyline || '—'}</b><small>{game.home.abbr} {game.nflMarket.homeMoneyline || '—'}</small></div></div> : <p className="nfl-empty-note">Market lines are not currently supplied for this game.</p>}</section>
-    {game.status === 'LIVE' ? <section className="nfl-team-stats nfl-live-leaders-section"><div className="nfl-live-stats-header"><span className="eyebrow">LIVE PLAYER LEADERS</span><div className="nfl-live-team-abbrs"><b>{game.away.abbr}</b><b>{game.home.abbr}</b></div></div><div className="nfl-live-leaders-grid">{[game.away, game.home].map((team) => {
-      const teamLeaders = liveLeaders.filter((leader) => leader.teamId === team.id).sort((first, second) => second.yards - first.yards);
-      return <div className="nfl-live-team" key={team.id}>{teamLeaders.length ? teamLeaders.map((leader) => <div className="nfl-live-leader-row" key={`${leader.teamId}:${leader.category}`}><span>{leader.position || leader.category.replace(' YDS', '')}</span><div><b>{leader.name}</b></div><strong>{leader.yards} YDS</strong></div>) : <p className="nfl-live-empty">Yardage leaders appear as stats are recorded.</p>}</div>;
-    })}</div></section> : <section className="nfl-team-stats"><header><span className="nfl-team-abbr">{game.away.abbr}</span><span className="eyebrow">TEAM SEASON AVERAGES</span><span className="nfl-team-abbr">{game.home.abbr}</span></header>{stats.map(([label, key]) => <div className="nfl-team-stat-row" key={key}><b>{awayForm?.stats[key] ?? '—'}</b><span>{label}</span><b>{homeForm?.stats[key] ?? '—'}</b></div>)}</section>}
-  </div>;
-}
-
-function NFLGameCenter({ game, favorites, onToggleFavorite, onOpenPlayers }: { game: Game; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; onOpenPlayers: (game: Game) => void }) {
-  const [details, setDetails] = useState<NFLGameDetails | null>(null);
-  const [liveLeaders, setLiveLeaders] = useState<NFLGameLeader[]>([]);
-  const [loadingDetails, setLoadingDetails] = useState(true);
-  const [detailsFailed, setDetailsFailed] = useState(false);
-  const gameId = game.id;
-  const eventId = game.eventId;
-  const feedPath = game.feedPath;
-  const homeTeamId = game.home.id;
-  const homeTeamName = game.home.name;
-  const awayTeamId = game.away.id;
-  const awayTeamName = game.away.name;
-
-  useEffect(() => {
-    if (game.status !== 'LIVE') {
-      setLiveLeaders([]);
-      return;
-    }
-    let current = true;
-    const controller = new AbortController();
-    const refreshLeaders = async () => {
-      try {
-        const result = await fetchNFLGameLeaders(feedPath, eventId, controller.signal);
-        if (current) setLiveLeaders(result);
-      } catch {
-        if (!controller.signal.aborted) return;
-      }
-    };
-
-    setLiveLeaders([]);
-    void refreshLeaders();
-    const refreshId = window.setInterval(() => void refreshLeaders(), 30_000);
-    return () => {
-      current = false;
-      controller.abort();
-      window.clearInterval(refreshId);
-    };
-  }, [game.status, gameId, eventId, feedPath]);
-
-  useEffect(() => {
-    let current = true;
-    const controller = new AbortController();
-    const loadDetails = async () => {
-      try {
-        const result = await fetchNFLGameDetails(feedPath, eventId, game.seasonYear, [
-          { id: awayTeamId, name: awayTeamName },
-          { id: homeTeamId, name: homeTeamName },
-        ], controller.signal);
-        if (current) {
-          setDetails(result);
-          setDetailsFailed(false);
-          setLoadingDetails(false);
-        }
-      } catch {
-        if (current && !controller.signal.aborted) {
-          setDetailsFailed(true);
-          setLoadingDetails(false);
-        }
-      }
-    };
-
-    setDetails(null);
-    setLoadingDetails(true);
-    void loadDetails();
-    const refreshId = window.setInterval(() => void loadDetails(), 60_000);
-    return () => {
-      current = false;
-      controller.abort();
-      window.clearInterval(refreshId);
-    };
-  }, [gameId, eventId, feedPath, game.seasonYear, homeTeamId, homeTeamName, awayTeamId, awayTeamName]);
-
-  return <section className="panel game-center nfl-game-center">
-    <div className="panel-heading"><div><span className="eyebrow">NFL GAME CENTER</span><h2>Trends &amp; lines</h2></div><span className="odds-source">{game.nflMarket?.provider ?? 'NFL'}</span></div>
-    <div className="matchup"><div className="match-team"><button className="game-center-team-players" aria-label={`View ${game.away.name} players`} title="View team players" onClick={() => onOpenPlayers(game)}><TeamMark team={game.away} large /></button><b>{game.away.abbr}</b><span className="match-team-name">{game.away.name}</span><TeamFavoriteButton game={game} team={game.away} favorites={favorites} onToggleFavorite={onToggleFavorite} /></div><div className="match-score nfl-match-score">{game.status === 'UPCOMING' ? <span className="nfl-score-rule" aria-hidden="true" /> : <strong>{game.away.score}</strong>}<span className={game.status === 'LIVE' ? 'live-clock' : ''}>{game.status === 'LIVE' ? `${game.period} · ${game.clock}` : game.status === 'FINAL' ? 'FINAL' : formatGameTime(game)}</span>{game.status === 'UPCOMING' ? <span className="nfl-score-rule" aria-hidden="true" /> : <strong>{game.home.score}</strong>}</div><div className="match-team"><button className="game-center-team-players" aria-label={`View ${game.home.name} players`} title="View team players" onClick={() => onOpenPlayers(game)}><TeamMark team={game.home} large /></button><b>{game.home.abbr}</b><span className="match-team-name">{game.home.name}</span><TeamFavoriteButton game={game} team={game.home} favorites={favorites} onToggleFavorite={onToggleFavorite} /></div></div>
-    {detailsFailed && <p className="nfl-inline-warning">Some matchup trends could not be loaded. Available scoreboard data remains visible.</p>}
-    {loadingDetails && !details && game.status !== 'LIVE' ? <p className="lineup-message">Loading game trends and lines…</p> : <NFLTrends game={game} details={details} liveLeaders={liveLeaders} />}
-  </section>;
-}
-
-function GameCenter({ game, favorites, onToggleFavorite, onOpenPlayers }: { game: Game; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; onOpenPlayers: (game: Game) => void }) {
-  if (game.sport === 'Football') return <NFLGameCenter game={game} favorites={favorites} onToggleFavorite={onToggleFavorite} onOpenPlayers={onOpenPlayers} />;
-  return <GeneralGameCenter game={game} favorites={favorites} onToggleFavorite={onToggleFavorite} />;
-}
-
-function GeneralGameCenter({ game, favorites, onToggleFavorite }: { game: Game; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void }) {
-  const [tab, setTab] = useState<'Summary' | 'Lineups'>('Summary');
-  const isSoccer = game.sport === 'Soccer';
-  useEffect(() => setTab('Summary'), [game.id]);
-
-  return (
-    <section className="panel game-center">
-      <div className="panel-heading"><div><span className="eyebrow">GAME CENTER</span><h2>{game.league} <span className="muted-dot">·</span> {game.status === 'LIVE' ? 'Live now' : game.status === 'FINAL' ? 'Final' : 'Upcoming'}</h2></div><button className="icon-button" aria-label="Open full game center"><ArrowUpRight size={17} /></button></div>
-      <div className="matchup">
-        <div className="match-team"><TeamMark team={game.away} large /><b>{game.away.abbr}</b><span>{game.away.name}</span><TeamFavoriteButton game={game} team={game.away} favorites={favorites} onToggleFavorite={onToggleFavorite} /></div>
-        <div className="match-score"><strong>{game.status === 'UPCOMING' ? '—' : game.away.score}</strong><span className={game.status === 'LIVE' ? 'live-clock' : ''}>{game.status === 'LIVE' ? `${game.period} · ${game.clock}` : game.status === 'FINAL' ? 'FINAL' : formatGameTime(game)}</span><strong>{game.status === 'UPCOMING' ? '—' : game.home.score}</strong></div>
-        <div className="match-team"><TeamMark team={game.home} large /><b>{game.home.abbr}</b><span>{game.home.name}</span><TeamFavoriteButton game={game} team={game.home} favorites={favorites} onToggleFavorite={onToggleFavorite} /></div>
-      </div>
-      {isSoccer && <div className="tab-strip"><button className={tab === 'Summary' ? 'active' : ''} onClick={() => setTab('Summary')}>Summary</button><button className={tab === 'Lineups' ? 'active' : ''} onClick={() => setTab('Lineups')}>Starting XI</button></div>}
-      {(!isSoccer || tab === 'Summary') && <div className="game-summary"><div className="summary-line"><span><Activity size={15} /> Game status</span><b>{game.status === 'LIVE' ? `${game.period} · ${game.clock}` : game.status === 'FINAL' ? 'Game complete' : formatGameTime(game)}</b></div><div className="summary-line"><span><Trophy size={15} /> Venue</span><b>{game.venue}</b></div><div className="summary-line"><span><Users size={15} /> Records</span><b>{game.away.record || '—'} <em>·</em> {game.home.record || '—'}</b></div><p className="live-feed-note">Scoreboard refreshes automatically every 30 seconds.</p></div>}
-      {isSoccer && tab === 'Lineups' && <SoccerLineups game={game} />}
-    </section>
-  );
-}
-
-function formatLiveStatLine(position: string, stats: Partial<Record<NFLPlayerStatKey, number>> | undefined) {
-  if (!stats || Object.keys(stats).length === 0) return 'No stats yet';
-  const parts: string[] = [];
-  if (position === 'QB') {
-    if (stats.attempts !== undefined) parts.push(`${stats.completions ?? 0}/${stats.attempts}`);
-    if (stats.passingYards !== undefined) parts.push(`${stats.passingYards} YDS`);
-    if (stats.passingTouchdowns) parts.push(`${stats.passingTouchdowns} TD`);
-    if (stats.interceptions) parts.push(`${stats.interceptions} INT`);
-    if (stats.rushingYards) parts.push(`${stats.rushingYards} RUSH`);
-  } else if (position === 'RB') {
-    if (stats.carries !== undefined) parts.push(`${stats.carries} CAR`);
-    if (stats.rushingYards !== undefined) parts.push(`${stats.rushingYards} YDS`);
-    if (stats.rushingTouchdowns) parts.push(`${stats.rushingTouchdowns} TD`);
-    if (stats.receptions) parts.push(`${stats.receptions} REC ${stats.receivingYards ?? 0} YDS`);
-  } else {
-    if (stats.receptions !== undefined) parts.push(`${stats.receptions} REC`);
-    if (stats.targets !== undefined) parts.push(`${stats.targets} TGT`);
-    if (stats.receivingYards !== undefined) parts.push(`${stats.receivingYards} YDS`);
-    if (stats.receivingTouchdowns) parts.push(`${stats.receivingTouchdowns} TD`);
-  }
-  return parts.length ? parts.join(' · ') : 'No stats yet';
 }
 
 function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId }: { games: Game[]; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; initialGameId: string | null }) {
@@ -660,32 +410,7 @@ function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId
     players: group.players.filter((player) => position === 'All' || player.position === position),
   })) : [];
   const visiblePlayerCount = teamGroups.reduce((total, group) => total + group.players.length, 0);
-  const livePlayerRefs = game && details ? getNFLGamePlayerPools(game, details).flatMap((group) => group.players.map((player) => ({ teamId: group.team.id, id: player.id }))) : [];
-  const livePlayerKey = livePlayerRefs.map((player) => `${player.teamId}:${player.id}`).join('|');
   const isLiveGame = game?.status === 'LIVE';
-  const [liveStats, setLiveStats] = useState<Record<string, Partial<Record<NFLPlayerStatKey, number>>>>({});
-
-  useEffect(() => {
-    setLiveStats({});
-    if (!isLiveGame || !feedPath || !eventId || !livePlayerKey) return undefined;
-    let current = true;
-    const controller = new AbortController();
-    const refresh = async () => {
-      try {
-        const result = await fetchNFLLivePlayerStats(feedPath, eventId, livePlayerRefs, controller.signal);
-        if (current) setLiveStats(result);
-      } catch {
-        // Keep the last successful stats on a failed poll.
-      }
-    };
-    void refresh();
-    const refreshId = window.setInterval(() => void refresh(), 15_000);
-    return () => {
-      current = false;
-      controller.abort();
-      window.clearInterval(refreshId);
-    };
-  }, [isLiveGame, feedPath, eventId, livePlayerKey]);
 
   return <div className="nfl-players-directory">
     <div className="nfl-directory-controls">
@@ -693,9 +418,9 @@ function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId
       {game ? <NFLGameWheel games={nflGames} selectedGame={game} onSelect={setSelectedGameId} /> : <p className="nfl-empty-note">No NFL games are available.</p>}
     </div>
     {searchStatus && <p className="nfl-player-search-status" role="status">{searchStatus}</p>}
-    <div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter players by position">{['All', 'QB', 'RB', 'WR', 'TE'].map((item) => <button key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div>{isLiveGame ? <span className="live-clock">LIVE · updates every 15s</span> : <span>{visiblePlayerCount} players with recent usage</span>}</div>
+    <div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter players by position">{['All', 'QB', 'RB', 'WR', 'TE'].map((item) => <button key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div>{isLiveGame ? <span className="live-clock">LIVE</span> : <span>{visiblePlayerCount} active players</span>}</div>
     {failed && <div className="feed-warning">Could not load this game’s players. Try selecting the game again later.</div>}
-    {loading ? <div className="empty-games">Loading active rosters and recent player usage…</div> : <div className="nfl-directory-grid">{teamGroups.map((group) => <section className="nfl-directory-team" key={group.team.id}><header><TeamMark team={group.team} /><span><b>{group.team.name}</b><small>{group.side} · {group.team.record}</small></span>{game && <TeamFavoriteButton game={game} team={group.team} favorites={favorites} onToggleFavorite={onToggleFavorite} />}</header><div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => { setSelectedPlayer(player); setSelectedTeam(group.team); }}><span className="nfl-player-avatar">{player.headshot ? <img src={player.headshot} alt="" /> : player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{player.name}</b><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small>{isLiveGame && <small className="nfl-live-statline">{formatLiveStatLine(player.position, liveStats[player.id])}</small>}</span></button><FavoriteStarButton favorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(player, group.team).key)} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, group.team))} /></div>)}</div>{group.players.length === 0 && <p className="nfl-empty-note">No players match these filters.</p>}</section>)}</div>}
+    {loading ? <div className="empty-games">Loading active rosters and recent player usage…</div> : <div className="nfl-directory-grid">{teamGroups.map((group) => <section className="nfl-directory-team" key={group.team.id}><header><TeamMark team={group.team} /><span><b>{group.team.name}</b><small>{group.side} · {group.team.record}</small></span>{game && <TeamFavoriteButton game={game} team={group.team} favorites={favorites} onToggleFavorite={onToggleFavorite} />}</header><div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => { setSelectedPlayer(player); setSelectedTeam(group.team); }}><span className="nfl-player-avatar">{player.headshot ? <img src={player.headshot} alt="" /> : player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{player.name}</b><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small></span></button><FavoriteStarButton favorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(player, group.team).key)} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, group.team))} /></div>)}</div>{group.players.length === 0 && <p className="nfl-empty-note">No players match these filters.</p>}</section>)}</div>}
     <p className="nfl-data-note">ESPN's public feed does not publish an official depth chart or fantasy projections. Players are selected from active rosters by recent usage: 1 QB, 2 RBs, 1 TE, and up to 4 WRs per team.</p>
     {selectedPlayer && selectedTeam && <NFLPlayerMiniWindow key={selectedPlayer.id} player={selectedPlayer} team={selectedTeam} isFavorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(selectedPlayer, selectedTeam).key)} onToggleFavorite={onToggleFavorite} onClose={() => { setSelectedPlayer(null); setSelectedTeam(null); }} />}
   </div>;
@@ -878,8 +603,9 @@ function App() {
   const splashStartedAt = useRef<number | null>(Date.now());
   const [splashReplay, setSplashReplay] = useState(0);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
-  const [view, setView] = useState<'Scores' | 'Players' | 'Den' | 'Profile'>('Scores');
-  const [profileReturnView, setProfileReturnView] = useState<'Scores' | 'Players' | 'Den'>('Scores');
+  const [guestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
+  const [view, setView] = useState<'Wire' | 'Players' | 'Den' | 'Profile'>('Wire');
+  const [profileReturnView, setProfileReturnView] = useState<'Wire' | 'Players' | 'Den'>('Wire');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
@@ -888,8 +614,6 @@ function App() {
   const [currentNFLWeek, setCurrentNFLWeek] = useState<number | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
-  const liveStripRef = useRef<HTMLElement | null>(null);
-  const [loadingScores, setLoadingScores] = useState(true);
   const [failedLeagues, setFailedLeagues] = useState<string[]>([]);
   const [newsItems, setNewsItems] = useState<DenNewsFeedItem[]>([]);
   const [scoreUpdates, setScoreUpdates] = useState<DenScoreItem[]>(() => loadStoredLockerRoomUpdates<DenScoreItem>(lockerRoomScoresStorageKey));
@@ -1142,7 +866,6 @@ function App() {
     if (supabase && !authUser) {
       setGames([]);
       setFailedLeagues([]);
-      setLoadingScores(false);
       return;
     }
     let current = true;
@@ -1212,7 +935,21 @@ function App() {
               if (Date.parse(item.timestamp) >= cutoff) map.set(item.id, item);
             });
             changedItems.forEach((item) => {
-              if (Date.parse(item.timestamp) >= cutoff) map.set(item.id, item);
+              if (Date.parse(item.timestamp) >= cutoff) {
+                const gameId = item.id.split(':')[1];
+                if (gameId) {
+                  for (const [key, existing] of map.entries()) {
+                    if (key.startsWith(`score:${gameId}:`) && existing.period === item.period) {
+                      const pointDiff = Math.abs((item.away.score + item.home.score) - (existing.away.score + existing.home.score));
+                      const timeDiff = Math.abs(Date.parse(item.timestamp) - Date.parse(existing.timestamp));
+                      if (pointDiff <= 2 && timeDiff < 300_000) {
+                        map.delete(key);
+                      }
+                    }
+                  }
+                }
+                map.set(item.id, item);
+              }
             });
             return Array.from(map.values())
               .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))
@@ -1221,12 +958,15 @@ function App() {
         }
         setGames(result.games);
         setFailedLeagues(result.failedLeagues);
-        setLoadingScores(false);
-        setSelectedGameId((previous) => result.games.some((game) => game.id === previous) ? previous : result.games[0]?.id ?? null);
+        setSelectedGameId((previous) => {
+          const prevGame = previous ? result.games.find((game) => game.id === previous) : null;
+          if (prevGame && prevGame.status === 'LIVE') return previous;
+          const autoGame = findAutomaticNFLGame(result.games, previous);
+          return autoGame?.id ?? (previous && result.games.some((game) => game.id === previous) ? previous : result.games[0]?.id ?? null);
+        });
       } catch {
         if (current && !controller.signal.aborted) {
           setFailedLeagues(['Scoreboards']);
-          setLoadingScores(false);
         }
       }
     };
@@ -1271,10 +1011,6 @@ function App() {
     };
   }, [favorites]);
 
-  const filteredGames = games;
-  const selectedGame = filteredGames.find((game) => game.id === selectedGameId) ?? filteredGames[0] ?? null;
-  const liveCount = games.filter((game) => game.status === 'LIVE').length;
-  const scheduleWeek = selectedNFLWeek ?? currentNFLWeek;
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()).toUpperCase();
   const denItems: DenItem[] = [...newsItems, ...scoreUpdates].sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp));
   const displayName = typeof authUser?.user_metadata.display_name === 'string' ? authUser.user_metadata.display_name : authUser?.email ?? 'Account';
@@ -1283,35 +1019,104 @@ function App() {
     setView('Profile');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const selectGameAndReturnToTop = (gameId: string) => {
-    setSelectedGameId(gameId);
-    const liveStrip = liveStripRef.current;
-    if (liveStrip) {
-      window.scrollTo({ top: liveStrip.getBoundingClientRect().bottom + window.scrollY, behavior: 'smooth' });
-    }
-  };
   const openGamePlayers = (game: Game) => {
     setSelectedGameId(game.id);
     setPlayerMode('NFL');
     setView('Players');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  const openWireTab = () => {
+    const auto = findAutomaticNFLGame(games);
+    if (auto && auto.status === 'LIVE') {
+      setSelectedGameId(auto.id);
+    }
+    setView('Wire');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (recoveringPassword && authUser) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
   if (showSplash || (supabase && authLoading)) return <SplashScreen />;
-  if (supabase && !authUser) return <AuthScreen />;
+  if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
 
   return (
     <div className="app-shell">
-      <header className="topbar"><a className="brand" href="#scores" onClick={() => setView('Scores')}><img className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" /><span>GAMEWIRE</span></a><nav className="primary-nav" aria-label="Main navigation"><button className={view === 'Scores' ? 'active' : ''} onClick={() => setView('Scores')}>Scores</button><button className={view === 'Players' ? 'active' : ''} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}>Players</button><button className={view === 'Den' ? 'active' : ''} onClick={() => setView('Den')}>Locker Room</button></nav><div className="topbar-right">{authUser ? <><button className={`account-profile-button${view === 'Profile' ? ' active' : ''}`} aria-label={`Open ${displayName} profile`} onClick={openProfile}>{displayName}</button><button className="sign-out-button" onClick={() => { void supabase?.auth.signOut(); }}><LogOut size={15} /><span>Sign out</span></button></> : <span className="edition-label">GUEST · THIS BROWSER</span>}</div></header>
+      <header className="topbar">
+        <a className="brand" href="#wire" onClick={openWireTab}>
+          <img className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" />
+          <span>GAMEWIRE</span>
+        </a>
+        <nav className="primary-nav" aria-label="Main navigation">
+          <button className={view === 'Wire' ? 'active' : ''} onClick={openWireTab}>The Wire</button>
+          <button className={view === 'Players' ? 'active' : ''} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}>Stat Hub</button>
+          <button className={view === 'Den' ? 'active' : ''} onClick={() => setView('Den')}>Locker Room</button>
+        </nav>
+        <div className="topbar-right">
+          {authUser ? (
+            <>
+              <button className={`account-profile-button${view === 'Profile' ? ' active' : ''}`} aria-label={`Open ${displayName} profile`} onClick={openProfile}>{displayName}</button>
+              <button className="sign-out-button" onClick={() => { void supabase?.auth.signOut(); }}><LogOut size={15} /><span>Sign out</span></button>
+            </>
+          ) : (
+            <div className="guest-nav-controls">
+              <span className="edition-label">GUEST</span>
+              <button className="guest-signin-btn" onClick={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>Sign in</button>
+            </div>
+          )}
+        </div>
+      </header>
       <main className={view === 'Players' ? 'page-wrap players-zoom' : 'page-wrap'}>
-        <div className="page-heading"><div><div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div><h1>{view === 'Scores' ? 'The scoreboard' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : 'Player stats'}</h1><p>{view === 'Scores' ? 'Every game. Every moment. All in one place.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p></div><div className="heading-actions">{view !== 'Profile' && <><span className={`feed-status${failedLeagues.length ? ' feed-status-warning' : ''}`}><i />{failedLeagues.length ? 'FEED ISSUE' : view === 'Den' ? 'LIVE FEED' : 'LIVE SCORES'}</span><label className="date-button"><Clock3 size={15} /><select aria-label="NFL week" value={selectedNFLWeek ?? 'current'} onChange={(event) => setSelectedNFLWeek(event.target.value === 'current' ? null : Number(event.target.value))}><option value="current">{currentNFLWeek ? `Current · Week ${currentNFLWeek}` : 'Current NFL week'}</option>{Array.from({ length: 18 }, (_, index) => index + 1).map((week) => <option key={week} value={week}>Week {week}</option>)}</select><ChevronRight size={14} /></label></>}</div></div>
+        <div className="page-heading">
+          <div>
+            <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
+            <h1>{view === 'Wire' ? 'The Wire' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : 'Stat Hub'}</h1>
+            <p>{view === 'Wire' ? 'Live box scores, team breakdowns, and player stats.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>
+          </div>
+          <div className="heading-actions">
+            {view !== 'Profile' && (
+              <>
+                <span className={`feed-status${failedLeagues.length ? ' feed-status-warning' : ''}`}>
+                  <i />
+                  {failedLeagues.length ? 'FEED ISSUE' : view === 'Wire' ? 'LIVE BOX SCORE' : view === 'Den' ? 'LIVE FEED' : 'LIVE STATS'}
+                </span>
+                <label className="date-button">
+                  <Clock3 size={15} />
+                  <select aria-label="NFL week" value={selectedNFLWeek ?? 'current'} onChange={(event) => setSelectedNFLWeek(event.target.value === 'current' ? null : Number(event.target.value))}>
+                    <option value="current">{currentNFLWeek ? `Current · Week ${currentNFLWeek}` : 'Current NFL week'}</option>
+                    {Array.from({ length: 18 }, (_, index) => index + 1).map((week) => <option key={week} value={week}>Week {week}</option>)}
+                  </select>
+                  <ChevronRight size={14} />
+                </label>
+              </>
+            )}
+          </div>
+        </div>
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
-        {view === 'Profile' ? authUser ? <ProfilePage user={authUser} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : <AuthScreen /> : view === 'Scores' ? <>
-          <section className="live-strip" ref={liveStripRef}><div className="live-strip-title"><span className="live-indicator"><i /> LIVE</span><b>{liveCount} NFL games in progress</b></div><div className="ticker-games">{games.filter((game) => game.status === 'LIVE').map((game) => <button className="ticker-game" key={game.id} onClick={() => selectGameAndReturnToTop(game.id)}><span>{game.away.abbr} <b>{game.away.score}</b></span><span>{game.home.abbr} <b>{game.home.score}</b></span><small>{game.clock}</small></button>)}{liveCount === 0 && <span className="no-live-games">No NFL games live right now</span>}</div><button className="all-live" onClick={() => { const liveGame = games.find((game) => game.status === 'LIVE'); if (liveGame) selectGameAndReturnToTop(liveGame.id); }}>Open live game <ChevronRight size={15} /></button></section>
-          {failedLeagues.length > 0 && <div className="feed-warning">Could not refresh {failedLeagues.join(', ')}. Available scores remain visible while those feeds retry.</div>}
-          <div className="score-layout"><section className="scores-column"><div className="scores-heading"><div><span className="eyebrow">NFL · {scheduleWeek ? `WEEK ${scheduleWeek}` : 'CURRENT WEEK'}</span><h2>{scheduleWeek ? `Week ${scheduleWeek} games` : 'NFL games'} <span>{filteredGames.length}</span></h2></div><span className="refresh-label">Refreshes every 30 sec</span></div><div className="games-list">{filteredGames.map((game) => <GameCard key={game.id} game={game} selected={selectedGame?.id === game.id} onSelect={() => selectGameAndReturnToTop(game.id)} onOpenPlayers={() => openGamePlayers(game)} />)}{filteredGames.length === 0 && <div className="empty-games">{loadingScores ? 'Loading NFL games…' : failedLeagues.includes('NFL') ? 'NFL scoreboard is unavailable. Retrying automatically.' : `No NFL games scheduled for Week ${scheduleWeek ?? ''}.`}</div>}</div></section><aside className="detail-column">{selectedGame ? <GameCenter game={selectedGame} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenPlayers={openGamePlayers} /> : <section className="panel empty-detail">Select an NFL game to open its game center.</section>}</aside></div>
-        </> : view === 'Den' ? <TheDen favorites={favorites} items={denItems} plays={playUpdates} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} /> : <><div className="player-mode-tabs" role="tablist" aria-label="Player view"><button role="tab" aria-selected={playerMode === 'NFL'} className={playerMode === 'NFL' ? 'active' : ''} onClick={() => setPlayerMode('NFL')}>NFL game players</button><button role="tab" aria-selected={playerMode === 'Matchups'} className={playerMode === 'Matchups' ? 'active' : ''} onClick={() => setPlayerMode('Matchups')}>Favorable matchups</button></div>{playerMode === 'NFL' ? <NFLPlayersDirectory games={games} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} /> : <NFLFavorableMatchups games={games} />}</>}
+        {view === 'Profile' ? (
+          authUser ? <ProfilePage user={authUser} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
+        ) : view === 'Wire' ? (
+          <TheWire
+            games={games}
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
+            initialGameId={selectedGameId}
+            onSelectGame={setSelectedGameId}
+            onOpenStatHub={openGamePlayers}
+          />
+        ) : view === 'Den' ? (
+          <TheDen favorites={favorites} items={denItems} plays={playUpdates} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} />
+        ) : (
+          <>
+            <div className="player-mode-tabs" role="tablist" aria-label="Stat Hub view">
+              <button role="tab" aria-selected={playerMode === 'NFL'} className={playerMode === 'NFL' ? 'active' : ''} onClick={() => setPlayerMode('NFL')}>NFL game players</button>
+              <button role="tab" aria-selected={playerMode === 'Matchups'} className={playerMode === 'Matchups' ? 'active' : ''} onClick={() => setPlayerMode('Matchups')}>Favorable matchups</button>
+            </div>
+            {playerMode === 'NFL' ? (
+              <NFLPlayersDirectory games={games} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
+            ) : (
+              <NFLFavorableMatchups games={games} />
+            )}
+          </>
+        )}
         <footer className="page-footer"><span>GAMEWIRE <i>·</i> NFL IN FOCUS</span><span>NFL scores, player stats, and matchups from ESPN public feeds.</span></footer>
       </main>
     </div>

@@ -42,7 +42,7 @@ export function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
   </main>;
 }
 
-export default function AuthScreen() {
+export default function AuthScreen({ onContinueGuest }: { onContinueGuest?: () => void } = {}) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -126,6 +126,11 @@ export default function AuthScreen() {
           {mode === 'login' && <button className="auth-mode-toggle" type="button" disabled={busy} onClick={forgotPassword}>Forgot my password</button>}
         </form>
         <button className="auth-mode-toggle" type="button" onClick={() => { setMode(mode === 'signup' ? 'login' : 'signup'); setError(''); setNotice(''); }}>{mode === 'signup' ? 'Already have an account? Sign in' : 'New to GameWire? Create an account'}</button>
+        {onContinueGuest && (
+          <button className="auth-guest-button" type="button" onClick={onContinueGuest}>
+            Continue as guest
+          </button>
+        )}
       </>}
     </section>
   </main>;

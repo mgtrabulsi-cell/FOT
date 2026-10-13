@@ -690,6 +690,17 @@ export async function fetchSoccerLineups(game: SoccerGameContext, signal?: Abort
     .sort((first) => first.side === 'away' ? -1 : 1);
 }
 
+function isInjuryInactive(status: string, desc?: string, name?: string, abbr?: string): boolean {
+  const s = status.toLowerCase();
+  const d = (desc || '').toLowerCase();
+  const n = (name || '').toLowerCase();
+  const a = (abbr || '').toLowerCase();
+  return /^(out|injured reserve|ir|suspension|suspended|reserve-ret|doubtful)$/i.test(s)
+    || /out|injured reserve|ir|suspension/i.test(d)
+    || /out|injured_reserve|ir|suspension/i.test(n)
+    || a === 'o' || a === 'ir';
+}
+
 export async function fetchNFLGameDetails(
   feedPath: string,
   eventId: string,
@@ -704,6 +715,23 @@ export async function fetchNFLGameDetails(
   const boxscoreTeams = asArray(asObject(summary.boxscore).teams).map(asObject);
   const recentGroups = asArray(summary.lastFiveGames).map(asObject);
   const atsGroups = asArray(summary.againstTheSpread).map(asObject);
+
+  const outPlayerIds = new Set<string>();
+  asArray(summary.injuries).map(asObject).forEach((teamGroup) => {
+    asArray(teamGroup.injuries).map(asObject).forEach((item) => {
+      const athlete = asObject(item.athlete);
+      const athleteId = text(athlete.id);
+      const typeObj = asObject(item.type);
+      if (isInjuryInactive(
+        text(item.status),
+        text(typeObj.description),
+        text(typeObj.name),
+        text(typeObj.abbreviation),
+      )) {
+        if (athleteId) outPlayerIds.add(athleteId);
+      }
+    });
+  });
   const recentEventsByTeam = new Map(await Promise.all(teams.map(async (team) => {
     const recentGroup = recentGroups.find((entry) => text(asObject(entry.team).id, text(entry.team)) === team.id);
     const events = asArray(recentGroup?.events).map(asObject);
@@ -785,15 +813,15 @@ export async function fetchNFLGameDetails(
     };
     const atsGroup = atsGroups.find((entry) => text(asObject(entry.team).id) === team.id);
     const atsRecord = asArray(atsGroup?.records).map(asObject).find((record) => /spread|ats/i.test(`${text(record.name)} ${text(record.abbreviation)}`));
-    const skillPlayers = (rostersByTeam.get(team.id) ?? []).flatMap((rosterPlayer) => {
+    const activeTeamRoster = (rostersByTeam.get(team.id) ?? []).filter((rosterPlayer) => !outPlayerIds.has(rosterPlayer.id));
+    const skillPlayers = activeTeamRoster.map((rosterPlayer) => {
       const playerRecentGames = recentGames.map((recentGame) => ({
         ...recentGame,
         stats: readNFLPlayerGameStats(summariesByGame.get(recentGame.gameId), team.id, rosterPlayer.id),
       }));
       const usageGames = playerRecentGames.filter((recentGame) => hasFantasyRelevantUsage(recentGame.stats));
-      if (usageGames.length === 0) return [];
       const usage = (key: NFLPlayerStatKey) => usageGames.reduce((total, recentGame) => total + (recentGame.stats[key] ?? 0), 0);
-      return [{
+      return {
         ...rosterPlayer,
         gamesWithUsage: usageGames.length,
         passingAttempts: usage('attempts'),
@@ -801,7 +829,7 @@ export async function fetchNFLGameDetails(
         receptions: usage('receptions'),
         carries: usage('carries'),
         recentGames: playerRecentGames,
-      }];
+      };
     }).sort((first, second) => {
       const positionDifference = nflPositionOrder.indexOf(first.position) - nflPositionOrder.indexOf(second.position);
       if (positionDifference) return positionDifference;
@@ -1019,12 +1047,12 @@ type NFLRosterSkillPlayer = Pick<NFLSkillPlayer, 'id' | 'name' | 'position' | 'j
 const nflSkillPositions = new Set(['QB', 'RB', 'WR', 'TE']);
 const nflPositionOrder = ['QB', 'RB', 'WR', 'TE'];
 const nflHistoricalSummaries = new Map<string, Promise<unknown>>();
-const nflSkillRosters = new Map<string, Promise<NFLRosterSkillPlayer[]>>();
+const nflSkillRosters = new Map<string, { timestamp: number; promise: Promise<NFLRosterSkillPlayer[]> }>();
 
 function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
   const cacheKey = `${feedPath}:${teamId}:${season}`;
   const cached = nflSkillRosters.get(cacheKey);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.timestamp < 300_000) return cached.promise;
   const request = fetch(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`)
     .then(async (response) => {
       if (!response.ok) throw new Error(`Team roster returned HTTP ${response.status}`);
@@ -1032,8 +1060,34 @@ function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: num
       const offense = asArray(payload.athletes).map(asObject).find((group) => text(group.position).toLowerCase() === 'offense');
       return asArray(offense?.items).map(asObject).flatMap((player) => {
         const position = text(asObject(player.position).abbreviation).toUpperCase();
-        const statusType = text(asObject(player.status).type).toLowerCase();
-        if (!nflSkillPositions.has(position) || (statusType && statusType !== 'active')) return [];
+        const statusObj = asObject(player.status);
+        const statusType = text(statusObj.type).toLowerCase();
+        const statusName = text(statusObj.name).toLowerCase();
+        if (!nflSkillPositions.has(position)) return [];
+        if (
+          statusType === 'practice-squad'
+          || statusType === 'injured-reserve'
+          || statusType === 'ir'
+          || statusType === 'suspended'
+          || statusName.includes('reserve')
+          || statusName.includes('practice')
+        ) {
+          return [];
+        }
+        if (statusType && statusType !== 'active' && statusType !== 'day-to-day') return [];
+
+        const injuries = asArray(player.injuries).map(asObject);
+        const isOut = injuries.some((inj) => {
+          const typeObj = asObject(inj.type);
+          return isInjuryInactive(
+            text(inj.status),
+            text(typeObj.description),
+            text(typeObj.name),
+            text(typeObj.abbreviation),
+          );
+        });
+        if (isOut) return [];
+
         const headshot = asObject(player.headshot);
         return [{
           id: text(player.id),
@@ -1044,7 +1098,7 @@ function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: num
         }];
       });
     });
-  nflSkillRosters.set(cacheKey, request);
+  nflSkillRosters.set(cacheKey, { timestamp: Date.now(), promise: request });
   void request.catch(() => nflSkillRosters.delete(cacheKey));
   return request;
 }
@@ -1131,3 +1185,250 @@ export async function fetchNFLPlayerGameLog(
         stats: {},
       }]);
 }
+
+export type NFLBoxScoreAthlete = {
+  id: string;
+  name: string;
+  shortName: string;
+  jersey?: string;
+  headshot?: string;
+  position?: string;
+  stats: string[];
+};
+
+export type NFLBoxScoreCategory = {
+  name: string;
+  title: string;
+  labels: string[];
+  athletes: NFLBoxScoreAthlete[];
+  totals?: string[];
+};
+
+export type NFLBoxScoreTeamStat = {
+  name: string;
+  label: string;
+  displayValue: string;
+};
+
+export type NFLBoxScoreTeam = {
+  id: string;
+  name: string;
+  abbreviation: string;
+  score: string;
+  logo?: string;
+  color?: string;
+  alternateColor?: string;
+  record?: string;
+  homeAway: 'home' | 'away';
+  linescores: string[];
+  categories: NFLBoxScoreCategory[];
+  teamStats: NFLBoxScoreTeamStat[];
+};
+
+export type NFLBoxScoreData = {
+  eventId: string;
+  status: string;
+  state: 'pre' | 'in' | 'post';
+  clock: string;
+  period: number;
+  isLive: boolean;
+  isFinal: boolean;
+  venue?: string;
+  teams: [NFLBoxScoreTeam, NFLBoxScoreTeam] | [];
+};
+
+function cleanCategoryTitle(name: string, rawText: string): string {
+  const map: Record<string, string> = {
+    passing: 'Passing',
+    rushing: 'Rushing',
+    receiving: 'Receiving',
+    defensive: 'Defense',
+    fumbles: 'Fumbles',
+    interceptions: 'Interceptions',
+    kickReturns: 'Kick Returns',
+    puntReturns: 'Punt Returns',
+    kicking: 'Kicking',
+    punting: 'Punting',
+  };
+  return map[name] ?? (rawText.replace(/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+/i, '') || name);
+}
+
+export async function fetchNFLBoxScore(
+  feedPath: string,
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<NFLBoxScoreData> {
+  const response = await fetch(`${apiBase}/${feedPath}/summary?event=${encodeURIComponent(eventId)}`, {
+    signal,
+    headers: { 'Accept': 'application/json' },
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`NFL box score returned HTTP ${response.status}`);
+  const summary = asObject(await response.json());
+  const header = asObject(summary.header);
+  const competition = asObject(asArray(header.competitions)[0]);
+  const statusObj = asObject(competition.status ?? header.status);
+  const statusType = asObject(statusObj.type);
+  const state = text(statusType.state) as 'pre' | 'in' | 'post';
+  const isLive = state === 'in';
+  const isFinal = state === 'post';
+  const clock = text(statusObj.displayClock, text(statusType.shortDetail));
+  const period = Number(statusObj.period ?? statusType.period ?? 0);
+  const status = text(statusType.shortDetail, text(statusType.description, isLive ? 'Live' : isFinal ? 'Final' : 'Upcoming'));
+  const gameInfo = asObject(summary.gameInfo);
+  const venue = text(asObject(gameInfo.venue).fullName);
+
+  const competitors = asArray(competition.competitors).map(asObject);
+  const boxscore = asObject(summary.boxscore);
+  const boxscoreTeams = asArray(boxscore.teams).map(asObject);
+  const boxscorePlayers = asArray(boxscore.players).map(asObject);
+
+  const parsedTeams: NFLBoxScoreTeam[] = competitors.map((comp) => {
+    const teamObj = asObject(comp.team);
+    const teamId = text(teamObj.id, text(comp.id));
+    const name = text(teamObj.displayName, text(teamObj.name));
+    const abbreviation = text(teamObj.abbreviation);
+    const score = text(comp.score, '0');
+    const color = text(teamObj.color);
+    const alternateColor = text(teamObj.alternateColor);
+    const logo = text(teamObj.logo, text(asArray(teamObj.logos)[0] ? asObject(asArray(teamObj.logos)[0]).href : ''));
+    const homeAway = text(comp.homeAway) === 'away' ? 'away' : 'home';
+    const linescores = asArray(comp.linescores).map((ls) => text(asObject(ls).displayValue, text(asObject(ls).value)));
+    const record = text(asArray(comp.records)[0] ? asObject(asArray(comp.records)[0]).summary : '');
+
+    const boxTeam = boxscoreTeams.find((bt) => text(asObject(bt.team).id) === teamId);
+    const teamStats: NFLBoxScoreTeamStat[] = asArray(boxTeam?.statistics).map(asObject).map((stat) => ({
+      name: text(stat.name),
+      label: text(stat.label),
+      displayValue: text(stat.displayValue),
+    }));
+
+    const boxPlayer = boxscorePlayers.find((bp) => text(asObject(bp.team).id) === teamId);
+    const categories: NFLBoxScoreCategory[] = asArray(boxPlayer?.statistics).map(asObject).flatMap((cat) => {
+      const catName = text(cat.name);
+      const labels = asArray(cat.labels).map((v) => text(v));
+      const totals = asArray(cat.totals).map((v) => text(v));
+      const athletes: NFLBoxScoreAthlete[] = asArray(cat.athletes).map(asObject).map((ath) => {
+        const athleteObj = asObject(ath.athlete);
+        return {
+          id: text(athleteObj.id),
+          name: text(athleteObj.displayName, text(athleteObj.name)),
+          shortName: text(athleteObj.shortName),
+          jersey: text(athleteObj.jersey),
+          headshot: text(asObject(athleteObj.headshot).href),
+          position: text(asObject(athleteObj.position).abbreviation),
+          stats: asArray(ath.stats).map((v) => text(v)),
+        };
+      });
+      if (athletes.length === 0 && (!totals || totals.length === 0)) return [];
+      const title = cleanCategoryTitle(catName, text(cat.text));
+      return [{
+        name: catName,
+        title,
+        labels,
+        athletes,
+        totals: totals.length ? totals : undefined,
+      }];
+    });
+
+    return {
+      id: teamId,
+      name,
+      abbreviation,
+      score,
+      logo,
+      color: color ? `#${color}` : undefined,
+      alternateColor: alternateColor ? `#${alternateColor}` : undefined,
+      record,
+      homeAway,
+      linescores,
+      categories,
+      teamStats,
+    };
+  });
+
+  const awayTeam = parsedTeams.find((t) => t.homeAway === 'away');
+  const homeTeam = parsedTeams.find((t) => t.homeAway === 'home');
+  const teams: [NFLBoxScoreTeam, NFLBoxScoreTeam] | [] = (awayTeam && homeTeam)
+    ? [awayTeam, homeTeam]
+    : (parsedTeams.length === 2 ? [parsedTeams[0], parsedTeams[1]] : []);
+
+  return {
+    eventId,
+    status,
+    state,
+    clock,
+    period,
+    isLive,
+    isFinal,
+    venue,
+    teams,
+  };
+}
+
+export type PrimetimeType = 'TNF' | 'SNF' | 'MNF';
+
+export function getPrimetimeLabel(game: Game): PrimetimeType | null {
+  if (game.sport !== 'Football' && game.league !== 'NFL') return null;
+  if (!game.date) return null;
+  const d = new Date(game.date);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: 'numeric',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(d);
+  const weekday = parts.find((p) => p.type === 'weekday')?.value;
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+
+  if (weekday === 'Thu' && hour >= 18) return 'TNF';
+  if (weekday === 'Sun' && hour >= 19) return 'SNF';
+  if (weekday === 'Mon' && hour >= 18) return 'MNF';
+  return null;
+}
+
+export function isPrimetimeGame(game: Game): boolean {
+  return getPrimetimeLabel(game) !== null;
+}
+
+export function getPrimetimeFullTitle(label: PrimetimeType): string {
+  switch (label) {
+    case 'TNF': return 'Thursday Night Football';
+    case 'SNF': return 'Sunday Night Football';
+    case 'MNF': return 'Monday Night Football';
+  }
+}
+
+export function findAutomaticNFLGame(games: Game[], preferId?: string | null): Game | null {
+  const nflGames = games.filter((g) => g.sport === 'Football');
+  if (nflGames.length === 0) return null;
+
+  // 1. Primetime game that is LIVE (TNF, SNF, MNF) takes top priority
+  const livePrimetime = nflGames.find((g) => g.status === 'LIVE' && isPrimetimeGame(g));
+  if (livePrimetime) return livePrimetime;
+
+  // 2. Any NFL game that is LIVE
+  const anyLive = nflGames.find((g) => g.status === 'LIVE');
+  if (anyLive) return anyLive;
+
+  // 3. Preferred/previous game if specified and found
+  if (preferId) {
+    const preferred = nflGames.find((g) => g.id === preferId);
+    if (preferred) return preferred;
+  }
+
+  // 4. Primetime game that is UPCOMING
+  const upcomingPrimetime = nflGames.find((g) => g.status === 'UPCOMING' && isPrimetimeGame(g));
+  if (upcomingPrimetime) return upcomingPrimetime;
+
+  // 5. Primetime game in the slate (even if completed)
+  const anyPrimetime = [...nflGames].reverse().find((g) => isPrimetimeGame(g));
+  if (anyPrimetime) return anyPrimetime;
+
+  // 6. Default fallback to first game
+  return nflGames[0] ?? null;
+}
+

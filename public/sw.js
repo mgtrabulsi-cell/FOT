@@ -19,13 +19,13 @@ self.addEventListener('push', (event) => {
     icon: new URL('gamewire-pwa.svg', self.registration.scope).href,
     badge: new URL('gamewire-pwa.svg', self.registration.scope).href,
     tag: payload.tag ?? 'gamewire-update',
-    data: { url: payload.url ?? self.registration.scope + '#scores' },
+    data: { url: payload.url ?? self.registration.scope + '#wire' },
   }));
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url ?? self.registration.scope + '#scores', self.location.origin);
+  const target = new URL(event.notification.data?.url ?? self.registration.scope + '#wire', self.location.origin);
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
     const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
     return existing ? existing.navigate(target.href).then(() => existing.focus()) : self.clients.openWindow(target.href);

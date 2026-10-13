@@ -3,7 +3,20 @@ import { createWebPushServer, isExpiredPushSubscription, sendWebPush } from '../
 import { buildPlayAlerts, summaryPlayIds, type PlayFavorite } from '../_shared/plays.ts';
 
 type TeamScore = { id: string; abbreviation: string; score: number };
-type GameState = { status: string; period: number; clock: string; awayScore: number; homeScore: number };
+type GameState = {
+  status: string;
+  period: number;
+  clock: string;
+  awayScore: number;
+  homeScore: number;
+  lastNotifiedAwayScore?: number;
+  lastNotifiedHomeScore?: number;
+  pendingPAT?: {
+    pendingSince: string;
+    awayScore: number;
+    homeScore: number;
+  } | null;
+};
 type Favorite = { type?: string; id?: string; teamId?: string; feedPath?: string };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -37,6 +50,9 @@ function parseEvent(value: unknown) {
 
   const status = asRecord(competition.status ?? event.status);
   const statusType = asRecord(status.type);
+  const situation = asRecord(competition.situation);
+  const lastPlay = asRecord(situation.lastPlay);
+
   return {
     id: stringValue(event.id),
     away,
@@ -44,7 +60,47 @@ function parseEvent(value: unknown) {
     state: stringValue(statusType.state),
     period: Number(status.period ?? statusType.period ?? 0),
     clock: stringValue(status.displayClock ?? statusType.shortDetail),
+    lastPlayText: stringValue(lastPlay.text),
   };
+}
+
+function isTouchdownPATPending(summary: unknown, lastPlayText: string, scoringDiff: number): boolean {
+  if (scoringDiff !== 6 && scoringDiff !== 0) return false;
+
+  const cleanLastPlay = (lastPlayText || '').trim();
+  if (cleanLastPlay) {
+    if (/extra point is (?:good|no good|missed|blocked|failed|defended)/i.test(cleanLastPlay)) return false;
+    if (/two-point(?:\s+(?:pass|rush))?\s+conversion/i.test(cleanLastPlay) && /(?:attempt\s+(?:succeeds|fails)|failed|incomplete|complete)/i.test(cleanLastPlay)) return false;
+    if (/\bpat\s+(?:failed|good|missed|blocked)\b/i.test(cleanLastPlay)) return false;
+    if (/touchdown nullified/i.test(cleanLastPlay)) return false;
+  }
+
+  const summaryRecord = asRecord(summary);
+  const scoringPlays = asArray(summaryRecord.scoringPlays).map(asRecord);
+  const latestScoringPlay = scoringPlays[scoringPlays.length - 1];
+  if (latestScoringPlay) {
+    const spText = stringValue(latestScoringPlay.text);
+    if (/\((?:[^)]*(?:kick|pat|two-point|conversion|blocked|failed|good|missed|defended)[^)]*)\)\s*$/i.test(spText)) {
+      return false;
+    }
+  }
+
+  const drivesRecord = asRecord(summaryRecord.drives);
+  const drives = [...asArray(drivesRecord.previous), ...asArray(drivesRecord.current)].map(asRecord);
+  const allPlays = drives.flatMap((d) => asArray(d.plays).map(asRecord));
+  const latestDrivePlay = allPlays[allPlays.length - 1];
+  if (latestDrivePlay) {
+    const typeText = stringValue(asRecord(latestDrivePlay.type).text).toLowerCase();
+    const pText = stringValue(latestDrivePlay.text);
+    if (typeText.includes('kickoff') || /\bkicks?\b.*\bfrom\b/i.test(pText)) {
+      return false;
+    }
+    if (/extra point is (?:good|no good|missed|blocked|failed|defended)/i.test(pText)) return false;
+    if (/two-point(?:\s+(?:pass|rush))?\s+conversion/i.test(pText) && /(?:attempt\s+(?:succeeds|fails)|failed)/i.test(pText)) return false;
+    if (/\bpat\s+(?:failed|good|missed|blocked)\b/i.test(pText)) return false;
+  }
+
+  return true;
 }
 
 function sameState(previous: GameState, next: GameState) {
@@ -79,6 +135,7 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
   if (subscriptionsError) throw subscriptionsError;
 
   const pushServer = await createWebPushServer();
+  const summaries = new Map<string, unknown>();
   let sent = 0;
   for (const game of liveGames) {
     const summaryResponse = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(game.id)}`, {
@@ -87,6 +144,7 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
     });
     if (!summaryResponse.ok) continue;
     const summary = await summaryResponse.json();
+    summaries.set(game.id, summary);
     const allPlayIds = summaryPlayIds(summary);
     const previouslySeen = seenByEvent.get(`plays:${game.id}`);
     const newPlayIds = new Set(previouslySeen ? allPlayIds.filter((id) => !previouslySeen.has(id)) : []);
@@ -113,7 +171,7 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
             await sendWebPush(pushServer, target.subscription, {
               title: 'Gamewire',
               body: alert.body,
-              url: '/#scores',
+              url: '/#wire',
               tag: `gamewire-play-${game.id}-${alert.playId}`,
             });
             sent += 1;
@@ -126,7 +184,7 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
       }
     }
   }
-  return sent;
+  return { sent, summaries };
 }
 
 Deno.serve(async (request) => {
@@ -156,29 +214,120 @@ Deno.serve(async (request) => {
       .in('event_id', games.map((game) => game.id));
     if (stateError) throw stateError;
     const priorById = new Map((priorStates ?? []).map((row) => [row.event_id, asRecord(row.state) as unknown as GameState]));
-    const changedGames = games.filter((game) => {
-      const previous = priorById.get(game.id);
-      if (!previous) return false;
-      const scoreChanged = previous.awayScore !== game.away.score || previous.homeScore !== game.home.score;
-      const becameFinal = game.state === 'post' && previous.status !== 'post';
-      return (scoreChanged && (game.state === 'in' || game.state === 'post')) || becameFinal;
-    });
 
-    const nextStates = games.map((game) => ({
-      event_id: game.id,
-      state: {
-        status: game.state,
-        period: game.period,
-        clock: game.clock,
-        awayScore: game.away.score,
-        homeScore: game.home.score,
-      },
-      updated_at: new Date().toISOString(),
-    }));
+    const liveGames = games.filter((game) => game.state === 'in');
+    const { sent: playSent, summaries } = liveGames.length
+      ? await sendPlayAlerts(admin, liveGames)
+      : { sent: 0, summaries: new Map<string, unknown>() };
+
+    const changedGames: typeof games = [];
+    const nextStates: Array<{ event_id: string; state: Record<string, unknown>; updated_at: string }> = [];
+
+    for (const game of games) {
+      const previous = priorById.get(game.id);
+
+      if (!previous) {
+        nextStates.push({
+          event_id: game.id,
+          state: {
+            status: game.state,
+            period: game.period,
+            clock: game.clock,
+            awayScore: game.away.score,
+            homeScore: game.home.score,
+            lastNotifiedAwayScore: game.away.score,
+            lastNotifiedHomeScore: game.home.score,
+            pendingPAT: null,
+          },
+          updated_at: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      const lastNotifiedAway = typeof previous.lastNotifiedAwayScore === 'number'
+        ? previous.lastNotifiedAwayScore
+        : previous.awayScore;
+      const lastNotifiedHome = typeof previous.lastNotifiedHomeScore === 'number'
+        ? previous.lastNotifiedHomeScore
+        : previous.homeScore;
+
+      const awayDiff = game.away.score - lastNotifiedAway;
+      const homeDiff = game.home.score - lastNotifiedHome;
+      const scoreChanged = awayDiff !== 0 || homeDiff !== 0;
+      const becameFinal = game.state === 'post' && previous.status !== 'post';
+
+      let isPATPending = false;
+      const hadPendingPAT = Boolean(previous.pendingPAT);
+      const isSixPointDiff = awayDiff === 6 || homeDiff === 6;
+
+      if (game.state === 'in' && (isSixPointDiff || hadPendingPAT)) {
+        const summary = summaries.get(game.id);
+        isPATPending = isTouchdownPATPending(summary, game.lastPlayText, isSixPointDiff ? 6 : 0);
+
+        if (isPATPending && hadPendingPAT && previous.pendingPAT?.pendingSince) {
+          const pendingSince = Date.parse(previous.pendingPAT.pendingSince);
+          if (Number.isFinite(pendingSince) && Date.now() - pendingSince > 180_000) {
+            isPATPending = false;
+          }
+        }
+      }
+
+      if (isPATPending) {
+        nextStates.push({
+          event_id: game.id,
+          state: {
+            status: game.state,
+            period: game.period,
+            clock: game.clock,
+            awayScore: game.away.score,
+            homeScore: game.home.score,
+            lastNotifiedAwayScore: lastNotifiedAway,
+            lastNotifiedHomeScore: lastNotifiedHome,
+            pendingPAT: previous.pendingPAT ?? {
+              pendingSince: new Date().toISOString(),
+              awayScore: game.away.score,
+              homeScore: game.home.score,
+            },
+          },
+          updated_at: new Date().toISOString(),
+        });
+      } else if (scoreChanged || becameFinal) {
+        changedGames.push(game);
+        nextStates.push({
+          event_id: game.id,
+          state: {
+            status: game.state,
+            period: game.period,
+            clock: game.clock,
+            awayScore: game.away.score,
+            homeScore: game.home.score,
+            lastNotifiedAwayScore: game.away.score,
+            lastNotifiedHomeScore: game.home.score,
+            pendingPAT: null,
+          },
+          updated_at: new Date().toISOString(),
+        });
+      } else {
+        nextStates.push({
+          event_id: game.id,
+          state: {
+            status: game.state,
+            period: game.period,
+            clock: game.clock,
+            awayScore: game.away.score,
+            homeScore: game.home.score,
+            lastNotifiedAwayScore: lastNotifiedAway,
+            lastNotifiedHomeScore: lastNotifiedHome,
+            pendingPAT: null,
+          },
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
     const { error: upsertError } = await admin.from('push_game_states').upsert(nextStates, { onConflict: 'event_id' });
     if (upsertError) throw upsertError;
-    const liveGames = games.filter((game) => game.state === 'in');
-    const playSent = liveGames.length ? await sendPlayAlerts(admin, liveGames) : 0;
+
     if (changedGames.length === 0) return Response.json({ checked: games.length, sent: 0, playSent });
 
     const [{ data: favoriteRows, error: favoritesError }, { data: subscriptions, error: subscriptionsError }] = await Promise.all([
@@ -200,14 +349,14 @@ Deno.serve(async (request) => {
       })).map((row) => row.user_id));
       const targets = (subscriptions ?? []).filter((subscription) => matchingUsers.has(subscription.user_id) && subscription.notify_scores);
       const label = game.state === 'post' ? 'Final' : 'Score update';
-      const body = `${label}: ${game.away.abbreviation} ${game.away.score} - ${game.home.score} ${game.home.abbreviation} · ${periodLabel(game.period)} ${game.clock}`;
+      const body = `${label}: ${game.away.abbreviation} ${game.away.score} - ${game.home.abbreviation} ${game.home.score} · ${periodLabel(game.period)} ${game.clock}`;
 
       for (const target of targets) {
         try {
           await sendWebPush(pushServer, target.subscription, {
             title: 'Gamewire',
             body,
-            url: '/#scores',
+            url: '/#wire',
             tag: `gamewire-${game.id}`,
           });
           sent += 1;
