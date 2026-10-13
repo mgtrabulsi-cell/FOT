@@ -60,6 +60,11 @@ function periodLabel(period: number) {
   return period > 5 ? `OT${period - 4}` : 'Live game';
 }
 
+const espnHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+};
+
 async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames: Array<{ id: string; away: TeamScore; home: TeamScore }>) {
   const playStateIds = liveGames.map((game) => `plays:${game.id}`);
   const { data: playStates, error: playStateError } = await admin.from('push_game_states').select('event_id,state').in('event_id', playStateIds);
@@ -76,7 +81,10 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
   const pushServer = await createWebPushServer();
   let sent = 0;
   for (const game of liveGames) {
-    const summaryResponse = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(game.id)}`, { cache: 'no-store' });
+    const summaryResponse = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(game.id)}`, {
+      headers: espnHeaders,
+      cache: 'no-store',
+    });
     if (!summaryResponse.ok) continue;
     const summary = await summaryResponse.json();
     const allPlayIds = summaryPlayIds(summary);
@@ -103,7 +111,7 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
         for (const target of targets) {
           try {
             await sendWebPush(pushServer, target.subscription, {
-              title: 'GameWire',
+              title: 'Gamewire',
               body: alert.body,
               url: '/#scores',
               tag: `gamewire-play-${game.id}-${alert.playId}`,
@@ -134,7 +142,10 @@ Deno.serve(async (request) => {
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   try {
-    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', { cache: 'no-store' });
+    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {
+      headers: espnHeaders,
+      cache: 'no-store',
+    });
     if (!response.ok) throw new Error(`NFL scoreboard returned HTTP ${response.status}`);
     const scoreboard = asRecord(await response.json());
     const games = asArray(scoreboard.events).map(parseEvent).filter((game): game is NonNullable<ReturnType<typeof parseEvent>> => game !== null && Boolean(game.id));
@@ -147,15 +158,10 @@ Deno.serve(async (request) => {
     const priorById = new Map((priorStates ?? []).map((row) => [row.event_id, asRecord(row.state) as unknown as GameState]));
     const changedGames = games.filter((game) => {
       const previous = priorById.get(game.id);
-      return Boolean(previous)
-        && !sameState(previous!, {
-          status: game.state,
-          period: game.period,
-          clock: game.clock,
-          awayScore: game.away.score,
-          homeScore: game.home.score,
-        })
-        && (game.state === 'in' || game.state === 'post');
+      if (!previous) return false;
+      const scoreChanged = previous.awayScore !== game.away.score || previous.homeScore !== game.home.score;
+      const becameFinal = game.state === 'post' && previous.status !== 'post';
+      return (scoreChanged && (game.state === 'in' || game.state === 'post')) || becameFinal;
     });
 
     const nextStates = games.map((game) => ({
@@ -193,15 +199,13 @@ Deno.serve(async (request) => {
           : favorite.type === 'player' && (favorite.teamId === game.away.id || favorite.teamId === game.home.id);
       })).map((row) => row.user_id));
       const targets = (subscriptions ?? []).filter((subscription) => matchingUsers.has(subscription.user_id) && subscription.notify_scores);
-      const previous = priorById.get(game.id);
-      const scoreChanged = previous && (previous.awayScore !== game.away.score || previous.homeScore !== game.home.score);
-      const label = game.state === 'post' ? 'Final' : scoreChanged ? 'Score update' : 'Game update';
+      const label = game.state === 'post' ? 'Final' : 'Score update';
       const body = `${label}: ${game.away.abbreviation} ${game.away.score} - ${game.home.score} ${game.home.abbreviation} · ${periodLabel(game.period)} ${game.clock}`;
 
       for (const target of targets) {
         try {
           await sendWebPush(pushServer, target.subscription, {
-            title: 'GameWire',
+            title: 'Gamewire',
             body,
             url: '/#scores',
             tag: `gamewire-${game.id}`,
@@ -217,6 +221,7 @@ Deno.serve(async (request) => {
     return Response.json({ checked: games.length, changed: changedGames.length, sent, playSent });
   } catch (error) {
     console.error('Live game notification poll failed.', error);
-    return Response.json({ error: 'Live game notifications could not be checked.' }, { status: 500 });
+    const details = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    return Response.json({ error: 'Live game notifications could not be checked.', details }, { status: 500 });
   }
 });

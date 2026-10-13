@@ -14,7 +14,7 @@ self.addEventListener('push', (event) => {
     payload = { body: event.data?.text() ?? '' };
   }
 
-  event.waitUntil(self.registration.showNotification(payload.title ?? 'GameWire', {
+  event.waitUntil(self.registration.showNotification(payload.title ?? 'Gamewire', {
     body: payload.body ?? 'There is an update for a game you follow.',
     icon: new URL('gamewire-pwa.svg', self.registration.scope).href,
     badge: new URL('gamewire-pwa.svg', self.registration.scope).href,

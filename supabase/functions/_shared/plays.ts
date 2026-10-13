@@ -20,14 +20,33 @@ function normalize(value: string) {
 
 function nameAliases(name: string) {
   const parts = name.match(/[a-z0-9]+/gi) ?? [];
-  if (parts.length < 2) return [];
-  const firstInitial = parts[0]?.[0] ?? '';
-  const surname = parts.slice(1).filter((part) => !/^(jr|sr|ii|iii|iv)$/i.test(part));
-  const lastName = surname[surname.length - 1];
+  if (parts.length < 2) return [normalize(name)].filter(Boolean);
+  const firstInitial = parts[0]?.[0]?.toLowerCase() ?? '';
+  const surnameParts = parts.slice(1).filter((part) => !/^(jr|sr|ii|iii|iv|v)$/i.test(part));
+  const lastName = surnameParts[surnameParts.length - 1]?.toLowerCase() ?? '';
+  const fullSurname = surnameParts.join('').toLowerCase();
   return [...new Set([
-    normalize(`${firstInitial}${surname.join('')}`),
-    normalize(`${firstInitial}${lastName}`),
-  ])];
+    normalize(name),
+    `${firstInitial}${fullSurname}`,
+    `${firstInitial}${lastName}`,
+  ])].filter((alias) => alias.length >= 3);
+}
+
+function parsePlayerRole(description: string, name: string) {
+  const aliases = nameAliases(name);
+  const normalizedDesc = normalize(description);
+  const mentioned = aliases.some((alias) => normalizedDesc.includes(alias));
+  if (!mentioned) return null;
+
+  const passMatch = description.match(/\bpass\b[\s\S]*?\b(?:to|intended for)\s+([A-Z][a-zA-Z'\-]*\.[A-Za-z'\-]+|[A-Z][a-zA-Z'\-]+)/i);
+  const receiverNorm = passMatch ? normalize(passMatch[1]) : '';
+  const isReceiver = aliases.some((alias) => receiverNorm.includes(alias) || (alias.length >= 4 && receiverNorm.endsWith(alias.slice(1))));
+
+  const passerMatch = description.match(/(?:^|\))\s*([A-Z][a-zA-Z'\-]*\.[A-Za-z'\-]+|[A-Z][a-zA-Z'\-]+)\s+pass/i);
+  const passerNorm = passerMatch ? normalize(passerMatch[1]) : '';
+  const isPasser = aliases.some((alias) => passerNorm.includes(alias) || (alias.length >= 4 && passerNorm.endsWith(alias.slice(1))));
+
+  return { isPasser, isReceiver, isRunner: !passMatch && !isPasser };
 }
 
 function mentionsPlayer(description: string, name: string) {
@@ -66,8 +85,9 @@ export function buildPlayAlerts(summary: unknown, game: PlayGame, favorites: Arr
     const playType = str(record(play.type).text).toLowerCase();
     const isPass = playType.includes('pass') || /\bpass\b/i.test(description);
     const isRush = playType.includes('rush') || /\b(rush|runs?)\b/i.test(description);
-    const isCatch = isPass && /\bto\b/i.test(description) && !/incomplete|intercepted|sacked/i.test(description);
-    const isTouchdown = playType.includes('touchdown') || /touchdown/i.test(description);
+    const mainPlayPart = description.split(/\b(?:TWO-POINT|EXTRA POINT|PENALTY)\b/i)[0] ?? description;
+    const isCatch = isPass && /\bto\b/i.test(mainPlayPart) && !/\b(?:incomplete|intercepted|sacked)\b/i.test(mainPlayPart);
+    const isTouchdown = playType.includes('touchdown') || /touchdown/i.test(mainPlayPart);
     const isScoringPlay = play.scoringPlay === true || isTouchdown;
     const yards = playYards(play, description);
     const participants = list(play.teamParticipants).map(record);
@@ -83,19 +103,27 @@ export function buildPlayAlerts(summary: unknown, game: PlayGame, favorites: Arr
 
       if (favorite.type === 'player') {
         const name = favorite.name ?? '';
-        const position = favorite.position?.toUpperCase();
-        if (!name || !mentionsPlayer(description, name)) return [];
+        if (!name) return [];
+        const role = parsePlayerRole(description, name);
+        if (!role) return [];
+
         let body = '';
         if (isTouchdown) {
-          if (position === 'QB' && isPass && /\bpass from\b/i.test(description)) body = `${name} just threw a ${yards > 0 ? `${yards} yard ` : ''}touchdown pass`;
-          else if ((position === 'QB' || position === 'RB') && isRush) body = `${name} just ran for a ${yards > 0 ? `${yards} yard ` : ''}touchdown`;
-          else if ((position === 'RB' || position === 'WR' || position === 'TE') && isCatch) body = `${name} just caught a ${yards > 0 ? `${yards} yard ` : ''}touchdown`;
-        } else if (position === 'QB' && isPass && yards > 50) {
+          if (role.isPasser) {
+            body = `${name} just threw a ${yards > 0 ? `${yards} yard ` : ''}touchdown pass`;
+          } else if (role.isReceiver) {
+            body = `${name} just caught a ${yards > 0 ? `${yards} yard ` : ''}touchdown`;
+          } else if (role.isRunner) {
+            body = `${name} just ran for a ${yards > 0 ? `${yards} yard ` : ''}touchdown`;
+          } else {
+            body = `${name} just scored a touchdown`;
+          }
+        } else if (role.isPasser && yards > 50) {
           body = `${name} just threw a ${yards} yard pass`;
-        } else if (position === 'RB' && isRush && yards > 25) {
-          body = `${name} just ran for ${yards} yards`;
-        } else if ((position === 'RB' || position === 'WR' || position === 'TE') && isCatch && yards > 25) {
+        } else if (role.isReceiver && yards > 25) {
           body = `${name} just caught a ${yards} yard reception`;
+        } else if (role.isRunner && yards > 25) {
+          body = `${name} just ran for ${yards} yards`;
         }
         return body ? [{ playId, favoriteKey: String(favorite.key), body, isPlayerAlert: true }] : [];
       }
