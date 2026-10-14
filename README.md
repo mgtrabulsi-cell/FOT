@@ -15,7 +15,7 @@ Open the local URL printed by Vite. `npm run build` creates a production build.
 
 The VS Code task **Start GameWire dev server** is also configured for launching the app.
 
-Desktop views use a compact 75% interface scale, with a smaller matchup scoreboard and larger player box-score text and rows. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
+Desktop views use an 85% interface scale, with a compact matchup scoreboard and larger player names and headshots in The Wire, Stat Hub's player directory, and player cards. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
 
 On mobile, The Wire player box scores use labeled three-column stat grids instead of horizontally scrolling tables. Stat Hub player-popup stat types retain a single horizontally scrollable, draggable row with touch-sized controls and a chart that fits the dialog width. The game selection wheels remain horizontally draggable.
 

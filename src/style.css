@@ -1019,7 +1019,7 @@ td:first-child { color: #828c84; }
 
 /* Mobile and responsive rules */
 @media (min-width: 761px) {
-  .app-shell { zoom: .75; min-height: calc(100vh / .75); }
+  .app-shell { zoom: .85; min-height: calc(100vh / .85); }
   .page-wrap { max-width: 1920px; }
   .topbar { padding-inline: max(36px, calc((100% - 1848px) / 2)); }
   .wire-hero-banner { padding: 14px 20px; gap: 12px; }
@@ -1032,8 +1032,15 @@ td:first-child { color: #828c84; }
   .wire-stat-table td.wire-col-data { font-size: 17px; }
   .wire-stat-table th, .wire-stat-table td { padding: 14px 16px; }
   .wire-category-title-wrap h3 { font-size: 18px; }
-  .wire-athlete-avatar { width: 40px; height: 40px; flex-basis: 40px; }
+  .wire-athlete-avatar { width: 52px; height: 52px; flex-basis: 52px; }
+  .wire-athlete-name { font-size: 19px; }
   .wire-athlete-sub { font-size: 11px; }
+  .nfl-directory-player .nfl-player-avatar { width: 44px; height: 44px; }
+  .nfl-directory-player-main { min-height: 54px; gap: 11px; }
+  .nfl-directory-player-main > span:last-child b { font-size: 14px; }
+  .nfl-directory-player-main > span:last-child small { font-size: 10px; }
+  .nfl-player-avatar-large { width: 64px; height: 64px; }
+  .nfl-player-dialog-heading h3 { font-size: 24px; }
 }
 
 @media (max-width: 760px) {
