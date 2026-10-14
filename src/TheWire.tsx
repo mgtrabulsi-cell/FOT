@@ -1,31 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, ChevronRight, MapPin, Search, Star, Trophy, Tv } from 'lucide-react';
+import { Activity, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
   FavoriteTarget,
   Game,
   NFLBoxScoreAthlete,
   NFLBoxScoreData,
   NFLBoxScoreTeam,
-  NFLGameDetails,
+  NFLPlayerSeasonBoxScore,
+  NFLTeamSeasonAverages,
   NFLSkillPlayer,
   Team,
 } from './services/sportsData';
 import {
   fetchNFLBoxScore,
   fetchNFLGameDetails,
+  fetchNFLPlayerSeasonBoxScore,
+  fetchNFLTeamSeasonAverages,
   findAutomaticNFLGame,
   getPrimetimeFullTitle,
   getPrimetimeLabel,
   isPrimetimeGame,
 } from './services/sportsData';
+import { getInterfaceScale } from './uiScale';
 
 type TheWireProps = {
   games: Game[];
+  query: string;
   favorites: FavoriteTarget[];
   onToggleFavorite: (favorite: FavoriteTarget) => void;
   initialGameId?: string | null;
   onSelectGame?: (gameId: string) => void;
   onOpenStatHub?: (game: Game) => void;
+  onOpenPlayer: (player: NFLSkillPlayer, team: Team) => void;
 };
 
 function formatGameTime(game: Game) {
@@ -120,7 +126,7 @@ function areColorsSimilar(color1?: string, color2?: string): boolean {
   return false;
 }
 
-export default function TheWire({ games, favorites, onToggleFavorite, initialGameId, onSelectGame, onOpenStatHub }: TheWireProps) {
+export default function TheWire({ games, query, favorites, onToggleFavorite, initialGameId, onSelectGame, onOpenStatHub, onOpenPlayer }: TheWireProps) {
   const nflGames = games.filter((g) => g.sport === 'Football');
   const userSelectedRef = useRef(false);
 
@@ -133,11 +139,17 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats'>('boxscore');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
-  const [query, setQuery] = useState('');
   const [boxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);
-  const [gameDetails, setGameDetails] = useState<NFLGameDetails | null>(null);
+  const [playerAverages, setPlayerAverages] = useState<{ gameId: string; data: NFLPlayerSeasonBoxScore; players: NFLSkillPlayer[] } | null>(null);
+  const [playerAveragesLoading, setPlayerAveragesLoading] = useState(false);
+  const [playerAveragesFailed, setPlayerAveragesFailed] = useState(false);
+  const [playerAveragesRetry, setPlayerAveragesRetry] = useState(0);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [seasonAverages, setSeasonAverages] = useState<{ gameId: string; teams: NFLTeamSeasonAverages[] } | null>(null);
+  const [averagesLoading, setAveragesLoading] = useState(false);
+  const [averagesFailed, setAveragesFailed] = useState(false);
+  const [averagesRetry, setAveragesRetry] = useState(0);
 
   // Wheel drag ref
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -196,6 +208,38 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
   const eventId = selectedGame?.eventId;
   const feedPath = selectedGame?.feedPath;
   const seasonYear = selectedGame?.seasonYear;
+  const isUpcoming = selectedGame?.status === 'UPCOMING';
+  const categoryFilters = isUpcoming ? ['All', 'Offense'] : ['All', 'Offense', 'Defense', 'Special Teams'];
+  const activeCategoryFilter = categoryFilters.includes(categoryFilter) ? categoryFilter : 'All';
+  const awayTeamId = selectedGame?.away.id;
+  const homeTeamId = selectedGame?.home.id;
+  const activeTeamId = selectedTeamSide === 'away' ? awayTeamId : homeTeamId;
+  const activeTeamName = selectedTeamSide === 'away' ? selectedGame?.away.name : selectedGame?.home.name;
+
+  useEffect(() => {
+    setSeasonAverages(null);
+    setAveragesFailed(false);
+    if (!isUpcoming || !eventId || !feedPath || !seasonYear || !awayTeamId || !homeTeamId) {
+      setAveragesLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setAveragesLoading(true);
+    void Promise.all([awayTeamId, homeTeamId].map((teamId) =>
+      fetchNFLTeamSeasonAverages(feedPath, teamId, seasonYear, controller.signal)
+    )).then((teams) => {
+      if (!controller.signal.aborted) {
+        setSeasonAverages({ gameId: eventId, teams });
+        setAveragesLoading(false);
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setAveragesFailed(true);
+        setAveragesLoading(false);
+      }
+    });
+    return () => controller.abort();
+  }, [isUpcoming, eventId, feedPath, seasonYear, awayTeamId, homeTeamId, averagesRetry]);
 
   // Load box score for the selected game
   useEffect(() => {
@@ -244,36 +288,34 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
     };
   }, [eventId, feedPath, isLive]);
 
-  // Load upcoming game details if game has not started yet
   useEffect(() => {
-    if (!selectedGame || selectedGame.status !== 'UPCOMING' || !eventId || !feedPath || !seasonYear) {
-      setGameDetails(null);
-      return undefined;
+    setPlayerAverages(null);
+    setPlayerAveragesFailed(false);
+    if (!isUpcoming || subTab !== 'boxscore' || !eventId || !feedPath || !seasonYear || !activeTeamId || !activeTeamName) {
+      setPlayerAveragesLoading(false);
+      return;
     }
-
-    let current = true;
     const controller = new AbortController();
-
-    void fetchNFLGameDetails(
-      feedPath,
-      eventId,
-      seasonYear,
-      [
-        { id: selectedGame.away.id, name: selectedGame.away.name },
-        { id: selectedGame.home.id, name: selectedGame.home.name },
-      ],
-      controller.signal
-    ).then((res) => {
-      if (current) setGameDetails(res);
+    setPlayerAveragesLoading(true);
+    void fetchNFLGameDetails(feedPath, eventId, seasonYear, [{ id: activeTeamId, name: activeTeamName }], controller.signal)
+      .then((details) => {
+        controller.signal.throwIfAborted();
+        const players = details.teamForms.find((team) => team.teamId === activeTeamId)?.skillPlayers ?? [];
+        return fetchNFLPlayerSeasonBoxScore(feedPath, activeTeamId, seasonYear, players, controller.signal)
+          .then((data) => ({ data, players }));
+      }).then(({ data, players }) => {
+      if (!controller.signal.aborted) {
+        setPlayerAverages({ gameId: eventId, data, players });
+        setPlayerAveragesLoading(false);
+      }
     }).catch(() => {
-      // Graceful fallback
+      if (!controller.signal.aborted) {
+        setPlayerAveragesFailed(true);
+        setPlayerAveragesLoading(false);
+      }
     });
-
-    return () => {
-      current = false;
-      controller.abort();
-    };
-  }, [selectedGame, eventId, feedPath, seasonYear]);
+    return () => controller.abort();
+  }, [isUpcoming, subTab, eventId, feedPath, seasonYear, activeTeamId, activeTeamName, playerAveragesRetry]);
 
   // Wheel horizontal drag handlers
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -300,7 +342,9 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
           // ignore
         }
       }
-      event.currentTarget.scrollLeft = drag.startScrollLeft - distance;
+      const strip = event.currentTarget;
+      const scale = getInterfaceScale(strip);
+      strip.scrollLeft = drag.startScrollLeft - distance / scale;
       event.preventDefault();
     }
   };
@@ -322,8 +366,8 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
     }, 50);
   };
 
-  const awayBoxTeam: NFLBoxScoreTeam | undefined = boxScore?.teams[0];
-  const homeBoxTeam: NFLBoxScoreTeam | undefined = boxScore?.teams[1];
+  const awayBoxTeam: NFLBoxScoreTeam | undefined = boxScore?.teams.find((team) => team.id === awayTeamId);
+  const homeBoxTeam: NFLBoxScoreTeam | undefined = boxScore?.teams.find((team) => team.id === homeTeamId);
   const activeBoxTeam = selectedTeamSide === 'away' ? awayBoxTeam : homeBoxTeam;
   const activeGameTeam: Team | undefined = selectedGame ? (selectedTeamSide === 'away' ? selectedGame.away : selectedGame.home) : undefined;
 
@@ -336,12 +380,14 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
   const periods = Array.from({ length: periodCount }, (_, i) => i);
 
   // Filter categories
-  const categoriesToDisplay = (activeBoxTeam?.categories ?? []).filter((cat) => {
-    if (categoryFilter === 'All') return true;
-    if (categoryFilter === 'Offense') return ['passing', 'rushing', 'receiving'].includes(cat.name);
-    if (categoryFilter === 'Defense') return ['defensive', 'interceptions', 'fumbles'].includes(cat.name);
-    if (categoryFilter === 'Special Teams') return ['kicking', 'punting', 'kickReturns', 'puntReturns'].includes(cat.name);
-    return cat.title.toLowerCase().includes(categoryFilter.toLowerCase()) || cat.name.toLowerCase().includes(categoryFilter.toLowerCase());
+  const currentPlayerAverages = playerAverages && playerAverages.gameId === eventId && playerAverages.data.teamId === activeTeamId
+    ? playerAverages.data : null;
+  const categoriesToDisplay = (isUpcoming ? currentPlayerAverages?.categories ?? [] : activeBoxTeam?.categories ?? []).filter((cat) => {
+    if (activeCategoryFilter === 'All') return true;
+    if (activeCategoryFilter === 'Offense') return ['passing', 'rushing', 'receiving'].includes(cat.name);
+    if (activeCategoryFilter === 'Defense') return ['defensive', 'interceptions', 'fumbles'].includes(cat.name);
+    if (activeCategoryFilter === 'Special Teams') return ['kicking', 'punting', 'kickReturns', 'puntReturns'].includes(cat.name);
+    return cat.title.toLowerCase().includes(activeCategoryFilter.toLowerCase()) || cat.name.toLowerCase().includes(activeCategoryFilter.toLowerCase());
   });
 
   // Team comparison colors: if two teams are the same color (e.g. blue), make one of the lines white
@@ -362,7 +408,34 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
 
   // Team comparison rows
   const comparisonStats: Array<{ label: string; awayVal: string; homeVal: string; percentAway?: number }> = [];
-  if (awayBoxTeam && homeBoxTeam) {
+  if (isUpcoming) {
+    const teams = seasonAverages?.gameId === eventId ? seasonAverages.teams : [];
+    const away = teams.find((team) => team.teamId === awayTeamId);
+    const home = teams.find((team) => team.teamId === homeTeamId);
+    const metrics: Array<{ key: Exclude<keyof NFLTeamSeasonAverages, 'teamId'>; label: string }> = [
+      { key: 'pointsPerGame', label: 'Points / game' },
+      { key: 'totalYardsPerGame', label: 'Total yards / game' },
+      { key: 'passingYardsPerGame', label: 'Passing yards / game' },
+      { key: 'rushingYardsPerGame', label: 'Rushing yards / game' },
+      { key: 'pointsAllowedPerGame', label: 'Points allowed / game' },
+      { key: 'totalYardsAllowedPerGame', label: 'Total yards allowed / game' },
+      { key: 'passingYardsAllowedPerGame', label: 'Passing yards allowed / game' },
+      { key: 'rushingYardsAllowedPerGame', label: 'Rushing yards allowed / game' },
+    ];
+    for (const { key, label } of metrics) {
+      const awayValue = away?.[key] ?? null;
+      const homeValue = home?.[key] ?? null;
+      const percentAway = awayValue !== null && homeValue !== null && awayValue + homeValue > 0
+        ? Math.round(awayValue / (awayValue + homeValue) * 100)
+        : undefined;
+      comparisonStats.push({
+        label,
+        awayVal: awayValue === null ? 'Unavailable' : awayValue.toFixed(1),
+        homeVal: homeValue === null ? 'Unavailable' : homeValue.toFixed(1),
+        percentAway,
+      });
+    }
+  } else if (awayBoxTeam && homeBoxTeam) {
     const awayMap = new Map(awayBoxTeam.teamStats.map((s) => [s.name, s]));
     const homeMap = new Map(homeBoxTeam.teamStats.map((s) => [s.name, s]));
     const keys = [
@@ -413,7 +486,7 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
     return favorites.some((fav) => fav.type === 'player' && fav.id === athleteId);
   };
 
-  const togglePlayerFavorite = (athlete: NFLBoxScoreAthlete, team: NFLBoxScoreTeam) => {
+  const togglePlayerFavorite = (athlete: NFLBoxScoreAthlete, team: NFLBoxScoreTeam | Team) => {
     const target: FavoriteTarget = {
       key: `player:${athlete.id}`,
       type: 'player',
@@ -422,7 +495,7 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
       shortName: athlete.shortName || athlete.name,
       feedPath: 'football/nfl',
       teamName: team.name,
-      teamAbbr: team.abbreviation,
+      teamAbbr: 'abbr' in team ? team.abbr : team.abbreviation,
       teamId: team.id,
       position: athlete.position,
       headshot: athlete.headshot,
@@ -448,24 +521,10 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
     onToggleFavorite(target);
   };
 
-  // Skill players for upcoming games
-  const upcomingTeamPlayers: NFLSkillPlayer[] = selectedGame && gameDetails
-    ? (gameDetails.teamForms.find((f) => f.teamId === (selectedTeamSide === 'away' ? selectedGame.away.id : selectedGame.home.id))?.skillPlayers ?? [])
-    : [];
-
   return (
     <div className="the-wire-container">
-      {/* Search & Game Wheel */}
+      {/* Game Wheel */}
       <div className="wire-controls">
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search game by team name or abbreviation…"
-          />
-        </label>
-
         {filteredGames.length > 0 ? (
           <div className="wire-game-wheel">
             <span className="eyebrow">NFL GAMES · THIS WEEK</span>
@@ -814,12 +873,12 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
 
             {subTab === 'boxscore' && (
               <div className="wire-category-filters" role="tablist" aria-label="Stat category filter">
-                {['All', 'Offense', 'Defense', 'Special Teams'].map((cat) => (
+                {categoryFilters.map((cat) => (
                   <button
                     key={cat}
                     role="tab"
-                    aria-selected={categoryFilter === cat}
-                    className={categoryFilter === cat ? 'active' : ''}
+                    aria-selected={activeCategoryFilter === cat}
+                    className={activeCategoryFilter === cat ? 'active' : ''}
                     onClick={() => setCategoryFilter(cat)}
                   >
                     {cat}
@@ -830,54 +889,11 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
           </div>
 
           {/* Main Body */}
-          {loading && !boxScore ? (
+          {loading && !boxScore && !isUpcoming ? (
             <div className="panel empty-games">Loading game box score and player stats…</div>
-          ) : failed && !boxScore ? (
+          ) : failed && !boxScore && !isUpcoming ? (
             <div className="panel feed-warning">
               Unable to load live box score from feed. The scoreboard will retry automatically.
-            </div>
-          ) : selectedGame.status === 'UPCOMING' && (!boxScore || boxScore.teams.length === 0) ? (
-            /* Upcoming Game Preview */
-            <div className="wire-upcoming-preview">
-              <div className="wire-upcoming-card">
-                <header>
-                  <Trophy size={18} />
-                  <div>
-                    <h3>Game Scheduled for {formatGameTime(selectedGame)}</h3>
-                    <p>Live player stats, plays, and box scores will automatically stream here once kickoff begins.</p>
-                  </div>
-                </header>
-
-                <div className="wire-upcoming-roster-section">
-                  <h4>{activeGameTeam?.name ?? 'Team'} Active Skill Players</h4>
-                  {upcomingTeamPlayers.length > 0 ? (
-                    <div className="wire-upcoming-player-grid">
-                      {upcomingTeamPlayers.map((player) => (
-                        <div className="wire-upcoming-player-card" key={player.id}>
-                          <span className="nfl-player-avatar">
-                            {player.headshot ? (
-                              <img src={player.headshot} alt="" />
-                            ) : (
-                              player.name.slice(0, 2).toUpperCase()
-                            )}
-                          </span>
-                          <div className="wire-upcoming-player-info">
-                            <b>{player.name}</b>
-                            <small>{player.position} {player.jersey && `· #${player.jersey}`}</small>
-                            <small className="wire-usage-note">
-                              {player.gamesWithUsage} games with usage this season
-                            </small>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="nfl-empty-note">
-                      Roster usage for {activeGameTeam?.name} will be ready closer to game time.
-                    </p>
-                  )}
-                </div>
-              </div>
             </div>
           ) : subTab === 'teamStats' ? (
             /* Team Comparison View */
@@ -889,7 +905,7 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                       className="team-mark"
                       style={{ '--team-color': compAwayColor } as React.CSSProperties}
                     >
-                      {awayBoxTeam?.logo ? <img src={awayBoxTeam.logo} alt="" /> : awayBoxTeam?.abbreviation}
+                      {selectedGame.away.logo ? <img src={selectedGame.away.logo} alt="" /> : selectedGame.away.abbr}
                     </span>
                     <b>{awayBoxTeam?.name ?? selectedGame.away.name}</b>
                     <span
@@ -898,7 +914,7 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                       title={`${awayBoxTeam?.name ?? selectedGame.away.name} bar line`}
                     />
                   </div>
-                  <span className="eyebrow">STATISTICAL COMPARISON</span>
+                  <span className="eyebrow">{isUpcoming ? `${seasonYear} REGULAR SEASON · PER GAME` : 'STATISTICAL COMPARISON'}</span>
                   <div className="wire-comp-team text-right">
                     <span
                       className="wire-comp-swatch"
@@ -910,13 +926,20 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                       className="team-mark"
                       style={{ '--team-color': compHomeColor } as React.CSSProperties}
                     >
-                      {homeBoxTeam?.logo ? <img src={homeBoxTeam.logo} alt="" /> : homeBoxTeam?.abbreviation}
+                      {selectedGame.home.logo ? <img src={selectedGame.home.logo} alt="" /> : selectedGame.home.abbr}
                     </span>
                   </div>
                 </header>
 
                 <div className="wire-comparison-list">
-                  {comparisonStats.map((item, index) => (
+                  {isUpcoming && averagesLoading ? (
+                    <p className="nfl-empty-note" role="status">Loading team season averages…</p>
+                  ) : isUpcoming && averagesFailed ? (
+                    <div className="wire-comparison-error" role="alert">
+                      <p>Unable to load team season averages from ESPN.</p>
+                      <button className="wire-stathub-link" onClick={() => setAveragesRetry((retry) => retry + 1)}>Retry team averages</button>
+                    </div>
+                  ) : comparisonStats.map((item, index) => (
                     <div className="wire-comp-row" key={index}>
                       <span className="wire-comp-val wire-comp-away">{item.awayVal}</span>
                       <div className="wire-comp-center">
@@ -947,12 +970,27 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                     <p className="nfl-empty-note">Detailed team stats will populate once the game begins.</p>
                   )}
                 </div>
+                {isUpcoming && <p className="nfl-data-note wire-comparison-note">Season-to-date regular-season averages from ESPN, not projections. Missing values are unavailable. Lower allowed values mean fewer points or yards conceded.</p>}
               </div>
             </div>
           ) : (
             /* Player Box Score View */
             <div className="wire-player-boxscore-view">
-              {categoriesToDisplay.length > 0 ? (
+              {isUpcoming && <p className="nfl-data-note" role="status">{seasonYear} REGULAR SEASON · PLAYER AVERAGES &amp; TD TOTALS<br />Up to 1 active QB, 2 RBs, 3 WRs, and 1 TE, ranked by recent passing attempts, carries, and receiving targets. Usage-ranked, not confirmed starters. GP is games played for {activeGameTeam?.name}; /G values are season totals divided by GP, not projections. PASS TD, RUSH TD, and REC TD show season touchdown totals for this team. After kickoff, all players reported in the game box score are shown, with live updates every 15 seconds.</p>}
+              {isUpcoming && currentPlayerAverages && currentPlayerAverages.failedPlayers > 0 && (
+                <div className="wire-comparison-error" role="alert">
+                  <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player averages are shown below.</p>
+                  <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player averages</button>
+                </div>
+              )}
+              {isUpcoming && playerAveragesLoading ? (
+                <div className="panel empty-games" role="status">Loading player season averages…</div>
+              ) : isUpcoming && playerAveragesFailed ? (
+                <div className="wire-comparison-error" role="alert">
+                  <p>Unable to load player season averages from ESPN.</p>
+                  <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player averages</button>
+                </div>
+              ) : categoriesToDisplay.length > 0 ? (
                 categoriesToDisplay.map((category) => (
                   <section className="wire-category-card" key={category.name}>
                     <header className="wire-category-header">
@@ -966,19 +1004,21 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                     </header>
 
                     <div className="wire-table-scroll-container">
-                      <table className="wire-stat-table">
-                        <thead>
-                          <tr>
-                            <th className="wire-col-athlete">Athlete</th>
+                      <table className="wire-stat-table" role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season per-game averages' : ''}`}>
+                        <thead role="rowgroup">
+                          <tr role="row">
+                            <th className="wire-col-athlete" scope="col" role="columnheader">Athlete</th>
                             {category.labels.map((lbl, idx) => (
-                              <th key={idx} className="wire-col-data">{lbl}</th>
+                              <th key={idx} className="wire-col-data" scope="col" role="columnheader">{lbl}</th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody>
-                          {category.athletes.map((athlete) => (
-                            <tr key={athlete.id}>
-                              <td className="wire-col-athlete">
+                        <tbody role="rowgroup">
+                          {category.athletes.map((athlete) => {
+                            const player = isUpcoming ? playerAverages?.players.find((item) => item.id === athlete.id) : undefined;
+                            return (
+                            <tr key={athlete.id} role="row">
+                              <td className="wire-col-athlete" role="cell">
                                 <div className="wire-athlete-cell">
                                   <span className="wire-athlete-avatar">
                                     {athlete.headshot ? (
@@ -987,17 +1027,28 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                                       athlete.name.slice(0, 2).toUpperCase()
                                     )}
                                   </span>
-                                  <div className="wire-athlete-meta">
-                                    <span className="wire-athlete-name">{athlete.name}</span>
-                                    <small className="wire-athlete-sub">
-                                      {athlete.position || ''}{athlete.jersey ? ` · #${athlete.jersey}` : ''}
-                                    </small>
-                                  </div>
-                                  {activeBoxTeam && (
+                                  {player && currentPlayerAverages && activeGameTeam ? (
+                                    <button
+                                      className="wire-athlete-meta wire-player-card-button"
+                                      aria-label={`View ${athlete.name} stats`}
+                                      onClick={() => onOpenPlayer(player, activeGameTeam)}
+                                    >
+                                      <span className="wire-athlete-name">{athlete.name}</span>
+                                      <small className="wire-athlete-sub">{athlete.position || ''}{athlete.jersey ? ` · #${athlete.jersey}` : ''}</small>
+                                    </button>
+                                  ) : (
+                                    <div className="wire-athlete-meta">
+                                      <span className="wire-athlete-name">{athlete.name}</span>
+                                      <small className="wire-athlete-sub">{athlete.position || ''}{athlete.jersey ? ` · #${athlete.jersey}` : ''}</small>
+                                    </div>
+                                  )}
+                                  {activeGameTeam && (
                                     <button
                                       className={`favorite-star-button wire-star${isPlayerFavorite(athlete.id) ? ' is-favorite' : ''}`}
                                       title={isPlayerFavorite(athlete.id) ? 'Remove favorite' : 'Add favorite'}
-                                      onClick={() => togglePlayerFavorite(athlete, activeBoxTeam)}
+                                      aria-label={`${isPlayerFavorite(athlete.id) ? 'Remove' : 'Add'} ${athlete.name} ${isPlayerFavorite(athlete.id) ? 'from' : 'to'} favorites`}
+                                      aria-pressed={isPlayerFavorite(athlete.id)}
+                                      onClick={() => togglePlayerFavorite(athlete, activeGameTeam)}
                                     >
                                       <Star size={13} fill={isPlayerFavorite(athlete.id) ? 'currentColor' : 'none'} />
                                     </button>
@@ -1005,18 +1056,23 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                                 </div>
                               </td>
                               {athlete.stats.map((statVal, sIdx) => (
-                                <td key={sIdx} className="wire-col-data">{statVal}</td>
+                                <td key={sIdx} className="wire-col-data" role="cell">
+                                  <span className="wire-mobile-stat-label" aria-hidden="true">{category.labels[sIdx]}</span>
+                                  {statVal}
+                                </td>
                               ))}
                             </tr>
-                          ))}
+                            );
+                          })}
 
                           {category.totals && category.totals.length > 0 && (
-                            <tr className="wire-totals-row">
-                              <td className="wire-col-athlete">
+                            <tr className="wire-totals-row" role="row">
+                              <td className="wire-col-athlete" role="cell">
                                 <strong>Team Total</strong>
                               </td>
                               {category.totals.map((totVal, tIdx) => (
-                                <td key={tIdx} className="wire-col-data">
+                                <td key={tIdx} className="wire-col-data" role="cell">
+                                  <span className="wire-mobile-stat-label" aria-hidden="true">{category.labels[tIdx]}</span>
                                   <strong>{totVal}</strong>
                                 </td>
                               ))}
@@ -1029,14 +1085,14 @@ export default function TheWire({ games, favorites, onToggleFavorite, initialGam
                 ))
               ) : (
                 <div className="panel empty-games">
-                  No {categoryFilter !== 'All' ? categoryFilter.toLowerCase() : ''} player statistics recorded for {activeBoxTeam?.name ?? 'this team'} yet.
+                  No {activeCategoryFilter !== 'All' ? activeCategoryFilter.toLowerCase() : ''} {isUpcoming ? 'regular-season player averages available' : 'player statistics recorded'} for {activeGameTeam?.name ?? 'this team'} yet.
                 </div>
               )}
             </div>
           )}
 
           <p className="nfl-data-note">
-            Box scores and individual statistics are pulled live from ESPN public game feeds. Updates reflect in real time.
+            {isUpcoming ? `${subTab === 'teamStats' ? 'Team' : 'Player'} averages are pulled from ESPN public regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics are pulled live from ESPN public game feeds. Updates reflect in real time.'}
           </p>
         </div>
       )}

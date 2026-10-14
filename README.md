@@ -15,6 +15,52 @@ Open the local URL printed by Vite. `npm run build` creates a production build.
 
 The VS Code task **Start GameWire dev server** is also configured for launching the app.
 
+Desktop views use a compact 75% interface scale, with a smaller matchup scoreboard and larger player box-score text and rows. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
+
+On mobile, The Wire player box scores use labeled three-column stat grids instead of horizontally scrolling tables. Stat Hub player-popup stat types retain a single horizontally scrollable, draggable row with touch-sized controls and a chart that fits the dialog width. The game selection wheels remain horizontally draggable.
+
+The Wire's team/game search and Stat Hub's NFL player/team search open from a compact search icon in the top banner, with separate queries for each view. An indicator marks an active filter; the field has a clear action, and Escape closes it without removing the filter.
+
+The Wire and Stat Hub game wheels both show color-coded TNF, SNF, and MNF badges for primetime games, identified by kickoff time in Eastern Time.
+
+Player Box Score only offers All and Offense filters before kickoff. Defense and Special Teams filters return for live and final games; switching to a pregame matchup while either is selected displays All instead.
+
+Pregame touchdown columns show season totals for the selected team: **PASS TD** (touchdown passes), **RUSH TD**, and **REC TD**. Other `/G` columns remain per-game averages; live and final touchdown columns remain game-specific.
+
+Pregame QB passing stats omit sacks per game. Live and final box scores retain the sacks reported by ESPN.
+
+Select a player's name in The Wire's pregame Player Box Score to open the same player card as Stat Hub, with position-specific draggable stat tabs, recent-game charts, and a favorite toggle. Closing the card keeps the current matchup and team selection.
+
+## Deploy to GitHub Pages
+
+The [deployment workflow](.github/workflows/deploy.yml) builds and publishes the site on pushes to `main`, or when run manually. It uses Node.js 22, installs from the lockfile with `npm ci`, and gets the asset base path from GitHub Pages automatically. Local development keeps relative asset paths; project Pages uses `/FOT/`, while a configured custom domain uses its Pages base path.
+
+1. In the GitHub repository, open **Settings → Pages** and select **GitHub Actions** as the build and deployment source.
+2. For accounts and synced favorites, add these **repository secrets** under **Settings → Secrets and variables → Actions**:
+   - `VITE_SUPABASE_URL`: your Supabase project URL.
+   - `VITE_SUPABASE_PUBLISHABLE_KEY`: your public publishable key. Alternatively, use `VITE_SUPABASE_ANON_KEY` for the legacy anon key.
+   - `VITE_VAPID_PUBLIC_KEY`: optional public VAPID key, if you configured mobile push notifications.
+3. Complete the Supabase schema setup described below. In **Supabase → Authentication → URL Configuration**, set the production Site URL to `https://mgtrabulsi-cell.github.io/FOT/` and add that exact URL to the allowed redirect URLs. Keep `http://localhost:5173/` allowed for local development. If using a custom domain, use its URL instead.
+4. Commit and push your changes to `main`. In **Actions**, watch **Deploy to GitHub Pages**, or select **Run workflow** to redeploy the committed version.
+5. Open `https://mgtrabulsi-cell.github.io/FOT/` after deployment succeeds. Test sign-in, email confirmation/password reset, and mobile notifications if enabled.
+
+GitHub Actions does not read your local `.env.local`; configure the repository secrets before deploying, and rebuild after changing them. Without Supabase configuration, guest browsing is available but accounts and synced favorites are not. Notifications additionally require the Supabase functions and scheduled poller described below; GitHub Pages only hosts the frontend.
+
+Choosing **Continue as guest** loads the live scoreboard and stats without signing in, including when Supabase accounts are configured.
+
+All `VITE_` values are public in the built JavaScript, even when supplied through GitHub secrets. Never put a Supabase service-role/secret key, private VAPID key, or cron secret in them. Local environment files remain gitignored.
+
+To verify the project-path build locally in PowerShell:
+
+```powershell
+$env:VITE_BASE_PATH = '/FOT/'
+npm run build
+npm run preview -- --host 127.0.0.1
+Remove-Item Env:VITE_BASE_PATH
+```
+
+Open `http://127.0.0.1:4173/FOT/`. Assets, the web app manifest, and the notification service worker stay within the deployed path. This static deployment does not require a Node.js server.
+
 ## Accounts and favorites
 
 GameWire uses Supabase Auth for email/password accounts and stores each user's favorites in a row protected by row-level security.
@@ -43,7 +89,11 @@ The score poller uses ESPN's undocumented public scoreboard feed, so alert timin
 
 ## Score coverage
 
-The scoreboard is currently focused on the NFL. Scores refresh every 30 seconds, and the week selector follows ESPN's current week or loads a selected regular-season week.
+The scoreboard is currently focused on the NFL. Scores refresh every 30 seconds. The **Current** week advances at noon every Tuesday in **America/New_York (Eastern Time)**, using ESPN's regular-season calendar, even if ESPN's default scoreboard still shows the previous week. Open pages pick up the rollover on their next refresh. Manual week selections stay on the selected week; choosing **Current** restores automatic rollover. Outside the regular season, the default ESPN week is retained.
+
+Before kickoff, The Wire's Team Comparison shows both teams' season-to-date regular-season points, total yards, passing yards, and rushing yards per game, plus the corresponding points and yards allowed per game. These values come from ESPN's team season statistics, not projections or player-specific matchup averages. Missing values are shown as unavailable, and failed requests have a retry action. Once a game starts, Team Comparison shows that game's box-score statistics.
+
+The pregame Player Box Score shows regular-season passing, rushing, and receiving averages for up to one active QB, two RBs, three WRs, and one TE. Players must have recent usage and are ranked by recent passing attempts (QB), carries (RB), and receiving targets, falling back to receptions (WR/TE). These selections are usage-ranked, not confirmed starters; no extra players fill missing positions. Only the selected QB appears in pregame passing; rushing and receiving show relevant stats for the selected lineup. `/G` values divide each player's season totals for the selected team by their games played (`GP`), never by the team's games or a recent-game sample. Career totals, other seasons, and other teams' records are excluded. Missing values stay unavailable; failed player requests are reported with a retry action. Pregame averages do not include team-total rows. After kickoff, these limits do not apply: all players and categories reported by ESPN's game box score are available, refreshed every 15 seconds during live games.
 
 The NFL Players area uses a draggable game wheel, then groups players by position and recent usage. Each team shows one usage-ranked QB, two RBs, one TE, and up to four WRs when those players have recent box-score usage. ESPN's public roster marks active status but does not provide an official depth chart, so starting roles are inferred from recent box-score participation.
 

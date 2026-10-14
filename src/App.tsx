@@ -9,13 +9,14 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchScoreboards, findAutomaticNFLGame, findNFLTeamsForPlayerSearch, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
-import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, Team } from './services/sportsData';
+import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchScoreboards, findAutomaticNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
+import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import { supabase } from './services/supabaseClient';
+import { getInterfaceScale } from './uiScale';
 
 
 type DenScoreItem = {
@@ -153,7 +154,7 @@ function DraggableTabs<T extends string>({
   selected,
   onSelect,
 }: {
-  options: Array<{ key: T; label: string; secondary?: string }>;
+  options: Array<{ key: T; label: string; secondary?: string; primetime?: PrimetimeType | null }>;
   ariaLabel: string;
   className: string;
   selected: T;
@@ -195,7 +196,9 @@ function DraggableTabs<T extends string>({
     const distance = event.clientX - drag.startX;
     if (Math.abs(distance) > 4) drag.moved = true;
     if (drag.moved) {
-      event.currentTarget.scrollLeft = drag.startScrollLeft - distance;
+      const strip = event.currentTarget;
+      const scale = getInterfaceScale(strip);
+      strip.scrollLeft = drag.startScrollLeft - distance / scale;
       event.preventDefault();
     }
   };
@@ -228,13 +231,14 @@ function DraggableTabs<T extends string>({
       event.stopPropagation();
       dragState.current.suppressClick = false;
     }}
-  >{options.map((option) => <button key={option.key} data-tab-key={option.key} role="tab" aria-selected={selected === option.key} className={selected === option.key ? 'active' : ''} onClick={() => onSelect(option.key)}><b>{option.label}</b>{option.secondary && <small>{option.secondary}</small>}</button>)}</div>;
+  >{options.map((option) => <button key={option.key} data-tab-key={option.key} role="tab" aria-selected={selected === option.key} className={selected === option.key ? 'active' : ''} onClick={() => onSelect(option.key)}><b>{option.label}</b>{option.secondary && <small>{option.secondary}{option.primetime && <span className={`wire-primetime-tag tag-${option.primetime.toLowerCase()}`} title={getPrimetimeFullTitle(option.primetime)}>{option.primetime}</span>}</small>}</button>)}</div>;
 }
 
 function NFLGameWheel({ games, selectedGame, onSelect }: { games: Game[]; selectedGame: Game; onSelect: (gameId: string) => void }) {
   const options = games.map((game) => ({
     key: game.id,
     label: `${game.away.abbr} @ ${game.home.abbr}`,
+    primetime: getPrimetimeLabel(game),
     secondary: `${game.status === 'LIVE' ? 'LIVE · ' : ''}${formatGameTime(game)}`,
   }));
   return <section className="nfl-game-wheel"><span className="eyebrow">SELECT GAME</span><DraggableTabs options={options} ariaLabel="NFL games" className="nfl-game-wheel-tabs" selected={selectedGame.id} onSelect={onSelect} /></section>;
@@ -248,6 +252,12 @@ function getNFLPlayerStatValue(stats: Partial<Record<NFLPlayerStatKey, number>>,
 }
 
 function NFLPlayerMiniWindow({ player, team, isFavorite, onToggleFavorite, onClose }: { player: NFLSkillPlayer; team: Team; isFavorite: boolean; onToggleFavorite: (favorite: FavoriteTarget) => void; onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const trigger = document.activeElement;
+    dialogRef.current?.focus();
+    return () => { if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus({ preventScroll: true }); };
+  }, []);
   const optionsByPosition: Record<string, Array<{ key: NFLPlayerStatKey; label: string }>> = {
     QB: [
       { key: 'passingYards', label: 'Pass yards' },
@@ -292,7 +302,7 @@ function NFLPlayerMiniWindow({ player, team, isFavorite, onToggleFavorite, onClo
   const maximumValue = Math.max(1, ...chartValues.filter((value): value is number => value !== undefined));
 
   return <div className="nfl-player-modal" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="nfl-player-dialog" role="dialog" aria-modal="true" aria-labelledby="nfl-player-dialog-title" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }}>
+    <section ref={dialogRef} tabIndex={-1} className="nfl-player-dialog" role="dialog" aria-modal="true" aria-labelledby="nfl-player-dialog-title" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }}>
       <header className="nfl-player-dialog-heading"><span className="nfl-player-avatar nfl-player-avatar-large">{player.headshot ? <img src={player.headshot} alt="" /> : player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><div><span className="eyebrow">{team.abbr} · RECENT PERFORMANCE</span><h3 id="nfl-player-dialog-title">{player.name}</h3><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small></div><FavoriteStarButton favorite={isFavorite} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, team))} /><button className="icon-button" aria-label="Close player stats" onClick={onClose}><X size={16} /></button></header>
       <div className="nfl-player-stat-picker"><span className="nfl-player-stat-label">GAME STAT</span><DraggableTabs options={options} ariaLabel={`${player.position} game stats`} className="nfl-player-stat-tabs" selected={selectedStat} onSelect={setSelectedStat} /></div>
       <div className="nfl-game-chart-heading"><b>{selectedOption.label} · EACH GAME</b><span>LAST {playerGames.length || 5} GAMES</span></div>
@@ -307,14 +317,13 @@ function formatNFLDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(parsed);
 }
 
-function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId }: { games: Game[]; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; initialGameId: string | null }) {
+function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initialGameId }: { games: Game[]; query: string; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; initialGameId: string | null }) {
   const nflGames = games.filter((game) => game.sport === 'Football');
   const [selectedGameId, setSelectedGameId] = useState(initialGameId && nflGames.some((game) => game.id === initialGameId) ? initialGameId : nflGames[0]?.id ?? '');
   const [details, setDetails] = useState<NFLGameDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [position, setPosition] = useState('All');
-  const [query, setQuery] = useState('');
   const [searchStatus, setSearchStatus] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState<NFLSkillPlayer | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -414,7 +423,6 @@ function NFLPlayersDirectory({ games, favorites, onToggleFavorite, initialGameId
 
   return <div className="nfl-players-directory">
     <div className="nfl-directory-controls">
-      <label className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search players or teams" /></label>
       {game ? <NFLGameWheel games={nflGames} selectedGame={game} onSelect={setSelectedGameId} /> : <p className="nfl-empty-note">No NFL games are available.</p>}
     </div>
     {searchStatus && <p className="nfl-player-search-status" role="status">{searchStatus}</p>}
@@ -612,6 +620,9 @@ function App() {
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
   const [selectedNFLWeek, setSelectedNFLWeek] = useState<number | null>(null);
   const [currentNFLWeek, setCurrentNFLWeek] = useState<number | null>(null);
+  const [wireSearchQuery, setWireSearchQuery] = useState('');
+  const [playerSearchQuery, setPlayerSearchQuery] = useState('');
+  const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [failedLeagues, setFailedLeagues] = useState<string[]>([]);
@@ -863,7 +874,7 @@ function App() {
   };
 
   useEffect(() => {
-    if (supabase && !authUser) {
+    if (supabase && !authUser && !guestMode) {
       setGames([]);
       setFailedLeagues([]);
       return;
@@ -981,7 +992,7 @@ function App() {
       controller.abort();
       window.clearInterval(refreshId);
     };
-  }, [authUser?.id, selectedNFLWeek]);
+  }, [authUser?.id, guestMode, selectedNFLWeek]);
 
   useEffect(() => {
     if (favorites.length === 0) {
@@ -1051,6 +1062,33 @@ function App() {
           <button className={view === 'Den' ? 'active' : ''} onClick={() => setView('Den')}>Locker Room</button>
         </nav>
         <div className="topbar-right">
+          {(view === 'Wire' || (view === 'Players' && playerMode === 'NFL')) && (
+            <details
+              key={view}
+              className={`banner-search${(view === 'Wire' ? wireSearchQuery : playerSearchQuery) ? ' has-query' : ''}`}
+              onToggle={(event) => {
+                if (event.currentTarget.open) event.currentTarget.querySelector('input')?.focus();
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape') return;
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector('summary')?.focus();
+              }}
+            >
+              <summary aria-label={view === 'Wire' ? 'Search NFL games' : 'Search NFL players or teams'} title={view === 'Wire' ? 'Search NFL games' : 'Search NFL players or teams'}><Search size={18} /></summary>
+              <div className="banner-search-panel">
+                <label className="search-field">
+                  <input
+                    aria-label={view === 'Wire' ? 'Search NFL games by team' : 'Search NFL players or teams'}
+                    value={view === 'Wire' ? wireSearchQuery : playerSearchQuery}
+                    onChange={(event) => view === 'Wire' ? setWireSearchQuery(event.target.value) : setPlayerSearchQuery(event.target.value)}
+                    placeholder={view === 'Wire' ? 'Search teams…' : 'Search players or teams…'}
+                  />
+                </label>
+                <button className="icon-button" aria-label={view === 'Wire' ? 'Clear game search' : 'Clear player search'} disabled={!(view === 'Wire' ? wireSearchQuery : playerSearchQuery)} onClick={() => view === 'Wire' ? setWireSearchQuery('') : setPlayerSearchQuery('')}><X size={16} /></button>
+              </div>
+            </details>
+          )}
           {authUser ? (
             <>
               <button className={`account-profile-button${view === 'Profile' ? ' active' : ''}`} aria-label={`Open ${displayName} profile`} onClick={openProfile}>{displayName}</button>
@@ -1080,6 +1118,7 @@ function App() {
                 </span>
                 <label className="date-button">
                   <Clock3 size={15} />
+                  <span aria-hidden="true">{selectedNFLWeek === null ? (currentNFLWeek ? `Current · Week ${currentNFLWeek}` : 'Current NFL week') : `Week ${selectedNFLWeek}`}</span>
                   <select aria-label="NFL week" value={selectedNFLWeek ?? 'current'} onChange={(event) => setSelectedNFLWeek(event.target.value === 'current' ? null : Number(event.target.value))}>
                     <option value="current">{currentNFLWeek ? `Current · Week ${currentNFLWeek}` : 'Current NFL week'}</option>
                     {Array.from({ length: 18 }, (_, index) => index + 1).map((week) => <option key={week} value={week}>Week {week}</option>)}
@@ -1094,14 +1133,26 @@ function App() {
         {view === 'Profile' ? (
           authUser ? <ProfilePage user={authUser} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' ? (
+          <>
           <TheWire
             games={games}
+            query={wireSearchQuery}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
             initialGameId={selectedGameId}
             onSelectGame={setSelectedGameId}
             onOpenStatHub={openGamePlayers}
+            onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })}
           />
+          {wirePlayerCard && <NFLPlayerMiniWindow
+            key={wirePlayerCard.player.id}
+            player={wirePlayerCard.player}
+            team={wirePlayerCard.team}
+            isFavorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(wirePlayerCard.player, wirePlayerCard.team).key)}
+            onToggleFavorite={toggleFavorite}
+            onClose={() => setWirePlayerCard(null)}
+          />}
+          </>
         ) : view === 'Den' ? (
           <TheDen favorites={favorites} items={denItems} plays={playUpdates} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} />
         ) : (
@@ -1111,7 +1162,7 @@ function App() {
               <button role="tab" aria-selected={playerMode === 'Matchups'} className={playerMode === 'Matchups' ? 'active' : ''} onClick={() => setPlayerMode('Matchups')}>Favorable matchups</button>
             </div>
             {playerMode === 'NFL' ? (
-              <NFLPlayersDirectory games={games} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
+              <NFLPlayersDirectory games={games} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
             ) : (
               <NFLFavorableMatchups games={games} />
             )}

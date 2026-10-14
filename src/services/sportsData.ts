@@ -140,6 +140,18 @@ export type NFLGameDetails = {
   teamForms: NFLTeamForm[];
 };
 
+export type NFLTeamSeasonAverages = {
+  teamId: string;
+  pointsPerGame: number | null;
+  totalYardsPerGame: number | null;
+  passingYardsPerGame: number | null;
+  rushingYardsPerGame: number | null;
+  pointsAllowedPerGame: number | null;
+  totalYardsAllowedPerGame: number | null;
+  passingYardsAllowedPerGame: number | null;
+  rushingYardsAllowedPerGame: number | null;
+};
+
 export type NFLGameLeader = {
   teamId: string;
   athleteId: string;
@@ -374,17 +386,53 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
   };
 }
 
+export function getCurrentNFLWeek(payload: unknown, now = new Date()): number | null {
+  const scoreboard = asObject(payload);
+  const reportedWeek = Number(asObject(scoreboard.week).number) || null;
+  if (Number(asObject(scoreboard.season).type) !== 2) return reportedWeek;
+  const calendar = asArray(asObject(asArray(scoreboard.leagues)[0]).calendar).map(asObject);
+  const regularSeason = calendar.find((entry) => text(entry.value) === '2');
+  const easternDate = (date: Date) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((entry) => entry.type === type)?.value);
+    return new Date(Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'), part('second')));
+  };
+  const easternNow = easternDate(now).getTime();
+  const weeks = asArray(regularSeason?.entries).map(asObject).flatMap((entry) => {
+    const start = Date.parse(text(entry.startDate));
+    const week = Number(entry.value);
+    if (!Number.isFinite(start) || !Number.isInteger(week) || week < 1 || week > 18) return [];
+    const rollover = easternDate(new Date(start));
+    rollover.setUTCDate(rollover.getUTCDate() - (rollover.getUTCDay() - 2 + 7) % 7);
+    rollover.setUTCHours(12, 0, 0, 0);
+    return [{ week, rollover: rollover.getTime() }];
+  });
+  return weeks.filter((entry) => entry.rollover <= easternNow)
+    .sort((first, second) => second.rollover - first.rollover)[0]?.week ?? reportedWeek;
+}
+
 export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): Promise<ScoreboardResult> {
   const results = await Promise.allSettled(scoreFeeds.map(async (feed) => {
     const weekQuery = feed.league === 'NFL' && nflWeek ? `?week=${nflWeek}&seasontype=2` : '';
     const response = await fetch(`${apiBase}/${feed.path}/scoreboard${weekQuery}`, { signal, cache: 'no-store' });
     if (!response.ok) throw new Error(`${feed.league} returned HTTP ${response.status}`);
     const payload: unknown = await response.json();
-    const scoreboard = asObject(payload);
+    let scoreboard = asObject(payload);
+    const currentWeek = feed.league === 'NFL' ? getCurrentNFLWeek(payload) : null;
+    if (!nflWeek && currentWeek !== null && currentWeek !== Number(asObject(scoreboard.week).number)) {
+      const season = Number(asObject(scoreboard.season).year);
+      const nextResponse = await fetch(`${apiBase}/${feed.path}/scoreboard?week=${currentWeek}&seasontype=2&dates=${season}`, { signal, cache: 'no-store' });
+      if (!nextResponse.ok) throw new Error(`${feed.league} week ${currentWeek} returned HTTP ${nextResponse.status}`);
+      scoreboard = asObject(await nextResponse.json());
+    }
     const events = asArray(scoreboard.events);
     return {
       games: events.map((event) => mapEvent(event, feed)).filter((game): game is Game => game !== null),
-      nflWeek: feed.league === 'NFL' ? Number(asObject(scoreboard.week).number) || null : null,
+      nflWeek: currentWeek,
     };
   }));
 
@@ -907,6 +955,36 @@ export async function fetchNFLLivePlayerStats(
 
 const nflDefenseRankCache = new Map<string, Promise<NFLDefenseRanks>>();
 
+export async function fetchNFLTeamSeasonAverages(
+  feedPath: string,
+  teamId: string,
+  seasonYear: number,
+  signal?: AbortSignal,
+): Promise<NFLTeamSeasonAverages> {
+  const response = await fetch(`${apiBase}/${feedPath}/teams/${encodeURIComponent(teamId)}/statistics?season=${seasonYear}&seasontype=2`, { signal });
+  if (!response.ok) throw new Error(`Team season averages returned HTTP ${response.status}`);
+  const payload = asObject(await response.json());
+  const results = asObject(payload.results);
+  const ownCategories = asArray(asObject(results.stats).categories).map(asObject);
+  const opponentCategories = asArray(results.opponent).map(asObject);
+  const average = (categories: Record<string, unknown>[], categoryName: string, statName: string) => {
+    const category = categories.find((entry) => text(entry.name) === categoryName);
+    const stat = asArray(category?.stats).map(asObject).find((entry) => text(entry.name) === statName);
+    return parseBoxscoreNumber(stat?.value) ?? null;
+  };
+  return {
+    teamId,
+    pointsPerGame: average(ownCategories, 'scoring', 'totalPointsPerGame'),
+    totalYardsPerGame: average(ownCategories, 'passing', 'yardsPerGame'),
+    passingYardsPerGame: average(ownCategories, 'passing', 'passingYardsPerGame'),
+    rushingYardsPerGame: average(ownCategories, 'rushing', 'rushingYardsPerGame'),
+    pointsAllowedPerGame: average(opponentCategories, 'scoring', 'totalPointsPerGame'),
+    totalYardsAllowedPerGame: average(opponentCategories, 'passing', 'yardsPerGame'),
+    passingYardsAllowedPerGame: average(opponentCategories, 'passing', 'passingYardsPerGame'),
+    rushingYardsAllowedPerGame: average(opponentCategories, 'rushing', 'rushingYardsPerGame'),
+  };
+}
+
 function fetchNFLTeamDefenseRanks(feedPath: string, teamId: string, seasonYear: number): Promise<NFLDefenseRanks> {
   const cacheKey = `${feedPath}:${teamId}:${seasonYear}`;
   const cached = nflDefenseRankCache.get(cacheKey);
@@ -1047,23 +1125,21 @@ type NFLRosterSkillPlayer = Pick<NFLSkillPlayer, 'id' | 'name' | 'position' | 'j
 const nflSkillPositions = new Set(['QB', 'RB', 'WR', 'TE']);
 const nflPositionOrder = ['QB', 'RB', 'WR', 'TE'];
 const nflHistoricalSummaries = new Map<string, Promise<unknown>>();
-const nflSkillRosters = new Map<string, { timestamp: number; promise: Promise<NFLRosterSkillPlayer[]> }>();
+const nflRosters = new Map<string, { timestamp: number; promise: Promise<NFLRosterSkillPlayer[]> }>();
 
-function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
+function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
   const cacheKey = `${feedPath}:${teamId}:${season}`;
-  const cached = nflSkillRosters.get(cacheKey);
+  const cached = nflRosters.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < 300_000) return cached.promise;
   const request = fetch(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`)
     .then(async (response) => {
       if (!response.ok) throw new Error(`Team roster returned HTTP ${response.status}`);
       const payload = asObject(await response.json());
-      const offense = asArray(payload.athletes).map(asObject).find((group) => text(group.position).toLowerCase() === 'offense');
-      return asArray(offense?.items).map(asObject).flatMap((player) => {
+      return asArray(payload.athletes).map(asObject).flatMap((group) => asArray(group.items)).map(asObject).flatMap((player) => {
         const position = text(asObject(player.position).abbreviation).toUpperCase();
         const statusObj = asObject(player.status);
         const statusType = text(statusObj.type).toLowerCase();
         const statusName = text(statusObj.name).toLowerCase();
-        if (!nflSkillPositions.has(position)) return [];
         if (
           statusType === 'practice-squad'
           || statusType === 'injured-reserve'
@@ -1098,9 +1174,13 @@ function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: num
         }];
       });
     });
-  nflSkillRosters.set(cacheKey, { timestamp: Date.now(), promise: request });
-  void request.catch(() => nflSkillRosters.delete(cacheKey));
+  nflRosters.set(cacheKey, { timestamp: Date.now(), promise: request });
+  void request.catch(() => nflRosters.delete(cacheKey));
   return request;
+}
+
+async function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
+  return (await fetchNFLActiveRoster(feedPath, teamId, season)).filter((player) => nflSkillPositions.has(player.position));
 }
 
 export async function findNFLTeamsForPlayerSearch(games: Game[], searchQuery: string): Promise<string[]> {
@@ -1203,6 +1283,137 @@ export type NFLBoxScoreCategory = {
   athletes: NFLBoxScoreAthlete[];
   totals?: string[];
 };
+
+export type NFLPlayerSeasonBoxScore = {
+  teamId: string;
+  categories: NFLBoxScoreCategory[];
+  failedPlayers: number;
+};
+
+export function readNFLPlayerSeasonAverages(
+  payload: unknown,
+  player: NFLRosterSkillPlayer,
+  teamId: string,
+  seasonYear: number,
+): NFLBoxScoreCategory[] {
+  const definitions = [
+    { name: 'passing', fields: ['completions', 'passingAttempts', 'passingYards', 'passingTouchdowns', 'interceptions'], labels: ['CMP/G', 'ATT/G', 'YDS/G', 'PASS TD', 'INT/G'] },
+    { name: 'rushing', fields: ['rushingAttempts', 'rushingYards', 'rushingTouchdowns'], labels: ['CAR/G', 'YDS/G', 'RUSH TD'] },
+    { name: 'receiving', fields: ['receptions', 'receivingTargets', 'receivingYards', 'receivingTouchdowns'], labels: ['REC/G', 'TGT/G', 'YDS/G', 'REC TD'] },
+    { name: 'defensive', fields: ['totalTackles', 'soloTackles', 'sacks', 'interceptions', 'passesDefended', 'fumblesForced'], labels: ['TACK/G', 'SOLO/G', 'SACK/G', 'INT/G', 'PD/G', 'FF/G'] },
+    { name: 'kicking', fields: ['fieldGoalsMade', 'fieldGoalAttempts', 'extraPointsMade', 'extraPointAttempts'], labels: ['FG/G', 'FGA/G', 'XP/G', 'XPA/G'] },
+    { name: 'punting', fields: ['punts', 'puntYards', 'puntsInside20'], labels: ['PUNT/G', 'YDS/G', 'IN20/G'] },
+  ];
+  const categories = asArray(asObject(payload).categories).map(asObject);
+  return definitions.flatMap((definition) => {
+    const category = categories.find((entry) => text(entry.name) === definition.name);
+    const names = asArray(category?.names).map((name) => text(name));
+    const rows = asArray(category?.statistics).map(asObject).filter((row) =>
+      Number(asObject(row.season).year) === seasonYear && text(row.teamId) === teamId
+    );
+    if (!rows.length) return [];
+    const value = (row: Record<string, unknown>, name: string) => {
+      const index = names.indexOf(name);
+      if (index < 0 && (name === 'fieldGoalsMade' || name === 'fieldGoalAttempts')) {
+        const combinedIndex = names.indexOf('fieldGoalsMade-fieldGoalAttempts');
+        const combined = text(asArray(row.stats)[combinedIndex]).match(/^(\d+)-(\d+)$/);
+        return combined ? Number(combined[name === 'fieldGoalsMade' ? 1 : 2]) : undefined;
+      }
+      return index < 0 ? undefined : parseBoxscoreNumber(asArray(row.stats)[index]);
+    };
+    const gameCounts = rows.map((row) => value(row, 'gamesPlayed'));
+    const gamesPlayed = gameCounts.every((count) => count !== undefined && count > 0)
+      ? gameCounts.reduce<number>((total, count) => total + (count ?? 0), 0)
+      : null;
+    const fields = definition.fields.map((name, index) => ({ name, label: definition.labels[index] }));
+    if (!fields.some(({ name }) => rows.some((row) => value(row, name) !== undefined))) return [];
+    const recordedValues = rows.flatMap((row) => fields.flatMap(({ name }) => {
+      const stat = value(row, name);
+      return stat === undefined ? [] : [stat];
+    }));
+    if (recordedValues.length && recordedValues.every((stat) => stat === 0)) return [];
+    const stats = fields.map(({ name, label }) => {
+      const values = rows.map((row) => value(row, name));
+      if (values.some((stat) => stat === undefined)) return 'Unavailable';
+      const total = values.reduce<number>((sum, stat) => sum + (stat ?? 0), 0);
+      if (!label.endsWith('/G')) return String(total);
+      return gamesPlayed ? (total / gamesPlayed).toFixed(1) : 'Unavailable';
+    });
+    return [{
+      name: definition.name,
+      title: cleanCategoryTitle(definition.name, definition.name),
+      labels: ['GP', ...fields.map((field) => field.label)],
+      athletes: [{ ...player, shortName: player.name, stats: [gamesPlayed === null ? 'Unavailable' : String(gamesPlayed), ...stats] }],
+    }];
+  });
+}
+
+const nflPlayerSeasonBoxScoreCache = new Map<string, { timestamp: number; data: NFLPlayerSeasonBoxScore }>();
+
+export function selectNFLPregamePlayers(players: NFLSkillPlayer[]): NFLSkillPlayer[] {
+  const ranked = (positions: string[], usage: (player: NFLSkillPlayer) => number, limit: number) =>
+    players.filter((player) => positions.includes(player.position) && player.gamesWithUsage > 0)
+      .sort((first, second) => usage(second) - usage(first)
+        || second.gamesWithUsage - first.gamesWithUsage || first.name.localeCompare(second.name))
+      .slice(0, limit);
+  return [
+    ...ranked(['QB'], (player) => player.passingAttempts, 1),
+    ...ranked(['RB'], (player) => player.carries, 2),
+    ...ranked(['WR'], (player) => player.targets || player.receptions, 3),
+    ...ranked(['TE'], (player) => player.targets || player.receptions, 1),
+  ];
+}
+
+export async function fetchNFLPlayerSeasonBoxScore(
+  feedPath: string,
+  teamId: string,
+  seasonYear: number,
+  players: NFLSkillPlayer[],
+  signal?: AbortSignal,
+): Promise<NFLPlayerSeasonBoxScore> {
+  const roster = selectNFLPregamePlayers(players);
+  const cacheKey = `${feedPath}:${teamId}:${seasonYear}:${roster.map((player) => player.id).join(',')}`;
+  const cached = nflPlayerSeasonBoxScoreCache.get(cacheKey);
+  signal?.throwIfAborted();
+  if (cached && Date.now() - cached.timestamp < 300_000) return cached.data;
+  const categories = new Map<string, NFLBoxScoreCategory>();
+  let failedPlayers = 0;
+  for (let index = 0; index < roster.length; index += 6) {
+    signal?.throwIfAborted();
+    const results = await Promise.allSettled(roster.slice(index, index + 6).map(async (player) => {
+      const response = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/${feedPath}/athletes/${encodeURIComponent(player.id)}/stats?seasontype=2`, { signal });
+      if (!response.ok) throw new Error(`Player season statistics returned HTTP ${response.status}`);
+      return readNFLPlayerSeasonAverages(await response.json(), player, teamId, seasonYear);
+    }));
+    signal?.throwIfAborted();
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        failedPlayers += 1;
+        continue;
+      }
+      for (const category of result.value) {
+        if (!['passing', 'rushing', 'receiving'].includes(category.name)) continue;
+        if (category.name === 'passing') {
+          category.athletes = category.athletes.filter((player) => player.position === 'QB');
+          if (!category.athletes.length) continue;
+        }
+        const existing = categories.get(category.name);
+        if (existing) existing.athletes.push(...category.athletes);
+        else categories.set(category.name, category);
+      }
+    }
+  }
+  const order = ['passing', 'rushing', 'receiving', 'defensive', 'kicking', 'punting'];
+  const sortedCategories = [...categories.values()].sort((first, second) => order.indexOf(first.name) - order.indexOf(second.name));
+  for (const category of sortedCategories) {
+    const statIndex = category.labels.indexOf(category.name === 'defensive' ? 'TACK/G' : category.name === 'kicking' ? 'FG/G' : 'YDS/G');
+    category.athletes.sort((first, second) => (parseBoxscoreNumber(second.stats[statIndex]) ?? -Infinity)
+      - (parseBoxscoreNumber(first.stats[statIndex]) ?? -Infinity) || first.name.localeCompare(second.name));
+  }
+  const data = { teamId, categories: sortedCategories, failedPlayers };
+  if (failedPlayers === 0) nflPlayerSeasonBoxScoreCache.set(cacheKey, { timestamp: Date.now(), data });
+  return data;
+}
 
 export type NFLBoxScoreTeamStat = {
   name: string;
@@ -1431,4 +1642,3 @@ export function findAutomaticNFLGame(games: Game[], preferId?: string | null): G
   // 6. Default fallback to first game
   return nflGames[0] ?? null;
 }
-
