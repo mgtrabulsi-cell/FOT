@@ -976,19 +976,19 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
           ) : (
             /* Player Box Score View */
             <div className="wire-player-boxscore-view">
-              {isUpcoming && <p className="nfl-data-note" role="status">{seasonYear} REGULAR SEASON · PLAYER AVERAGES &amp; TD TOTALS<br />Up to 1 active QB, 2 RBs, 3 WRs, and 1 TE, ranked by recent passing attempts, carries, and receiving targets. Usage-ranked, not confirmed starters. GP is games played for {activeGameTeam?.name}; /G values are season totals divided by GP, not projections. PASS TD, RUSH TD, and REC TD show season touchdown totals for this team. After kickoff, all players reported in the game box score are shown, with live updates every 15 seconds.</p>}
+              {isUpcoming && <p className="nfl-data-note" role="status">{seasonYear} REGULAR SEASON · PLAYER TOTALS<br />Up to 1 active QB, 2 RBs, 3 WRs, and 1 TE, ranked by recent passing attempts, carries, and receiving targets. Usage-ranked, not confirmed starters. GP is games played for {activeGameTeam?.name}; all stats are season-to-date totals for this team, not averages or projections. After kickoff, all players reported in the game box score are shown, with live updates every 15 seconds.</p>}
               {isUpcoming && currentPlayerAverages && currentPlayerAverages.failedPlayers > 0 && (
                 <div className="wire-comparison-error" role="alert">
-                  <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player averages are shown below.</p>
-                  <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player averages</button>
+                  <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player totals are shown below.</p>
+                  <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player totals</button>
                 </div>
               )}
               {isUpcoming && playerAveragesLoading ? (
-                <div className="panel empty-games" role="status">Loading player season averages…</div>
+                <div className="panel empty-games" role="status">Loading player season totals…</div>
               ) : isUpcoming && playerAveragesFailed ? (
                 <div className="wire-comparison-error" role="alert">
-                  <p>Unable to load player season averages from ESPN.</p>
-                  <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player averages</button>
+                  <p>Unable to load player season totals from ESPN.</p>
+                  <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player totals</button>
                 </div>
               ) : categoriesToDisplay.length > 0 ? (
                 categoriesToDisplay.map((category) => (
@@ -1004,7 +1004,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                     </header>
 
                     <div className="wire-table-scroll-container">
-                      <table className="wire-stat-table" role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season per-game averages' : ''}`}>
+                      <table className="wire-stat-table" role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season totals' : ''}`}>
                         <thead role="rowgroup">
                           <tr role="row">
                             <th className="wire-col-athlete" scope="col" role="columnheader">Athlete</th>
@@ -1085,14 +1085,14 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                 ))
               ) : (
                 <div className="panel empty-games">
-                  No {activeCategoryFilter !== 'All' ? activeCategoryFilter.toLowerCase() : ''} {isUpcoming ? 'regular-season player averages available' : 'player statistics recorded'} for {activeGameTeam?.name ?? 'this team'} yet.
+                  No {activeCategoryFilter !== 'All' ? activeCategoryFilter.toLowerCase() : ''} {isUpcoming ? 'regular-season player totals available' : 'player statistics recorded'} for {activeGameTeam?.name ?? 'this team'} yet.
                 </div>
               )}
             </div>
           )}
 
           <p className="nfl-data-note">
-            {isUpcoming ? `${subTab === 'teamStats' ? 'Team' : 'Player'} averages are pulled from ESPN public regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics are pulled live from ESPN public game feeds. Updates reflect in real time.'}
+            {isUpcoming ? `${subTab === 'teamStats' ? 'Team averages' : 'Player totals'} are pulled from ESPN public regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics are pulled live from ESPN public game feeds. Updates reflect in real time.'}
           </p>
         </div>
       )}

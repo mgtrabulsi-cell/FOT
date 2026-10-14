@@ -1290,19 +1290,19 @@ export type NFLPlayerSeasonBoxScore = {
   failedPlayers: number;
 };
 
-export function readNFLPlayerSeasonAverages(
+export function readNFLPlayerSeasonTotals(
   payload: unknown,
   player: NFLRosterSkillPlayer,
   teamId: string,
   seasonYear: number,
 ): NFLBoxScoreCategory[] {
   const definitions = [
-    { name: 'passing', fields: ['completions', 'passingAttempts', 'passingYards', 'passingTouchdowns', 'interceptions'], labels: ['CMP/G', 'ATT/G', 'YDS/G', 'PASS TD', 'INT/G'] },
-    { name: 'rushing', fields: ['rushingAttempts', 'rushingYards', 'rushingTouchdowns'], labels: ['CAR/G', 'YDS/G', 'RUSH TD'] },
-    { name: 'receiving', fields: ['receptions', 'receivingTargets', 'receivingYards', 'receivingTouchdowns'], labels: ['REC/G', 'TGT/G', 'YDS/G', 'REC TD'] },
-    { name: 'defensive', fields: ['totalTackles', 'soloTackles', 'sacks', 'interceptions', 'passesDefended', 'fumblesForced'], labels: ['TACK/G', 'SOLO/G', 'SACK/G', 'INT/G', 'PD/G', 'FF/G'] },
-    { name: 'kicking', fields: ['fieldGoalsMade', 'fieldGoalAttempts', 'extraPointsMade', 'extraPointAttempts'], labels: ['FG/G', 'FGA/G', 'XP/G', 'XPA/G'] },
-    { name: 'punting', fields: ['punts', 'puntYards', 'puntsInside20'], labels: ['PUNT/G', 'YDS/G', 'IN20/G'] },
+    { name: 'passing', fields: ['completions', 'passingAttempts', 'passingYards', 'passingTouchdowns', 'interceptions'], labels: ['CMP', 'ATT', 'YDS', 'PASS TD', 'INT'] },
+    { name: 'rushing', fields: ['rushingAttempts', 'rushingYards', 'rushingTouchdowns'], labels: ['CAR', 'YDS', 'RUSH TD'] },
+    { name: 'receiving', fields: ['receptions', 'receivingTargets', 'receivingYards', 'receivingTouchdowns'], labels: ['REC', 'TGT', 'YDS', 'REC TD'] },
+    { name: 'defensive', fields: ['totalTackles', 'soloTackles', 'sacks', 'interceptions', 'passesDefended', 'fumblesForced'], labels: ['TACK', 'SOLO', 'SACK', 'INT', 'PD', 'FF'] },
+    { name: 'kicking', fields: ['fieldGoalsMade', 'fieldGoalAttempts', 'extraPointsMade', 'extraPointAttempts'], labels: ['FG', 'FGA', 'XP', 'XPA'] },
+    { name: 'punting', fields: ['punts', 'puntYards', 'puntsInside20'], labels: ['PUNT', 'YDS', 'IN20'] },
   ];
   const categories = asArray(asObject(payload).categories).map(asObject);
   return definitions.flatMap((definition) => {
@@ -1332,12 +1332,11 @@ export function readNFLPlayerSeasonAverages(
       return stat === undefined ? [] : [stat];
     }));
     if (recordedValues.length && recordedValues.every((stat) => stat === 0)) return [];
-    const stats = fields.map(({ name, label }) => {
+    const stats = fields.map(({ name }) => {
       const values = rows.map((row) => value(row, name));
       if (values.some((stat) => stat === undefined)) return 'Unavailable';
       const total = values.reduce<number>((sum, stat) => sum + (stat ?? 0), 0);
-      if (!label.endsWith('/G')) return String(total);
-      return gamesPlayed ? (total / gamesPlayed).toFixed(1) : 'Unavailable';
+      return String(total);
     });
     return [{
       name: definition.name,
@@ -1383,7 +1382,7 @@ export async function fetchNFLPlayerSeasonBoxScore(
     const results = await Promise.allSettled(roster.slice(index, index + 6).map(async (player) => {
       const response = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/${feedPath}/athletes/${encodeURIComponent(player.id)}/stats?seasontype=2`, { signal });
       if (!response.ok) throw new Error(`Player season statistics returned HTTP ${response.status}`);
-      return readNFLPlayerSeasonAverages(await response.json(), player, teamId, seasonYear);
+      return readNFLPlayerSeasonTotals(await response.json(), player, teamId, seasonYear);
     }));
     signal?.throwIfAborted();
     for (const result of results) {
@@ -1406,7 +1405,7 @@ export async function fetchNFLPlayerSeasonBoxScore(
   const order = ['passing', 'rushing', 'receiving', 'defensive', 'kicking', 'punting'];
   const sortedCategories = [...categories.values()].sort((first, second) => order.indexOf(first.name) - order.indexOf(second.name));
   for (const category of sortedCategories) {
-    const statIndex = category.labels.indexOf(category.name === 'defensive' ? 'TACK/G' : category.name === 'kicking' ? 'FG/G' : 'YDS/G');
+    const statIndex = category.labels.indexOf(category.name === 'defensive' ? 'TACK' : category.name === 'kicking' ? 'FG' : 'YDS');
     category.athletes.sort((first, second) => (parseBoxscoreNumber(second.stats[statIndex]) ?? -Infinity)
       - (parseBoxscoreNumber(first.stats[statIndex]) ?? -Infinity) || first.name.localeCompare(second.name));
   }
