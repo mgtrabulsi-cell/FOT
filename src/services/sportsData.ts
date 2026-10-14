@@ -1298,8 +1298,8 @@ export function readNFLPlayerSeasonTotals(
 ): NFLBoxScoreCategory[] {
   const definitions = [
     { name: 'passing', fields: ['completions', 'passingAttempts', 'passingYards', 'passingTouchdowns', 'interceptions'], labels: ['CMP', 'ATT', 'YDS', 'PASS TD', 'INT'] },
-    { name: 'rushing', fields: ['rushingAttempts', 'rushingYards', 'rushingTouchdowns'], labels: ['CAR', 'YDS', 'RUSH TD'] },
-    { name: 'receiving', fields: ['receptions', 'receivingTargets', 'receivingYards', 'receivingTouchdowns'], labels: ['REC', 'TGT', 'YDS', 'REC TD'] },
+    { name: 'rushing', fields: ['rushingAttempts', 'rushingYards', 'rushingTouchdowns', 'rushingFumbles'], labels: ['CAR', 'YDS', 'RUSH TD', 'FUM'] },
+    { name: 'receiving', fields: ['receptions', 'receivingTargets', 'receivingYards', 'receivingTouchdowns', 'receivingFumbles'], labels: ['REC', 'TGT', 'YDS', 'REC TD', 'FUM'] },
     { name: 'defensive', fields: ['totalTackles', 'soloTackles', 'sacks', 'interceptions', 'passesDefended', 'fumblesForced'], labels: ['TACK', 'SOLO', 'SACK', 'INT', 'PD', 'FF'] },
     { name: 'kicking', fields: ['fieldGoalsMade', 'fieldGoalAttempts', 'extraPointsMade', 'extraPointAttempts'], labels: ['FG', 'FGA', 'XP', 'XPA'] },
     { name: 'punting', fields: ['punts', 'puntYards', 'puntsInside20'], labels: ['PUNT', 'YDS', 'IN20'] },

@@ -256,7 +256,7 @@ button { color: inherit; }
 .nfl-feature-player:hover, .nfl-feature-player.selected { background: #f4f7f2; }
 .nfl-feature-player > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .nfl-player-avatar { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border-radius: 50%; border: 1px solid #dce3ed; background: #eef2f8; color: #536b8d; font: 500 9px var(--mono); }
-.nfl-player-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.nfl-player-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .nfl-player-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .nfl-player-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
 .nfl-player-copy small, .nfl-player-leader small { color: #849087; font: 8px var(--mono); }
@@ -951,7 +951,7 @@ td:first-child { color: #828c84; }
 /* Athlete Cell with Avatar, Name, Meta & Star */
 .wire-athlete-cell { display: flex; align-items: center; gap: 9px; }
 .wire-athlete-avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #1e2c40; flex: 0 0 28px; display: grid; place-items: center; font: 600 9px var(--mono); color: #8ba2c2; }
-.wire-athlete-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wire-athlete-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
 .wire-athlete-meta { display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
 .wire-player-card-button { min-height: 44px; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .wire-player-card-button:hover .wire-athlete-name { text-decoration: underline; }
@@ -1035,14 +1035,14 @@ td:first-child { color: #828c84; }
   .wire-season-table col.wire-season-athlete-column { width: 30%; }
   .wire-stat-table th, .wire-stat-table td { padding: 14px 16px; }
   .wire-category-title-wrap h3 { font-size: 18px; }
-  .wire-athlete-avatar { width: 52px; height: 52px; flex-basis: 52px; }
+  .wire-athlete-avatar { width: 60px; height: 60px; flex-basis: 60px; }
   .wire-athlete-name { font-size: 19px; }
   .wire-athlete-sub { font-size: 11px; }
-  .nfl-directory-player .nfl-player-avatar { width: 44px; height: 44px; }
+  .nfl-directory-player .nfl-player-avatar { width: 48px; height: 48px; }
   .nfl-directory-player-main { min-height: 54px; gap: 11px; }
   .nfl-directory-player-main > span:last-child b { font-size: 14px; }
   .nfl-directory-player-main > span:last-child small { font-size: 10px; }
-  .nfl-player-avatar-large { width: 64px; height: 64px; }
+  .nfl-player-avatar-large { width: 72px; height: 72px; }
   .nfl-player-dialog-heading h3 { font-size: 24px; }
 }
 

@@ -384,8 +384,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
     ? playerAverages.data : null;
   const categoriesToDisplay = (isUpcoming ? currentPlayerAverages?.categories ?? [] : activeBoxTeam?.categories ?? []).map((category) => {
     if (!isUpcoming || !['passing', 'rushing', 'receiving'].includes(category.name)) return category;
-    const slots = category.name === 'rushing' ? [0, 1, null, 2, 3, null]
-      : category.name === 'receiving' ? [0, 1, 2, 3, 4, null] : [0, 1, 2, 3, 4, 5];
+    const slots = category.name === 'rushing' ? [0, 1, null, 2, 3, 4] : [0, 1, 2, 3, 4, 5];
     return {
       ...category,
       labels: slots.map((index) => index === null ? '' : category.labels[index]),
