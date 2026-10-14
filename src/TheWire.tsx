@@ -382,7 +382,19 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
   // Filter categories
   const currentPlayerAverages = playerAverages && playerAverages.gameId === eventId && playerAverages.data.teamId === activeTeamId
     ? playerAverages.data : null;
-  const categoriesToDisplay = (isUpcoming ? currentPlayerAverages?.categories ?? [] : activeBoxTeam?.categories ?? []).filter((cat) => {
+  const categoriesToDisplay = (isUpcoming ? currentPlayerAverages?.categories ?? [] : activeBoxTeam?.categories ?? []).map((category) => {
+    if (!isUpcoming || !['passing', 'rushing', 'receiving'].includes(category.name)) return category;
+    const slots = category.name === 'rushing' ? [0, 1, null, 2, 3, null]
+      : category.name === 'receiving' ? [0, 1, 2, 3, 4, null] : [0, 1, 2, 3, 4, 5];
+    return {
+      ...category,
+      labels: slots.map((index) => index === null ? '' : category.labels[index]),
+      athletes: category.athletes.map((athlete) => ({
+        ...athlete,
+        stats: slots.map((index) => index === null ? '' : athlete.stats[index]),
+      })),
+    };
+  }).filter((cat) => {
     if (activeCategoryFilter === 'All') return true;
     if (activeCategoryFilter === 'Offense') return ['passing', 'rushing', 'receiving'].includes(cat.name);
     if (activeCategoryFilter === 'Defense') return ['defensive', 'interceptions', 'fumbles'].includes(cat.name);
@@ -1004,12 +1016,13 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                     </header>
 
                     <div className="wire-table-scroll-container">
-                      <table className="wire-stat-table" role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season totals' : ''}`}>
+                      <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season totals' : ''}`}>
+                        {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{category.labels.map((_, index) => <col key={index} />)}</colgroup>}
                         <thead role="rowgroup">
                           <tr role="row">
                             <th className="wire-col-athlete" scope="col" role="columnheader">Athlete</th>
                             {category.labels.map((lbl, idx) => (
-                              <th key={idx} className="wire-col-data" scope="col" role="columnheader">{lbl}</th>
+                              <th key={idx} className={`wire-col-data${!lbl ? ' wire-empty-stat' : ''}`} aria-hidden={!lbl || undefined} scope="col" role="columnheader">{lbl}</th>
                             ))}
                           </tr>
                         </thead>
@@ -1056,7 +1069,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                                 </div>
                               </td>
                               {athlete.stats.map((statVal, sIdx) => (
-                                <td key={sIdx} className="wire-col-data" role="cell">
+                                <td key={sIdx} className={`wire-col-data${!category.labels[sIdx] ? ' wire-empty-stat' : ''}`} aria-hidden={!category.labels[sIdx] || undefined} role="cell">
                                   <span className="wire-mobile-stat-label" aria-hidden="true">{category.labels[sIdx]}</span>
                                   {statVal}
                                 </td>

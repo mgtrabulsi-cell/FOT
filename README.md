@@ -27,6 +27,8 @@ Player Box Score only offers All and Offense filters before kickoff. Defense and
 
 All pregame Player Box Score columns show season-to-date totals for the selected team, including completions, attempts, yards, interceptions, receptions, targets, and touchdowns. Live and final box scores remain game-specific.
 
+Desktop pregame tables share fixed column widths across passing, rushing, and receiving, aligning player names, games played, yards, and touchdowns vertically. Unused stat slots stay blank rather than implying a value; mobile hides those slots and keeps the labeled stat grids.
+
 Pregame QB passing stats omit sacks per game. Live and final box scores retain the sacks reported by ESPN.
 
 Select a player's name in The Wire's pregame Player Box Score to open the same player card as Stat Hub, with position-specific draggable stat tabs, recent-game charts, and a favorite toggle. Closing the card keeps the current matchup and team selection.
