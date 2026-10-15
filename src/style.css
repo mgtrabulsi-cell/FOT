@@ -119,6 +119,8 @@ button { color: inherit; }
 .page-wrap { max-width: 1440px; padding: 31px 36px 25px; margin: 0 auto; }
 @media (min-width: 761px) { .page-wrap.players-zoom { zoom: 1.25; } }
 .page-heading { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
+.wire-page { padding-top: 8px; }
+.wire-page .page-heading { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 8px; }
 .date-line, .eyebrow { color: #78849a; font: 10px var(--mono); letter-spacing: .45px; }
 .date-line { display: flex; gap: 10px; align-items: center; }
 .date-divider { height: 12px; width: 1px; background: #cbd3e0; }
@@ -1050,8 +1052,8 @@ td:first-child { color: #828c84; }
 @media (max-width: 760px) {
   .wire-page { padding-top: 8px; }
   .wire-page .page-heading { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .wire-page .page-heading h1 { margin: 0; font-size: 20px; line-height: 1.2; }
-  .wire-page .page-heading .date-line, .wire-page .page-heading p, .wire-page .feed-status:not(.feed-status-warning) { display: none; }
+  .wire-page .page-heading .date-line { display: flex; font-size: 8px; }
+  .wire-page .date-line .date-divider, .wire-page .date-line > span:last-child { display: none; }
   .wire-page .heading-actions { flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .wire-page .date-button { min-height: 44px; padding: 6px 8px; font-size: 10px; }
   .wire-page .the-wire-container, .wire-page .wire-content { gap: 10px; }

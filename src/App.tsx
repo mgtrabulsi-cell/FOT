@@ -1106,16 +1106,18 @@ function App() {
         <div className="page-heading">
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
-            <h1>{view === 'Wire' ? 'The Wire' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : 'Stat Hub'}</h1>
-            <p>{view === 'Wire' ? 'Live box scores, team breakdowns, and player stats.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>
+            {view !== 'Wire' && <>
+              <h1>{view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : 'Stat Hub'}</h1>
+              <p>{view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>
+            </>}
           </div>
           <div className="heading-actions">
             {view !== 'Profile' && (
               <>
-                <span className={`feed-status${failedLeagues.length ? ' feed-status-warning' : ''}`}>
+                {(view !== 'Wire' || failedLeagues.length > 0) && <span className={`feed-status${failedLeagues.length ? ' feed-status-warning' : ''}`}>
                   <i />
-                  {failedLeagues.length ? 'FEED ISSUE' : view === 'Wire' ? 'LIVE BOX SCORE' : view === 'Den' ? 'LIVE FEED' : 'LIVE STATS'}
-                </span>
+                  {failedLeagues.length ? 'FEED ISSUE' : view === 'Den' ? 'LIVE FEED' : 'LIVE STATS'}
+                </span>}
                 <label className="date-button">
                   <Clock3 size={15} />
                   <span aria-hidden="true">{selectedNFLWeek === null ? (currentNFLWeek ? `Current · Week ${currentNFLWeek}` : 'Current NFL week') : `Week ${selectedNFLWeek}`}</span>
