@@ -1349,6 +1349,25 @@ export function readNFLPlayerSeasonTotals(
 
 const nflPlayerSeasonBoxScoreCache = new Map<string, { timestamp: number; data: NFLPlayerSeasonBoxScore }>();
 
+export function averageNFLPlayerSeasonCategory(category: NFLBoxScoreCategory): NFLBoxScoreCategory {
+  const gamesIndex = category.labels.indexOf('GP');
+  return {
+    ...category,
+    labels: category.labels.map((label) => label === 'GP' ? label : `${label}/G`),
+    athletes: category.athletes.map((athlete) => {
+      const games = parseBoxscoreNumber(athlete.stats[gamesIndex]);
+      return {
+        ...athlete,
+        stats: athlete.stats.map((stat, index) => {
+          if (index === gamesIndex) return stat;
+          const total = parseBoxscoreNumber(stat);
+          return games !== undefined && games > 0 && total !== undefined ? (total / games).toFixed(1) : 'Unavailable';
+        }),
+      };
+    }),
+  };
+}
+
 export function selectNFLPregamePlayers(players: NFLSkillPlayer[]): NFLSkillPlayer[] {
   const ranked = (positions: string[], usage: (player: NFLSkillPlayer) => number, limit: number) =>
     players.filter((player) => positions.includes(player.position) && player.gamesWithUsage > 0)
@@ -1358,8 +1377,8 @@ export function selectNFLPregamePlayers(players: NFLSkillPlayer[]): NFLSkillPlay
   return [
     ...ranked(['QB'], (player) => player.passingAttempts, 1),
     ...ranked(['RB'], (player) => player.carries, 2),
-    ...ranked(['WR'], (player) => player.targets || player.receptions, 3),
-    ...ranked(['TE'], (player) => player.targets || player.receptions, 1),
+    ...ranked(['WR'], (player) => player.targets || player.receptions, 4),
+    ...ranked(['TE'], (player) => player.targets || player.receptions, 2),
   ];
 }
 

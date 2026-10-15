@@ -12,6 +12,7 @@ import type {
   Team,
 } from './services/sportsData';
 import {
+  averageNFLPlayerSeasonCategory,
   fetchNFLBoxScore,
   fetchNFLGameDetails,
   fetchNFLPlayerSeasonBoxScore,
@@ -139,6 +140,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats'>('boxscore');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [playerStatMode, setPlayerStatMode] = useState<'total' | 'average'>('total');
   const [boxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);
   const [playerAverages, setPlayerAverages] = useState<{ gameId: string; data: NFLPlayerSeasonBoxScore; players: NFLSkillPlayer[] } | null>(null);
   const [playerAveragesLoading, setPlayerAveragesLoading] = useState(false);
@@ -209,8 +211,8 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
   const feedPath = selectedGame?.feedPath;
   const seasonYear = selectedGame?.seasonYear;
   const isUpcoming = selectedGame?.status === 'UPCOMING';
-  const categoryFilters = isUpcoming ? ['All', 'Offense'] : ['All', 'Offense', 'Defense', 'Special Teams'];
-  const activeCategoryFilter = categoryFilters.includes(categoryFilter) ? categoryFilter : 'All';
+  const categoryFilters = ['All', 'Offense', 'Defense', 'Special Teams'];
+  const activeCategoryFilter = isUpcoming ? 'All' : categoryFilter;
   const awayTeamId = selectedGame?.away.id;
   const homeTeamId = selectedGame?.home.id;
   const activeTeamId = selectedTeamSide === 'away' ? awayTeamId : homeTeamId;
@@ -382,7 +384,8 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
   // Filter categories
   const currentPlayerAverages = playerAverages && playerAverages.gameId === eventId && playerAverages.data.teamId === activeTeamId
     ? playerAverages.data : null;
-  const categoriesToDisplay = (isUpcoming ? currentPlayerAverages?.categories ?? [] : activeBoxTeam?.categories ?? []).map((category) => {
+  const categoriesToDisplay = (isUpcoming ? currentPlayerAverages?.categories ?? [] : activeBoxTeam?.categories ?? []).map((sourceCategory) => {
+    const category = isUpcoming && playerStatMode === 'average' ? averageNFLPlayerSeasonCategory(sourceCategory) : sourceCategory;
     if (!isUpcoming || !['passing', 'rushing', 'receiving'].includes(category.name)) return category;
     const slots = category.name === 'rushing' ? [0, 1, null, 2, 3, 4] : [0, 1, 2, 3, 4, 5];
     return {
@@ -882,7 +885,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
               </button>
             </div>
 
-            {subTab === 'boxscore' && (
+            {subTab === 'boxscore' && !isUpcoming && (
               <div className="wire-category-filters" role="tablist" aria-label="Stat category filter">
                 {categoryFilters.map((cat) => (
                   <button
@@ -898,6 +901,12 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
               </div>
             )}
           </div>
+          {isUpcoming && subTab === 'boxscore' && (
+            <div className="wire-stat-mode wire-subtabs" role="group" aria-label="Player season statistics display">
+              <button aria-pressed={playerStatMode === 'total'} className={playerStatMode === 'total' ? 'active' : ''} onClick={() => setPlayerStatMode('total')}>Total stats</button>
+              <button aria-pressed={playerStatMode === 'average'} className={playerStatMode === 'average' ? 'active' : ''} onClick={() => setPlayerStatMode('average')}>Avg stats</button>
+            </div>
+          )}
 
           {/* Main Body */}
           {loading && !boxScore && !isUpcoming ? (
@@ -987,10 +996,10 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
           ) : (
             /* Player Box Score View */
             <div className="wire-player-boxscore-view">
-              {isUpcoming && <p className="nfl-data-note" role="status">{seasonYear} REGULAR SEASON · PLAYER TOTALS<br />Up to 1 active QB, 2 RBs, 3 WRs, and 1 TE, ranked by recent passing attempts, carries, and receiving targets. Usage-ranked, not confirmed starters. GP is games played for {activeGameTeam?.name}; all stats are season-to-date totals for this team, not averages or projections. After kickoff, all players reported in the game box score are shown, with live updates every 15 seconds.</p>}
+              {isUpcoming && <p className="nfl-data-note" role="status">{seasonYear} REGULAR SEASON · PLAYER {playerStatMode === 'total' ? 'TOTALS' : 'PER-GAME AVERAGES'}<br />Up to 1 active QB, 2 RBs, 4 WRs, and 2 TEs, ranked by recent passing attempts, carries, and receiving targets. Usage-ranked, not confirmed starters. GP is games played for {activeGameTeam?.name}; {playerStatMode === 'total' ? 'stats are season-to-date totals for this team' : 'every /G stat is the season total for this team divided by the player’s GP, including touchdowns and fumbles'}, not projections. After kickoff, all players reported in the game box score are shown, with live updates every 15 seconds.</p>}
               {isUpcoming && currentPlayerAverages && currentPlayerAverages.failedPlayers > 0 && (
                 <div className="wire-comparison-error" role="alert">
-                  <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player totals are shown below.</p>
+                  <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player statistics are shown below.</p>
                   <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player totals</button>
                 </div>
               )}
@@ -1015,7 +1024,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                     </header>
 
                     <div className="wire-table-scroll-container">
-                      <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} style={{ '--wire-stat-count': category.labels.filter(Boolean).length } as React.CSSProperties} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season totals' : ''}`}>
+                      <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} style={{ '--wire-stat-count': category.labels.filter(Boolean).length } as React.CSSProperties} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? playerStatMode === 'total' ? ' season totals' : ' season per-game averages' : ''}`}>
                         {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{category.labels.map((_, index) => <col key={index} />)}</colgroup>}
                         <thead role="rowgroup">
                           <tr role="row">
@@ -1104,7 +1113,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
           )}
 
           <p className="nfl-data-note">
-            {isUpcoming ? `${subTab === 'teamStats' ? 'Team averages' : 'Player totals'} are pulled from ESPN public regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics are pulled live from ESPN public game feeds. Updates reflect in real time.'}
+            {isUpcoming ? `${subTab === 'teamStats' ? 'Team averages' : playerStatMode === 'total' ? 'Player totals' : 'Player per-game averages'} are pulled from ESPN public regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics are pulled live from ESPN public game feeds. Updates reflect in real time.'}
           </p>
         </div>
       )}
