@@ -505,7 +505,17 @@ td:first-child { color: #828c84; }
 .den-favorites .panel-heading h2, .den-timeline-heading h2 { margin: 4px 0 0; font: 500 20px var(--display); }
 .den-favorite-count { min-width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #eef3eb; color: #48644f; font: 10px var(--mono); }
 .den-favorite-list { display: grid; }
-.den-favorite { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 9px 1px; border-bottom: 1px solid #eff1ee; }
+.den-favorite { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 9px 1px; border-bottom: 1px solid #eff1ee; }
+.den-player-live { flex: 0 0 100%; min-width: 0; padding: 10px; background: #101928; border: 1px solid #34445b; border-radius: 5px; }
+.den-player-live-heading { display: flex; align-items: center; gap: 7px; font: 9px var(--mono); color: #bbc7d9; }
+.den-player-live-heading b { padding: 3px 5px; border-radius: 3px; background: #a51c28; color: #fff; }
+.den-player-live-heading span { min-width: 0; overflow-wrap: anywhere; }
+.den-player-stat-row { display: flex; margin: 10px 0 0; }
+.den-player-stat-row > div { flex: 1 1 0; min-width: 0; text-align: center; padding: 0 3px; }
+.den-player-stat-row > div + div { border-left: 1px solid #34445b; }
+.den-player-stat-row dt { color: #bbc7d9; font: 8px var(--mono); white-space: nowrap; }
+.den-player-stat-row dd { margin: 5px 0 0; color: #fff; font: 600 15px var(--mono); white-space: nowrap; }
+.den-player-live p { margin: 8px 0 0; color: #bbc7d9; font-size: 10px; line-height: 1.5; }
 .den-favorite-avatar { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: #edf2eb; color: #4e715a; font: 500 9px var(--mono); }
 .den-favorite-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .den-favorite > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }

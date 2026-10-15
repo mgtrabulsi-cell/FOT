@@ -113,4 +113,6 @@ The ESPN feeds used here are public, undocumented endpoints with no availability
 
 ## Favorites and Your Locker Room
 
+The Following > Players section shows a compact live game-stat row for favorited NFL players while their team is playing: WR/TE receptions/targets, receiving yards and receiving TD; RB rushes, rushing yards and rushing TD; QB completions/attempts, passing yards, passing TD and interceptions. Stats refresh every 15 seconds, with one summary request per relevant game. Missing feed values remain unavailable rather than being filled with zero; loading and refresh failures are shown explicitly. Pregame and completed games do not show a live stat row.
+
 Favorite a team from its game center or a player from their stats popup. Once signed in, favorites are saved to that user's Supabase account. Your Locker Room combines ESPN headlines matched to favorite names with score/status changes and big-play alerts for favorited NFL players. Scoreboards poll every 30 seconds, latest plays every 15 seconds during relevant live games, and news every five minutes. ESPN public feeds have no availability guarantee.
