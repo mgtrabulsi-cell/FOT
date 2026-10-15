@@ -12,8 +12,12 @@ select public.save_livewire_post('LIVEWIRE permission test', 'https://example.in
 do $$
 declare target uuid;
 begin
-  target := public.save_livewire_post('Own draft');
+  target := public.save_livewire_post('Own draft', null, null, 'Player headline');
+  assert (select title from public.livewire_posts where id = target) = 'Player headline', 'Headline saved';
   perform public.save_livewire_post('Own revised post', null, target);
+  assert (select title from public.livewire_posts where id = target) = 'Player headline', 'Legacy edits preserve headline';
+  perform public.save_livewire_post('Own revised post', null, target, 'Updated headline');
+  assert (select title from public.livewire_posts where id = target) = 'Updated headline', 'Headline edits saved';
   assert (select body from public.livewire_posts where id = target) = 'Own revised post', 'Admin can edit own posts';
   perform public.delete_livewire_post(target);
   assert not exists(select 1 from public.livewire_posts where id = target), 'Admin can delete own posts';
@@ -39,6 +43,18 @@ begin
     raise exception 'Oversized post accepted';
   exception when raise_exception then
     if sqlerrm <> 'Posts must contain 1 to 500 characters' then raise; end if;
+  end;
+  begin
+    perform public.save_livewire_post('Body', null, null, repeat('x', 121));
+    raise exception 'Oversized headline accepted';
+  exception when raise_exception then
+    if sqlerrm <> 'Titles must contain 1 to 120 characters' then raise; end if;
+  end;
+  begin
+    perform public.save_livewire_post('Body', null, null, '   ');
+    raise exception 'Blank headline accepted';
+  exception when raise_exception then
+    if sqlerrm <> 'Titles must contain 1 to 120 characters' then raise; end if;
   end;
   begin
     insert into public.livewire_roles values(auth.uid(), 'owner', 'Forged owner');

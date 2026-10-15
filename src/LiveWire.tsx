@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 
-type Post = { id: string; author_id: string | null; author_name: string; body: string; source_url: string | null; created_at: string; updated_at: string };
+type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; source_url: string | null; created_at: string; updated_at: string };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 
 function safeNewsLink(value: string): string | null {
@@ -25,6 +25,7 @@ export default function LiveWire({ user }: { user: User | null }) {
   const [limit, setLimit] = useState(20);
   const [hasMore, setHasMore] = useState(false);
   const [body, setBody] = useState('');
+  const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,15 +91,17 @@ export default function LiveWire({ user }: { user: User | null }) {
       event.preventDefault();
       if (!supabase || busy) return;
       if (source.trim() && !safeNewsLink(source.trim())) { setActionError('Use a valid http or https news link.'); return; }
-      void act(() => supabase!.rpc('save_livewire_post', { post_body: body, post_source: source.trim() || null, post_id: editing }), () => {
-        setBody(''); setSource(''); setEditing(null); setNotice(editing ? 'Post updated.' : 'Post published.');
+      void act(() => supabase!.rpc('save_livewire_post', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing }), () => {
+        setTitle(''); setBody(''); setSource(''); setEditing(null); setNotice(editing ? 'Post updated.' : 'Post published.');
       });
     }}>
-      <label htmlFor="livewire-body">{editing ? 'Edit post' : 'Create a post'}</label>
+      <label htmlFor="livewire-title">{editing ? 'Edit subject / title' : 'Subject / title'}</label>
+      <input id="livewire-title" maxLength={120} required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Give your post a headline..." disabled={busy} />
+      <label htmlFor="livewire-body">Post</label>
       <textarea id="livewire-body" maxLength={500} required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Player news, game reactions, and your latest takes..." disabled={busy} />
       <label htmlFor="livewire-source">News link <span>(optional)</span></label>
       <input id="livewire-source" type="url" maxLength={2048} value={source} onChange={(event) => setSource(event.target.value)} placeholder="https://..." disabled={busy} />
-      <div className="livewire-actions"><small>{body.length}/500</small>{editing && <button type="button" disabled={busy} onClick={() => { setEditing(null); setBody(''); setSource(''); }}>Cancel edit</button>}<button className="livewire-publish" disabled={busy || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
+      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small>{editing && <button type="button" disabled={busy} onClick={() => { setEditing(null); setTitle(''); setBody(''); setSource(''); }}>Cancel edit</button>}<button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
@@ -106,16 +109,20 @@ export default function LiveWire({ user }: { user: User | null }) {
       {!loaded && !error && <p>Loading LIVEWIRE...</p>}
       {loaded && !posts.length && <p className="livewire-empty">No posts yet. News and takes from GameWire admins will appear here.</p>}
       {posts.map((post) => <article className="livewire-post" key={post.id}>
-        <header><b>{post.author_name}</b><time dateTime={post.created_at}>{new Date(post.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{post.updated_at !== post.created_at ? ' · Edited' : ''}</time></header>
+        <span className="livewire-avatar" aria-hidden="true">{post.author_name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('').toUpperCase()}</span>
+        <div className="livewire-post-content">
+        <header><b>{post.author_name}</b><time dateTime={post.created_at}>{new Date(post.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{post.updated_at !== post.created_at ? ' · Edited' : ''}</time></header>
+        {post.title && <h3>{post.title}</h3>}
         <p>{post.body}</p>
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
-          <button disabled={busy} onClick={() => { setEditing(post.id); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
+          <button disabled={busy} onClick={() => { setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {
-            if (editing === post.id) { setEditing(null); setBody(''); setSource(''); }
+            if (editing === post.id) { setEditing(null); setTitle(''); setBody(''); setSource(''); }
             setNotice('Post deleted.');
           }); }}>Delete</button>
         </div>}
+        </div>
       </article>)}
     </div>
     {hasMore && <button className="livewire-more" onClick={() => setLimit((value) => value + 20)}>Load older posts</button>}

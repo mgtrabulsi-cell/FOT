@@ -148,8 +148,12 @@ button { color: inherit; }
 .livewire-panel :is(button, input, textarea, summary):focus-visible { outline: 2px solid #cc2633; outline-offset: 3px; }
 .livewire-panel .livewire-publish { background: #a51c28; border-color: #cc2633; color: #fff; margin-left: auto; }
 .livewire-actions small, .livewire-post time, .livewire-admins p { color: #bbc7d9; font-size: 11px; }
-.livewire-post { padding: 16px 0; border-top: 1px solid #35445b; }
-.livewire-post header { font-size: 12px; }
+.livewire-post { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 18px 0; border-top: 1px solid #35445b; }
+.livewire-avatar { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #24334a; color: #e5eaf3; font-size: 11px; font-weight: 700; }
+.livewire-post-content { min-width: 0; }
+.livewire-post header { justify-content: flex-start; font-size: 12px; overflow-wrap: anywhere; }
+.livewire-post h3 { margin: 9px 0 6px; color: #edf2f8; font: 600 23px/1.25 var(--display); overflow-wrap: anywhere; }
+.livewire-post time { font-family: var(--mono); }
 .livewire-post p { font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .livewire-post a { display: inline-block; margin-bottom: 10px; color: #9db9df; font-size: 12px; }
 .livewire-post .livewire-actions { justify-content: flex-end; }

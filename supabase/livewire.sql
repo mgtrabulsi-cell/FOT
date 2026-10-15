@@ -1,3 +1,5 @@
+begin;
+
 create table if not exists public.livewire_roles (
   user_id uuid primary key references auth.users(id) on delete cascade,
   role text not null check (role in ('owner', 'admin')),
@@ -13,6 +15,8 @@ create table if not exists public.livewire_posts (
   updated_at timestamptz not null default now()
 );
 create index if not exists livewire_posts_created_idx on public.livewire_posts(created_at desc, id desc);
+alter table public.livewire_posts add column if not exists title text
+  check (title is null or char_length(btrim(title)) between 1 and 120);
 alter table public.livewire_roles enable row level security;
 alter table public.livewire_posts enable row level security;
 
@@ -31,7 +35,8 @@ revoke all on public.livewire_roles, public.livewire_posts from public, anon, au
 grant select on public.livewire_posts to anon, authenticated;
 grant select on public.livewire_roles to authenticated;
 
-create or replace function public.save_livewire_post(post_body text, post_source text default null, post_id uuid default null)
+drop function if exists public.save_livewire_post(text,text,uuid);
+create or replace function public.save_livewire_post(post_body text, post_source text default null, post_id uuid default null, post_title text default null)
 returns uuid language plpgsql security definer set search_path = ''
 as $$
 declare
@@ -43,15 +48,18 @@ begin
   if post_body is null or char_length(btrim(post_body)) not between 1 and 500 then
     raise exception 'Posts must contain 1 to 500 characters';
   end if;
+  if post_title is not null and char_length(btrim(post_title)) not between 1 and 120 then
+    raise exception 'Titles must contain 1 to 120 characters';
+  end if;
   post_source := nullif(btrim(post_source), '');
   if post_source is not null and (char_length(post_source) > 2048 or post_source !~* '^https?://[^[:space:]]+$') then
     raise exception 'Use a valid http or https news link';
   end if;
   if post_id is null then
-    insert into public.livewire_posts(author_id, author_name, body, source_url)
-    values (actor.user_id, actor.display_name, btrim(post_body), post_source) returning id into result;
+    insert into public.livewire_posts(author_id, author_name, title, body, source_url)
+    values (actor.user_id, actor.display_name, btrim(post_title), btrim(post_body), post_source) returning id into result;
   else
-    update public.livewire_posts set body = btrim(post_body), source_url = post_source, updated_at = clock_timestamp()
+    update public.livewire_posts set title = coalesce(btrim(post_title), title), body = btrim(post_body), source_url = post_source, updated_at = clock_timestamp()
     where id = post_id and (author_id = actor.user_id or actor.role = 'owner') returning id into result;
     if result is null then raise exception 'Post not found or editing is not permitted'; end if;
   end if;
@@ -88,7 +96,9 @@ begin
   end if;
 end;
 $$;
-revoke all on function public.save_livewire_post(text,text,uuid), public.delete_livewire_post(uuid),
+revoke all on function public.save_livewire_post(text,text,uuid,text), public.delete_livewire_post(uuid),
   public.manage_livewire_admin(text,uuid) from public, anon;
-grant execute on function public.save_livewire_post(text,text,uuid), public.delete_livewire_post(uuid),
+grant execute on function public.save_livewire_post(text,text,uuid,text), public.delete_livewire_post(uuid),
   public.manage_livewire_admin(text,uuid) to authenticated;
+
+commit;
