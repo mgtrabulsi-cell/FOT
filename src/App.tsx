@@ -279,6 +279,7 @@ function NFLPlayerMiniWindow({ player, team, isFavorite, onToggleFavorite, onClo
     ],
     WR: [
       { key: 'receptions', label: 'Receptions' },
+      { key: 'targets', label: 'Targets' },
       { key: 'receivingYards', label: 'Rec yards' },
       { key: 'rushingReceivingTouchdowns', label: 'Rushing + Receiving TD' },
       { key: 'rushingYards', label: 'Rush yards' },
@@ -286,6 +287,7 @@ function NFLPlayerMiniWindow({ player, team, isFavorite, onToggleFavorite, onClo
     ],
     TE: [
       { key: 'receptions', label: 'Receptions' },
+      { key: 'targets', label: 'Targets' },
       { key: 'receivingYards', label: 'Rec yards' },
       { key: 'rushingReceivingTouchdowns', label: 'Rushing + Receiving TD' },
       { key: 'rushingYards', label: 'Rush yards' },

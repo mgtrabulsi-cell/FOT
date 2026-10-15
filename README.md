@@ -19,6 +19,8 @@ Desktop views use an 85% interface scale, with a compact matchup scoreboard and 
 
 The original navy-blue theme uses bold crimson (`#cc2633`) for selection indicators, live accents, and Stat Hub chart bars. Filled red controls use a deeper crimson with white labels for readability; official team colors remain unchanged.
 
+Player cards use slimmer per-game chart bars. Wide receiver and tight end cards include Targets in the draggable stat wheel, using ESPN's game box-score values and retaining unavailable values rather than estimating them.
+
 The Wire omits the large page title, description, and normal feed-status label on desktop and mobile, keeping a compact date/week row immediately below navigation so games and stats appear sooner. Feed warnings remain visible.
 
 On mobile, The Wire player box scores place each player's labeled stats on one compact horizontal row, with all stats visible without scrolling or wrapping into another row. Player identity stays above that row. The compact scoreboard uses stacked team rows with logos and names on the left and scores on the right. Stat Hub remains unchanged: its player-popup stat types retain a single horizontally scrollable, draggable row with touch-sized controls and a chart that fits the dialog width. The game selection wheels remain horizontally draggable.
