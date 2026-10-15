@@ -1067,6 +1067,9 @@ td:first-child { color: #828c84; }
   .date-button { min-height: 44px; }
   .search-field { min-height: 44px; }
   .wire-subtabs button, .wire-category-filters button, .nfl-directory-position-bar button { min-height: 44px; }
+  .nfl-directory-position-bar .sport-filter button { position: relative; min-width: 44px; padding: 0 10px 10px; text-align: center; }
+  .nfl-directory-position-bar .sport-filter button.active { box-shadow: none; }
+  .nfl-directory-position-bar .sport-filter button.active::after { content: ''; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; background: var(--coral); }
   .wire-category-filters { flex-wrap: wrap; overflow: visible; }
   .wire-comparison-header { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
   .wire-comparison-header > .eyebrow { grid-column: 1 / -1; grid-row: 1; line-height: 1.5; }
