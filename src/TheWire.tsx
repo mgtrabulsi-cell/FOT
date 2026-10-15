@@ -996,7 +996,6 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
           ) : (
             /* Player Box Score View */
             <div className="wire-player-boxscore-view">
-              {isUpcoming && <p className="nfl-data-note" role="status">{seasonYear} REGULAR SEASON · PLAYER {playerStatMode === 'total' ? 'TOTALS' : 'PER-GAME AVERAGES'}<br />Passing: 1 active QB ranked by recent passing attempts. Rushing: top 2 active RBs by season rushing yards. Receiving: top 6 active WRs/TEs by season receiving yards, when available. These are statistical rankings, not confirmed starters. GP is games played for {activeGameTeam?.name}; {playerStatMode === 'total' ? 'stats are season-to-date totals for this team' : 'every /G stat is the season total for this team divided by the player’s GP, including touchdowns and fumbles'}, not projections. After kickoff, all players reported in the game box score are shown, with live updates every 15 seconds.</p>}
               {isUpcoming && currentPlayerAverages && currentPlayerAverages.failedPlayers > 0 && (
                 <div className="wire-comparison-error" role="alert">
                   <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player statistics are shown below.</p>
