@@ -17,6 +17,8 @@ The VS Code task **Start GameWire dev server** is also configured for launching 
 
 Desktop views use an 85% interface scale, with a compact matchup scoreboard and larger player names and headshots in The Wire, Stat Hub's player directory, and player cards. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
 
+The site background, navigation, sign-in backdrop, and app launch screen use a neutral charcoal gray (`#252627`), with darker cards retained for contrast.
+
 The Wire omits the large page title, description, and normal feed-status label on desktop and mobile, keeping a compact date/week row immediately below navigation so games and stats appear sooner. Feed warnings remain visible.
 
 On mobile, The Wire player box scores place each player's labeled stats on one compact horizontal row, with all stats visible without scrolling or wrapping into another row. Player identity stays above that row. The compact scoreboard uses stacked team rows with logos and names on the left and scores on the right. Stat Hub remains unchanged: its player-popup stat types retain a single horizontally scrollable, draggable row with touch-sized controls and a chart that fits the dialog width. The game selection wheels remain horizontally draggable.
