@@ -1376,9 +1376,7 @@ export function selectNFLPregamePlayers(players: NFLSkillPlayer[]): NFLSkillPlay
       .slice(0, limit);
   return [
     ...ranked(['QB'], (player) => player.passingAttempts, 1),
-    ...ranked(['RB'], (player) => player.carries, 2),
-    ...ranked(['WR'], (player) => player.targets || player.receptions, 4),
-    ...ranked(['TE'], (player) => player.targets || player.receptions, 2),
+    ...players.filter((player) => ['RB', 'WR', 'TE'].includes(player.position)),
   ];
 }
 
@@ -1411,10 +1409,10 @@ export async function fetchNFLPlayerSeasonBoxScore(
       }
       for (const category of result.value) {
         if (!['passing', 'rushing', 'receiving'].includes(category.name)) continue;
-        if (category.name === 'passing') {
-          category.athletes = category.athletes.filter((player) => player.position === 'QB');
-          if (!category.athletes.length) continue;
-        }
+        category.athletes = category.athletes.filter((player) => category.name === 'passing'
+          ? player.position === 'QB' : category.name === 'rushing'
+            ? player.position === 'RB' : ['WR', 'TE'].includes(player.position ?? ''));
+        if (!category.athletes.length) continue;
         const existing = categories.get(category.name);
         if (existing) existing.athletes.push(...category.athletes);
         else categories.set(category.name, category);
@@ -1427,6 +1425,7 @@ export async function fetchNFLPlayerSeasonBoxScore(
     const statIndex = category.labels.indexOf(category.name === 'defensive' ? 'TACK' : category.name === 'kicking' ? 'FG' : 'YDS');
     category.athletes.sort((first, second) => (parseBoxscoreNumber(second.stats[statIndex]) ?? -Infinity)
       - (parseBoxscoreNumber(first.stats[statIndex]) ?? -Infinity) || first.name.localeCompare(second.name));
+    category.athletes = category.athletes.slice(0, category.name === 'passing' ? 1 : category.name === 'rushing' ? 2 : 6);
   }
   const data = { teamId, categories: sortedCategories, failedPlayers };
   if (failedPlayers === 0) nflPlayerSeasonBoxScoreCache.set(cacheKey, { timestamp: Date.now(), data });

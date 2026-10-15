@@ -1103,23 +1103,23 @@ td:first-child { color: #828c84; }
   .wire-athlete-sub { font-size: 11px; }
   .wire-star { min-width: 44px; min-height: 44px; }
   .wire-stat-table tr.wire-totals-row td { border-top: 0; }
-  .wire-hero-banner { padding: 10px; gap: 8px; }
-  .wire-matchup-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; align-items: center; }
-  .wire-matchup-team { display: grid; grid-template-columns: 68px minmax(0, 1fr) 44px; align-items: center; gap: 8px; }
+  .wire-hero-banner { padding: 14px; gap: 8px; }
+  .wire-matchup-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: center; }
+  .wire-matchup-team { display: grid; grid-template-columns: 48px minmax(0, 1fr) 44px; align-items: center; gap: 12px; min-height: 80px; }
   .wire-matchup-team.wire-team-left, .wire-matchup-team.wire-team-right { justify-content: start; text-align: left; }
-  .wire-matchup-mark-wrapper { grid-column: 1; grid-row: 1; flex-direction: row; gap: 0; }
-  .wire-matchup-mark-wrapper .team-mark-large { width: 32px; height: 32px; }
+  .wire-matchup-mark-wrapper { grid-column: 1; grid-row: 1; flex-direction: column; gap: 4px; }
+  .wire-matchup-mark-wrapper .team-mark-large { width: 48px; height: 48px; }
   .wire-matchup-mark-wrapper .favorite-star-button { min-width: 32px; min-height: 32px; }
   .wire-matchup-team.wire-team-left .wire-matchup-team-details, .wire-matchup-team.wire-team-right .wire-matchup-team-details { grid-column: 2; grid-row: 1; margin: 0; text-align: left; justify-items: start; min-width: 0; }
-  .wire-matchup-team-details h2 { font-size: 12px; line-height: 1.25; overflow-wrap: anywhere; }
+  .wire-matchup-team-details h2 { font-size: clamp(16px, 4.2vw, 20px); line-height: 1.15; overflow-wrap: anywhere; }
   .wire-matchup-team-details b { font-size: 11px; color: #e5edf8; }
-  .wire-matchup-team-details small { font-size: 9px; }
+  .wire-matchup-team-details small { font-size: 11px; }
   .wire-matchup-score { grid-column: 3; grid-row: 1; font-size: 26px; min-width: 0; text-align: center; }
-  .wire-matchup-center { grid-column: 1 / -1; grid-row: 1; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #223247; min-width: 0; }
-  .wire-matchup-center .wire-primetime-pill { font-size: 8px; }
-  .wire-matchup-center .wire-status-pill { font-size: 10px; padding: 4px 8px; }
-  .wire-matchup-center .wire-venue-line { justify-content: center; font-size: 9px; }
-  .wire-matchup-center .wire-stathub-link { min-height: 32px; }
+  .wire-matchup-center { grid-column: 1 / -1; grid-row: 1; flex-direction: column; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #223247; min-width: 0; }
+  .wire-matchup-center .wire-primetime-pill { font-size: 10px; }
+  .wire-matchup-center .wire-status-pill { font-size: 11px; padding: 5px 12px; }
+  .wire-matchup-center .wire-venue-line { justify-content: center; font-size: 11px; }
+  .wire-matchup-center .wire-stathub-link { min-height: 24px; }
   .wire-team-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .wire-team-half { padding: 8px; gap: 6px; min-width: 0; }
   .wire-team-half-content, .wire-team-half-left { min-width: 0; gap: 6px; }
