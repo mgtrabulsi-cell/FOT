@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { ArrowLeft, Bell, CalendarDays, KeyRound, Mail } from 'lucide-react';
+import { ArrowLeft, Bell, CalendarDays, CheckCircle2, KeyRound, Mail } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { disablePushNotifications, enablePushNotifications, getPushSettings, hasPushConfiguration, sendTestPushNotification, supportsPushNotifications, updatePushPreference } from './services/pushNotifications';
 
@@ -14,30 +14,47 @@ function PushNotificationSettings({ user }: { user: User }) {
   const [testBusy, setTestBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsRetry, setSettingsRetry] = useState(0);
 
   useEffect(() => {
     let active = true;
+    let requestId = 0;
     const pushSupported = supportsPushNotifications();
     setSupported(pushSupported);
     setConfigured(hasPushConfiguration());
-    if (!pushSupported) {
+    if (!pushSupported || !hasPushConfiguration()) {
       setChecking(false);
       return () => { active = false; };
     }
 
-    setChecking(true);
-    void getPushSettings(user.id).then((settings) => {
-      if (!active) return;
-      setEnabled(settings.enabled);
-      setNotifyScores(settings.notifyScores);
-      setError('');
-    }).catch(() => {
-      if (active) setError('Could not load this device’s notification settings.');
-    }).finally(() => {
-      if (active) setChecking(false);
-    });
-    return () => { active = false; };
-  }, [user.id]);
+    const checkSettings = () => {
+      const currentRequest = ++requestId;
+      setChecking(true);
+      void getPushSettings(user.id).then((settings) => {
+        if (!active || currentRequest !== requestId) return;
+        setEnabled(settings.enabled);
+        setNotifyScores(settings.notifyScores);
+        setSettingsError('');
+      }).catch(() => {
+        if (active && currentRequest === requestId) {
+          setEnabled(false);
+          setSettingsError('Could not confirm this device’s notification status.');
+        }
+      }).finally(() => {
+        if (active && currentRequest === requestId) setChecking(false);
+      });
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') checkSettings(); };
+    checkSettings();
+    window.addEventListener('focus', checkSettings);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', checkSettings);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user.id, settingsRetry]);
 
   const enable = async () => {
     setBusy(true);
@@ -96,7 +113,8 @@ function PushNotificationSettings({ user }: { user: User }) {
   };
 
   return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>New LIVEWIRE posts, plus game updates for teams and players you follow.</small></div></header><div className="account-setting-form push-settings-form">
-    {!supported ? <p className="nfl-empty-note">This browser does not support push notifications.</p> : !configured ? <p className="auth-config-note">Push is not configured for this site yet.</p> : checking ? <p className="nfl-empty-note">Checking this device…</p> : enabled ? <>
+    {!supported ? <p className="nfl-empty-note">This browser does not support push notifications.</p> : !configured ? <p className="auth-config-note">Push is not configured for this site yet.</p> : checking ? <p className="nfl-empty-note">Checking this device…</p> : settingsError ? <p className="auth-error" role="alert">{settingsError} <button type="button" onClick={() => setSettingsRetry((value) => value + 1)}>Retry</button></p> : enabled ? <>
+      <p className="push-enabled-status" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span><b>Notifications enabled</b><small>Active on this device · LIVEWIRE post alerts are on.</small></span></p>
       <label className="push-preference"><input type="checkbox" checked={notifyScores} onChange={(event) => void updatePreference(event.target.checked)} />Favorite game score and status changes</label>
       <div className="push-actions"><button type="button" onClick={() => void sendTest()} disabled={testBusy}>{testBusy ? 'Sending…' : 'Send test notification'}</button><button type="button" className="push-disable-button" onClick={() => void disable()} disabled={busy}>{busy ? 'Updating…' : 'Turn off on this device'}</button></div>
     </> : <button type="button" onClick={() => void enable()} disabled={busy}>{busy ? 'Enabling…' : 'Enable on this device'}</button>}
@@ -166,7 +184,7 @@ export default function ProfilePage({ user, onBack }: { user: User; onBack: () =
     <header className="account-profile-heading"><div><span className="eyebrow">ACCOUNT</span><h2>Profile</h2></div><button className="account-back-button" onClick={onBack}><ArrowLeft size={15} />Back to GameWire</button></header>
     <section className="account-profile-summary"><span className="account-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-profile-identity"><b>{displayName}</b><small>{currentEmail}</small></span><span className="account-joined"><CalendarDays size={15} /><span><small>JOINED</small><b>{joinedAt}</b></span></span></section>
     <div className="account-settings-grid">
-      <PushNotificationSettings user={user} />
+      <PushNotificationSettings key={user.id} user={user} />
       <section className="account-setting"><header><Mail size={16} /><div><b>Email address</b><small>Update the address used to sign in.</small></div></header><form className="account-setting-form" onSubmit={updateEmail}><label>New email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>{emailError && <p className="auth-error" role="alert">{emailError}</p>}{emailMessage && <p className="auth-notice" role="status">{emailMessage}</p>}<button type="submit" disabled={emailBusy}>{emailBusy ? 'Sending confirmation…' : 'Change email'}</button></form></section>
       <section className="account-setting"><header><KeyRound size={16} /><div><b>Password</b><small>Choose a new password for your account.</small></div></header><form className="account-setting-form" onSubmit={updatePassword}><label>New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} /></label><label>Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} /></label>{passwordError && <p className="auth-error" role="alert">{passwordError}</p>}{passwordMessage && <p className="auth-notice" role="status">{passwordMessage}</p>}<button type="submit" disabled={passwordBusy}>{passwordBusy ? 'Updating…' : 'Change password'}</button></form></section>
     </div>

@@ -17,6 +17,9 @@ export async function getPushSettings(userId: string) {
   if (!supportsPushNotifications() || !supabase) {
     return { supported: supportsPushNotifications(), enabled: false, notifyScores: true };
   }
+  if (Notification.permission !== 'granted') {
+    return { supported: true, enabled: false, notifyScores: true };
+  }
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return { supported: true, enabled: false, notifyScores: true };
@@ -27,7 +30,7 @@ export async function getPushSettings(userId: string) {
     .eq('endpoint', subscription.endpoint)
     .maybeSingle();
   if (error) throw error;
-  return { supported: true, enabled: Boolean(data), notifyScores: data?.notify_scores ?? true };
+  return { supported: true, enabled: Notification.permission === 'granted' && Boolean(data), notifyScores: data?.notify_scores ?? true };
 }
 
 export async function enablePushNotifications(userId: string, notifyScores: boolean) {
