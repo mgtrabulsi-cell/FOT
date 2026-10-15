@@ -97,6 +97,12 @@ Run [`supabase/tests/livewire.sql`](supabase/tests/livewire.sql) through the SQL
 
 ## Mobile push notifications
 
+Every newly published titled LIVEWIRE post queues a push to all devices with notifications enabled, independent of favorites or the score-alert checkbox. Its title is exactly `LIVEWIRE: <subject>` and its body is empty; the post text is not included. Edits do not send another notification, and old posts are not broadcast when this feature is installed. Tapping the alert opens the standalone LIVEWIRE section at the correct deployment base path. Browser/OS notification permission and delivery policies still apply.
+
+After applying `livewire.sql`, deploy `send-livewire-push` and run [`supabase/livewire-notifications.sql`](supabase/livewire-notifications.sql). This uses the existing `gamewire-poll-url` and `gamewire-poll-secret` Vault entries and `GAMEWIRE_CRON_SECRET`/VAPID function secrets. The private delivery queue is processed every minute (typically the next minute after publishing), in batches of 100 with leased claims and retries for transient failures. Expired device subscriptions are removed. Delivery failures are recorded in `livewire_push_deliveries.last_error` and Edge Function logs. Push-provider acceptance is not a guarantee of device display; an interrupted send can be retried, with the post-specific notification tag replacing duplicate alerts where supported. Run [`supabase/tests/livewire-notifications.sql`](supabase/tests/livewire-notifications.sql) for rollback-only queue/permission tests.
+
+Run `deno test --allow-env --allow-net supabase/functions/send-livewire-push/index.test.ts` to verify headline-only payloads, authorization, disabled-device handling, and retries against mocked providers (no real notifications are sent).
+
 GameWire can send score and status changes for games involving a user's favorite teams or players. Push alerts require an HTTPS deployment; on iPhone, install GameWire from Safari's Share menu to the Home Screen before enabling notifications.
 
 1. Re-run [`supabase/schema.sql`](supabase/schema.sql) in the connected Supabase project. It creates the per-device push subscription and private game-state tables.

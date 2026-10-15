@@ -95,7 +95,7 @@ function PushNotificationSettings({ user }: { user: User }) {
     }
   };
 
-  return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>Game updates for teams and players you follow.</small></div></header><div className="account-setting-form push-settings-form">
+  return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>New LIVEWIRE posts, plus game updates for teams and players you follow.</small></div></header><div className="account-setting-form push-settings-form">
     {!supported ? <p className="nfl-empty-note">This browser does not support push notifications.</p> : !configured ? <p className="auth-config-note">Push is not configured for this site yet.</p> : checking ? <p className="nfl-empty-note">Checking this device…</p> : enabled ? <>
       <label className="push-preference"><input type="checkbox" checked={notifyScores} onChange={(event) => void updatePreference(event.target.checked)} />Favorite game score and status changes</label>
       <div className="push-actions"><button type="button" onClick={() => void sendTest()} disabled={testBusy}>{testBusy ? 'Sending…' : 'Send test notification'}</button><button type="button" className="push-disable-button" onClick={() => void disable()} disabled={busy}>{busy ? 'Updating…' : 'Turn off on this device'}</button></div>

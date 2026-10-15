@@ -632,7 +632,17 @@ function App() {
   const [splashReplay, setSplashReplay] = useState(0);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [guestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
-  const [view, setView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile'>('Wire');
+  const [view, setView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile'>(() => window.location.hash === '#livewire' ? 'LiveWire' : 'Wire');
+  useEffect(() => {
+    const openNotification = () => {
+      if (window.location.hash === '#livewire') {
+        setView('LiveWire');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+    window.addEventListener('hashchange', openNotification);
+    return () => window.removeEventListener('hashchange', openNotification);
+  }, []);
   const [profileReturnView, setProfileReturnView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den'>('Wire');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());

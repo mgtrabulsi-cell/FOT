@@ -2,6 +2,7 @@ import {
   ApplicationServer,
   importVapidKeys,
   PushMessageError,
+  Urgency,
   type PushSubscription,
 } from 'jsr:@negrel/webpush@0.5.0';
 
@@ -21,7 +22,7 @@ export async function sendWebPush(
   payload: Record<string, unknown>,
 ) {
   await server.subscribe(subscription as PushSubscription)
-    .pushTextMessage(JSON.stringify(payload), { ttl: 300, urgency: 'high' });
+    .pushTextMessage(JSON.stringify(payload), { ttl: 300, urgency: Urgency.High });
 }
 
 export function isExpiredPushSubscription(error: unknown) {
