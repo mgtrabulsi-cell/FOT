@@ -9,8 +9,10 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLLivePlayerStats, fetchScoreboards, findAutomaticNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
-import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
+import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchScoreboards, findAutomaticNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
+import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
+import { useLockerRoomHistory } from './useLockerRoomHistory';
+import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory } from './useLockerRoomHistory';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
 import ProfilePage from './ProfilePage';
@@ -18,24 +20,6 @@ import TheWire from './TheWire';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
 
-
-type DenScoreItem = {
-  id: string;
-  kind: 'score';
-  favoriteKey: string;
-  favoriteName: string;
-  timestamp: string;
-  league: string;
-  away: Team;
-  home: Team;
-  status: Game['status'];
-  period: string;
-  clock: string;
-};
-
-type DenNewsFeedItem = DenNewsItem & { kind: 'news' };
-type DenPlayItem = NFLFavoritePlay & { kind: 'play' };
-type DenItem = DenNewsFeedItem | DenScoreItem;
 
 const guestFavoriteStorageKey = 'fieldhouse:favorites:v1';
 const lockerRoomScoresStorageKey = 'gamewire:locker:scores:v1';
@@ -577,13 +561,7 @@ function NFLFavorableMatchups({ games }: { games: Game[] }) {
   </section>;
 }
 
-type LockerRoomGameStats = {
-  players?: Record<string, Partial<Record<NFLPlayerStatKey, number>>>;
-  error?: string;
-};
-
-function LockerRoomPlayerStats({ favorite, game, result }: { favorite: FavoriteTarget; game: Game; result?: LockerRoomGameStats }) {
-  const stats = result?.players?.[favorite.id];
+function LockerRoomPlayerStats({ favorite, game, stats, live = game.status === 'LIVE' }: { favorite: FavoriteTarget; game: Game; stats?: Partial<Record<NFLPlayerStatKey, number>>; live?: boolean }) {
   const value = (key: NFLPlayerStatKey) => stats?.[key]?.toLocaleString('en-US') ?? '—';
   const metrics = favorite.position === 'QB'
     ? [
@@ -604,77 +582,45 @@ function LockerRoomPlayerStats({ favorite, game, result }: { favorite: FavoriteT
         { label: 'TD', value: value('receivingTouchdowns') },
       ];
   return <div className="den-player-live">
-    <div className="den-player-live-heading"><b>LIVE</b><span>{game.away.abbr} @ {game.home.abbr} · {game.period} {game.clock}</span></div>
-    {stats && Object.keys(stats).length > 0 ? <dl className="den-player-stat-row">{metrics.map((metric) => <div key={metric.label}><dt>{metric.label}</dt><dd>{metric.value}</dd></div>)}</dl> : !result?.error && <p>{result?.players ? 'No player stats reported yet.' : 'Loading live stats…'}</p>}
-    {result?.error && <p role="status">{result.error}{stats && ' Showing last received stats.'} Retrying every 15 seconds.</p>}
+    <div className="den-player-live-heading"><b>{game.status === 'FINAL' ? 'FINAL' : live ? 'LIVE' : 'SAVED'}</b><span>{game.away.abbr} @ {game.home.abbr} · {game.status === 'FINAL' ? 'Final game stats' : live ? `${game.period} ${game.clock}` : 'Last saved live snapshot'}</span></div>
+    {stats && Object.keys(stats).length > 0 ? <dl className="den-player-stat-row">{metrics.map((metric) => <div key={metric.label}><dt>{metric.label}</dt><dd>{metric.value}</dd></div>)}</dl> : <p>No player stats reported yet.</p>}
   </div>;
 }
 
-function TheDen({ favorites, games, items, plays, livePlayerGames, loadingNews, onToggleFavorite }: { favorites: FavoriteTarget[]; games: Game[]; items: DenItem[]; plays: DenPlayItem[]; livePlayerGames: number; loadingNews: boolean; onToggleFavorite: (favorite: FavoriteTarget) => void }) {
+function TheDen({ favorites, games, items, plays, playerHistory, week, season, historyLoading, historyError, signedIn, onRetryHistory, livePlayerGames, loadingNews, onToggleFavorite }: { favorites: FavoriteTarget[]; games: Game[]; items: DenItem[]; plays: DenPlayItem[]; playerHistory: PlayerHistory[]; week: number | null; season: number | null; historyLoading: boolean; historyError: string; signedIn: boolean; onRetryHistory: () => void; livePlayerGames: number; loadingNews: boolean; onToggleFavorite: (favorite: FavoriteTarget) => void }) {
   const [denTab, setDenTab] = useState<'plays' | 'updates'>('plays');
   const [followingTab, setFollowingTab] = useState<'teams' | 'players'>('teams');
-  const [liveStats, setLiveStats] = useState<Record<string, LockerRoomGameStats>>({});
-  useEffect(() => {
-    const playerFavorites = favorites.filter((favorite) => favorite.type === 'player' && favorite.feedPath === 'football/nfl'
-      && favorite.teamId && ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? ''));
-    const activeGames = games.filter((game) => game.sport === 'Football' && game.status === 'LIVE'
-      && playerFavorites.some((favorite) => favorite.teamId === game.away.id || favorite.teamId === game.home.id));
-    if (!activeGames.length) return;
-    const controller = new AbortController();
-    let refreshing = false;
-    const refresh = async () => {
-      if (refreshing) return;
-      refreshing = true;
-      try {
-        await Promise.all(activeGames.map(async (game) => {
-          const players = playerFavorites.flatMap((favorite) => favorite.teamId && (favorite.teamId === game.away.id || favorite.teamId === game.home.id)
-            ? [{ id: favorite.id, teamId: favorite.teamId }] : []);
-          try {
-            const result = await fetchNFLLivePlayerStats(game.feedPath, game.eventId, players, controller.signal);
-            if (!controller.signal.aborted) setLiveStats((previous) => ({ ...previous, [game.id]: { players: result } }));
-          } catch (error) {
-            if (controller.signal.aborted) return;
-            console.error('Locker Room live player stats failed', game.eventId, error);
-            setLiveStats((previous) => ({ ...previous, [game.id]: { ...previous[game.id], error: 'Live stats could not refresh.' } }));
-          }
-        }));
-      } finally {
-        refreshing = false;
-      }
-    };
-    void refresh();
-    const interval = window.setInterval(() => { void refresh(); }, 15_000);
-    return () => { controller.abort(); window.clearInterval(interval); };
-  }, [games, favorites]);
   const teamFavorites = favorites.filter((favorite) => favorite.type === 'team')
     .sort((first, second) => first.name.localeCompare(second.name, 'en', { sensitivity: 'base' }));
-  const playerFavorites = favorites.filter((favorite) => favorite.type === 'player')
+  const weekFavorites = new Map(favorites.map((favorite) => [favorite.key, favorite]));
+  playerHistory.forEach(({ favorite }) => { if (!weekFavorites.has(favorite.key)) weekFavorites.set(favorite.key, favorite); });
+  const playerFavorites = [...weekFavorites.values()].filter((favorite) => favorite.type === 'player')
     .sort((first, second) => playerLastName(first.name).localeCompare(playerLastName(second.name), 'en', { sensitivity: 'base' })
       || first.name.localeCompare(second.name, 'en', { sensitivity: 'base' }));
   const visibleFavorites = followingTab === 'teams' ? teamFavorites : playerFavorites;
-  const favoriteKeys = new Set(favorites.map((favorite) => favorite.key));
-  const visibleItems = items.filter((item) => favoriteKeys.has(item.favoriteKey));
-  const visiblePlays = plays.filter((play) => favoriteKeys.has(play.favoriteKey));
+  const visibleItems = items;
+  const visiblePlays = plays;
   const hasNFLFavorite = favorites.some((favorite) => favorite.feedPath === 'football/nfl' && (favorite.type === 'team' || favorite.type === 'player'));
-  return <div className="den-layout">
-    <aside className="den-favorites"><div className="panel-heading"><div><span className="eyebrow">YOUR LOCKER ROOM</span><h2>Following</h2></div><span className="den-favorite-count">{favorites.length}</span></div><div className="player-mode-tabs den-mode-tabs" role="tablist" aria-label="Following filter"><button id="den-following-teams-tab" role="tab" aria-controls="den-following-panel" aria-selected={followingTab === 'teams'} className={followingTab === 'teams' ? 'active' : ''} onClick={() => setFollowingTab('teams')}>Teams</button><button id="den-following-players-tab" role="tab" aria-controls="den-following-panel" aria-selected={followingTab === 'players'} className={followingTab === 'players' ? 'active' : ''} onClick={() => setFollowingTab('players')}>Players</button></div>{visibleFavorites.length ? <div className="den-favorite-list" id="den-following-panel" role="tabpanel" aria-labelledby={`den-following-${followingTab}-tab`}>{visibleFavorites.map((favorite) => {
-      const liveGame = favorite.type === 'player' && favorite.feedPath === 'football/nfl' && ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? '')
-        ? games.find((game) => game.sport === 'Football' && game.status === 'LIVE' && (game.away.id === favorite.teamId || game.home.id === favorite.teamId))
+  return <><div className="den-week-summary" role="status"><b>{season && week ? `${season} · Week ${week}` : 'Loading NFL week…'}</b><span>{historyLoading ? 'Loading saved weekly history…' : signedIn ? 'Account-backed weekly history' : 'Sign in to keep weekly history across devices.'}</span>{historyError && <p>{historyError} <button onClick={onRetryHistory}>Retry</button></p>}</div><div className="den-layout">
+    <aside className="den-favorites"><div className="panel-heading"><div><span className="eyebrow">YOUR LOCKER ROOM</span><h2>Following</h2></div><span className="den-favorite-count">{weekFavorites.size}</span></div><div className="player-mode-tabs den-mode-tabs" role="tablist" aria-label="Following filter"><button id="den-following-teams-tab" role="tab" aria-controls="den-following-panel" aria-selected={followingTab === 'teams'} className={followingTab === 'teams' ? 'active' : ''} onClick={() => setFollowingTab('teams')}>Teams</button><button id="den-following-players-tab" role="tab" aria-controls="den-following-panel" aria-selected={followingTab === 'players'} className={followingTab === 'players' ? 'active' : ''} onClick={() => setFollowingTab('players')}>Players</button></div>{visibleFavorites.length ? <div className="den-favorite-list" id="den-following-panel" role="tabpanel" aria-labelledby={`den-following-${followingTab}-tab`}>{visibleFavorites.map((favorite) => {
+      const savedGames = playerHistory.filter((entry) => entry.favorite.key === favorite.key);
+      const activeGame = favorite.type === 'player' && favorite.feedPath === 'football/nfl' && ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? '')
+        ? games.find((game) => game.sport === 'Football' && game.status !== 'UPCOMING' && (game.away.id === favorite.teamId || game.home.id === favorite.teamId))
         : undefined;
-      return <div className="den-favorite" key={favorite.key}><span className="den-favorite-avatar">{favorite.headshot ? <img src={favorite.headshot} alt="" /> : favorite.type === 'team' ? favorite.shortName : favorite.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{favorite.name}</b><small>{favorite.type === 'team' ? 'Team' : `${favorite.teamAbbr ?? ''}${favorite.position ? ` · ${favorite.position}` : 'Player'}`}</small></span><FavoriteStarButton favorite label={favorite.name} onClick={() => onToggleFavorite(favorite)} />{liveGame && <LockerRoomPlayerStats favorite={favorite} game={liveGame} result={liveStats[liveGame.id]} />}</div>;
+      return <div className="den-favorite" key={favorite.key}><span className="den-favorite-avatar">{favorite.headshot ? <img src={favorite.headshot} alt="" /> : favorite.type === 'team' ? favorite.shortName : favorite.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{favorite.name}</b><small>{favorite.type === 'team' ? 'Team' : `${favorite.teamAbbr ?? ''}${favorite.position ? ` · ${favorite.position}` : 'Player'}`}</small></span><FavoriteStarButton favorite={favorites.some((item) => item.key === favorite.key)} label={favorite.name} onClick={() => onToggleFavorite(favorite)} />{savedGames.map((entry) => <LockerRoomPlayerStats key={entry.game.id} favorite={favorite} game={entry.game} stats={entry.stats} live={games.some((game) => game.id === entry.game.id && game.status === 'LIVE')} />)}{!savedGames.length && activeGame && <LockerRoomPlayerStats favorite={favorite} game={activeGame} />}</div>;
     })}</div> : <p className="den-empty" id="den-following-panel" role="tabpanel" aria-labelledby={`den-following-${followingTab}-tab`}>{followingTab === 'teams' ? 'No favorite teams yet.' : 'No favorite players yet.'}</p>}</aside>
     <div className="den-activity-column">
       <div className="player-mode-tabs den-mode-tabs" role="tablist" aria-label="Den view">
         <button id="den-plays-tab" role="tab" aria-controls="den-plays-panel" aria-selected={denTab === 'plays'} className={denTab === 'plays' ? 'active' : ''} onClick={() => setDenTab('plays')}>Latest plays</button>
         <button id="den-updates-tab" role="tab" aria-controls="den-updates-panel" aria-selected={denTab === 'updates'} className={denTab === 'updates' ? 'active' : ''} onClick={() => setDenTab('updates')}>Latest updates</button>
       </div>
-      {denTab === 'plays' ? <section className="den-timeline den-tab-panel" id="den-plays-panel" role="tabpanel" aria-labelledby="den-plays-tab"><div className="den-timeline-heading"><div><span className="eyebrow">{livePlayerGames ? 'LIVE NFL' : 'NFL PLAY WATCH'}</span><h2>Latest plays</h2></div><span className="den-refresh">{livePlayerGames ? 'Checks every 15 sec · Stays until Tuesday 9 AM' : 'Updates stay in Locker Room until Tuesday 9 AM'}</span></div>{visiblePlays.length ? <div className="den-play-list">{visiblePlays.map((play) => <article className="den-play-item" key={play.id}><span className="den-play-avatar">{play.headshot ? <img src={play.headshot} alt="" /> : play.teamLogo ? <img src={play.teamLogo} alt="" /> : play.favoriteName.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><div className="den-play-copy"><header><b>{play.favoriteName}</b><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(play.timestamp))}</time><span className="den-feed-type">{play.isDefensive ? 'DEFENSE' : play.isTouchdown ? 'TOUCHDOWN' : 'BIG PLAY'}</span></header><strong>{play.playLabel}</strong><p>{play.teamAbbr} vs {play.opponentAbbr} · {play.description}</p></div></article>)}</div> : <div className="den-plays-empty"><b>{hasNFLFavorite ? (livePlayerGames ? 'No qualifying plays yet' : 'No qualifying plays for your favorites this week yet') : 'Favorite an NFL team or player to follow their plays'}</b><p>Tracks offensive big plays and scores, plus defensive turnovers and scoring plays. Updates stay until Tuesday 9 AM.</p></div>}</section> : <section className="den-timeline den-tab-panel" id="den-updates-panel" role="tabpanel" aria-labelledby="den-updates-tab"><div className="den-timeline-heading"><div><span className="eyebrow">YOUR LOCKER ROOM</span><h2>Latest updates</h2></div><span className="den-refresh">Scores check every 30 sec · Updates stay until Tuesday 9 AM</span></div>{favorites.length === 0 ? <div className="den-empty-main"><span className="den-empty-mark"><Star size={20} /></span><b>Your favorites live here</b><p>Follow a team or player and their score updates and related headlines will collect in this feed.</p></div> : visibleItems.length === 0 ? <div className="den-empty-main"><span className="live-indicator"><i /></span><b>{loadingNews ? 'Checking your favorite news…' : 'You’re all caught up'}</b><p>New score changes and matching headlines appear here as they arrive and stay until Tuesday 9 AM.</p></div> : <div className="den-feed-list">{visibleItems.map((item) => <article className="den-feed-item" key={item.id}>
+      {denTab === 'plays' ? <section className="den-timeline den-tab-panel" id="den-plays-panel" role="tabpanel" aria-labelledby="den-plays-tab"><div className="den-timeline-heading"><div><span className="eyebrow">{livePlayerGames ? 'LIVE NFL' : 'NFL PLAY WATCH'}</span><h2>Latest plays</h2></div><span className="den-refresh">{livePlayerGames ? 'Checks every 15 sec · Saved by week' : 'Saved for the selected NFL week'}</span></div>{visiblePlays.length ? <div className="den-play-list">{visiblePlays.map((play) => <article className="den-play-item" key={play.id}><span className="den-play-avatar">{play.headshot ? <img src={play.headshot} alt="" /> : play.teamLogo ? <img src={play.teamLogo} alt="" /> : play.favoriteName.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><div className="den-play-copy"><header><b>{play.favoriteName}</b><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(play.timestamp))}</time><span className="den-feed-type">{play.isDefensive ? 'DEFENSE' : play.isTouchdown ? 'TOUCHDOWN' : 'BIG PLAY'}</span></header><strong>{play.playLabel}</strong><p>{play.teamAbbr} vs {play.opponentAbbr} · {play.description}</p></div></article>)}</div> : <div className="den-plays-empty"><b>{hasNFLFavorite ? (livePlayerGames ? 'No qualifying plays yet' : 'No qualifying plays for your favorites this week yet') : 'Favorite an NFL team or player to follow their plays'}</b><p>Tracks offensive big plays and scores, plus defensive turnovers and scoring plays. Updates are saved by NFL week.</p></div>}</section> : <section className="den-timeline den-tab-panel" id="den-updates-panel" role="tabpanel" aria-labelledby="den-updates-tab"><div className="den-timeline-heading"><div><span className="eyebrow">YOUR LOCKER ROOM</span><h2>Latest updates</h2></div><span className="den-refresh">Scores check every 30 sec · Saved by week</span></div>{favorites.length === 0 && visibleItems.length === 0 ? <div className="den-empty-main"><span className="den-empty-mark"><Star size={20} /></span><b>Your favorites live here</b><p>Follow a team or player and their score updates and related headlines will collect in this feed.</p></div> : visibleItems.length === 0 ? <div className="den-empty-main"><span className="live-indicator"><i /></span><b>{loadingNews ? 'Checking your favorite news…' : 'You’re all caught up'}</b><p>Score changes and matching headlines collected for this week appear here. Saved updates remain available when you revisit the week.</p></div> : <div className="den-feed-list">{visibleItems.map((item) => <article className="den-feed-item" key={`${item.id}:${item.favoriteKey}`}>
         <div className="den-feed-marker">{item.kind === 'score' ? <Activity size={15} /> : <Star size={14} />}</div><div className="den-feed-content"><header><span>{item.favoriteName}</span><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(item.kind === 'news' ? item.published : item.timestamp))}</time><span className="den-feed-type">{item.kind === 'score' ? 'SCORE UPDATE' : 'NEWS'}</span></header>
           {item.kind === 'score' ? <div className="den-score-update"><div><TeamMark team={item.away} /><b>{item.away.abbr} {item.away.score}</b><TeamMark team={item.home} /><b>{item.home.abbr} {item.home.score}</b></div><p>{item.league} · {item.status === 'LIVE' ? `${item.period} ${item.clock}` : item.status === 'FINAL' ? 'Final' : 'Game update'}</p></div> : <div className="den-news-update">{item.image && <img src={item.image} alt="" />}{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.headline}</a> : <b>{item.headline}</b>}{item.description && <p>{item.description}</p>}</div>}
         </div>
       </article>)}</div>}</section>}
     </div>
-  </div>;
+  </div></>;
 }
 
 function App() {
@@ -693,6 +639,7 @@ function App() {
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
   const [selectedNFLWeek, setSelectedNFLWeek] = useState<number | null>(null);
   const [currentNFLWeek, setCurrentNFLWeek] = useState<number | null>(null);
+  const [loadedNFLWeek, setLoadedNFLWeek] = useState<number | null>(null);
   const [wireSearchQuery, setWireSearchQuery] = useState('');
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
@@ -700,10 +647,10 @@ function App() {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [failedLeagues, setFailedLeagues] = useState<string[]>([]);
   const [newsItems, setNewsItems] = useState<DenNewsFeedItem[]>([]);
-  const [scoreUpdates, setScoreUpdates] = useState<DenScoreItem[]>(() => loadStoredLockerRoomUpdates<DenScoreItem>(lockerRoomScoresStorageKey));
+  const [scoreUpdates, setScoreUpdates] = useState<DenScoreItem[]>(() => supabase ? [] : loadStoredLockerRoomUpdates<DenScoreItem>(lockerRoomScoresStorageKey));
   const scoreUpdatesRef = useRef(scoreUpdates);
   scoreUpdatesRef.current = scoreUpdates;
-  const [playUpdates, setPlayUpdates] = useState<DenPlayItem[]>(() => loadStoredLockerRoomUpdates<DenPlayItem>(lockerRoomPlaysStorageKey));
+  const [playUpdates, setPlayUpdates] = useState<DenPlayItem[]>(() => supabase ? [] : loadStoredLockerRoomUpdates<DenPlayItem>(lockerRoomPlaysStorageKey));
   const playUpdatesRef = useRef(playUpdates);
   playUpdatesRef.current = playUpdates;
   const [loadingNews, setLoadingNews] = useState(false);
@@ -736,6 +683,7 @@ function App() {
   };
 
   useEffect(() => {
+    if (supabase) return;
     const cutoff = getTuesdayCutoff();
     const valid = scoreUpdates.filter((item) => Date.parse(item.timestamp) >= cutoff);
     try {
@@ -746,6 +694,7 @@ function App() {
   }, [scoreUpdates]);
 
   useEffect(() => {
+    if (supabase) return;
     const cutoff = getTuesdayCutoff();
     const valid = playUpdates.filter((item) => Date.parse(item.timestamp) >= cutoff);
     try {
@@ -816,6 +765,10 @@ function App() {
 
   useEffect(() => {
     if (!supabase) return;
+    setScoreUpdates([]);
+    setPlayUpdates([]);
+    setNewsItems([]);
+    previousGameStates.current.clear();
     if (!authUser) {
       setFavorites([]);
       setFavoritesOwnerId(null);
@@ -1041,6 +994,7 @@ function App() {
           });
         }
         setGames(result.games);
+        setLoadedNFLWeek(selectedNFLWeek ?? result.nflWeek);
         setFailedLeagues(result.failedLeagues);
         setSelectedGameId((previous) => {
           const prevGame = previous ? result.games.find((game) => game.id === previous) : null;
@@ -1097,6 +1051,16 @@ function App() {
 
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()).toUpperCase();
   const denItems: DenItem[] = [...newsItems, ...scoreUpdates].sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp));
+  const now = new Date();
+  const lockerRoomSeason = games.find((game) => game.league === 'NFL')?.seasonYear
+    ?? now.getFullYear() - (now.getMonth() < 2 ? 1 : 0);
+  const lockerRoomWeek = selectedNFLWeek ?? currentNFLWeek;
+  const lockerRoomReady = loadedNFLWeek !== null && loadedNFLWeek === (selectedNFLWeek ?? currentNFLWeek);
+  const lockerRoomHistory = useLockerRoomHistory({
+    userId: authUser?.id ?? null, season: lockerRoomSeason, week: lockerRoomWeek,
+    games: lockerRoomReady ? games : [], favorites: !supabase || favoritesOwnerId === authUser?.id ? favorites : [],
+    items: denItems, plays: playUpdates, enabled: lockerRoomReady,
+  });
   const displayName = typeof authUser?.user_metadata.display_name === 'string' ? authUser.user_metadata.display_name : authUser?.email ?? 'Account';
   const openProfile = () => {
     if (view !== 'Profile') setProfileReturnView(view);
@@ -1229,7 +1193,7 @@ function App() {
           />}
           </>
         ) : view === 'Den' ? (
-          <TheDen favorites={favorites} games={games} items={denItems} plays={playUpdates} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} />
+          <TheDen favorites={favorites} games={lockerRoomReady ? games : []} items={lockerRoomHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={lockerRoomHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={lockerRoomHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={lockerRoomHistory.loading} historyError={lockerRoomHistory.error} signedIn={!!authUser} onRetryHistory={lockerRoomHistory.retry} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} />
         ) : (
           <>
             <div className="player-mode-tabs" role="tablist" aria-label="Stat Hub view">

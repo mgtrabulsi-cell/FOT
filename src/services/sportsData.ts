@@ -431,7 +431,8 @@ export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): 
     }
     const events = asArray(scoreboard.events);
     return {
-      games: events.map((event) => mapEvent(event, feed)).filter((game): game is Game => game !== null),
+      games: events.map((event) => mapEvent(event, feed)).filter((game): game is Game => game !== null)
+        .map((game) => ({ ...game, seasonYear: Number(asObject(scoreboard.season).year) || game.seasonYear })),
       nflWeek: currentWeek,
     };
   }));
@@ -548,11 +549,12 @@ export async function fetchNFLFavoritePlays(
   games: Game[],
   favorites: FavoriteTarget[],
   signal?: AbortSignal,
+  includeHistorical = false,
 ): Promise<NFLFavoritePlay[]> {
   const nflFavorites = favorites.filter((favorite) => favorite.feedPath === 'football/nfl'
     && (favorite.type === 'team' || (favorite.teamId && ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? ''))));
   const favoriteTeamId = (favorite: FavoriteTarget) => favorite.type === 'team' ? favorite.id : favorite.teamId ?? '';
-  const cutoff = getTuesdayCutoff();
+  const cutoff = includeHistorical ? -Infinity : getTuesdayCutoff();
   const relevantGames = games.filter((game) => game.sport === 'Football'
     && (game.status === 'LIVE' || (game.status === 'FINAL' && (!game.date || Date.parse(game.date) >= cutoff)))
     && nflFavorites.some((favorite) => favoriteTeamId(favorite) === game.home.id || favoriteTeamId(favorite) === game.away.id));
@@ -658,6 +660,10 @@ export async function fetchNFLFavoritePlays(
       });
     });
   }));
+  if (includeHistorical) {
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  }
   return results.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
     .sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp));
 }

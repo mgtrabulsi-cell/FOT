@@ -516,6 +516,10 @@ td:first-child { color: #828c84; }
 .den-player-stat-row dt { color: #bbc7d9; font: 8px var(--mono); white-space: nowrap; }
 .den-player-stat-row dd { margin: 5px 0 0; color: #fff; font: 600 15px var(--mono); white-space: nowrap; }
 .den-player-live p { margin: 8px 0 0; color: #bbc7d9; font-size: 10px; line-height: 1.5; }
+.den-week-summary { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 14px; color: #bbc7d9; font-size: 11px; }
+.den-week-summary b { color: #e5eaf3; }
+.den-week-summary p { flex-basis: 100%; margin: 0; }
+.den-week-summary button { padding: 5px 10px; border: 1px solid #cc2633; border-radius: 4px; background: #a51c28; color: #fff; cursor: pointer; }
 .den-favorite-avatar { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: #edf2eb; color: #4e715a; font: 500 9px var(--mono); }
 .den-favorite-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .den-favorite > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
