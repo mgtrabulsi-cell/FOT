@@ -17,7 +17,7 @@ The VS Code task **Start GameWire dev server** is also configured for launching 
 
 Desktop views use an 85% interface scale, with a compact matchup scoreboard and larger player names and headshots in The Wire, Stat Hub's player directory, and player cards. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
 
-On mobile, The Wire player box scores use labeled three-column stat grids instead of horizontally scrolling tables. Stat Hub player-popup stat types retain a single horizontally scrollable, draggable row with touch-sized controls and a chart that fits the dialog width. The game selection wheels remain horizontally draggable.
+On mobile, The Wire player box scores place each player's labeled stats on one compact horizontal row, with all stats visible without scrolling or wrapping into another row. Player identity stays above that row. The Wire scoreboard uses a compact, side-by-side team layout. These changes do not affect Stat Hub: its player-popup stat types retain a single horizontally scrollable, draggable row with touch-sized controls and a chart that fits the dialog width. The game selection wheels remain horizontally draggable.
 
 The Wire's team/game search and Stat Hub's NFL player/team search open from a compact search icon in the top banner, with separate queries for each view. An indicator marks an active filter; the field has a clear action, and Escape closes it without removing the filter.
 

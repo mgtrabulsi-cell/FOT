@@ -1015,7 +1015,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                     </header>
 
                     <div className="wire-table-scroll-container">
-                      <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season totals' : ''}`}>
+                      <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} style={{ '--wire-stat-count': category.labels.filter(Boolean).length } as React.CSSProperties} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? ' season totals' : ''}`}>
                         {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{category.labels.map((_, index) => <col key={index} />)}</colgroup>}
                         <thead role="rowgroup">
                           <tr role="row">
@@ -1070,7 +1070,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                               {athlete.stats.map((statVal, sIdx) => (
                                 <td key={sIdx} className={`wire-col-data${!category.labels[sIdx] ? ' wire-empty-stat' : ''}`} aria-hidden={!category.labels[sIdx] || undefined} role="cell">
                                   <span className="wire-mobile-stat-label" aria-hidden="true">{category.labels[sIdx]}</span>
-                                  {statVal}
+                                  <span className={statVal === 'Unavailable' ? 'wire-stat-unavailable' : undefined}>{statVal}</span>
                                 </td>
                               ))}
                             </tr>
