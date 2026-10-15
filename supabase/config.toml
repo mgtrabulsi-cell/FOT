@@ -1,3 +1,10 @@
+[auth]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
 [functions.send-test-push]
 verify_jwt = true
 

@@ -107,7 +107,7 @@ export default function AuthScreen({ onContinueGuest }: { onContinueGuest?: () =
       </> : <>
         <span className="eyebrow">NFL · GAMEWIRE</span>
         <h1>{mode === 'signup' ? 'Create your account' : 'Welcome back'}</h1>
-        <p className="auth-description">{mode === 'signup' ? 'Save your NFL favorites to your own account.' : 'Sign in to access your saved favorites.'}</p>
+        <p className="auth-description">{mode === 'signup' ? 'Create your account and start saving favorites immediately. No confirmation email is required.' : 'Sign in to access your saved favorites.'}</p>
         <form className="auth-form" onSubmit={submit}>
           {mode === 'signup' && <label>Display name<input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required maxLength={60} /></label>}
           <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>

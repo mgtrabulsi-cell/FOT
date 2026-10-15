@@ -81,7 +81,9 @@ GameWire uses Supabase Auth for email/password accounts and stores each user's f
 4. Set the Supabase Auth site URL and allowed redirect URLs to your local and deployed GameWire URLs.
 5. Restart the Vite dev server.
 
-Only a publishable or legacy anon key belongs in the frontend. Never expose a Supabase secret or service-role key. Email confirmation behavior is controlled by the Supabase project's Auth settings.
+Only a publishable or legacy anon key belongs in the frontend. Never expose a Supabase secret or service-role key.
+
+Email/password signup is open with no application-imposed total-account cap. Signup email confirmation is disabled in [`supabase/config.toml`](supabase/config.toml), so creating an account signs the user in immediately without consuming the built-in email quota. This does not verify email ownership. Supabase abuse-protection rate limits and hosting/plan capacity still apply; these are not unlimited. Password-reset emails still use the configured email service and its quota. Configure production SMTP before relying on password recovery at scale or re-enabling confirmation. Apply the declared auth settings with `supabase config push` after reviewing its diff; avoid changing unrelated remote settings.
 
 ## Mobile push notifications
 
