@@ -114,6 +114,10 @@ button { color: inherit; }
 .account-setting-form .push-preference { display: flex; align-items: center; gap: 8px; }
 .account-setting-form .push-preference input { width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; margin: 0; padding: 0; accent-color: #cc2633; }
 .push-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.push-actions > button { min-height: 44px; padding: 10px 12px; border: 1px solid #526b90; border-radius: 4px; background: #3b5274; color: #fff; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.push-actions > button:not(:disabled):hover { background: #465f84; border-color: #9db9df; }
+.push-actions > button:focus-visible { outline: 2px solid #cc2633; outline-offset: 3px; }
+.push-actions > button:disabled { opacity: .6; cursor: wait; }
 .push-actions .push-disable-button { border: 1px solid #d6deea; background: transparent; color: #435a7c; }
 .account-setting > header { display: flex; align-items: center; gap: 9px; padding-bottom: 11px; border-bottom: 1px solid #edf0f4; color: #4a6287; }
 .account-setting > header > div { display: grid; gap: 3px; }
