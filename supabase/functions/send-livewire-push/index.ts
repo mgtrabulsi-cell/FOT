@@ -34,7 +34,7 @@ Deno.serve(async (request: Request) => {
           await sendWebPush(pushServer, target.subscription, {
             title: `LIVEWIRE: ${delivery.subject}`,
             body: '',
-            url: '#livewire',
+            url: new URL(`#livewire/post/${delivery.post_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
             tag: `gamewire-livewire-${delivery.post_id}`,
           });
           const { error: saveError } = await admin.from('livewire_push_deliveries')

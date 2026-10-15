@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 
@@ -14,7 +14,7 @@ function safeNewsLink(value: string): string | null {
   }
 }
 
-export default function LiveWire({ user }: { user: User | null }) {
+export default function LiveWire({ user, postId = null }: { user: User | null; postId?: string | null }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -30,6 +30,11 @@ export default function LiveWire({ user }: { user: User | null }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
+  const [linkedPost, setLinkedPost] = useState<Post | null>(null);
+  const [linkedMissing, setLinkedMissing] = useState(false);
+  const [linkedReady, setLinkedReady] = useState<string | null>(null);
+  const focusedPost = useRef<HTMLElement | null>(null);
+  const scrolledPost = useRef<string | null>(null);
   const role = admins.find((admin) => admin.user_id === user?.id)?.role;
 
   useEffect(() => {
@@ -54,6 +59,16 @@ export default function LiveWire({ user }: { user: User | null }) {
         user ? supabase.from('livewire_roles').select('user_id,role,display_name') : Promise.resolve({ data: [], error: null }),
       ]);
       if (!active) return;
+      if (postId) {
+        const linked = await client.from('livewire_posts').select('*').eq('id', postId).maybeSingle();
+        if (!active) return;
+        if (linked.error) { setError(`Could not load the requested post: ${linked.error.message}`); return; }
+        setLinkedPost(linked.data);
+        setLinkedMissing(!linked.data);
+        setLinkedReady(postId);
+      } else {
+        setLinkedPost(null); setLinkedMissing(false); setLinkedReady(null);
+      }
       if (access.error) setAdmins([]);
       else setAdmins(access.data ?? []);
       if (feed.error || access.error) {
@@ -70,7 +85,19 @@ export default function LiveWire({ user }: { user: User | null }) {
     });
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [user?.id, refresh, limit]);
+  }, [user?.id, refresh, limit, postId]);
+
+  useEffect(() => {
+    if (!postId) { scrolledPost.current = null; return; }
+    if (linkedReady === postId && linkedPost && focusedPost.current && scrolledPost.current !== postId) {
+      focusedPost.current.scrollIntoView({ block: 'center' });
+      focusedPost.current.focus({ preventScroll: true });
+      scrolledPost.current = postId;
+    }
+  }, [postId, linkedReady, linkedPost, posts]);
+
+  const visiblePosts = linkedPost && linkedPost.id === postId && !posts.some((post) => post.id === postId)
+    ? [linkedPost, ...posts] : posts;
 
   async function act(operation: () => PromiseLike<{ error: { message: string } | null }>, success: () => void) {
     setBusy(true); setActionError(''); setNotice('');
@@ -105,10 +132,11 @@ export default function LiveWire({ user }: { user: User | null }) {
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
+    {postId && linkedReady === postId && linkedMissing && <p className="livewire-notice" role="status">This post is no longer available. You can read the latest LIVEWIRE posts below.</p>}
     <div className="livewire-feed" aria-busy={!loaded && !error}>
       {!loaded && !error && <p>Loading LIVEWIRE...</p>}
-      {loaded && !posts.length && <p className="livewire-empty">No posts yet. News and takes from GameWire admins will appear here.</p>}
-      {posts.map((post) => <article className="livewire-post" key={post.id}>
+      {loaded && !visiblePosts.length && <p className="livewire-empty">No posts yet. News and takes from GameWire admins will appear here.</p>}
+      {visiblePosts.map((post) => <article className={`livewire-post${post.id === postId ? ' livewire-post-target' : ''}`} key={post.id} ref={post.id === postId ? focusedPost : undefined} tabIndex={post.id === postId ? -1 : undefined} aria-label={post.id === postId ? 'Post opened from notification' : undefined}>
         <span className="livewire-avatar" aria-hidden="true">{post.author_name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('').toUpperCase()}</span>
         <div className="livewire-post-content">
         <header><b>{post.author_name}</b><time dateTime={post.created_at}>{new Date(post.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{post.updated_at !== post.created_at ? ' · Edited' : ''}</time></header>

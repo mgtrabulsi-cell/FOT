@@ -632,16 +632,31 @@ function App() {
   const [splashReplay, setSplashReplay] = useState(0);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [guestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
-  const [view, setView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile'>(() => window.location.hash === '#livewire' ? 'LiveWire' : 'Wire');
+  const [notificationHash, setNotificationHash] = useState(window.location.hash);
+  const [view, setView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile'>(() => window.location.hash.startsWith('#livewire') ? 'LiveWire' : 'Wire');
   useEffect(() => {
     const openNotification = () => {
-      if (window.location.hash === '#livewire') {
+      setNotificationHash(window.location.hash);
+      if (window.location.hash.startsWith('#livewire')) {
         setView('LiveWire');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (window.location.hash === '#wire') {
+        setView('Wire');
       }
     };
+    const onNotification = (event: MessageEvent) => {
+      if (event.data?.type !== 'GAMEWIRE_NOTIFICATION_OPEN' || typeof event.data.url !== 'string') return;
+      const url = new URL(event.data.url, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      window.location.hash = url.hash;
+      openNotification();
+    };
     window.addEventListener('hashchange', openNotification);
-    return () => window.removeEventListener('hashchange', openNotification);
+    navigator.serviceWorker?.addEventListener('message', onNotification);
+    return () => {
+      window.removeEventListener('hashchange', openNotification);
+      navigator.serviceWorker?.removeEventListener('message', onNotification);
+    };
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den'>('Wire');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
@@ -1205,7 +1220,7 @@ function App() {
           />}
           </>
         ) : view === 'LiveWire' ? (
-          <LiveWire key={authUser?.id ?? 'guest'} user={authUser} />
+          <LiveWire key={authUser?.id ?? 'guest'} user={authUser} postId={/^#livewire\/post\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
         ) : view === 'Den' ? (
           <TheDen favorites={favorites} games={lockerRoomReady ? games : []} items={lockerRoomHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={lockerRoomHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={lockerRoomHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={lockerRoomHistory.loading} historyError={lockerRoomHistory.error} signedIn={!!authUser} onRetryHistory={lockerRoomHistory.retry} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} />
         ) : (

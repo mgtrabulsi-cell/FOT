@@ -55,7 +55,7 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
     const success = await invoke();
     assert(success.status === 200, 'Delivery should succeed');
     assert(payloads.length === 1 && payloads[0].title === 'LIVEWIRE: Player news' && payloads[0].body === '', 'Alert contains only LIVEWIRE and subject');
-    assert(payloads[0].url === '#livewire' && payloads[0].tag === 'gamewire-livewire-post-123', 'Alerts deep-link and deduplicate by post');
+    assert(payloads[0].url === 'https://mgtrabulsi-cell.github.io/FOT/#livewire/post/post-123' && payloads[0].tag === 'gamewire-livewire-post-123', 'Alerts use an absolute project URL, deep-link to the specific post, and deduplicate by post');
     assert(typeof writes[0].delivered_at === 'string', 'Success is persisted');
     failPush = true;
     const failure = await invoke();
