@@ -1102,7 +1102,7 @@ function App() {
           )}
         </div>
       </header>
-      <main className={view === 'Players' ? 'page-wrap players-zoom' : 'page-wrap'}>
+      <main className={view === 'Players' ? 'page-wrap players-zoom' : view === 'Wire' ? 'page-wrap wire-page' : 'page-wrap'}>
         <div className="page-heading">
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
