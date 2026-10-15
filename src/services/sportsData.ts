@@ -386,6 +386,16 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
   };
 }
 
+export async function fetchNFLNotificationGame(eventId: string, signal?: AbortSignal): Promise<Game> {
+  if (!/^\d+$/.test(eventId)) throw new Error('Invalid notification game ID.');
+  const response = await fetch(`${apiBase}/football/nfl/summary?event=${encodeURIComponent(eventId)}`, { signal });
+  if (!response.ok) throw new Error(`Could not load the notification matchup (${response.status}).`);
+  const header = asObject(asObject(await response.json()).header);
+  const game = mapEvent(header, { sport: 'Football', league: 'NFL', path: 'football/nfl' });
+  if (!game || game.eventId !== eventId) throw new Error('This notification matchup is no longer available.');
+  return game;
+}
+
 export function getCurrentNFLWeek(payload: unknown, now = new Date()): number | null {
   const scoreboard = asObject(payload);
   const reportedWeek = Number(asObject(scoreboard.week).number) || null;

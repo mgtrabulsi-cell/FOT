@@ -44,7 +44,7 @@ Deno.serve(async (request) => {
         await sendWebPush(server, entry.subscription, {
           title: 'Gamewire',
           body: 'Notifications are on. You will receive score updates for games you follow.',
-          url: '/#wire',
+          url: new URL('#wire', Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
           tag: 'gamewire-test',
         });
       } catch (error) {

@@ -135,7 +135,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
   const initialAutoGame = findAutomaticNFLGame(nflGames, initialGameId);
 
   const [selectedGameId, setSelectedGameId] = useState<string>(
-    initialAutoGame?.id ?? (initialGameId && nflGames.some((g) => g.id === initialGameId) ? initialGameId : nflGames[0]?.id ?? '')
+    (initialGameId && nflGames.some((g) => g.id === initialGameId) ? initialGameId : initialAutoGame?.id ?? nflGames[0]?.id ?? '')
   );
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats'>('boxscore');

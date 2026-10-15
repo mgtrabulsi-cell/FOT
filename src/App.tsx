@@ -9,7 +9,7 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchScoreboards, findAutomaticNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
+import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findAutomaticNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
 import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory } from './useLockerRoomHistory';
@@ -640,8 +640,15 @@ function App() {
       if (window.location.hash.startsWith('#livewire')) {
         setView('LiveWire');
         window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else if (window.location.hash === '#wire') {
+      } else if (window.location.hash === '#wire' || window.location.hash.startsWith('#wire/game/')) {
         setView('Wire');
+        const eventId = /^#wire\/game\/(\d+)$/.exec(window.location.hash)?.[1];
+        if (eventId) {
+          setSelectedGameId(`NFL:${eventId}`);
+          setWireSearchQuery('');
+          setWirePlayerCard(null);
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     };
     const onNotification = (event: MessageEvent) => {
@@ -671,6 +678,32 @@ function App() {
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;
+  const notificationEventRef = useRef(notificationEventId);
+  notificationEventRef.current = notificationEventId;
+  const [notificationGame, setNotificationGame] = useState<Game | null>(null);
+  const [notificationGameError, setNotificationGameError] = useState('');
+  const [notificationGameRetry, setNotificationGameRetry] = useState(0);
+  useEffect(() => {
+    if (!notificationEventId) { setNotificationGame(null); setNotificationGameError(''); return; }
+    const controller = new AbortController();
+    setSelectedGameId(`NFL:${notificationEventId}`);
+    setWireSearchQuery('');
+    setWirePlayerCard(null);
+    setNotificationGame(null);
+    setNotificationGameError('');
+    const load = async () => {
+      try {
+        const game = await fetchNFLNotificationGame(notificationEventId, controller.signal);
+        if (!controller.signal.aborted) { setNotificationGame(game); setNotificationGameError(''); }
+      } catch (cause) {
+        if (!controller.signal.aborted) setNotificationGameError(cause instanceof Error ? cause.message : 'Could not load this notification matchup.');
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 30_000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [notificationEventId, notificationGameRetry]);
   const [failedLeagues, setFailedLeagues] = useState<string[]>([]);
   const [newsItems, setNewsItems] = useState<DenNewsFeedItem[]>([]);
   const [scoreUpdates, setScoreUpdates] = useState<DenScoreItem[]>(() => supabase ? [] : loadStoredLockerRoomUpdates<DenScoreItem>(lockerRoomScoresStorageKey));
@@ -1023,6 +1056,7 @@ function App() {
         setLoadedNFLWeek(selectedNFLWeek ?? result.nflWeek);
         setFailedLeagues(result.failedLeagues);
         setSelectedGameId((previous) => {
+          if (notificationEventRef.current && previous === `NFL:${notificationEventRef.current}`) return previous;
           const prevGame = previous ? result.games.find((game) => game.id === previous) : null;
           if (prevGame && prevGame.status === 'LIVE') return previous;
           const autoGame = findAutomaticNFLGame(result.games, previous);
@@ -1200,8 +1234,10 @@ function App() {
           authUser ? <ProfilePage user={authUser} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' ? (
           <>
-          <TheWire
-            games={games}
+          {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}
+          {notificationEventId && !notificationGame && !notificationGameError && <p role="status">Loading your notification matchup...</p>}
+          {(!notificationEventId || notificationGame?.eventId === notificationEventId) && <TheWire
+            games={notificationGame && !games.some((game) => game.id === notificationGame.id) ? [notificationGame, ...games] : games}
             query={wireSearchQuery}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
@@ -1209,7 +1245,7 @@ function App() {
             onSelectGame={setSelectedGameId}
             onOpenStatHub={openGamePlayers}
             onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })}
-          />
+          />}
           {wirePlayerCard && <NFLPlayerMiniWindow
             key={wirePlayerCard.player.id}
             player={wirePlayerCard.player}

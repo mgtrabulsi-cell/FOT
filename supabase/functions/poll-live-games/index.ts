@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { createWebPushServer, isExpiredPushSubscription, sendWebPush } from '../_shared/webpush.ts';
 import { buildPlayAlerts, summaryPlayIds, type PlayFavorite } from '../_shared/plays.ts';
 
@@ -121,7 +121,7 @@ const espnHeaders = {
   'Accept': 'application/json',
 };
 
-async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames: Array<{ id: string; away: TeamScore; home: TeamScore }>) {
+async function sendPlayAlerts(admin: SupabaseClient, liveGames: Array<{ id: string; away: TeamScore; home: TeamScore }>) {
   const playStateIds = liveGames.map((game) => `plays:${game.id}`);
   const { data: playStates, error: playStateError } = await admin.from('push_game_states').select('event_id,state').in('event_id', playStateIds);
   if (playStateError) throw playStateError;
@@ -171,7 +171,7 @@ async function sendPlayAlerts(admin: ReturnType<typeof createClient>, liveGames:
             await sendWebPush(pushServer, target.subscription, {
               title: 'Gamewire',
               body: alert.body,
-              url: '/#wire',
+              url: new URL(`#wire/game/${game.id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
               tag: `gamewire-play-${game.id}-${alert.playId}`,
             });
             sent += 1;
@@ -356,7 +356,7 @@ Deno.serve(async (request) => {
           await sendWebPush(pushServer, target.subscription, {
             title: 'Gamewire',
             body,
-            url: '/#wire',
+            url: new URL(`#wire/game/${game.id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
             tag: `gamewire-${game.id}`,
           });
           sent += 1;
