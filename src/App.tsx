@@ -588,7 +588,7 @@ function LockerRoomPlayerStats({ favorite, game, stats, live = game.status === '
   </div>;
 }
 
-function TheDen({ user, favorites, games, items, plays, playerHistory, week, season, historyLoading, historyError, signedIn, onRetryHistory, livePlayerGames, loadingNews, onToggleFavorite }: { user: User | null; favorites: FavoriteTarget[]; games: Game[]; items: DenItem[]; plays: DenPlayItem[]; playerHistory: PlayerHistory[]; week: number | null; season: number | null; historyLoading: boolean; historyError: string; signedIn: boolean; onRetryHistory: () => void; livePlayerGames: number; loadingNews: boolean; onToggleFavorite: (favorite: FavoriteTarget) => void }) {
+function TheDen({ favorites, games, items, plays, playerHistory, week, season, historyLoading, historyError, signedIn, onRetryHistory, livePlayerGames, loadingNews, onToggleFavorite }: { favorites: FavoriteTarget[]; games: Game[]; items: DenItem[]; plays: DenPlayItem[]; playerHistory: PlayerHistory[]; week: number | null; season: number | null; historyLoading: boolean; historyError: string; signedIn: boolean; onRetryHistory: () => void; livePlayerGames: number; loadingNews: boolean; onToggleFavorite: (favorite: FavoriteTarget) => void }) {
   const [denTab, setDenTab] = useState<'plays' | 'updates'>('plays');
   const [followingTab, setFollowingTab] = useState<'teams' | 'players'>('teams');
   const teamFavorites = favorites.filter((favorite) => favorite.type === 'team')
@@ -611,7 +611,6 @@ function TheDen({ user, favorites, games, items, plays, playerHistory, week, sea
       return <div className="den-favorite" key={favorite.key}><span className="den-favorite-avatar">{favorite.headshot ? <img src={favorite.headshot} alt="" /> : favorite.type === 'team' ? favorite.shortName : favorite.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{favorite.name}</b><small>{favorite.type === 'team' ? 'Team' : `${favorite.teamAbbr ?? ''}${favorite.position ? ` · ${favorite.position}` : 'Player'}`}</small></span><FavoriteStarButton favorite={favorites.some((item) => item.key === favorite.key)} label={favorite.name} onClick={() => onToggleFavorite(favorite)} />{savedGames.map((entry) => <LockerRoomPlayerStats key={entry.game.id} favorite={favorite} game={entry.game} stats={entry.stats} live={games.some((game) => game.id === entry.game.id && game.status === 'LIVE')} />)}{!savedGames.length && activeGame && <LockerRoomPlayerStats favorite={favorite} game={activeGame} />}</div>;
     })}</div> : <p className="den-empty" id="den-following-panel" role="tabpanel" aria-labelledby={`den-following-${followingTab}-tab`}>{followingTab === 'teams' ? 'No favorite teams yet.' : 'No favorite players yet.'}</p>}</aside>
     <div className="den-activity-column">
-      <LiveWire key={user?.id ?? 'guest'} user={user} />
       <div className="player-mode-tabs den-mode-tabs" role="tablist" aria-label="Den view">
         <button id="den-plays-tab" role="tab" aria-controls="den-plays-panel" aria-selected={denTab === 'plays'} className={denTab === 'plays' ? 'active' : ''} onClick={() => setDenTab('plays')}>Latest plays</button>
         <button id="den-updates-tab" role="tab" aria-controls="den-updates-panel" aria-selected={denTab === 'updates'} className={denTab === 'updates' ? 'active' : ''} onClick={() => setDenTab('updates')}>Latest updates</button>
@@ -633,8 +632,8 @@ function App() {
   const [splashReplay, setSplashReplay] = useState(0);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [guestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
-  const [view, setView] = useState<'Wire' | 'Players' | 'Den' | 'Profile'>('Wire');
-  const [profileReturnView, setProfileReturnView] = useState<'Wire' | 'Players' | 'Den'>('Wire');
+  const [view, setView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile'>('Wire');
+  const [profileReturnView, setProfileReturnView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den'>('Wire');
   const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
@@ -1098,6 +1097,7 @@ function App() {
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={view === 'Wire' ? 'active' : ''} onClick={openWireTab}>The Wire</button>
           <button className={view === 'Players' ? 'active' : ''} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}>Stat Hub</button>
+          <button className={view === 'LiveWire' ? 'active' : ''} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>LIVEWIRE</button>
           <button className={view === 'Den' ? 'active' : ''} onClick={() => setView('Den')}>Locker Room</button>
         </nav>
         <div className="topbar-right">
@@ -1146,12 +1146,12 @@ function App() {
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
             {view !== 'Wire' && <>
-              <h1>{view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : 'Stat Hub'}</h1>
-              <p>{view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>
+              <h1>{view === 'LiveWire' ? 'LIVEWIRE' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : 'Stat Hub'}</h1>
+              <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>
             </>}
           </div>
           <div className="heading-actions">
-            {view !== 'Profile' && (
+            {view !== 'Profile' && view !== 'LiveWire' && (
               <>
                 {(view !== 'Wire' || failedLeagues.length > 0) && <span className={`feed-status${failedLeagues.length ? ' feed-status-warning' : ''}`}>
                   <i />
@@ -1194,8 +1194,10 @@ function App() {
             onClose={() => setWirePlayerCard(null)}
           />}
           </>
+        ) : view === 'LiveWire' ? (
+          <LiveWire key={authUser?.id ?? 'guest'} user={authUser} />
         ) : view === 'Den' ? (
-          <TheDen user={authUser} favorites={favorites} games={lockerRoomReady ? games : []} items={lockerRoomHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={lockerRoomHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={lockerRoomHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={lockerRoomHistory.loading} historyError={lockerRoomHistory.error} signedIn={!!authUser} onRetryHistory={lockerRoomHistory.retry} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} />
+          <TheDen favorites={favorites} games={lockerRoomReady ? games : []} items={lockerRoomHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={lockerRoomHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={lockerRoomHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={lockerRoomHistory.loading} historyError={lockerRoomHistory.error} signedIn={!!authUser} onRetryHistory={lockerRoomHistory.retry} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} />
         ) : (
           <>
             <div className="player-mode-tabs" role="tablist" aria-label="Stat Hub view">
