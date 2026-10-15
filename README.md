@@ -85,6 +85,14 @@ Only a publishable or legacy anon key belongs in the frontend. Never expose a Su
 
 Email/password signup is open with no application-imposed total-account cap. Signup email confirmation is disabled in [`supabase/config.toml`](supabase/config.toml), so creating an account signs the user in immediately without consuming the built-in email quota. This does not verify email ownership. Supabase abuse-protection rate limits and hosting/plan capacity still apply; these are not unlimited. Password-reset emails still use the configured email service and its quota. Configure production SMTP before relying on password recovery at scale or re-enabling confirmation. Apply the declared auth settings with `supabase config push` after reviewing its diff; avoid changing unrelated remote settings.
 
+### LIVEWIRE
+
+The Locker Room's main activity column includes a public LIVEWIRE feed, separate from personal weekly history. Guests and members can read posts. Authorized admins can publish up to 500 characters with an optional HTTP/HTTPS news link and edit/delete their own posts. The owner can manage all posts and grant/revoke admin access for existing accounts by email using **Manage LIVEWIRE admins**. Verify intended admins' account identities out of band before granting access: signup does not verify email ownership. Posts refresh every 30 seconds, with older posts available through **Load older posts**. Changing the NFL week does not filter this editorial feed.
+
+Apply [`supabase/livewire.sql`](supabase/livewire.sql) before deploying the frontend. A trusted database administrator must bootstrap the owner's `user_id`, `role = 'owner'`, and public `display_name` in `public.livewire_roles` after verifying the account identity. No owner is granted by signup, email entered in the browser, or editable account metadata. Role membership is private except to the owner; public posts store an author display name, not an email. Database privileges and security-definer RPCs enforce permissions even when the UI is bypassed. Revoking an admin prevents further writes immediately, while their published posts remain.
+
+Run [`supabase/tests/livewire.sql`](supabase/tests/livewire.sql) through the SQL editor or `supabase db query --linked --file supabase/tests/livewire.sql` to verify guest/member access, posting validation, role escalation prevention, moderation ownership, and revocation. All test data is rolled back.
+
 ## Mobile push notifications
 
 GameWire can send score and status changes for games involving a user's favorite teams or players. Push alerts require an HTTPS deployment; on iPhone, install GameWire from Safari's Share menu to the Home Screen before enabling notifications.
