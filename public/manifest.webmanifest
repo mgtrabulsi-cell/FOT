@@ -5,8 +5,8 @@
   "start_url": "./#wire",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#252627",
-  "theme_color": "#252627",
+  "background_color": "#0b111c",
+  "theme_color": "#0b111c",
   "icons": [
     {
       "src": "./gamewire-pwa.svg",
