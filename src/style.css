@@ -11,8 +11,8 @@
   --line: #303d52;
   --paper: #151f2e;
   --accent: #8198bd;
-  --lime: #e14d56;
-  --coral: #e14d56;
+  --lime: #cc2633;
+  --coral: #cc2633;
   --mono: 'DM Mono', Consolas, monospace;
   --display: 'Oswald', 'Arial Narrow', sans-serif;
 }
@@ -39,7 +39,7 @@ button { color: inherit; }
 .banner-search summary::-webkit-details-marker { display: none; }
 .banner-search summary:hover, .banner-search[open] summary { background: #162438; border-color: #3d506d; color: #fff; }
 .banner-search summary:focus-visible { outline: 2px solid #8198bd; outline-offset: 2px; }
-.banner-search.has-query summary::after { content: ''; position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: #e14d56; }
+.banner-search.has-query summary::after { content: ''; position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: #cc2633; }
 .banner-search-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: flex; align-items: center; gap: 4px; width: 280px; padding: 8px; border: 1px solid #35445b; border-radius: 6px; background: #101a29; box-shadow: 0 8px 24px #050a1280; }
 .banner-search-panel .search-field { flex: 1; min-width: 0; }
 .banner-search-panel .icon-button { min-width: 44px; min-height: 44px; }
@@ -47,7 +47,7 @@ button { color: inherit; }
 .edition-label { color: #bdc9db; font: 10px var(--mono); letter-spacing: .5px; }
 .account-profile-button { max-width: 190px; overflow: hidden; padding: 6px 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: #dce5f2; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .account-profile-button:hover, .account-profile-button.active { border-color: #526b91; background: #ffffff0b; }
-.account-profile-button:focus-visible { outline: 2px solid #d54b53; outline-offset: 2px; }
+.account-profile-button:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }
 .sign-out-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid #ffffff30; border-radius: 4px; background: transparent; color: #dce5f2; font-size: 10px; cursor: pointer; }
 .sign-out-button:hover { background: #ffffff12; }
 .top-icon, .icon-button { border: 0; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
@@ -71,7 +71,7 @@ button { color: inherit; }
 .auth-error, .auth-notice, .auth-config-note { margin: 0; padding: 9px 10px; border-radius: 3px; font-size: 10px; line-height: 1.5; }
 .auth-error { border-left: 2px solid #bc5d4b; background: #fff6f3; color: #8e4638; }
 .auth-notice { border-left: 2px solid #4d6c95; background: #f1f5fb; color: #3f5677; }
-.auth-config-note { margin-top: 15px; border-left: 2px solid #b9474e; background: #fbf3f3; color: #704247; }
+.auth-config-note { margin-top: 15px; border-left: 2px solid #cc2633; background: #fbf3f3; color: #704247; }
 .auth-loading { min-height: 100vh; display: grid; place-items: center; color: #bdc9db; font-size: 12px; }
 .splash-screen { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #040a15; animation: splash-fade-in .5s ease-out both; }
 .splash-logo { position: relative; width: min(94vw, 640px); aspect-ratio: 3 / 2; }
@@ -103,7 +103,7 @@ button { color: inherit; }
 .push-settings-form { gap: 12px; }
 .push-settings-form > p { margin: 0; }
 .account-setting-form .push-preference { display: flex; align-items: center; gap: 8px; }
-.account-setting-form .push-preference input { width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; margin: 0; padding: 0; accent-color: #e14d56; }
+.account-setting-form .push-preference input { width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; margin: 0; padding: 0; accent-color: #cc2633; }
 .push-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .push-actions .push-disable-button { border: 1px solid #d6deea; background: transparent; color: #435a7c; }
 .account-setting > header { display: flex; align-items: center; gap: 9px; padding-bottom: 11px; border-bottom: 1px solid #edf0f4; color: #4a6287; }
@@ -133,14 +133,14 @@ button { color: inherit; }
 .date-button svg:last-child { transform: rotate(90deg); }
 .heading-actions { display: flex; align-items: center; gap: 14px; }
 .feed-status { display: flex; align-items: center; gap: 7px; color: #52698d; font: 9px var(--mono); }
-.feed-status i { width: 6px; height: 6px; border-radius: 50%; background: #e14d56; box-shadow: 0 0 0 3px #e14d5624; }
+.feed-status i { width: 6px; height: 6px; border-radius: 50%; background: #cc2633; box-shadow: 0 0 0 3px #cc263324; }
 .feed-status-warning { color: #a15b48; }
 .feed-status-warning i { background: #c77951; box-shadow: 0 0 0 3px #c7795124; }
 .live-strip { min-height: 77px; display: flex; align-items: center; background: #1b2940; color: #f4f6fa; border-radius: 5px; margin-bottom: 22px; padding: 0 18px; overflow: hidden; box-shadow: 0 4px 12px #17203312; }
 .live-strip-title { min-width: 214px; display: flex; flex-direction: column; gap: 7px; }
 .live-strip-title > b { font-size: 12px; font-weight: 500; color: #d0d8e5; }
 .live-indicator { display: flex; align-items: center; gap: 7px; color: var(--lime); font: 500 10px var(--mono); letter-spacing: .6px; }
-.live-indicator i, .game-state i { width: 6px; height: 6px; display: inline-block; border-radius: 100%; background: var(--coral); box-shadow: 0 0 0 3px #e14d5633; }
+.live-indicator i, .game-state i { width: 6px; height: 6px; display: inline-block; border-radius: 100%; background: var(--coral); box-shadow: 0 0 0 3px #cc263333; }
 .ticker-games { display: flex; height: 44px; border-left: 1px solid #ffffff24; }
 .ticker-game { min-width: 148px; display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 3px 12px; padding: 0 16px; background: transparent; border: 0; border-right: 1px solid #ffffff24; color: white; text-align: left; font: 11px var(--mono); cursor: pointer; }
 .ticker-game b { color: var(--lime); }
@@ -180,7 +180,7 @@ button { color: inherit; }
 .team-score { font: 600 17px var(--display); text-align: right; }
 .card-bottom { display: flex; justify-content: space-between; align-items: center; color: #8792a4; border-top: 1px solid #edf0f4; margin-top: 7px; padding-top: 5px; font: 9px var(--mono); }
 .game-card-players { width: 27px; height: 27px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid transparent; border-radius: 50%; background: transparent; color: #71819a; cursor: pointer; }
-.game-card-players:hover { border-color: #d6dfea; background: #f0f3f8; color: #c54851; }
+.game-card-players:hover { border-color: #d6dfea; background: #f0f3f8; color: #cc2633; }
 .game-card-players:focus-visible { outline: 2px solid #536d95; outline-offset: 2px; }
 .card-bottom .game-card-players svg { color: inherit; }
 .load-more { width: 100%; padding: 12px; margin-top: 11px; display: flex; justify-content: center; gap: 5px; align-items: center; border: 1px solid #e1e6df; border-radius: 4px; background: #fff; color: #53665a; font-size: 11px; font-weight: 600; cursor: pointer; }
@@ -284,7 +284,7 @@ button { color: inherit; }
 .nfl-player-stat-tabs.is-dragging { cursor: grabbing; }
 .nfl-player-stat-tabs button { min-height: 34px; flex: 0 0 auto; padding: 0 12px; border: 1px solid #e0e6df; border-radius: 18px; background: #f0f3ee; color: #26382d; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .nfl-player-stat-tabs button.active { border-color: #344968; background: #344968; color: #fff; }
-.nfl-player-stat-tabs button:focus-visible { outline: 2px solid #c65359; outline-offset: 2px; }
+.nfl-player-stat-tabs button:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }
 .nfl-player-stat-value { min-height: 112px; margin-top: 11px; padding: 13px; display: flex; flex-direction: column; justify-content: center; gap: 5px; background: #f0f3f8; }
 .nfl-player-stat-value span { color: #77849a; font: 9px var(--mono); }
 .nfl-player-stat-value strong { font: 500 31px var(--display); }
@@ -297,7 +297,7 @@ button { color: inherit; }
 .nfl-game-bar { min-width: 50px; height: 167px; display: grid; grid-template-rows: 18px 95px 18px 14px 14px; align-items: end; justify-items: center; gap: 2px; text-align: center; }
 .nfl-game-bar-value { color: #24382b; font: 600 10px var(--mono); }
 .nfl-game-bar-track { width: 100%; height: 95px; display: flex; align-items: flex-end; justify-content: center; border-bottom: 1px solid #d8dfd8; background: linear-gradient(to bottom, transparent 32%, #eef2ec 32%, #eef2ec 33%, transparent 33%, transparent 66%, #eef2ec 66%, #eef2ec 67%, transparent 67%); }
-.nfl-game-bar-track i { width: 62%; min-height: 2px; display: block; border-radius: 4px 4px 0 0; background: #cf4b53; }
+.nfl-game-bar-track i { width: 62%; min-height: 2px; display: block; border-radius: 4px 4px 0 0; background: #cc2633; }
 .nfl-game-bar > b { width: 100%; overflow: hidden; color: #2d3a31; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .nfl-game-bar > small, .nfl-game-result { color: #828d84; font: 8px var(--mono); white-space: nowrap; }
 .nfl-game-result.is-win { color: #405f8d; }
@@ -340,10 +340,10 @@ button { color: inherit; }
 .nfl-recent-team > header b, .nfl-recent-team > header span { color: #77837a; font: 8px var(--mono); }
 .nfl-recent-team > div { display: grid; grid-template-columns: 38px 16px minmax(45px, 1fr) auto; gap: 4px; align-items: center; padding: 7px 1px; border-bottom: 1px solid #eff1ef; color: #69756d; font: 8px var(--mono); }
 .nfl-recent-team > div strong { color: #25362b; font: 500 9px var(--mono); }
-.nfl-inline-warning { margin: 0; padding: 8px 12px; border-left: 2px solid #c74b52; color: #76525a; background: #fff7f7; font-size: 9px; }
+.nfl-inline-warning { margin: 0; padding: 8px 12px; border-left: 2px solid #cc2633; color: #76525a; background: #fff7f7; font-size: 9px; }
 .player-mode-tabs { display: flex; gap: 22px; margin: 0 0 16px; border-bottom: 1px solid #dfe4dd; }
 .player-mode-tabs button { padding: 0 2px 10px; border: 0; background: transparent; color: #748078; font-size: 11px; font-weight: 600; cursor: pointer; }
-.player-mode-tabs button.active { color: #344968; box-shadow: inset 0 -2px #d54b53; }
+.player-mode-tabs button.active { color: #344968; box-shadow: inset 0 -2px #cc2633; }
 .nfl-players-directory { display: grid; gap: 14px; }
 .nfl-directory-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; }
 .nfl-directory-controls > .search-field, .nfl-game-wheel { width: 100%; min-width: 0; }
@@ -523,7 +523,7 @@ td:first-child { color: #828c84; }
 .den-play-copy > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #77837a; font-size: 9px; }
 .den-play-copy > header b { color: #34473a; font-size: 10px; }
 .den-play-copy > header time { font: 8px var(--mono); }
-.den-play-copy > strong { color: #c8464e; font: 500 13px var(--display); }
+.den-play-copy > strong { color: #fff; font: 500 13px var(--display); border-left: 3px solid #cc2633; padding-left: 6px; }
 .den-play-copy > p { margin: 0; color: #77837a; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
 .den-plays-empty { min-height: 105px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 16px; text-align: center; }
 .den-plays-empty b { color: #34473a; font: 500 14px var(--display); }
@@ -687,11 +687,11 @@ td:first-child { color: #828c84; }
 .game-card.selected { border-color: #879bb8; box-shadow: inset 3px 0 #879bb8; }
 .card-bottom { border-top-color: #29384e; }
 .game-card-players { color: #9daec7; }
-.game-card-players:hover { background: #24334a; border-color: #516683; color: #f06a70; }
+.game-card-players:hover { background: #a51c28; border-color: #cc2633; color: #fff; }
 .team-mark { background: color-mix(in srgb, var(--team-color) 28%, #172337); }
 .favorite-star-button { color: #9eadc4; background: #182438; border-color: #3b4b63; }
-.favorite-star-button:hover { color: #f06a70; border-color: #bc5960; }
-.favorite-star-button.is-favorite { color: #f07177; border-color: #a8424b; background: #33202b; }
+.favorite-star-button:hover { color: #fff; border-color: #cc2633; background: #a51c28; }
+.favorite-star-button.is-favorite { color: #fff; border-color: #cc2633; background: #a51c28; }
 .matchup { border-bottom-color: #2b394e; }
 .nfl-score-rule { background: #7486a3; }
 .tab-strip, .tab-strip button.active::after { border-color: #34445b; }
@@ -731,10 +731,10 @@ td:first-child { color: #828c84; }
 .nfl-directory-position-bar { border-bottom-color: #34445b; }
 .sport-filter { border-bottom-color: #34445b; }
 .sport-filter button { color: #a5b1c4; }
-.sport-filter button.active { color: #e0e8f3; box-shadow: inset 0 -2px #df5159; }
+.sport-filter button.active { color: #e0e8f3; box-shadow: inset 0 -2px #cc2633; }
 .player-mode-tabs { border-bottom-color: #34445b; }
 .player-mode-tabs button { color: #bdc8da; }
-.player-mode-tabs button.active { color: #fff; box-shadow: inset 0 -2px #d54b53; }
+.player-mode-tabs button.active { color: #fff; box-shadow: inset 0 -2px #cc2633; }
 .nfl-game-wheel-tabs button { color: #dce4f0; background: #182438; border-color: #34445b; }
 .nfl-game-wheel-tabs button small { color: #a2b0c5; }
 .nfl-player-search-status { color: #bbc7d9; }
@@ -744,7 +744,7 @@ td:first-child { color: #828c84; }
 .favorable-matchup-heading, .favorable-matchup-group > header { border-bottom-color: #34445b; }
 .favorable-matchup-item, .den-play-item, .den-feed-item, .den-favorite, .den-favorites .panel-heading { border-color: #2c3b51; }
 .favorable-matchup-metrics b.is-positive { color: #7ea6d6; }
-.favorable-matchup-metrics b.is-negative { color: #ef777d; }
+.favorable-matchup-metrics b.is-negative { color: #fff; background: #a51c28; border-radius: 3px; padding: 2px 4px; }
 .den-activity .den-timeline, .den-favorites { color: #e3e9f2; background: #151f2e; border-color: #34445b; }
 .den-timeline-heading, .den-timeline-heading h2, .den-favorites .panel-heading h2 { color: #e5eaf3; }
 .den-refresh, .den-empty, .den-play-copy > header, .den-play-copy > p, .den-plays-empty p, .den-news-update > p, .den-score-update > p, .den-feed-content > header, .den-feed-content time { color: #bbc7d9; }
@@ -778,12 +778,12 @@ td:first-child { color: #828c84; }
 .auth-mode-toggle { color: #9db9df; }
 .empty-games, .empty-detail { color: #b6c3d7; background: #151f2e; border-color: #34445b; }
 .score-layout .spotlight-panel { background: #151f2e; }
-.nfl-inline-warning, .feed-warning { color: #f0b9bd; background: #30212b; border-color: #ac4a51; }
-.primary-nav button.active::after { background: #e14d56; }
-.feed-status-warning, .game-state.is-live { color: #f07c82; }
+.nfl-inline-warning, .feed-warning { color: #f0b9bd; background: #30212b; border-color: #cc2633; }
+.primary-nav button.active::after { background: #cc2633; }
+.feed-status-warning, .game-state.is-live { color: #fff; background: #a51c28; border-radius: 3px; padding: 2px 4px; }
 .nfl-score-rule { background: #7486a3; }
 .team-mark { background: color-mix(in srgb, var(--team-color) 28%, #172337); }
-.game-card-main:focus-visible, .game-center-team-players:focus-visible, .nfl-directory-player-main:focus-visible { outline-color: #e05a62; }
+.game-card-main:focus-visible, .game-center-team-players:focus-visible, .nfl-directory-player-main:focus-visible { outline-color: #cc2633; }
 
 /* iOS Safari auto-zooms into any field under 16px; keep fields at 16px on touch devices so the page never zooms. */
 @media (pointer: coarse) {
@@ -835,11 +835,11 @@ td:first-child { color: #828c84; }
 
 .wire-wheel-card { flex: 0 0 auto; min-width: 132px; min-height: 44px; padding: 3px 8px; border: 1px solid #28374d; border-radius: 6px; background: #131d2c; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, transform .12s, box-shadow .15s; color: inherit; display: grid; gap: 2px; }
 .wire-wheel-card:hover { border-color: #445b7c; background: #182537; transform: translateY(-1px); }
-.wire-wheel-card.selected { border-color: #e14d56; background: #18263c; box-shadow: 0 0 0 1px #e14d56, 0 4px 16px #e14d5630; }
-.wire-wheel-card.is-live { border-color: #ff525288; }
+.wire-wheel-card.selected { border-color: #cc2633; background: #18263c; box-shadow: 0 0 0 1px #cc2633, 0 4px 16px #cc263330; }
+.wire-wheel-card.is-live { border-color: #cc263388; }
 .wire-wheel-status { display: flex; align-items: center; justify-content: space-between; font: 600 9px var(--mono); color: #8fa4c2; }
-.wire-wheel-status .live-pill { display: inline-flex; align-items: center; gap: 4px; color: #ff5252; }
-.wire-wheel-status .live-pill i { width: 5px; height: 5px; border-radius: 50%; background: #ff5252; box-shadow: 0 0 6px #ff5252; display: inline-block; }
+.wire-wheel-status .live-pill { display: inline-flex; align-items: center; gap: 4px; color: #fff; background: #a51c28; border-radius: 3px; padding: 2px 4px; }
+.wire-wheel-status .live-pill i { width: 5px; height: 5px; border-radius: 50%; background: #cc2633; box-shadow: 0 0 6px #cc2633; display: inline-block; }
 .wire-wheel-clock { font: 500 8px var(--mono); color: #788fae; }
 .wire-wheel-teams { display: grid; gap: 2px; }
 .wire-wheel-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
@@ -867,9 +867,9 @@ td:first-child { color: #828c84; }
 /* Matchup Center (Game state, clock, venue, link) */
 .wire-matchup-center { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; min-width: 170px; }
 .wire-status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 14px; font: 700 11px var(--mono); letter-spacing: .6px; background: #1d2a3d; color: #9bb1cf; border: 1px solid #2d3e58; }
-.wire-status-pill.is-live { background: #45151c; color: #ff6b72; border-color: #ff4a5566; box-shadow: 0 0 12px #ff4a5530; }
-.wire-status-pill.is-live i { width: 6px; height: 6px; border-radius: 50%; background: #ff4a55; box-shadow: 0 0 6px #ff4a55; }
-.wire-live-notice { display: inline-flex; align-items: center; gap: 5px; font: 500 9px var(--mono); color: #ff7d83; }
+.wire-status-pill.is-live { background: #a51c28; color: #fff; border-color: #cc2633; box-shadow: 0 0 12px #cc263330; }
+.wire-status-pill.is-live i { width: 6px; height: 6px; border-radius: 50%; background: #cc2633; box-shadow: 0 0 6px #cc2633; }
+.wire-live-notice { display: inline-flex; align-items: center; gap: 5px; font: 500 9px var(--mono); color: #fff; border-left: 3px solid #cc2633; padding-left: 6px; }
 .wire-spread-badge { display: flex; align-items: center; gap: 6px; font: 500 11px var(--mono); color: #8ba2c2; background: #162234; padding: 3px 8px; border-radius: 4px; }
 .wire-spread-badge b { color: #fff; }
 .wire-venue-line { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #8499b8; }
@@ -898,7 +898,7 @@ td:first-child { color: #828c84; }
 .wire-team-half { position: relative; padding: 14px 18px; border: 2px solid #25364c; border-radius: 8px; background: color-mix(in srgb, var(--team-bar-color, #203046) 16%, #131c2b); color: #dce5f2; cursor: pointer; transition: border-color .18s, background .18s, transform .12s, box-shadow .18s; overflow: hidden; text-align: left; }
 .wire-team-half::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--team-bar-color, #4a6385); }
 .wire-team-half:hover { border-color: color-mix(in srgb, var(--team-bar-color, #4a6385) 60%, #fff); transform: translateY(-1px); }
-.wire-team-half.active { border-color: var(--team-bar-color, #e14d56); background: color-mix(in srgb, var(--team-bar-color, #203046) 28%, #131c2b); box-shadow: 0 0 0 1px var(--team-bar-color, #e14d56), 0 6px 22px color-mix(in srgb, var(--team-bar-color, #e14d56) 30%, transparent); }
+.wire-team-half.active { border-color: var(--team-bar-color, #cc2633); background: color-mix(in srgb, var(--team-bar-color, #203046) 28%, #131c2b); box-shadow: 0 0 0 1px var(--team-bar-color, #cc2633), 0 6px 22px color-mix(in srgb, var(--team-bar-color, #cc2633) 30%, transparent); }
 .wire-team-half-content { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .wire-team-half-left { display: flex; align-items: center; gap: 12px; }
 .wire-team-half-copy { display: grid; gap: 2px; }
@@ -914,9 +914,9 @@ td:first-child { color: #828c84; }
 .wire-stat-mode { align-self: start; }
 .wire-subtabs button { padding: 9px 18px; border: 1px solid #293a51; border-radius: 6px; background: #131c2b; color: #a4b7d1; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; line-height: 1.2; }
 .wire-subtabs button:hover { background: #1a273b; color: #fff; border-color: #3f5573; }
-.wire-subtabs button.active { background: #1f3048; color: #fff; border-color: #557299; box-shadow: inset 0 -2px #e14d56; }
+.wire-subtabs button.active { background: #1f3048; color: #fff; border-color: #557299; box-shadow: inset 0 -2px #cc2633; }
 .wire-subtabs button:hover { background: #1a273b; color: #fff; border-color: #3f5573; }
-.wire-subtabs button.active { background: #1f3048; color: #fff; border-color: #557299; box-shadow: inset 0 -2px #e14d56; }
+.wire-subtabs button.active { background: #1f3048; color: #fff; border-color: #557299; box-shadow: inset 0 -2px #cc2633; }
 
 /* Category Pills Filter */
 .wire-category-filters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
@@ -989,7 +989,7 @@ td:first-child { color: #828c84; }
 .wire-upcoming-preview { display: grid; gap: 14px; }
 .wire-upcoming-card { background: #131c2b; border: 1px solid #26374d; border-radius: 8px; padding: 22px; display: grid; gap: 18px; }
 .wire-upcoming-card header { display: flex; align-items: flex-start; gap: 14px; color: #8ba2c2; }
-.wire-upcoming-card header svg { color: #e14d56; flex: 0 0 auto; margin-top: 3px; }
+.wire-upcoming-card header svg { color: #cc2633; flex: 0 0 auto; margin-top: 3px; }
 .wire-upcoming-card header h3 { margin: 0 0 4px; font: 600 17px var(--display); color: #fff; }
 .wire-upcoming-card header p { margin: 0; font-size: 12px; color: #9bb1cf; line-height: 1.5; }
 .wire-upcoming-roster-section h4 { margin: 0 0 12px; font: 600 13px var(--mono); color: #8fa5c4; text-transform: uppercase; letter-spacing: .5px; }
@@ -1006,8 +1006,8 @@ td:first-child { color: #828c84; }
 .wire-primetime-tag.tag-snf { background: #381e05; color: #fbbf24; border: 1px solid #d9770666; }
 .wire-primetime-tag.tag-mnf { background: #2e1065; color: #c084fc; border: 1px solid #9333ea66; }
 
-.wire-wheel-card.is-primetime { border-color: #314560; }
-.wire-wheel-card.is-primetime.is-live { border-color: #e14d56; box-shadow: 0 0 16px #e14d5645; }
+.wire-wheel-card.is-primetime:not(.selected):not(.is-live) { border-color: #314560; }
+.wire-wheel-card.is-primetime.is-live { border-color: #cc2633; box-shadow: 0 0 16px #cc263345; }
 
 .wire-primetime-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font: 700 10px var(--mono); letter-spacing: .6px; text-transform: uppercase; }
 .wire-primetime-pill.pill-tnf { background: #0c274c; color: #93c5fd; border: 1px solid #3b82f680; }
