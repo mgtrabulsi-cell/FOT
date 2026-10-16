@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 
-type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string };
+const postThemes = [
+  { value: 'news', label: 'News', color: 'tnf' },
+  { value: 'fantasy', label: 'Fantasy', color: 'snf' },
+  { value: 'betting', label: 'Betting', color: 'mnf' },
+] as const;
+type PostTheme = typeof postThemes[number]['value'];
+type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
 
@@ -32,6 +38,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   const [body, setBody] = useState('');
   const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
+  const [themes, setThemes] = useState<PostTheme[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const previews = useRef(new Set<string>());
   useEffect(() => () => { previews.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
@@ -56,11 +63,12 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         if (result.error) throw result.error;
         uploaded.push(path); paths.push(path);
       }
-      const result = await supabase.rpc('save_livewire_post', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing, post_images: paths });
+      const result = await supabase.rpc('save_livewire_post', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing, post_images: paths, post_themes: themes });
       if (result.error) throw result.error;
       return { error: null };
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Could not save the photos or post. Please retry.';
+      const message = cause !== null && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
+        ? cause.message : 'Could not save the photos or post. Please retry.';
       if (uploaded.length) {
         const cleanup = await storage.remove(uploaded);
         if (cleanup.error) throw new Error(`${message} Unused upload cleanup also failed: ${cleanup.error.message}`);
@@ -160,11 +168,19 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       if (!supabase || busy) return;
       if (source.trim() && !safeNewsLink(source.trim())) { setActionError('Use a valid http or https news link.'); return; }
       void act(savePost, () => {
-        resetPhotos(); setTitle(''); setBody(''); setSource(''); setEditing(null); setNotice(editing ? 'Post updated.' : 'Post published.');
+        resetPhotos(); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setNotice(editing ? 'Post updated.' : 'Post published.');
       });
     }}>
       <label htmlFor="livewire-title">{editing ? 'Edit subject / title' : 'Subject / title'}</label>
       <input id="livewire-title" maxLength={120} required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Give your post a headline..." disabled={busy} />
+      <fieldset className="livewire-themes" disabled={busy}>
+        <legend>Themes <span>(optional, select multiple)</span></legend>
+        <div>{postThemes.map((theme) => <label key={theme.value}>
+          <input type="checkbox" checked={themes.includes(theme.value)} onChange={(event) => setThemes((current) => event.target.checked
+            ? [...current, theme.value] : current.filter((value) => value !== theme.value))} />
+          <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
+        </label>)}</div>
+      </fieldset>
       <label htmlFor="livewire-body">Post</label>
       <textarea id="livewire-body" maxLength={500} required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Player news, game reactions, and your latest takes..." disabled={busy} />
       <label htmlFor="livewire-source">News link <span>(optional)</span></label>
@@ -186,7 +202,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
         setPhotos((current) => current.filter((_, item) => item !== index));
       }}>Remove photo {index + 1}</button></div>)}</div>}
-      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small>{editing && <button type="button" disabled={busy} onClick={() => { resetPhotos(); setEditing(null); setTitle(''); setBody(''); setSource(''); }}>Cancel edit</button>}<button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
+      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small>{editing && <button type="button" disabled={busy} onClick={() => { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); }}>Cancel edit</button>}<button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
@@ -197,15 +213,17 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       {visiblePosts.map((post) => <article className={`livewire-post${post.id === postId ? ' livewire-post-target' : ''}`} key={post.id} ref={post.id === postId ? focusedPost : undefined} tabIndex={post.id === postId ? -1 : undefined} aria-label={post.id === postId ? 'Post opened from notification' : undefined}>
         <span className="livewire-avatar" aria-hidden="true">{post.author_name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('').toUpperCase()}</span>
         <div className="livewire-post-content">
-        <header><b>{post.author_name}</b><time dateTime={post.created_at}>{new Date(post.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{post.updated_at !== post.created_at ? ' · Edited' : ''}</time></header>
+        <header><b>{post.author_name}</b><time dateTime={post.created_at}>{new Date(post.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{post.updated_at !== post.created_at ? ' · Edited' : ''}</time>
+          {postThemes.filter((theme) => post.themes?.includes(theme.value)).map((theme) => <span className={`wire-primetime-tag tag-${theme.color}`} key={theme.value}>{theme.label}</span>)}
+        </header>
         {post.title && <h3>{post.title}</h3>}
         <p>{post.body}</p>
         {!!post.image_paths?.length && <div className={`livewire-gallery livewire-gallery-${post.image_paths.length}`}>{post.image_paths.map((path, index) => <a key={path} href={photoUrl(path)} target="_blank" rel="noopener noreferrer" aria-label={`Open photo ${index + 1} for ${post.title ?? 'post'}`}><img src={photoUrl(path)} alt={`${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}`} loading="lazy" onError={(event) => { event.currentTarget.alt = 'Photo unavailable'; }} /></a>)}</div>}
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
-          <button disabled={busy} onClick={() => { resetPhotos(); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
+          <button disabled={busy} onClick={() => { resetPhotos(); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {
-            if (editing === post.id) { resetPhotos(); setEditing(null); setTitle(''); setBody(''); setSource(''); }
+            if (editing === post.id) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); }
             setNotice('Post deleted.');
           }); }}>Delete</button>
         </div>}

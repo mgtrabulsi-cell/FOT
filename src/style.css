@@ -1103,6 +1103,12 @@ td:first-child { color: #828c84; }
 .wire-primetime-tag.tag-tnf { background: #0c274c; color: #60a5fa; border: 1px solid #2563eb66; }
 .wire-primetime-tag.tag-snf { background: #381e05; color: #fbbf24; border: 1px solid #d9770666; }
 .wire-primetime-tag.tag-mnf { background: #2e1065; color: #c084fc; border: 1px solid #9333ea66; }
+.livewire-themes { margin: 0; padding: 8px 0; border: 0; min-width: 0; }
+.livewire-themes legend { font-size: 12px; color: #edf2f8; }
+.livewire-themes legend span { color: #bbc7d9; }
+.livewire-themes > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.livewire-composer .livewire-themes label { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; cursor: pointer; }
+.livewire-composer .livewire-themes input { width: 16px; height: 16px; margin: 0; accent-color: #cc2633; }
 
 .wire-wheel-card.is-primetime:not(.selected):not(.is-live) { border-color: #314560; }
 .wire-wheel-card.is-primetime.is-live { border-color: #cc2633; box-shadow: 0 0 16px #cc263345; }

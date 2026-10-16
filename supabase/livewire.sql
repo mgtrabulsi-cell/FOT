@@ -19,6 +19,8 @@ alter table public.livewire_posts add column if not exists title text
   check (title is null or char_length(btrim(title)) between 1 and 120);
 alter table public.livewire_posts add column if not exists image_paths text[] not null default '{}'
   check (cardinality(image_paths) <= 4 and array_position(image_paths, null) is null);
+alter table public.livewire_posts add column if not exists themes text[] not null default '{}'
+  check (cardinality(themes) <= 3 and array_position(themes, null) is null and themes <@ array['news','fantasy','betting']::text[]);
 insert into storage.buckets(id, name, public, file_size_limit, allowed_mime_types)
 values ('livewire-photos', 'livewire-photos', true, 5242880, array['image/jpeg','image/png','image/webp','image/gif'])
 on conflict(id) do update set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
@@ -55,7 +57,8 @@ using (bucket_id = 'livewire-photos' and (storage.foldername(name))[1] = auth.ui
 
 drop function if exists public.save_livewire_post(text,text,uuid);
 drop function if exists public.save_livewire_post(text,text,uuid,text);
-create or replace function public.save_livewire_post(post_body text, post_source text default null, post_id uuid default null, post_title text default null, post_images text[] default null)
+drop function if exists public.save_livewire_post(text,text,uuid,text,text[]);
+create or replace function public.save_livewire_post(post_body text, post_source text default null, post_id uuid default null, post_title text default null, post_images text[] default null, post_themes text[] default null)
 returns uuid language plpgsql security definer set search_path = ''
 as $$
 declare
@@ -70,6 +73,11 @@ begin
   if post_title is not null and char_length(btrim(post_title)) not between 1 and 120 then
     raise exception 'Titles must contain 1 to 120 characters';
   end if;
+  if post_themes is not null and (
+    cardinality(post_themes) > 3 or array_position(post_themes, null) is not null
+    or not (post_themes <@ array['news','fantasy','betting']::text[])
+    or cardinality(post_themes) <> (select count(distinct theme) from unnest(post_themes) theme)
+  ) then raise exception 'Choose News, Fantasy, and Betting at most once each'; end if;
   if post_images is not null then
     if cardinality(post_images) > 4 or array_position(post_images, null) is not null then
       raise exception 'Attach at most four photos';
@@ -90,11 +98,11 @@ begin
     raise exception 'Use a valid http or https news link';
   end if;
   if post_id is null then
-    insert into public.livewire_posts(author_id, author_name, title, body, source_url, image_paths)
-    values (actor.user_id, actor.display_name, btrim(post_title), btrim(post_body), post_source, coalesce(post_images, '{}')) returning id into result;
+    insert into public.livewire_posts(author_id, author_name, title, body, source_url, image_paths, themes)
+    values (actor.user_id, actor.display_name, btrim(post_title), btrim(post_body), post_source, coalesce(post_images, '{}'), coalesce(post_themes, '{}')) returning id into result;
   else
     update public.livewire_posts set title = coalesce(btrim(post_title), title), body = btrim(post_body), source_url = post_source,
-      image_paths = coalesce(post_images, image_paths), updated_at = clock_timestamp()
+      image_paths = coalesce(post_images, image_paths), themes = coalesce(post_themes, themes), updated_at = clock_timestamp()
     where id = post_id and (author_id = actor.user_id or actor.role = 'owner') returning id into result;
     if result is null then raise exception 'Post not found or editing is not permitted'; end if;
   end if;
@@ -131,9 +139,9 @@ begin
   end if;
 end;
 $$;
-revoke all on function public.save_livewire_post(text,text,uuid,text,text[]), public.delete_livewire_post(uuid),
+revoke all on function public.save_livewire_post(text,text,uuid,text,text[],text[]), public.delete_livewire_post(uuid),
   public.manage_livewire_admin(text,uuid) from public, anon;
-grant execute on function public.save_livewire_post(text,text,uuid,text,text[]), public.delete_livewire_post(uuid),
+grant execute on function public.save_livewire_post(text,text,uuid,text,text[],text[]), public.delete_livewire_post(uuid),
   public.manage_livewire_admin(text,uuid) to authenticated;
 
 commit;
