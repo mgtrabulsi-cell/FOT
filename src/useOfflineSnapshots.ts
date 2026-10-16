@@ -9,7 +9,7 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
   latestGames.current = games;
   const weekKey = games.filter((game) => game.league === 'NFL').map((game) => `${game.seasonYear}:${game.eventId}`).sort().join(',');
   useEffect(() => {
-    if (!import.meta.env.PROD || !enabled || !weekKey || (!nativeApp && !('serviceWorker' in navigator))) return;
+    if (!import.meta.env.PROD || !enabled || !weekKey) return;
     const controller = new AbortController();
     let running = false;
     let refreshPending = false;
@@ -18,7 +18,7 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
       window.dispatchEvent(new CustomEvent('gamewire-offline-snapshot', { detail }));
     };
     const save = async () => {
-      if (running || !navigator.onLine || document.visibilityState === 'hidden' || (!nativeApp && !navigator.serviceWorker.controller)
+      if (running || !navigator.onLine || document.visibilityState === 'hidden'
         || Date.now() - lastAttempt < offlineSnapshotInterval) return;
       running = true;
       lastAttempt = Date.now();

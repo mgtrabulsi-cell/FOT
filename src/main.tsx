@@ -4,6 +4,7 @@ import App from './App';
 import OfflineStatus from './OfflineStatus';
 import './style.css';
 import { initializeNativeOffline, nativeApp } from './services/nativeOffline';
+import { initializeWebOffline } from './services/webOffline';
 
 if (!nativeApp && 'serviceWorker' in navigator) {
   void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((error: unknown) => {
@@ -12,6 +13,7 @@ if (!nativeApp && 'serviceWorker' in navigator) {
 }
 
 async function start() {
+  if (!nativeApp) initializeWebOffline();
   await initializeNativeOffline();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

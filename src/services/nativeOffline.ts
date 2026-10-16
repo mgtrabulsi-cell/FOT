@@ -13,6 +13,10 @@ type NativeOfflinePlugin = {
 };
 export const NativeOffline = registerPlugin<NativeOfflinePlugin>('GameWireOffline');
 
+export function isOfflineImageSource(src: string): boolean {
+  return isNativePublicImage(new URL(src, window.location.href), publicOrigin);
+}
+
 export async function initializeNativeOffline() {
   if (!nativeApp) return;
   await NativeOffline.configure({ publicOrigin: publicOrigin ?? '' });
@@ -24,15 +28,24 @@ export async function initializeNativeOffline() {
 }
 
 export async function nativeImageSource(src: string): Promise<string> {
-  if (!nativeApp || !isNativePublicImage(new URL(src, window.location.href), publicOrigin)) return src;
+  if (!nativeApp || !isOfflineImageSource(src)) return src;
   const { path } = await NativeOffline.image({ url: src });
   return Capacitor.convertFileSrc(path);
 }
 
 export async function warmNativeImages(urls: string[], signal: AbortSignal) {
+  let failed = 0;
   for (let start = 0; start < urls.length; start += 4) {
     signal.throwIfAborted();
-    await Promise.all(urls.slice(start, start + 4).map(nativeImageSource));
+    const batch = urls.slice(start, start + 4);
+    const results = await Promise.allSettled(batch.map(nativeImageSource));
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        failed++;
+        console.error('Native offline image could not be saved', batch[index], result.reason);
+      }
+    });
   }
   signal.throwIfAborted();
+  if (failed) throw new Error(`${failed} of ${urls.length} native offline images could not be saved.`);
 }

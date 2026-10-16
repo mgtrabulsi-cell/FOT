@@ -900,6 +900,10 @@ function App() {
               .slice(0, 100);
           });
         }
+        if (!result.games.length && result.failedLeagues.length) {
+          setFailedLeagues(result.failedLeagues);
+          return;
+        }
         setGames(result.games);
         setLoadedNFLWeek(selectedNFLWeek ?? result.nflWeek);
         setFailedLeagues(result.failedLeagues);

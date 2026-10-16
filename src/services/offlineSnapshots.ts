@@ -3,6 +3,7 @@ import {
 } from './sportsData.ts';
 import type { Game } from './sportsData.ts';
 import { nativeApp, NativeOffline, warmNativeImages } from './nativeOffline.ts';
+import { warmWebImages, webOfflineStore } from './webOffline.ts';
 
 export const offlineSnapshotInterval = 5 * 60_000;
 
@@ -18,8 +19,7 @@ export function collectOfflineImages(value: unknown, images = new Set<string>())
 }
 
 export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Promise<string[]> {
-  const baseline = nativeApp ? await NativeOffline.status() : await snapshotMessage({ type: 'GAMEWIRE_SNAPSHOT_START' }, signal);
-  if (typeof baseline.failures !== 'number') throw new Error('The offline worker needs an update. Reload while online.');
+  const baseline = nativeApp ? await NativeOffline.status() : { failures: webOfflineStore().failures() };
   refreshNFLOfflineSources();
   // The first scoreboard can load before the worker takes control on a new install.
   const scoreboard = await fetchScoreboards(signal);
@@ -27,6 +27,13 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
   const images = collectOfflineImages(games);
   collectOfflineImages(scoreboard.games, images);
   const failures: string[] = [];
+  try {
+    await saveOfflineImages([...images], signal);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    console.error('Offline team images could not all be saved', error);
+    failures.push('team images');
+  }
   const nflGames = games.filter((game) => game.league === 'NFL');
   // Limit parallel games; each existing loader already batches its own player requests.
   for (let start = 0; start < nflGames.length; start += 2) {
@@ -38,15 +45,28 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
         collectOfflineImages(box, images);
         const details = await fetchNFLGameDetails(game.feedPath, game.eventId, game.seasonYear, teams, signal);
         collectOfflineImages(details, images);
+        try {
+          await saveOfflineImages([...collectOfflineImages([box, details])], signal);
+        } catch (error) {
+          if (signal.aborted) throw error;
+          console.error('Some matchup images could not be saved', error);
+          failures.push(`${game.away.abbr} at ${game.home.abbr} images`);
+        }
         for (const team of teams) {
-          const form = details.teamForms.find((entry) => entry.teamId === team.id);
-          if (!form?.skillPlayers.length) throw new Error(`No player data for ${team.name}`);
-          const [averages, players] = await Promise.all([
-            fetchNFLTeamSeasonAverages(game.feedPath, team.id, game.seasonYear, signal),
-            fetchNFLPlayerSeasonBoxScore(game.feedPath, team.id, game.seasonYear, form.skillPlayers, signal),
-          ]);
-          collectOfflineImages([averages, players], images);
-          if (players.failedPlayers) throw new Error(`Some player stats could not be saved for ${team.name}`);
+          try {
+            const form = details.teamForms.find((entry) => entry.teamId === team.id);
+            if (!form?.skillPlayers.length) throw new Error(`No player data for ${team.name}`);
+            const [averages, players] = await Promise.all([
+              fetchNFLTeamSeasonAverages(game.feedPath, team.id, game.seasonYear, signal),
+              fetchNFLPlayerSeasonBoxScore(game.feedPath, team.id, game.seasonYear, form.skillPlayers, signal),
+            ]);
+            collectOfflineImages([averages, players], images);
+            if (players.failedPlayers) throw new Error(`Some player stats could not be saved for ${team.name}`);
+          } catch (error) {
+            if (signal.aborted) throw error;
+            console.error(`Offline team snapshot incomplete for ${team.name}`, error);
+            failures.push(team.name);
+          }
         }
       } catch (error) {
         if (signal.aborted) throw error;
@@ -63,26 +83,6 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
 
 export async function saveOfflineImages(urls: string[], signal: AbortSignal, failures?: number): Promise<void> {
   if (nativeApp) return warmNativeImages(urls, signal);
-  const result = await snapshotMessage({ type: 'GAMEWIRE_SAVE_IMAGES', urls, failures }, signal);
-  if (result.saved !== true) throw new Error('Some images or stats could not be saved. Keep the app online to retry.');
-}
-
-function snapshotMessage(message: { type: string; urls?: string[]; failures?: number }, signal: AbortSignal): Promise<{ saved?: boolean; failures?: number }> {
-  return new Promise((resolve, reject) => {
-    const worker = navigator.serviceWorker?.controller;
-    if (!worker) { reject(new Error('Offline saving is not ready yet.')); return; }
-    const channel = new MessageChannel();
-    const finish = (error?: Error, result: { saved?: boolean; failures?: number } = {}) => {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', abort);
-      channel.port1.close();
-      if (error) reject(error); else resolve(result);
-    };
-    const abort = () => finish(new DOMException('Snapshot cancelled', 'AbortError'));
-    const timer = setTimeout(() => finish(new Error('Offline saving timed out. Reload while online to retry.')), message.type === 'GAMEWIRE_SNAPSHOT_START' ? 10_000 : 5 * 60_000);
-    signal.addEventListener('abort', abort, { once: true });
-    if (signal.aborted) { abort(); return; }
-    channel.port1.onmessage = (event: MessageEvent) => finish(undefined, event.data);
-    worker.postMessage(message, [channel.port2]);
-  });
+  await warmWebImages(urls, signal);
+  if (failures !== undefined && webOfflineStore().failures() !== failures) throw new Error('Some images or stats could not be saved. Check available storage and retry online.');
 }

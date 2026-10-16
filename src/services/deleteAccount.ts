@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { nativeApp, NativeOffline } from './nativeOffline';
+import { stopWebOffline } from './webOffline';
 
 export async function deleteAccount(password: string, confirmation: string): Promise<string[]> {
   if (!supabase) throw new Error('Account services are not configured.');
@@ -16,6 +17,7 @@ export async function deleteAccount(password: string, confirmation: string): Pro
   const tasks: Array<{ name: string; run: () => Promise<void> }> = [
     { name: 'saved browsing', run: async () => {
       if (nativeApp) await NativeOffline.clear();
+      else stopWebOffline();
       if ('caches' in window) {
         const names = await caches.keys();
         await Promise.all(names.filter((name) => name.startsWith('gamewire-offline:') && !name.includes(':shell:')).map((name) => caches.delete(name)));

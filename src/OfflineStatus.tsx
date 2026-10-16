@@ -66,11 +66,15 @@ function OfflineStatusContent() {
     window.addEventListener('gamewire-offline-snapshot', onSnapshot);
     window.addEventListener('gamewire-native-cached', onNativeCached);
     window.addEventListener('gamewire-native-save-error', onNativeError);
+    window.addEventListener('gamewire-offline-cached', onNativeCached);
+    window.addEventListener('gamewire-offline-save-error', onNativeError);
     return () => {
       navigator.serviceWorker?.removeEventListener('message', onMessage);
       window.removeEventListener('gamewire-offline-snapshot', onSnapshot);
       window.removeEventListener('gamewire-native-cached', onNativeCached);
       window.removeEventListener('gamewire-native-save-error', onNativeError);
+      window.removeEventListener('gamewire-offline-cached', onNativeCached);
+      window.removeEventListener('gamewire-offline-save-error', onNativeError);
     };
   }, []);
   if (online) return null;
