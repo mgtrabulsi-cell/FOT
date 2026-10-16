@@ -1084,20 +1084,6 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
                             </tr>
                             );
                           })}
-
-                          {category.totals && category.totals.length > 0 && (
-                            <tr className="wire-totals-row" role="row">
-                              <td className="wire-col-athlete" role="cell">
-                                <strong>Team Total</strong>
-                              </td>
-                              {category.totals.map((totVal, tIdx) => (
-                                <td key={tIdx} className="wire-col-data" role="cell">
-                                  <span className="wire-mobile-stat-label" aria-hidden="true">{category.labels[tIdx]}</span>
-                                  <strong>{totVal}</strong>
-                                </td>
-                              ))}
-                            </tr>
-                          )}
                         </tbody>
                       </table>
                     </div>

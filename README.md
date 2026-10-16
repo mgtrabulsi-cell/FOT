@@ -29,7 +29,7 @@ The Wire's team/game search and Stat Hub's NFL player/team search open from a co
 
 The Wire and Stat Hub game wheels both show color-coded TNF, SNF, and MNF badges for primetime games, identified by kickoff time in Eastern Time.
 
-Before kickoff, Player Box Score hides category filters and offers **Total stats** (default) and **Avg stats** below the Player Box Score/Team Comparison tabs. Live and final games restore All, Offense, Defense, and Special Teams, with unrestricted game box scores.
+Before kickoff, Player Box Score hides category filters and offers **Total stats** (default) and **Avg stats** below the Player Box Score/Team Comparison tabs. Live and final games restore All, Offense, Defense, and Special Teams, with unrestricted individual game box scores. Player Box Score omits the team-total row beneath every player group in all game states; Team Comparison is unchanged.
 
 Pregame Player Box Score can show season-to-date totals or per-game averages for the selected team. Avg stats divides every statistic, including touchdowns and fumbles, by the player's games played (`GP`); GP itself remains a count. Missing totals or invalid GP remain unavailable. Switching modes does not fetch data again. Live and final box scores remain game-specific.
 
