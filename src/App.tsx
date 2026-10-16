@@ -1,5 +1,5 @@
 import OfflineImage from './OfflineImage';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
   Activity,
@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
+import { readGameDetailsSnapshot, readRenderSnapshot } from './services/renderSnapshots';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
 import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory } from './useLockerRoomHistory';
@@ -321,7 +322,7 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
   const detailsGame = useRef<string | null>(null);
   const nflGames = games.filter((game) => game.sport === 'Football');
   const [selectedGameId, setSelectedGameId] = useState(initialGameId && nflGames.some((game) => game.id === initialGameId) ? initialGameId : nflGames[0]?.id ?? '');
-  const [details, setDetails] = useState<NFLGameDetails | null>(null);
+  const [loadedDetails, setDetails] = useState<NFLGameDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [position, setPosition] = useState('All');
@@ -329,6 +330,10 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
   const [selectedPlayer, setSelectedPlayer] = useState<NFLSkillPlayer | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const game = nflGames.find((item) => item.id === selectedGameId) ?? nflGames[0];
+  const savedDetails = useMemo(() => game
+    ? readGameDetailsSnapshot(game.feedPath, game.eventId, game.seasonYear, [game.away.id, game.home.id])
+    : null, [game?.id, game?.seasonYear, dataRevision]);
+  const details = detailsGame.current === game?.id ? loadedDetails ?? savedDetails : savedDetails;
   const searchQuery = query.trim().toLowerCase();
   const nflGameKey = nflGames.map((item) => item.id).sort().join('|');
 
@@ -390,14 +395,18 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
           { id: awayTeamId, name: awayTeamName ?? '' },
           { id: homeTeamId, name: homeTeamName ?? '' },
         ], controller.signal);
+        if (details && result.teamForms.some((team) => !team.skillPlayers.length)) {
+          throw new Error('The roster refresh is incomplete; retaining saved players.');
+        }
         if (current) {
           setDetails(result);
           detailsGame.current = gameId;
           setFailed(false);
           setLoading(false);
         }
-      } catch {
+      } catch (error) {
         if (current && !controller.signal.aborted) {
+          console.error('Could not refresh player directory', error);
           setFailed(true);
           setLoading(false);
         }
@@ -432,7 +441,7 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
     {searchStatus && <p className="nfl-player-search-status" role="status">{searchStatus}</p>}
     <div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter players by position">{['All', 'QB', 'RB', 'WR', 'TE'].map((item) => <button key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div>{isLiveGame ? <span className="live-clock">LIVE</span> : <span>{visiblePlayerCount} active players</span>}</div>
     {failed && <div className="feed-warning">Could not load this game’s players. Try selecting the game again later.</div>}
-    {loading ? <div className="empty-games">Loading active rosters and recent player usage…</div> : <div className="nfl-directory-grid">{teamGroups.map((group) => <section className="nfl-directory-team" key={group.team.id}><header><TeamMark team={group.team} /><span><b>{group.team.name}</b><small>{group.side} · {group.team.record}</small></span>{game && <TeamFavoriteButton game={game} team={group.team} favorites={favorites} onToggleFavorite={onToggleFavorite} />}</header><div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => { setSelectedPlayer(player); setSelectedTeam(group.team); }}><span className="nfl-player-avatar">{player.headshot ? <OfflineImage src={player.headshot} alt="" /> : player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{player.name}</b><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small></span></button><FavoriteStarButton favorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(player, group.team).key)} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, group.team))} /></div>)}</div>{group.players.length === 0 && <p className="nfl-empty-note">No players match these filters.</p>}</section>)}</div>}
+    {loading && !details ? <div className="empty-games">Loading active rosters and recent player usage…</div> : <div className="nfl-directory-grid">{teamGroups.map((group) => <section className="nfl-directory-team" key={group.team.id}><header><TeamMark team={group.team} /><span><b>{group.team.name}</b><small>{group.side} · {group.team.record}</small></span>{game && <TeamFavoriteButton game={game} team={group.team} favorites={favorites} onToggleFavorite={onToggleFavorite} />}</header><div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => { setSelectedPlayer(player); setSelectedTeam(group.team); }}><span className="nfl-player-avatar">{player.headshot ? <OfflineImage src={player.headshot} alt="" /> : player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span><b>{player.name}</b><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small></span></button><FavoriteStarButton favorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(player, group.team).key)} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, group.team))} /></div>)}</div>{group.players.length === 0 && <p className="nfl-empty-note">No players match these filters.</p>}</section>)}</div>}
     <p className="nfl-data-note">ESPN's public feed does not publish an official depth chart or fantasy projections. Players are selected from active rosters by recent usage: 1 QB, 2 RBs, 1 TE, and up to 4 WRs per team.</p>
     {selectedPlayer && selectedTeam && <NFLPlayerMiniWindow key={selectedPlayer.id} player={selectedPlayer} team={selectedTeam} isFavorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(selectedPlayer, selectedTeam).key)} onToggleFavorite={onToggleFavorite} onClose={() => { setSelectedPlayer(null); setSelectedTeam(null); }} />}
   </div>;
@@ -552,12 +561,12 @@ function App() {
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
   const [selectedNFLWeek, setSelectedNFLWeek] = useState<number | null>(null);
-  const [currentNFLWeek, setCurrentNFLWeek] = useState<number | null>(null);
-  const [loadedNFLWeek, setLoadedNFLWeek] = useState<number | null>(null);
+  const [currentNFLWeek, setCurrentNFLWeek] = useState<number | null>(() => readRenderSnapshot('scoreboard', 'current')?.nflWeek ?? null);
+  const [loadedNFLWeek, setLoadedNFLWeek] = useState<number | null>(() => readRenderSnapshot('scoreboard', 'current')?.nflWeek ?? null);
   const [wireSearchQuery, setWireSearchQuery] = useState('');
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
-  const [games, setGames] = useState<Game[]>([]);
+  const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
   useOfflineSnapshots(games, deletedAccount === null && (!!authUser || guestMode));
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;

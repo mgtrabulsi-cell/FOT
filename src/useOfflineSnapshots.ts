@@ -56,9 +56,10 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
     window.addEventListener('online', reconnect);
     document.addEventListener('visibilitychange', resume);
     const timer = window.setInterval(resume, offlineSnapshotInterval);
-    resume();
+    const startup = window.setTimeout(resume, 5_000);
     return () => {
       controller.abort();
+      window.clearTimeout(startup);
       window.clearInterval(timer);
       navigator.serviceWorker?.removeEventListener('controllerchange', reconnect);
       if (nativeListener) void nativeListener.then((listener) => listener.remove());

@@ -1,5 +1,5 @@
 import OfflineImage from './OfflineImage';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
   FavoriteTarget,
@@ -25,6 +25,7 @@ import {
 } from './services/sportsData';
 import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
+import { readRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
 
 type TheWireProps = {
   games: Game[];
@@ -144,14 +145,14 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats'>('boxscore');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [playerStatMode, setPlayerStatMode] = useState<'total' | 'average'>('total');
-  const [boxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);
-  const [playerAverages, setPlayerAverages] = useState<{ gameId: string; data: NFLPlayerSeasonBoxScore; players: NFLSkillPlayer[] } | null>(null);
+  const [loadedBoxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);
+  const [loadedPlayerAverages, setPlayerAverages] = useState<{ gameId: string; data: NFLPlayerSeasonBoxScore; players: NFLSkillPlayer[] } | null>(null);
   const [playerAveragesLoading, setPlayerAveragesLoading] = useState(false);
   const [playerAveragesFailed, setPlayerAveragesFailed] = useState(false);
   const [playerAveragesRetry, setPlayerAveragesRetry] = useState(0);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [seasonAverages, setSeasonAverages] = useState<{ gameId: string; teams: NFLTeamSeasonAverages[] } | null>(null);
+  const [loadedSeasonAverages, setSeasonAverages] = useState<{ gameId: string; teams: NFLTeamSeasonAverages[] } | null>(null);
   const [averagesLoading, setAveragesLoading] = useState(false);
   const [averagesFailed, setAveragesFailed] = useState(false);
   const [averagesRetry, setAveragesRetry] = useState(0);
@@ -221,6 +222,23 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   const homeTeamId = selectedGame?.home.id;
   const activeTeamId = selectedTeamSide === 'away' ? awayTeamId : homeTeamId;
   const activeTeamName = selectedTeamSide === 'away' ? selectedGame?.away.name : selectedGame?.home.name;
+  const savedDisplay = useMemo(() => {
+    if (!eventId || !feedPath || !seasonYear || !activeTeamId || !awayTeamId || !homeTeamId) return null;
+    const players = readRenderSnapshot('players', teamSnapshotKey(feedPath, activeTeamId, seasonYear));
+    const teams = [awayTeamId, homeTeamId].flatMap((id) => {
+      const team = readRenderSnapshot('team', teamSnapshotKey(feedPath, id, seasonYear));
+      return team ? [team] : [];
+    });
+    return {
+      box: readRenderSnapshot('box', `${feedPath}:${eventId}`),
+      players: players ? { gameId: eventId, ...players } : null,
+      teams: teams.length === 2 ? { gameId: eventId, teams } : null,
+    };
+  }, [eventId, feedPath, seasonYear, activeTeamId, awayTeamId, homeTeamId, savedRevision]);
+  const boxScore = loadedBoxScore?.eventId === eventId ? loadedBoxScore : savedDisplay?.box ?? null;
+  const playerAverages = loadedPlayerAverages && loadedPlayerAverages.gameId === eventId && loadedPlayerAverages.data.teamId === activeTeamId
+    ? loadedPlayerAverages : savedDisplay?.players ?? null;
+  const seasonAverages = loadedSeasonAverages?.gameId === eventId ? loadedSeasonAverages : savedDisplay?.teams ?? null;
 
   useEffect(() => {
     setAveragesFailed(false);
@@ -258,7 +276,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
 
     const loadData = async (isPoll = false) => {
       if (!isPoll) {
-        setLoading(true);
+        setLoading(!boxScore);
         setFailed(false);
       }
       try {
@@ -305,15 +323,20 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       .then((details) => {
         controller.signal.throwIfAborted();
         const players = details.teamForms.find((team) => team.teamId === activeTeamId)?.skillPlayers ?? [];
+        if (!players.length) throw new Error('Player roster is unavailable; retaining any saved totals.');
         return fetchNFLPlayerSeasonBoxScore(feedPath, activeTeamId, seasonYear, players, controller.signal)
           .then((data) => ({ data, players }));
       }).then(({ data, players }) => {
       if (!controller.signal.aborted) {
+        if (playerAverages && (data.failedPlayers > 0 || !data.categories.length)) {
+          throw new Error('Player totals refresh is incomplete; retaining saved totals.');
+        }
         setPlayerAverages({ gameId: eventId, data, players });
         setPlayerAveragesLoading(false);
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (!controller.signal.aborted) {
+        console.error('Could not refresh player season totals', error);
         setPlayerAveragesFailed(true);
         setPlayerAveragesLoading(false);
       }
@@ -954,9 +977,9 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                 </header>
 
                 <div className="wire-comparison-list">
-                  {isUpcoming && averagesLoading ? (
+                  {isUpcoming && averagesLoading && !seasonAverages ? (
                     <p className="nfl-empty-note" role="status">Loading team season averages…</p>
-                  ) : isUpcoming && averagesFailed ? (
+                  ) : isUpcoming && averagesFailed && !seasonAverages ? (
                     <div className="wire-comparison-error" role="alert">
                       <p>Unable to load team season averages from ESPN.</p>
                       <button className="wire-stathub-link" onClick={() => setAveragesRetry((retry) => retry + 1)}>Retry team averages</button>
@@ -1004,9 +1027,9 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                   <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player totals</button>
                 </div>
               )}
-              {isUpcoming && playerAveragesLoading ? (
+              {isUpcoming && playerAveragesLoading && !currentPlayerAverages ? (
                 <div className="panel empty-games" role="status">Loading player season totals…</div>
-              ) : isUpcoming && playerAveragesFailed ? (
+              ) : isUpcoming && playerAveragesFailed && !currentPlayerAverages ? (
                 <div className="wire-comparison-error" role="alert">
                   <p>Unable to load player season totals from ESPN.</p>
                   <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player totals</button>

@@ -1,3 +1,5 @@
+import { detailsSnapshotKey, saveRenderSnapshot, teamSnapshotKey } from './renderSnapshots.ts';
+
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
 
@@ -481,7 +483,9 @@ export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): 
   });
 
   games.sort((first, second) => Date.parse(first.date) - Date.parse(second.date));
-  return { games, failedLeagues, nflWeek: currentNFLWeek };
+  const result = { games, failedLeagues, nflWeek: currentNFLWeek };
+  if (!signal?.aborted && games.length && !failedLeagues.length) saveRenderSnapshot('scoreboard', String(nflWeek ?? 'current'), result);
+  return result;
 }
 
 function articleMatchesFavorite(article: Record<string, unknown>, favorite: FavoriteTarget): boolean {
@@ -942,7 +946,13 @@ export async function fetchNFLGameDetails(
     };
   });
 
-  return { teamForms };
+  const details = { teamForms };
+  if (!signal?.aborted && teamForms.every((team) => team.skillPlayers.length > 0)) {
+    for (const team of teamForms) {
+      saveRenderSnapshot('details', detailsSnapshotKey(feedPath, eventId, seasonYear, [team.teamId]), { teamForms: [team] });
+    }
+  }
+  return details;
 }
 
 export async function fetchNFLGameLeaders(feedPath: string, eventId: string, signal?: AbortSignal): Promise<NFLGameLeader[]> {
@@ -1010,7 +1020,7 @@ export async function fetchNFLTeamSeasonAverages(
     const stat = asArray(category?.stats).map(asObject).find((entry) => text(entry.name) === statName);
     return parseBoxscoreNumber(stat?.value) ?? null;
   };
-  return {
+  const data = {
     teamId,
     pointsPerGame: average(ownCategories, 'scoring', 'totalPointsPerGame'),
     totalYardsPerGame: average(ownCategories, 'passing', 'yardsPerGame'),
@@ -1021,6 +1031,8 @@ export async function fetchNFLTeamSeasonAverages(
     passingYardsAllowedPerGame: average(opponentCategories, 'passing', 'passingYardsPerGame'),
     rushingYardsAllowedPerGame: average(opponentCategories, 'rushing', 'rushingYardsPerGame'),
   };
+  if (!signal?.aborted) saveRenderSnapshot('team', teamSnapshotKey(feedPath, teamId, seasonYear), data);
+  return data;
 }
 
 function fetchNFLTeamDefenseRanks(feedPath: string, teamId: string, seasonYear: number): Promise<NFLDefenseRanks> {
@@ -1474,7 +1486,15 @@ export async function fetchNFLPlayerSeasonBoxScore(
     category.athletes = category.athletes.slice(0, category.name === 'passing' ? 1 : category.name === 'rushing' ? 2 : 6);
   }
   const data = { teamId, categories: sortedCategories, failedPlayers };
-  if (failedPlayers === 0) nflPlayerSeasonBoxScoreCache.set(cacheKey, { timestamp: Date.now(), data });
+  if (failedPlayers === 0) {
+    nflPlayerSeasonBoxScoreCache.set(cacheKey, { timestamp: Date.now(), data });
+    if (data.categories.length) {
+      const displayedIds = new Set(data.categories.flatMap((category) => category.athletes.map((athlete) => athlete.id)));
+      saveRenderSnapshot('players', teamSnapshotKey(feedPath, teamId, seasonYear), {
+        data, players: players.filter((player) => displayedIds.has(player.id)),
+      });
+    }
+  }
   return data;
 }
 
@@ -1627,7 +1647,7 @@ export async function fetchNFLBoxScore(
     ? [awayTeam, homeTeam]
     : (parsedTeams.length === 2 ? [parsedTeams[0], parsedTeams[1]] : []);
 
-  return {
+  const data: NFLBoxScoreData = {
     eventId,
     status,
     state,
@@ -1638,6 +1658,8 @@ export async function fetchNFLBoxScore(
     venue,
     teams,
   };
+  if (!signal?.aborted && teams.length) saveRenderSnapshot('box', `${feedPath}:${eventId}`, data);
+  return data;
 }
 
 export type PrimetimeType = 'TNF' | 'SNF' | 'MNF';
