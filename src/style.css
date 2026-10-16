@@ -430,6 +430,21 @@ button { color: inherit; }
 .nfl-player-position-group > header b { font: 500 15px var(--display); }
 .nfl-player-position-group > header span { color: #89938c; font: 9px var(--mono); }
 .favorable-matchups { display: grid; gap: 16px; }
+.matchup-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.matchup-admin-search { width: min(320px, 100%); box-sizing: border-box; border-color: #34445b; }
+.matchup-admin-search input { color: #e5eaf3; min-height: 24px; }
+.matchup-editor { min-width: 0; padding: 14px; background: #151f2e; border: 1px solid #34445b; border-radius: 4px; }
+.matchup-editor p { color: #bbc7d9; font-size: 12px; line-height: 1.5; }
+.matchup-search-results { display: grid; max-height: 340px; overflow-y: auto; margin-bottom: 12px; }
+.matchup-search-results > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+.matchup-search-results > button > span:first-child { display: grid; gap: 5px; }
+.matchup-search-results small { color: #bbc7d9; }
+.matchup-publish-actions, .matchup-rank-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.matchup-rank-actions { grid-column: 1 / -1; justify-content: flex-end; }
+.matchup-editor button, .matchup-rank-actions button { min-height: 36px; padding: 8px 12px; color: #e5eaf3; background: #101a29; border: 1px solid #526b90; border-radius: 4px; font: inherit; font-size: 12px; cursor: pointer; }
+.matchup-editor button:disabled, .matchup-rank-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.matchup-publish-actions > button:first-child { background: #a51c28; border-color: #cc2633; color: #fff; }
+.favorable-matchups :is(button, input):focus-visible { outline: 2px solid #cc2633; outline-offset: 3px; }
 .favorable-matchups-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid #dfe4dd; }
 .favorable-matchups-heading h2 { margin: 4px 0 0; color: #26382d; font: 500 21px var(--display); }
 .favorable-matchups-heading p { max-width: 580px; margin: 6px 0 0; color: #7a857d; font-size: 10px; line-height: 1.5; }

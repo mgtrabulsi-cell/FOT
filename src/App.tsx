@@ -20,6 +20,7 @@ import SplashScreen from './SplashScreen';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
+import FavorableMatchups from './FavorableMatchups';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
@@ -426,147 +427,6 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
     <p className="nfl-data-note">ESPN's public feed does not publish an official depth chart or fantasy projections. Players are selected from active rosters by recent usage: 1 QB, 2 RBs, 1 TE, and up to 4 WRs per team.</p>
     {selectedPlayer && selectedTeam && <NFLPlayerMiniWindow key={selectedPlayer.id} player={selectedPlayer} team={selectedTeam} isFavorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(selectedPlayer, selectedTeam).key)} onToggleFavorite={onToggleFavorite} onClose={() => { setSelectedPlayer(null); setSelectedTeam(null); }} />}
   </div>;
-}
-
-type MatchupPosition = 'QB' | 'RB' | 'WR' | 'TE';
-type FavorableMatchup = {
-  player: NFLSkillPlayer;
-  team: Team;
-  opponent: Team;
-  game: Game;
-  averageYards: number;
-  gamesPlayed: number;
-  yardsAllowed: number;
-  defenseRank: number;
-  difference: number;
-};
-
-const matchupPositions: MatchupPosition[] = ['QB', 'RB', 'WR', 'TE'];
-const matchupStatByPosition: Record<MatchupPosition, { playerStat: NFLPlayerStatKey; defenseRankKey: 'passing' | 'rushing' | 'receiving'; yardsLabel: string; defenseLabel: string; title: string }> = {
-  QB: { playerStat: 'passingYards', defenseRankKey: 'passing', yardsLabel: 'Pass yards', defenseLabel: 'Pass defense rank', title: 'Quarterbacks' },
-  RB: { playerStat: 'rushingYards', defenseRankKey: 'rushing', yardsLabel: 'Rush yards', defenseLabel: 'Rush defense rank', title: 'Running backs' },
-  WR: { playerStat: 'receivingYards', defenseRankKey: 'receiving', yardsLabel: 'Rec yards', defenseLabel: 'Receiving defense rank', title: 'Wide receivers' },
-  TE: { playerStat: 'receivingYards', defenseRankKey: 'receiving', yardsLabel: 'Rec yards', defenseLabel: 'Receiving defense rank', title: 'Tight ends' },
-};
-
-function selectTopMatchups(matchups: FavorableMatchup[]) {
-  const qualifyingMatchups = matchups.filter((matchup) => matchup.difference > 0);
-  const percentileRanks = (metric: (matchup: FavorableMatchup) => number) => {
-    const sorted = [...qualifyingMatchups].sort((first, second) => metric(first) - metric(second));
-    return new Map(sorted.map((matchup, index) => [matchup, sorted.length < 2 ? 100 : index / (sorted.length - 1) * 100]));
-  };
-  const playerAverageRanks = percentileRanks((matchup) => matchup.averageYards);
-  const weightedScore = (matchup: FavorableMatchup) => (playerAverageRanks.get(matchup) ?? 0) * 0.4
-    + ((matchup.defenseRank - 1) / 31 * 100) * 0.6;
-  const ranked = [...qualifyingMatchups].sort((first, second) => weightedScore(second) - weightedScore(first)
-    || second.defenseRank - first.defenseRank);
-  const preferred = ranked.filter((matchup) => matchup.defenseRank >= 26 && matchup.defenseRank <= 32);
-  const fallback = ranked.filter((matchup) => matchup.defenseRank < 26 || matchup.defenseRank > 32);
-  return [...preferred, ...fallback].slice(0, 4);
-}
-
-function NFLFavorableMatchups({ games }: { games: Game[] }) {
-  const [matchups, setMatchups] = useState<Record<MatchupPosition, FavorableMatchup[]> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const allNFLGames = games.filter((game) => game.sport === 'Football');
-  const weeklyGames = allNFLGames.filter((game) => game.status !== 'FINAL');
-  const weeklyGameKey = allNFLGames.map((game) => `${game.id}:${game.status}`).sort().join('|');
-
-  useEffect(() => {
-    if (!weeklyGameKey) {
-      setMatchups(null);
-      setLoading(false);
-      return;
-    }
-    let current = true;
-    const controller = new AbortController();
-    const load = async () => {
-      setLoading(true);
-      setFailed(false);
-      const results: Array<{ game: Game; details: NFLGameDetails } | null> = [];
-      for (let start = 0; start < weeklyGames.length; start += 3) {
-        const batch = await Promise.all(weeklyGames.slice(start, start + 3).map(async (game) => {
-          try {
-            const teams = [game.away, game.home].map((team) => ({ id: team.id, name: team.name }));
-            const details = await fetchNFLGameDetails(game.feedPath, game.eventId, game.seasonYear, teams, controller.signal);
-            return { game, details };
-          } catch {
-            return null;
-          }
-        }));
-        results.push(...batch);
-      }
-
-      if (!current || controller.signal.aborted) return;
-      const candidates: Record<MatchupPosition, FavorableMatchup[]> = { QB: [], RB: [], WR: [], TE: [] };
-      results.forEach((result) => {
-        if (!result) return;
-        getNFLGamePlayerPools(result.game, result.details).forEach(({ team, players: teamPlayers }) => {
-          const opponent = team.id === result.game.away.id ? result.game.home : result.game.away;
-          const defenseForm = result.details.teamForms.find((form) => form.teamId === opponent.id);
-          if (!defenseForm) return;
-          teamPlayers.forEach((player) => {
-            if (!matchupPositions.includes(player.position as MatchupPosition)) return;
-            const position = player.position as MatchupPosition;
-            const stat = matchupStatByPosition[position];
-            const defenseRank = defenseForm.defenseRanks[stat.defenseRankKey];
-            const yardsAllowed = position === 'QB'
-              ? defenseForm.primaryPassingYardsAllowedPerGame
-              : position === 'RB'
-                ? defenseForm.primaryRushingYardsAllowedPerGame
-                : position === 'TE'
-                  ? defenseForm.primaryTightEndReceivingYardsAllowedPerGame
-                  : defenseForm.primaryReceivingYardsAllowedPerGame;
-              if (yardsAllowed === null || defenseRank === null) return;
-            const playerYards = player.recentGames.flatMap((recentGame) => {
-              const value = recentGame.stats[stat.playerStat];
-              return value === undefined ? [] : [value];
-            });
-            if (playerYards.length < 3) return;
-            const averageYards = playerYards.reduce((total, value) => total + value, 0) / playerYards.length;
-            const difference = Number((Number(averageYards.toFixed(1)) - Number(yardsAllowed.toFixed(1))).toFixed(1));
-            candidates[position].push({
-              player,
-              team,
-              opponent,
-              game: result.game,
-              averageYards,
-              gamesPlayed: playerYards.length,
-              yardsAllowed,
-              defenseRank,
-              difference,
-            });
-          });
-        });
-      });
-      setMatchups({ QB: selectTopMatchups(candidates.QB), RB: selectTopMatchups(candidates.RB), WR: selectTopMatchups(candidates.WR), TE: selectTopMatchups(candidates.TE) });
-      setFailed(results.every((result) => result === null));
-      setLoading(false);
-    };
-
-    void load();
-    return () => {
-      current = false;
-      controller.abort();
-    };
-  }, [weeklyGameKey]);
-
-  return <section className="favorable-matchups">
-    <header className="favorable-matchups-heading"><div><span className="eyebrow">THIS WEEK · NFL</span><h2>Favorable matchups</h2><p>Only above-allowance players qualify. Defenses ranked 26–32 are prioritized; rankings weigh player averages 40% and defense rank 60%.</p></div>{matchups && <span className="favorable-matchups-count">{matchups.QB.length + matchups.RB.length + matchups.WR.length + matchups.TE.length} PLAYERS</span>}</header>
-    {loading ? <p className="favorable-matchups-message">Comparing player averages with recent opponent allowances…</p> : failed ? <p className="favorable-matchups-message">Matchup data is unavailable right now. The list will retry when the weekly schedule refreshes.</p> : !matchups || !weeklyGameKey ? <p className="favorable-matchups-message">No upcoming NFL matchups are available.</p> : <div className="favorable-matchup-groups">{matchupPositions.map((position) => {
-      const stat = matchupStatByPosition[position];
-      const positionMatchups = matchups[position];
-      return <section className="favorable-matchup-group" key={position}>
-        <header><h3>{stat.title}</h3><span>{positionMatchups.length} / 4</span></header>
-        {positionMatchups.length === 0 ? <p className="nfl-empty-note">No above-allowance players are available for this position this week.</p> : <div className="favorable-matchup-list">{positionMatchups.map((matchup, index) => <article className="favorable-matchup-item" key={`${matchup.player.id}:${matchup.game.id}`}>
-          <div className="favorable-matchup-player"><span className="favorable-matchup-rank">{String(index + 1).padStart(2, '0')}</span><span className="nfl-player-avatar">{matchup.player.headshot ? <img src={matchup.player.headshot} alt="" /> : matchup.player.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span className="favorable-matchup-player-copy"><b>{matchup.player.name}</b><small>{matchup.team.abbr} · {matchup.team.name}</small><small>{matchup.team.id === matchup.game.home.id ? 'vs' : '@'} {matchup.opponent.abbr} · {formatGameTime(matchup.game)}</small></span></div>
-          <div className="favorable-matchup-metrics"><div><b className="is-positive">{matchup.averageYards.toFixed(1)}</b><span>{stat.yardsLabel} / game</span><small>last {matchup.gamesPlayed} games</small></div><div><b>#{matchup.defenseRank}</b><span>{stat.defenseLabel}</span><small>{matchup.opponent.abbr} · NFL rank</small></div><div><b className="is-positive">+{matchup.difference.toFixed(1)}</b><span>Above allowed</span><small>yards / game</small></div></div>
-        </article>)}</div>}
-      </section>;
-    })}</div>}
-    <p className="nfl-data-note">ESPN season-to-date yards ranks use 26–32 as the preferred range. Player averages require at least three games and must exceed the recent allowance to that same position.</p>
-  </section>;
 }
 
 function LockerRoomPlayerStats({ favorite, game, stats, live = game.status === 'LIVE' }: { favorite: FavoriteTarget; game: Game; stats?: Partial<Record<NFLPlayerStatKey, number>>; live?: boolean }) {
@@ -1247,7 +1107,7 @@ function App() {
             {playerMode === 'NFL' ? (
               <NFLPlayersDirectory games={games} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
             ) : (
-              <NFLFavorableMatchups games={games} />
+              <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />
             )}
           </>
         )}

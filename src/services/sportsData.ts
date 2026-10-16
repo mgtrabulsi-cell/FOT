@@ -1156,7 +1156,7 @@ function readNFLPlayerGameStats(summary: unknown, teamId: string, playerId: stri
   return seasonStats;
 }
 
-type NFLRosterSkillPlayer = Pick<NFLSkillPlayer, 'id' | 'name' | 'position' | 'jersey' | 'headshot'>;
+export type NFLRosterSkillPlayer = Pick<NFLSkillPlayer, 'id' | 'name' | 'position' | 'jersey' | 'headshot'>;
 const nflSkillPositions = new Set(['QB', 'RB', 'WR', 'TE']);
 const nflPositionOrder = ['QB', 'RB', 'WR', 'TE'];
 const nflHistoricalSummaries = new Map<string, Promise<unknown>>();
@@ -1214,7 +1214,7 @@ function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number):
   return request;
 }
 
-async function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
+export async function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
   return (await fetchNFLActiveRoster(feedPath, teamId, season)).filter((player) => nflSkillPositions.has(player.position));
 }
 
