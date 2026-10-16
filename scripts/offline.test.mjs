@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { fetchScoreboards } from '../src/services/sportsData.ts';
+import { collectOfflineImages, offlineSnapshotInterval } from '../src/services/offlineSnapshots.ts';
 
 const worker = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 
@@ -45,7 +46,7 @@ function fixture(scope = 'https://gamewire.us/') {
     addEventListener(type, callback) { handlers[type] = callback; },
   };
   vm.runInNewContext(worker, {
-    self, caches, URL, Headers, Response, AbortController, setTimeout, clearTimeout, console: { ...console, warn() {}, error() {} },
+    self, caches, URL, Headers, Response, AbortController, AbortSignal, setTimeout, clearTimeout, console: { ...console, warn() {}, error() {} },
     fetch: async () => {
       if (!online) throw Error('Network offline');
       return new Response(body, { status });
@@ -66,6 +67,20 @@ function fixture(scope = 'https://gamewire.us/') {
       let message;
       handlers.message({ data: { type: 'GAMEWIRE_CONNECTION_STATUS' }, source: { id, postMessage(value) { message = value; } } });
       return message;
+    },
+    async snapshotMessage(type, data = {}) {
+      let pending;
+      let result;
+      handlers.message({
+        data: { type, ...data },
+        ports: [{ postMessage(value) { result = value; } }],
+        waitUntil(value) { pending = value; },
+      });
+      await pending;
+      return result;
+    },
+    async warmImages(urls, failures) {
+      return this.snapshotMessage('GAMEWIRE_SAVE_IMAGES', { urls, failures });
     },
     async request(url, options = {}) {
       const pending = [];
@@ -158,17 +173,56 @@ test('Player filter headers, public theme filters, and object/list formats canno
 
 test('Public cache is bounded and storage failures do not break online requests', async () => {
   const f = fixture();
-  for (let i = 0; i < 302; i++) await f.request(`https://site.api.espn.com/summary?id=${i}`);
+  for (let i = 0; i < 1502; i++) await f.request(`https://site.api.espn.com/summary?id=${i}`);
   const store = f.stores.get('gamewire-offline:https://gamewire.us/:public:v1');
-  assert.equal(store.size, 300);
+  assert.equal(store.size, 1500);
   assert.equal(store.has('https://site.api.espn.com/summary?id=0'), false);
   f.setStorageFailure(true);
   assert.equal(await (await f.request('https://site.api.espn.com/scoreboard')).text(), 'live data');
   assert.ok(f.messages.some((message) => message.type === 'GAMEWIRE_OFFLINE_SAVE_ERROR'));
   f.setBody('replacement');
-  await f.request('https://site.api.espn.com/summary?id=301');
+  await f.request('https://site.api.espn.com/summary?id=1501');
   f.setOnline(false);
-  assert.equal(await (await f.request('https://site.api.espn.com/summary?id=301')).text(), 'live data');
+  assert.equal(await (await f.request('https://site.api.espn.com/summary?id=1501')).text(), 'live data');
+});
+
+test('Weekly snapshots run on a five-minute cadence and collect nested logos/faces, not arbitrary links', () => {
+  assert.equal(offlineSnapshotInterval, 300_000);
+  const logo = 'https://a.espncdn.com/i/teamlogos/nfl/500/car.png';
+  const headshot = 'https://a.espncdn.com/i/headshots/nfl/players/full/123.png';
+  assert.deepEqual([...collectOfflineImages({ games: [{ logo, players: [{ headshot }, { headshot }] }], url: 'https://example.com/private', headshot: 'https://example.com/private.png' })], [logo, headshot]);
+});
+
+test('Unopened team/player images are explicitly saved, survive more than 80 images, and remain available offline', async () => {
+  const f = fixture();
+  const urls = Array.from({ length: 150 }, (_, id) => `https://a.espncdn.com/i/headshots/nfl/players/full/${id}.png`);
+  assert.equal((await f.warmImages(urls)).saved, true);
+  assert.equal(f.stores.get('gamewire-offline:https://gamewire.us/:images:v1').size, 150);
+  f.setOnline(false);
+  assert.equal(await (await f.request(urls[0], { destination: 'image' })).text(), 'live data');
+  assert.equal(await (await f.request(urls[149], { destination: 'image' })).text(), 'live data');
+});
+
+test('Image snapshots never warm private URLs and cannot report success on download/storage failures', async () => {
+  const f = fixture();
+  assert.equal((await f.warmImages(['https://public-project.supabase.co/auth/v1/token'])).saved, false);
+  f.setStorageFailure(true);
+  assert.equal((await f.warmImages(['https://a.espncdn.com/logo.png'])).saved, false);
+  f.setStorageFailure(false);
+  f.setStatus(404);
+  assert.equal((await f.warmImages(['https://a.espncdn.com/missing.png'])).saved, false);
+});
+
+test('Snapshot completion detects failed public saves, then permits a successful retry after storage recovers', async () => {
+  const f = fixture();
+  const baseline = await f.snapshotMessage('GAMEWIRE_SNAPSHOT_START');
+  f.setStorageFailure(true);
+  await f.request('https://site.api.espn.com/stats');
+  assert.equal((await f.warmImages([], baseline.failures)).saved, false);
+  f.setStorageFailure(false);
+  const retry = await f.snapshotMessage('GAMEWIRE_SNAPSHOT_START');
+  await f.request('https://site.api.espn.com/stats');
+  assert.equal((await f.warmImages([], retry.failures)).saved, true);
 });
 
 test('Failed shell installation is not treated as a complete offline copy', async () => {

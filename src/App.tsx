@@ -22,6 +22,7 @@ import TheWire from './TheWire';
 import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
 import { useOnlineStatus } from './OfflineStatus';
+import { useOfflineSnapshots } from './useOfflineSnapshots';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
@@ -548,6 +549,7 @@ function App() {
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
   const [games, setGames] = useState<Game[]>([]);
+  useOfflineSnapshots(games, deletedAccount === null && (!!authUser || guestMode));
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;
   const notificationEventRef = useRef(notificationEventId);

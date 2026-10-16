@@ -1386,6 +1386,14 @@ export function readNFLPlayerSeasonTotals(
 
 const nflPlayerSeasonBoxScoreCache = new Map<string, { timestamp: number; data: NFLPlayerSeasonBoxScore }>();
 
+export function refreshNFLOfflineSources() {
+  // An in-memory hit from before worker activation has no persistent offline copy.
+  nflRosters.clear();
+  nflHistoricalSummaries.clear();
+  nflDefenseRankCache.clear();
+  nflPlayerSeasonBoxScoreCache.clear();
+}
+
 export function averageNFLPlayerSeasonCategory(category: NFLBoxScoreCategory): NFLBoxScoreCategory {
   const gamesIndex = category.labels.indexOf('GP');
   return {

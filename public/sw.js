@@ -10,12 +10,54 @@ const dataCache = `${cachePrefix}public:v1`;
 const imageCache = `${cachePrefix}images:v1`;
 const savedHeader = 'x-gamewire-saved-at';
 const offlineClients = new Set();
+const pendingSaves = new Set();
+const dataLimit = 1500;
+const imageLimit = 2500;
+let saveFailures = 0;
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'GAMEWIRE_CONNECTION_STATUS' && event.source) {
     event.source.postMessage({ type: 'GAMEWIRE_CONNECTION_STATUS', offline: offlineClients.has(event.source.id) });
   }
+  if (event.data?.type === 'GAMEWIRE_SNAPSHOT_START' && event.ports?.[0]) {
+    event.waitUntil((async () => {
+      await Promise.allSettled([...pendingSaves]);
+      event.ports[0].postMessage({ failures: saveFailures });
+    })());
+  }
+  if (event.data?.type === 'GAMEWIRE_SAVE_IMAGES' && event.ports?.[0]) {
+    event.waitUntil((async () => {
+      try {
+        if (!Array.isArray(event.data.urls) || event.data.urls.length > imageLimit) throw new Error('Invalid offline image list');
+        const urls = [...new Set(event.data.urls)];
+        const cache = await caches.open(imageCache);
+        for (let start = 0; start < urls.length; start += 4) {
+          await Promise.all(urls.slice(start, start + 4).map(async (url) => {
+            if (typeof url !== 'string' || !isOfflineImage(new URL(url))) throw new Error('Unsupported offline image');
+            if (await cache.match(url)) return;
+            // CORS avoids opaque-response quota overhead where the image host supports it.
+            let response;
+            try { response = await fetch(url, { mode: 'cors', signal: AbortSignal.timeout(15000) }); }
+            catch { response = await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(15000) }); }
+            if (!response.ok && response.type !== 'opaque') throw new Error(`Image returned HTTP ${response.status}`);
+            await remember(cache, url, response, imageLimit);
+          }));
+        }
+        await Promise.all([...pendingSaves]);
+        if (event.data.failures !== undefined && event.data.failures !== saveFailures) throw new Error('Some public responses could not be saved.');
+        event.ports[0].postMessage({ saved: true });
+      } catch (error) {
+        console.error('Offline image snapshot failed', error);
+        event.ports[0].postMessage({ saved: false });
+      }
+    })());
+  }
 });
+
+function isOfflineImage(url) {
+  return url.protocol === 'https:' && (url.hostname === 'a.espncdn.com'
+    || (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin && url.pathname.startsWith('/storage/v1/object/public/livewire-photos/')));
+}
 
 function offlineRequestKind(request) {
   const url = new URL(request.url);
@@ -28,8 +70,7 @@ function offlineRequestKind(request) {
     || url.hostname === 'sports.core.api.espn.com' || url.hostname === 'lm-api-reads.fantasy.espn.com') return 'data';
   if (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin
     && /^\/rest\/v1\/(livewire_posts|matchup_boards)$/.test(url.pathname)) return 'data';
-  if (request.destination === 'image' && (url.hostname === 'a.espncdn.com'
-    || (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin && url.pathname.startsWith('/storage/v1/object/public/livewire-photos/')))) return 'image';
+  if (request.destination === 'image' && isOfflineImage(url)) return 'image';
   return null;
 }
 
@@ -81,28 +122,32 @@ async function offlineResponse(event, kind) {
     if (kind === 'shell') offlineClients.delete(event.resultingClientId);
     if (kind !== 'shell') {
       const copy = response.clone();
-      event.waitUntil((async () => {
+      const save = (async () => {
         if (kind === 'data') {
           const body = await copy.blob();
-          if (body.size > 5 * 1024 * 1024) return;
+          if (body.size > 5 * 1024 * 1024) throw new Error('Public response exceeds offline storage limit');
           const headers = new Headers(copy.headers);
           headers.set(savedHeader, new Date().toISOString());
           headers.delete('vary');
           headers.delete('content-encoding');
           headers.delete('content-length');
-          await remember(cache, key, new Response(body, { status: copy.status, headers }), 300);
+          await remember(cache, key, new Response(body, { status: copy.status, headers }), dataLimit);
         } else {
-          await remember(cache, key, copy, kind === 'image' ? 80 : 100);
+          await remember(cache, key, copy, kind === 'image' ? imageLimit : 100);
         }
-      })().catch(async (error) => {
+      })();
+      pendingSaves.add(save);
+      event.waitUntil(save.catch(async (error) => {
+        saveFailures++;
         console.error('Offline saving failed', error);
         await notifyOffline({ type: 'GAMEWIRE_OFFLINE_SAVE_ERROR' }, event.clientId);
-      }));
+      }).finally(() => pendingSaves.delete(save)));
     }
     return response;
   } catch (error) {
     if (request.signal.aborted) throw error;
     if (cached) {
+      if (kind === 'data') saveFailures++;
       if (kind === 'shell' && event.resultingClientId) offlineClients.add(event.resultingClientId);
       if (kind !== 'shell') event.waitUntil(notifyOffline({ type: 'GAMEWIRE_CACHED_RESPONSE', savedAt: cached.headers.get(savedHeader), url: request.url }, event.clientId));
       return cached;

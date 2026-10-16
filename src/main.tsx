@@ -5,10 +5,8 @@ import OfflineStatus from './OfflineStatus';
 import './style.css';
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((error: unknown) => {
-      console.error('GameWire service worker registration failed.', error);
-    });
+  void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((error: unknown) => {
+    console.error('GameWire service worker registration failed.', error);
   });
 }
 
