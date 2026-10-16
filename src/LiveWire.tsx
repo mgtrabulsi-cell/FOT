@@ -188,6 +188,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
             ? [...current, theme.value] : current.filter((value) => value !== theme.value))} />
           <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
         </label>)}</div>
+        <small className="livewire-photo-help">Notification: {themes[0]?.toUpperCase() ?? 'LIVEWIRE'}: {title.trim() || 'Subject of post'}{editing ? ' (edits do not send another notification)' : ''}</small>
       </fieldset>
       <label htmlFor="livewire-body">Post</label>
       <textarea id="livewire-body" maxLength={500} required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Player news, game reactions, and your latest takes..." disabled={busy} />

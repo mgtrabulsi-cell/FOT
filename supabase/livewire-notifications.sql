@@ -13,6 +13,8 @@ create table if not exists public.livewire_push_deliveries (
   unique(post_id, endpoint),
   foreign key(user_id, endpoint) references public.user_push_subscriptions(user_id, endpoint) on delete cascade
 );
+alter table public.livewire_push_deliveries add column if not exists primary_theme text
+  check (primary_theme is null or primary_theme in ('news','fantasy','betting'));
 alter table public.livewire_push_deliveries enable row level security;
 revoke all on public.livewire_push_deliveries from public, anon, authenticated;
 grant all on public.livewire_push_deliveries to service_role;
@@ -25,8 +27,8 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if new.title is not null then
-    insert into public.livewire_push_deliveries(post_id, user_id, endpoint, subject)
-    select new.id, user_id, endpoint, new.title from public.user_push_subscriptions
+    insert into public.livewire_push_deliveries(post_id, user_id, endpoint, subject, primary_theme)
+    select new.id, user_id, endpoint, new.title, new.themes[1] from public.user_push_subscriptions
     on conflict(post_id, endpoint) do nothing;
   end if;
   return new;

@@ -20,7 +20,7 @@ Deno.serve(async (request: Request) => {
     let failed = 0;
     for (let start = 0; start < deliveries.length; start += 10) {
       await Promise.all(deliveries.slice(start, start + 10).map(async (delivery: {
-        id: number; post_id: string; user_id: string; endpoint: string; subject: string; attempts: number;
+        id: number; post_id: string; user_id: string; endpoint: string; subject: string; attempts: number; primary_theme?: 'news' | 'fantasy' | 'betting' | null;
       }) => {
         try {
           const { data: target, error: targetError } = await admin.from('user_push_subscriptions')
@@ -32,7 +32,7 @@ Deno.serve(async (request: Request) => {
             return;
           }
           await sendWebPush(pushServer, target.subscription, {
-            title: `LIVEWIRE: ${delivery.subject}`,
+            title: `${delivery.primary_theme?.toUpperCase() ?? 'LIVEWIRE'}: ${delivery.subject}`,
             body: '',
             url: new URL(`#livewire/post/${delivery.post_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
             tag: `gamewire-livewire-${delivery.post_id}`,

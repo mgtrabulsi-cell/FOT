@@ -16,6 +16,7 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
   let subscribed = true;
   let emptyQueue = false;
   let databaseCalls = 0;
+  let primaryTheme: string | null = null;
   try {
     const keys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
     Deno.env.set('VAPID_KEYS_JSON', JSON.stringify({
@@ -42,7 +43,7 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
       const request = input instanceof Request ? input : new Request(input, init);
       const path = new URL(request.url).pathname;
       if (path.endsWith('/rpc/claim_livewire_push')) {
-        return Response.json(emptyQueue ? [] : [{ id: 1, post_id: 'post-123', user_id: 'user-123', endpoint: 'https://push.example.invalid/device', subject: 'Player news', attempts: 1 }]);
+        return Response.json(emptyQueue ? [] : [{ id: 1, post_id: 'post-123', user_id: 'user-123', endpoint: 'https://push.example.invalid/device', subject: 'Player news', attempts: 1, primary_theme: primaryTheme }]);
       }
       if (path.endsWith('/user_push_subscriptions')) return Response.json(subscribed ? { subscription: {} } : null);
       if (request.method === 'PATCH') writes.push(await request.json());
@@ -57,6 +58,13 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
     assert(payloads.length === 1 && payloads[0].title === 'LIVEWIRE: Player news' && payloads[0].body === '', 'Alert contains only LIVEWIRE and subject');
     assert(payloads[0].url === 'https://mgtrabulsi-cell.github.io/FOT/#livewire/post/post-123' && payloads[0].tag === 'gamewire-livewire-post-123', 'Alerts use an absolute project URL, deep-link to the specific post, and deduplicate by post');
     assert(typeof writes[0].delivered_at === 'string', 'Success is persisted');
+    for (const theme of ['fantasy', 'news', 'betting']) {
+      primaryTheme = theme;
+      assert((await invoke()).status === 200, 'Themed delivery should succeed');
+      const latest = payloads[payloads.length - 1];
+      assert(latest.title === `${theme.toUpperCase()}: Player news` && latest.body === '', 'First theme replaces LIVEWIRE, with no body');
+      assert(latest.tag === 'gamewire-livewire-post-123', 'Themed alerts retain their post tag');
+    }
     failPush = true;
     const failure = await invoke();
     assert(failure.status === 503, 'Provider failures are surfaced');

@@ -8,7 +8,7 @@ insert into public.user_push_subscriptions(user_id, endpoint, subscription, noti
  ('d6902222-2222-4222-8222-222222222222', 'https://example.invalid/livewire-two', '{}', false);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'd6902222-2222-4222-8222-222222222221', true);
-select public.save_livewire_post('Test body', null, null, 'Push test headline');
+select public.save_livewire_post('Test body', null, null, 'Push test headline', '{}', array['fantasy','news']);
 do $$
 begin
   begin
@@ -32,9 +32,13 @@ begin
     'All enabled subscriptions receive LIVEWIRE, regardless of score preference or favorites';
   assert (select count(*) from public.livewire_push_deliveries where post_id = target and subject <> 'Push test headline') = 0,
     'Notification subject matches the headline';
+  assert not exists(select 1 from public.livewire_push_deliveries where post_id = target and primary_theme is distinct from 'fantasy'),
+    'First selected theme is captured, not alphabetical theme order';
   select count(*) into original from public.livewire_push_deliveries where post_id = target;
-  perform public.save_livewire_post('Edited body', null, target, 'Edited title');
+  perform public.save_livewire_post('Edited body', null, target, 'Edited title', '{}', array['betting']);
   assert (select count(*) from public.livewire_push_deliveries where post_id = target) = original, 'Editing does not broadcast again';
+  assert not exists(select 1 from public.livewire_push_deliveries where post_id = target and primary_theme is distinct from 'fantasy'),
+    'Edits do not change the original notification theme';
   select array_agg(id) into first_claim from public.claim_livewire_push();
   select array_agg(id) into second_claim from public.claim_livewire_push();
   assert not coalesce(first_claim && second_claim, false), 'Overlapping workers cannot reclaim leased deliveries';
