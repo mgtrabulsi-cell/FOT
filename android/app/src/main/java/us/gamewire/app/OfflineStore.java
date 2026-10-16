@@ -115,6 +115,11 @@ final class OfflineStore {
             }
         } finally { connection.disconnect(); }
     }
+    JSONObject peek(String url, String accept, String filter) throws Exception {
+        validate(url, false);
+        JSONObject record = load(new File(root, hash(url + "\n" + accept + "\n" + filter) + ".json"));
+        return record == null ? new JSONObject() : new JSONObject().put("body", record.getString("body")).put("savedAt", record.getString("savedAt"));
+    }
     JSONObject read(String url, String accept, String filter, String apiKey, boolean fallback, int timeout) throws Exception {
         validate(url, false);
         int epoch;

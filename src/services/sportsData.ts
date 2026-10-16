@@ -452,7 +452,8 @@ export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): 
     const payload: unknown = await response.json();
     let scoreboard = asObject(payload);
     const currentWeek = feed.league === 'NFL'
-      ? response.headers.has('x-gamewire-saved-at') ? Number(asObject(scoreboard.week).number) || null : getCurrentNFLWeek(payload)
+      ? response.headers.has('x-gamewire-saved-at') && !response.headers.has('x-gamewire-revalidated')
+        ? Number(asObject(scoreboard.week).number) || null : getCurrentNFLWeek(payload)
       : null;
     if (!nflWeek && currentWeek !== null && currentWeek !== Number(asObject(scoreboard.week).number)) {
       const season = Number(asObject(scoreboard.season).year);
@@ -1387,7 +1388,7 @@ export function readNFLPlayerSeasonTotals(
 const nflPlayerSeasonBoxScoreCache = new Map<string, { timestamp: number; data: NFLPlayerSeasonBoxScore }>();
 
 export function refreshNFLOfflineSources() {
-  // An in-memory hit from before worker activation has no persistent offline copy.
+  finalSummaryCache.clear();
   nflRosters.clear();
   nflHistoricalSummaries.clear();
   nflDefenseRankCache.clear();

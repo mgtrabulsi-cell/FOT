@@ -255,3 +255,22 @@ test('Saved scoreboards retain their recorded week instead of rolling forward to
   assert.equal(requests.length, 3);
   assert.match(requests[2], /week=2/);
 });
+
+test('A saved scoreboard verified online still applies the current-week calendar rollover', async (t) => {
+  const requests = [];
+  const payload = {
+    season: { year: 2026, type: 2 }, week: { number: 1 }, events: [],
+    leagues: [{ calendar: [{ value: '2', entries: [
+      { value: '1', startDate: '2020-09-10T00:00:00Z' },
+      { value: '2', startDate: '2020-09-17T00:00:00Z' },
+    ] }] }],
+  };
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    requests.push(url);
+    return Response.json(payload, { headers: { 'x-gamewire-saved-at': '2026-09-10T00:00:00Z', 'x-gamewire-revalidated': 'true' } });
+  });
+  const result = await fetchScoreboards();
+  assert.equal(result.nflWeek, 2);
+  assert.equal(requests.length, 2);
+  assert.match(requests[1], /week=2/);
+});

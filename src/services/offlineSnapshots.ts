@@ -2,7 +2,7 @@ import {
   fetchNFLBoxScore, fetchNFLGameDetails, fetchNFLPlayerSeasonBoxScore, fetchNFLTeamSeasonAverages, fetchScoreboards, refreshNFLOfflineSources,
 } from './sportsData.ts';
 import type { Game } from './sportsData.ts';
-import { nativeApp, NativeOffline, warmNativeImages } from './nativeOffline.ts';
+import { nativeApp, NativeOffline, settleNativeReads, warmNativeImages } from './nativeOffline.ts';
 import { warmWebImages, webOfflineStore } from './webOffline.ts';
 
 export const offlineSnapshotInterval = 5 * 60_000;
@@ -75,6 +75,9 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
       }
     }));
   }
+  signal.throwIfAborted();
+  if (nativeApp) await settleNativeReads();
+  else await webOfflineStore().settle();
   signal.throwIfAborted();
   await saveOfflineImages([...images], signal, baseline.failures);
   if (nativeApp && (await NativeOffline.status()).failures !== baseline.failures) throw new Error('Some native content could not be refreshed or retained. Check connectivity and available storage, then retry online.');

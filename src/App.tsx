@@ -24,6 +24,7 @@ import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
 import { useOnlineStatus } from './OfflineStatus';
 import { useOfflineSnapshots } from './useOfflineSnapshots';
+import { usePublicDataRevision } from './usePublicDataRevision';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
@@ -316,6 +317,8 @@ function formatNFLDate(value: string) {
 }
 
 function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initialGameId }: { games: Game[]; query: string; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; initialGameId: string | null }) {
+  const dataRevision = usePublicDataRevision('sports');
+  const detailsGame = useRef<string | null>(null);
   const nflGames = games.filter((game) => game.sport === 'Football');
   const [selectedGameId, setSelectedGameId] = useState(initialGameId && nflGames.some((game) => game.id === initialGameId) ? initialGameId : nflGames[0]?.id ?? '');
   const [details, setDetails] = useState<NFLGameDetails | null>(null);
@@ -389,6 +392,7 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
         ], controller.signal);
         if (current) {
           setDetails(result);
+          detailsGame.current = gameId;
           setFailed(false);
           setLoading(false);
         }
@@ -400,16 +404,18 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
       }
     };
 
-    setDetails(null);
-    setSelectedPlayer(null);
-    setSelectedTeam(null);
-    setLoading(true);
+    if (detailsGame.current !== gameId) {
+      setDetails(null);
+      setSelectedPlayer(null);
+      setSelectedTeam(null);
+      setLoading(true);
+    }
     void load();
     return () => {
       current = false;
       controller.abort();
     };
-  }, [gameId, feedPath, eventId, seasonYear, homeTeamId, homeTeamName, awayTeamId, awayTeamName]);
+  }, [gameId, feedPath, eventId, seasonYear, homeTeamId, homeTeamName, awayTeamId, awayTeamName, dataRevision]);
 
   const teamGroups = game ? getNFLGamePlayerPools(game, details).map((group, index) => ({
     ...group,
@@ -494,6 +500,8 @@ function TheDen({ favorites, games, items, plays, playerHistory, week, season, h
 }
 
 function App() {
+  const scoreboardRevision = usePublicDataRevision('scoreboard');
+  const newsRevision = usePublicDataRevision('news');
   const [deletedAccount, setDeletedAccount] = useState<string[] | null>(null);
   const online = useOnlineStatus();
   const [sessionUser, setAuthUser] = useState<User | null>(null);
@@ -931,7 +939,7 @@ function App() {
       controller.abort();
       window.clearInterval(refreshId);
     };
-  }, [authUser?.id, guestMode, selectedNFLWeek]);
+  }, [authUser?.id, guestMode, selectedNFLWeek, scoreboardRevision]);
 
   useEffect(() => {
     if (favorites.length === 0) {
@@ -959,7 +967,7 @@ function App() {
       controller.abort();
       window.clearInterval(refreshId);
     };
-  }, [favorites]);
+  }, [favorites, newsRevision]);
 
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()).toUpperCase();
   const denItems: DenItem[] = [...newsItems, ...scoreUpdates].sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp));

@@ -7,6 +7,7 @@ function fixture() {
   const errors = [];
   const cached = [];
   const requests = [];
+  const updates = [];
   let online = true;
   let failNetwork = false;
   let failStorage = false;
@@ -32,6 +33,7 @@ function fixture() {
     scope: 'https://gamewire.us/', publicOrigin: 'https://public-project.supabase.co',
     caches, online: () => online,
     onSaveError: (error) => errors.push(error), onSavedResponse: (timestamp) => cached.push(timestamp),
+    onUpdated: (url) => updates.push(url),
     fetch: async (input) => {
       requests.push(input);
       if (!online || failNetwork) throw new Error('Airplane mode');
@@ -41,7 +43,7 @@ function fixture() {
     },
   };
   return {
-    store: () => createWebOfflineStore(options), records, errors, cached, requests, options,
+    store: () => createWebOfflineStore(options), records, errors, cached, requests, options, updates,
     offline() { online = false; },
     online() { online = true; },
     setValue(next) { value = next; },
@@ -95,7 +97,9 @@ test('Stats persist before service-worker control and survive cold airplane-mode
   assert.equal(f.requests.length, 1, 'Offline reads must not wait for ESPN');
   f.online();
   f.setValue(456);
-  assert.deepEqual(await (await f.store().fetch(stats)).json(), { yards: 456 });
+  const reconnect = f.store();
+  assert.deepEqual(await (await reconnect.fetch(stats)).json(), { yards: 123 });
+  await reconnect.settle();
   f.offline();
   assert.deepEqual(await (await f.store().fetch(stats)).json(), { yards: 456 });
 });
@@ -150,7 +154,7 @@ test('Storage failures are explicit, keep prior saved stats, and cannot mark ima
   await store.fetch(stats);
   f.breakStorage();
   f.setValue(999);
-  assert.deepEqual(await (await store.fetch(stats)).json(), { yards: 999 });
+  assert.deepEqual(await (await store.fetch(stats, { cache: 'reload' })).json(), { yards: 999 });
   await assert.rejects(store.image(image), /Storage full/);
   assert.equal(store.failures(), 2);
   assert.equal(f.errors.length, 2);
@@ -202,4 +206,65 @@ test('A missing ESPN image does not prevent later logos and faces from being sav
   f.offline();
   for (const src of urls.slice(1)) assert.equal((await f.store().image(src)).size, 4);
   assert.equal(f.requests.length, 9);
+});
+
+test('Saved stats return before a blocked refresh, deduplicate it, and notify only after changed data is saved', { timeout: 2000 }, async () => {
+  const f = fixture();
+  await f.store().fetch(stats);
+  let finish;
+  let refreshes = 0;
+  f.options.fetch = () => {
+    refreshes++;
+    return new Promise((resolve) => { finish = resolve; });
+  };
+  const store = f.store();
+  assert.deepEqual(await (await store.fetch(stats)).json(), { yards: 123 });
+  assert.deepEqual(await (await store.fetch(stats)).json(), { yards: 123 });
+  assert.equal(refreshes, 1);
+  assert.deepEqual(f.updates, []);
+  finish(Response.json({ yards: 456 }));
+  await store.settle();
+  assert.deepEqual(f.updates, [stats]);
+  const refreshed = await store.fetch(stats);
+  assert.equal(refreshed.headers.get('x-gamewire-revalidated'), 'true');
+  assert.deepEqual(await refreshed.json(), { yards: 456 });
+  assert.equal(refreshes, 1, 'Update-driven renders cannot trigger a revalidation loop');
+  f.offline();
+  const offline = await store.fetch(stats);
+  assert.equal(offline.headers.has('x-gamewire-revalidated'), false);
+  assert.deepEqual(await offline.json(), { yards: 456 });
+});
+
+test('Unchanged or failed background refreshes keep saved data without update notifications', async () => {
+  const f = fixture();
+  await f.store().fetch(stats);
+  const unchanged = f.store();
+  await unchanged.fetch(stats);
+  await unchanged.settle();
+  assert.deepEqual(f.updates, []);
+  f.breakNetwork();
+  const failed = f.store();
+  assert.deepEqual(await (await failed.fetch(stats)).json(), { yards: 123 });
+  await failed.settle();
+  assert.equal(f.errors.length, 1);
+  assert.deepEqual(f.updates, []);
+  f.offline();
+  assert.deepEqual(await (await f.store().fetch(stats)).json(), { yards: 123 });
+});
+
+test('Formatting-only JSON changes do not redraw the UI; invalid successful responses cannot replace saved stats', async () => {
+  const f = fixture();
+  await f.store().fetch(stats);
+  f.options.fetch = async () => new Response('{\n  "yards": 123\n}', { headers: { 'content-type': 'application/json' } });
+  const formatting = f.store();
+  await formatting.fetch(stats);
+  await formatting.settle();
+  assert.deepEqual(f.updates, []);
+  f.options.fetch = async () => new Response('<html>Upstream temporarily unavailable</html>');
+  const invalid = f.store();
+  await invalid.fetch(stats);
+  await invalid.settle();
+  assert.equal(f.errors.length, 1);
+  f.offline();
+  assert.deepEqual(await (await f.store().fetch(stats)).json(), { yards: 123 });
 });

@@ -1,4 +1,5 @@
-import { isNativePublicImage, isNativePublicRead } from './nativePolicy.ts';
+import { isNativePublicImage, isNativePublicRead, samePublicData } from './nativePolicy.ts';
+import { publicDataChanged } from './publicDataUpdates.ts';
 
 type StoreOptions = {
   fetch: typeof fetch;
@@ -8,6 +9,7 @@ type StoreOptions = {
   online: () => boolean;
   onSavedResponse: (savedAt: string | null) => void;
   onSaveError: (error: unknown) => void;
+  onUpdated?: (url: string) => void;
 };
 
 export function createWebOfflineStore(options: StoreOptions) {
@@ -15,6 +17,9 @@ export function createWebOfflineStore(options: StoreOptions) {
   let failures = 0;
   let stopped = false;
   const images = new Map<string, Promise<Blob>>();
+  const refreshing = new Map<string, Promise<Response>>();
+  const checked = new Map<string, number>();
+  const revalidated = new Set<string>();
   const report = (error: unknown) => { failures++; options.onSaveError(error); };
   const open = (kind: 'public' | 'images') => options.caches.open(`${prefix}${kind}:v1`);
   const save = async (cache: Cache, key: string, response: Response, limit: number) => {
@@ -45,45 +50,68 @@ export function createWebOfflineStore(options: StoreOptions) {
     const saved = (response: Response) => {
       request.signal.throwIfAborted();
       options.onSavedResponse(response.headers.get('x-gamewire-saved-at'));
-      return response;
+      const copy = response.clone();
+      if (options.online() && revalidated.has(key.href)) {
+        const headers = new Headers(copy.headers);
+        headers.set('x-gamewire-revalidated', 'true');
+        return new Response(copy.body, { status: copy.status, headers });
+      }
+      return copy;
     };
-    if (!options.online() && cached) return saved(cached);
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    request.signal.addEventListener('abort', abort, { once: true });
-    if (request.signal.aborted) controller.abort();
-    const timer = setTimeout(abort, cached ? 4000 : 15000);
-    try {
-      const response = await options.fetch(request, { signal: controller.signal });
-      request.signal.throwIfAborted();
-      if (!response.ok) {
-        if (cached) return saved(cached);
-        return response;
-      }
-      if (response.headers.has('x-gamewire-saved-at')) {
-        options.onSavedResponse(response.headers.get('x-gamewire-saved-at'));
-        return response;
-      }
-      if (cache) {
+    const refresh = () => {
+      const pending = refreshing.get(key.href);
+      if (pending) return pending;
+      checked.set(key.href, Date.now());
+      const load = (async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
         try {
-          const body = await response.clone().blob();
-          if (body.size > 5 * 1024 * 1024) throw new Error('Public response exceeds offline storage limit');
-          const headers = new Headers(response.headers);
-          headers.set('x-gamewire-saved-at', new Date().toISOString());
-          headers.delete('vary');
-          headers.delete('content-encoding');
-          headers.delete('content-length');
-          await save(cache, key.href, new Response(body, { status: response.status, headers }), 1500);
-        } catch (error) { report(error); }
+          const response = await options.fetch(request, { signal: controller.signal });
+          if (!response.ok) throw new Error(`Public refresh returned HTTP ${response.status}`);
+          if (response.headers.has('x-gamewire-saved-at')) {
+            options.onSavedResponse(response.headers.get('x-gamewire-saved-at'));
+            return response;
+          }
+          if (cache) {
+            try {
+              const body = await response.clone().blob();
+              if (body.size > 5 * 1024 * 1024) throw new Error('Public response exceeds offline storage limit');
+              const text = await body.text();
+              JSON.parse(text);
+              const headers = new Headers(response.headers);
+              headers.set('x-gamewire-saved-at', new Date().toISOString());
+              headers.delete('vary');
+              headers.delete('content-encoding');
+              headers.delete('content-length');
+              await save(cache, key.href, new Response(body, { status: response.status, headers }), 1500);
+              revalidated.add(key.href);
+              if (!stopped && cached && !samePublicData(await cached.clone().text(), text)) options.onUpdated?.(url.href);
+            } catch (error) { report(error); }
+          }
+          return response;
+        } finally {
+          clearTimeout(timer);
+        }
+      })().finally(() => refreshing.delete(key.href));
+      refreshing.set(key.href, load);
+      return load;
+    };
+    if (cached && request.cache !== 'reload') {
+      if (options.online() && Date.now() - (checked.get(key.href) ?? 0) >= 15000) {
+        void refresh().catch((error: unknown) => {
+          if (!stopped) report(error);
+        });
       }
-      return response;
+      return saved(cached);
+    }
+    try {
+      const response = await refresh();
+      request.signal.throwIfAborted();
+      return response.clone();
     } catch (error) {
       request.signal.throwIfAborted();
       if (cached) return saved(cached);
       throw error;
-    } finally {
-      clearTimeout(timer);
-      request.signal.removeEventListener('abort', abort);
     }
   };
   const image = (src: string): Promise<Blob | null> => {
@@ -119,7 +147,8 @@ export function createWebOfflineStore(options: StoreOptions) {
     signal.throwIfAborted();
     if (failed) throw new Error(`${failed} of ${urls.length} offline images could not be saved.`);
   };
-  return { fetch: publicFetch, image, warmImages, failures: () => failures, stop: () => { stopped = true; } };
+  const settle = async () => { await Promise.allSettled([...refreshing.values()]); };
+  return { fetch: publicFetch, image, warmImages, settle, failures: () => failures, stop: () => { stopped = true; } };
 }
 
 let store: ReturnType<typeof createWebOfflineStore> | undefined;
@@ -135,6 +164,7 @@ export function initializeWebOffline() {
       console.error('Could not retain public offline content', error);
       window.dispatchEvent(new Event('gamewire-offline-save-error'));
     },
+    onUpdated: publicDataChanged,
   });
   window.fetch = store.fetch;
   if (navigator.storage?.persist) {

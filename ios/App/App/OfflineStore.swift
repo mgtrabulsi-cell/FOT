@@ -123,6 +123,12 @@ final class OfflineStore {
         guard let value = result.value else { throw error("Missing public download result") }
         return try value.get()
     }
+    func peek(_ address: String, accept: String, filter: String) throws -> [String: Any] {
+        _ = try validate(address, image: false)
+        guard let record = try load(file(address + "\n" + accept + "\n" + filter)),
+              let body = record["body"], let savedAt = record["savedAt"] else { return [:] }
+        return ["body": body, "savedAt": savedAt]
+    }
     func read(_ address: String, accept: String, filter: String, apiKey: String, fallback: Bool = true, timeout: TimeInterval = 10) throws -> [String: Any] {
         let url = try validate(address, image: false)
         let epoch = locked { generation }
@@ -278,9 +284,11 @@ private final class BackgroundCompletion {
 public class GameWireOfflinePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "GameWireOfflinePlugin"
     public let jsName = "GameWireOffline"
-    public let pluginMethods: [CAPPluginMethod] = ["configure", "read", "image", "status", "clear"].map { CAPPluginMethod(name: $0, returnType: CAPPluginReturnPromise) }
-    private func run(_ call: CAPPluginCall, action: @escaping () throws -> [String: Any]) {
-        OfflineStore.shared.queue.async {
+    public let pluginMethods: [CAPPluginMethod] = ["configure", "read", "peek", "image", "status", "clear"].map { CAPPluginMethod(name: $0, returnType: CAPPluginReturnPromise) }
+    private let diskReads = DispatchQueue(label: "us.gamewire.offline.disk")
+    private func run(_ call: CAPPluginCall, diskOnly: Bool = false, action: @escaping () throws -> [String: Any]) {
+        let queue = diskOnly ? diskReads : OfflineStore.shared.queue
+        queue.async {
             do { call.resolve(try action()) }
             catch { call.reject("Offline operation failed: \(error.localizedDescription)", nil, error) }
         }
@@ -290,6 +298,9 @@ public class GameWireOfflinePlugin: CAPPlugin, CAPBridgedPlugin {
     }
     @objc func read(_ call: CAPPluginCall) {
         run(call) { try OfflineStore.shared.read(call.getString("url") ?? "", accept: call.getString("accept") ?? "", filter: call.getString("filter") ?? "", apiKey: call.getString("apiKey") ?? "") }
+    }
+    @objc func peek(_ call: CAPPluginCall) {
+        run(call, diskOnly: true) { try OfflineStore.shared.peek(call.getString("url") ?? "", accept: call.getString("accept") ?? "", filter: call.getString("filter") ?? "") }
     }
     @objc func image(_ call: CAPPluginCall) {
         run(call) { ["path": try OfflineStore.shared.image(call.getString("url") ?? "")] }

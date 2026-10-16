@@ -1,4 +1,5 @@
 import OfflineImage from './OfflineImage';
+import { usePublicDataRevision } from './usePublicDataRevision';
 import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -27,10 +28,12 @@ function safeNewsLink(value: string): string | null {
 }
 
 export default function LiveWire({ user, postId = null }: { user: User | null; postId?: string | null }) {
+  const publicRevision = usePublicDataRevision('posts');
   const [posts, setPosts] = useState<Post[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
+  const [accessError, setAccessError] = useState('');
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
@@ -90,6 +93,22 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
 
   useEffect(() => {
     let active = true;
+    if (!user) setAdmins([]);
+    setAccessError('');
+    if (supabase && user) {
+      void Promise.resolve(supabase.from('livewire_roles').select('user_id,role,display_name')).then(({ data, error }) => {
+        if (!active) return;
+        if (error) { setAdmins([]); setAccessError(`Could not check LIVEWIRE permissions: ${error.message}`); }
+        else setAdmins(data ?? []);
+      }).catch((cause: unknown) => {
+        if (active) { setAdmins([]); setAccessError(cause instanceof Error ? cause.message : 'Could not check LIVEWIRE permissions.'); }
+      });
+    }
+    return () => { active = false; };
+  }, [user?.id, refresh]);
+
+  useEffect(() => {
+    let active = true;
     async function load() {
       if (!supabase) { setError('LIVEWIRE is unavailable: account services are not configured.'); return; }
       const client = supabase;
@@ -106,10 +125,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         }
         return { data, error: null };
       }
-      const [feed, access] = await Promise.all([
-        loadPosts(),
-        user ? supabase.from('livewire_roles').select('user_id,role,display_name') : Promise.resolve({ data: [], error: null }),
-      ]);
+      const feed = await loadPosts();
       if (!active) return;
       if (postId) {
         const linked = await client.from('livewire_posts').select('*').eq('id', postId).maybeSingle();
@@ -121,10 +137,8 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       } else {
         setLinkedPost(null); setLinkedMissing(false); setLinkedReady(null);
       }
-      if (access.error) setAdmins([]);
-      else setAdmins(access.data ?? []);
-      if (feed.error || access.error) {
-        setError(`Could not refresh LIVEWIRE: ${feed.error?.message ?? access.error?.message}`);
+      if (feed.error) {
+        setError(`Could not refresh LIVEWIRE: ${feed.error.message}`);
         return;
       }
       setPosts((feed.data ?? []).slice(0, limit));
@@ -133,11 +147,11 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       setError('');
     }
     void load().catch((cause: unknown) => {
-      if (active) { setAdmins([]); setError(cause instanceof Error ? cause.message : 'Could not load LIVEWIRE. Please retry.'); }
+      if (active) setError(cause instanceof Error ? cause.message : 'Could not load LIVEWIRE. Please retry.');
     });
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [user?.id, refresh, limit, postId, themeFilters]);
+  }, [user?.id, refresh, limit, postId, themeFilters, publicRevision]);
 
   useEffect(() => {
     if (!postId) { scrolledPost.current = null; return; }
@@ -171,7 +185,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
 
   return <section className="livewire-panel" aria-labelledby="livewire-heading">
     <header className="livewire-heading"><div><span className="eyebrow">FROM THE GAMEWIRE DESK</span><h2 id="livewire-heading">LIVEWIRE</h2></div><span>{role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'News & takes'}</span></header>
-    {error && <p className="livewire-error" role="alert">{error} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
+    {(error || accessError) && <p className="livewire-error" role="alert">{error || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {role && <form className="livewire-composer" onSubmit={(event) => {
       event.preventDefault();
       if (!supabase || busy) return;

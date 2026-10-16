@@ -24,6 +24,7 @@ import {
   isPrimetimeGame,
 } from './services/sportsData';
 import { getInterfaceScale } from './uiScale';
+import { usePublicDataRevision } from './usePublicDataRevision';
 
 type TheWireProps = {
   games: Game[];
@@ -154,12 +155,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   const [averagesLoading, setAveragesLoading] = useState(false);
   const [averagesFailed, setAveragesFailed] = useState(false);
   const [averagesRetry, setAveragesRetry] = useState(0);
-  const [savedRevision, setSavedRevision] = useState(0);
-  useEffect(() => {
-    const update = () => setSavedRevision((revision) => revision + 1);
-    window.addEventListener('gamewire-native-snapshot-ready', update);
-    return () => window.removeEventListener('gamewire-native-snapshot-ready', update);
-  }, []);
+  const savedRevision = usePublicDataRevision('sports');
 
   // Wheel drag ref
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -227,14 +223,13 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   const activeTeamName = selectedTeamSide === 'away' ? selectedGame?.away.name : selectedGame?.home.name;
 
   useEffect(() => {
-    setSeasonAverages(null);
     setAveragesFailed(false);
     if (!isUpcoming || !eventId || !feedPath || !seasonYear || !awayTeamId || !homeTeamId) {
       setAveragesLoading(false);
       return;
     }
     const controller = new AbortController();
-    setAveragesLoading(true);
+    setAveragesLoading(seasonAverages?.gameId !== eventId);
     void Promise.all([awayTeamId, homeTeamId].map((teamId) =>
       fetchNFLTeamSeasonAverages(feedPath, teamId, seasonYear, controller.signal)
     )).then((teams) => {
@@ -299,14 +294,13 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   }, [eventId, feedPath, isLive, savedRevision]);
 
   useEffect(() => {
-    setPlayerAverages(null);
     setPlayerAveragesFailed(false);
     if (!isUpcoming || subTab !== 'boxscore' || !eventId || !feedPath || !seasonYear || !activeTeamId || !activeTeamName) {
       setPlayerAveragesLoading(false);
       return;
     }
     const controller = new AbortController();
-    setPlayerAveragesLoading(true);
+    setPlayerAveragesLoading(playerAverages?.gameId !== eventId || playerAverages.data.teamId !== activeTeamId);
     void fetchNFLGameDetails(feedPath, eventId, seasonYear, [{ id: activeTeamId, name: activeTeamName }], controller.signal)
       .then((details) => {
         controller.signal.throwIfAborted();

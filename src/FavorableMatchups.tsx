@@ -1,4 +1,5 @@
 import OfflineImage from './OfflineImage';
+import { usePublicDataRevision } from './usePublicDataRevision';
 import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
@@ -14,11 +15,13 @@ const message = (cause: unknown) => cause !== null && typeof cause === 'object' 
   ? cause.message : 'The matchup request failed. Please retry.';
 
 export default function FavorableMatchups({ games, season, week, user }: Props) {
+  const publicRevision = usePublicDataRevision('matchups');
   const [published, setPublished] = useState<Board>({ picks: [], revision: 0 });
   const [draft, setDraft] = useState<Board | null>(null);
   const [admin, setAdmin] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [accessError, setAccessError] = useState('');
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -41,6 +44,9 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
   const pickGameKey = [...new Set(picks.map((pick) => pick.gameId))].sort().join('|');
   const pickPlayerKey = picks.map((pick) => pick.id).sort().join('|');
 
+  useEffect(() => { setProjections(new Map()); }, [season, week, pickPlayerKey]);
+  useEffect(() => { setAdmin(false); }, [user?.id]);
+
   useEffect(() => {
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
     return () => window.clearInterval(timer);
@@ -48,16 +54,24 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
 
   useEffect(() => {
     let active = true;
+    setAccessError('');
+    if (supabase && user) {
+      void Promise.resolve(supabase.from('livewire_roles').select('role').eq('user_id', user.id).maybeSingle()).then(({ data, error }) => {
+        if (!active) return;
+        if (error) { setAdmin(false); setAccessError(`Could not check matchup publishing permissions: ${error.message}`); }
+        else setAdmin(data?.role === 'admin' || data?.role === 'owner');
+      }).catch((cause: unknown) => { if (active) { setAdmin(false); setAccessError(message(cause)); } });
+    }
+    return () => { active = false; };
+  }, [user?.id, refresh]);
+
+  useEffect(() => {
+    let active = true;
     async function load() {
       if (!supabase) throw new Error('Matchup publishing is unavailable: account services are not configured.');
       if (!season || !week) return;
-      const [board, access] = await Promise.all([
-        supabase.from('matchup_boards').select('picks,revision').eq('season', season).eq('week', week).maybeSingle(),
-        user ? supabase.from('livewire_roles').select('role').eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
-      ]);
+      const board = await supabase.from('matchup_boards').select('picks,revision').eq('season', season).eq('week', week).maybeSingle();
       if (!active) return;
-      if (access.error) { setAdmin(false); throw access.error; }
-      setAdmin(access.data?.role === 'admin' || access.data?.role === 'owner');
       if (board.error) throw new Error(`Could not load published matchups: ${board.error.message}`);
       const next = { picks: readMatchupPicks(board.data?.picks ?? []), revision: board.data?.revision ?? 0 };
       if (next.revision >= boardRevision.current) {
@@ -69,7 +83,7 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
     }
     void load().catch((cause: unknown) => { if (active) setLoadError(message(cause)); });
     return () => { active = false; };
-  }, [season, week, user?.id, refresh]);
+  }, [season, week, user?.id, refresh, publicRevision]);
 
   useEffect(() => {
     if (!admin || !season || !scheduleKey) { setCandidates([]); return; }
@@ -98,7 +112,7 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
     }
     void load();
     return () => { active = false; };
-  }, [admin, season, scheduleKey, refresh]);
+  }, [admin, season, scheduleKey, refresh, publicRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -117,14 +131,17 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
         if (result.status === 'fulfilled') next.set(result.value.id, result.value.details);
         else errors.push(message(result.reason));
       });
-      setDetails(next);
+      setDetails((previous) => new Map(selected.flatMap((game) => {
+        const value = next.get(game.id) ?? previous.get(game.id);
+        return value ? [[game.id, value] as const] : [];
+      })));
       setStatsError(errors.length ? `Some player statistics are unavailable. ${errors.join(' ')}` : '');
     }
     void loadStats().catch((cause: unknown) => {
       if (!controller.signal.aborted) setStatsError(message(cause));
     });
     return () => controller.abort();
-  }, [season, week, scheduleKey, pickGameKey, refresh]);
+  }, [season, week, scheduleKey, pickGameKey, refresh, publicRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,11 +168,11 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
     }
     void load();
     return () => controller.abort();
-  }, [season, week, scheduleKey, pickGameKey, pickPlayerKey, refresh]);
+  }, [season, week, scheduleKey, pickGameKey, pickPlayerKey, refresh, publicRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setProjections(new Map()); setProjectionError('');
+    setProjectionError('');
     if (!season || !week || !pickPlayerKey) return;
     void fetchPPRProjections(season, week, pickPlayerKey.split('|'), controller.signal).then((data) => {
       if (!controller.signal.aborted) setProjections(data);
@@ -163,7 +180,7 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
       if (!controller.signal.aborted) setProjectionError(`ESPN weekly PPR projections are unavailable. ${message(cause)}`);
     });
     return () => controller.abort();
-  }, [season, week, pickPlayerKey, refresh]);
+  }, [season, week, pickPlayerKey, refresh, publicRevision]);
 
   function edit(next: MatchupPick[]) {
     setDraft({ picks: next, revision: draft?.revision ?? published.revision });
@@ -202,7 +219,7 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
         </div><p>Admin-selected players, ordered within each position. Last-five-game averages, opponent defense ranks, and ESPN weekly PPR projections.</p>
       </div><span className="favorable-matchups-count">{picks.length} PLAYERS{draft && admin ? ' · DRAFT' : ''}</span>
     </header>
-    {loadError && <p className="feed-warning" role="alert">{loadError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
+    {(loadError || accessError) && <p className="feed-warning" role="alert">{loadError || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {!loaded && !loadError && <p role="status">Loading this week's published matchups...</p>}
     {admin && loaded && <div className="matchup-editor">
       <p>Select up to four players per position. Changes stay private until you publish.</p>

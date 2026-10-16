@@ -60,3 +60,25 @@ test('Native bridge propagates missing-copy failures and honors cancellation bef
   const cancelDuring = createNativePublicFetch(fetcher, async () => { later.abort(); return { body: '{}' }; }, () => {}, origin, 'capacitor://localhost/');
   await assert.rejects(cancelDuring(scoreboard, { signal: later.signal }), { name: 'AbortError' });
 });
+
+test('Native saved-first reads return immediately, refresh once, and notify only when content changes', { timeout: 2000 }, async () => {
+  let record = { body: '{"yards":123}', savedAt: '2026-10-16T19:00:00Z' };
+  let finish;
+  let reads = 0;
+  const updates = [];
+  const fetcher = createNativePublicFetch(() => { throw Error('Unexpected browser fetch'); }, () => {
+    reads++;
+    return new Promise((resolve) => { finish = (body) => { record = { body, savedAt: record.savedAt }; resolve({ body }); }; });
+  }, () => {}, origin, 'capacitor://localhost/', {
+    peek: async () => record, online: () => true, updated: (url) => updates.push(url),
+    error: (error) => { throw error; },
+  });
+  assert.deepEqual(await (await fetcher(scoreboard)).json(), { yards: 123 });
+  assert.deepEqual(await (await fetcher(scoreboard)).json(), { yards: 123 });
+  assert.equal(reads, 1);
+  finish('{"yards":456}');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(updates, [scoreboard]);
+  assert.deepEqual(await (await fetcher(scoreboard)).json(), { yards: 456 });
+  assert.equal(reads, 1);
+});

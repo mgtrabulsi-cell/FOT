@@ -56,6 +56,12 @@ public class OfflineStoreTest {
         assertEquals("2026-10-16T19:00:00Z", result.getString("savedAt"));
         assertTrue(file.exists());
         assertEquals(1, store.status().getInt("failures"));
+        JSONObject saved = store.peek(url, "", "");
+        assertEquals("{\"yards\":317}", saved.getString("body"));
+        assertEquals(1, store.status().getInt("failures"));
+        assertEquals(0, store.peek(url, "application/json", "").length());
+        store.clear();
+        assertEquals(0, store.peek(url, "", "").length());
     }
     @Test public void privateSourcesAreRejectedBeforeAnyNetworkRequest() throws Exception {
         for (String url : new String[] { "https://fixture.supabase.co/auth/v1/token", "https://fixture.supabase.co/rest/v1/user_favorites", "http://site.api.espn.com/fixture" }) {
