@@ -17,7 +17,7 @@ import {
   fetchNFLGameDetails,
   fetchNFLPlayerSeasonBoxScore,
   fetchNFLTeamSeasonAverages,
-  findAutomaticNFLGame,
+  findFeaturedNFLGame,
   getPrimetimeFullTitle,
   getPrimetimeLabel,
   isPrimetimeGame,
@@ -28,6 +28,7 @@ type TheWireProps = {
   games: Game[];
   query: string;
   favorites: FavoriteTarget[];
+  featuredFavoriteTeamId: string | null;
   onToggleFavorite: (favorite: FavoriteTarget) => void;
   initialGameId?: string | null;
   onSelectGame?: (gameId: string) => void;
@@ -127,12 +128,12 @@ function areColorsSimilar(color1?: string, color2?: string): boolean {
   return false;
 }
 
-export default function TheWire({ games, query, favorites, onToggleFavorite, initialGameId, onSelectGame, onOpenStatHub, onOpenPlayer }: TheWireProps) {
+export default function TheWire({ games, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, onSelectGame, onOpenStatHub, onOpenPlayer }: TheWireProps) {
   const nflGames = games.filter((g) => g.sport === 'Football');
   const userSelectedRef = useRef(false);
 
   // Auto-select: prioritize live primetime games (TNF, SNF, MNF), then any live game
-  const initialAutoGame = findAutomaticNFLGame(nflGames, initialGameId);
+  const initialAutoGame = findFeaturedNFLGame(nflGames, featuredFavoriteTeamId, initialGameId);
 
   const [selectedGameId, setSelectedGameId] = useState<string>(
     (initialGameId && nflGames.some((g) => g.id === initialGameId) ? initialGameId : initialAutoGame?.id ?? nflGames[0]?.id ?? '')
@@ -177,7 +178,7 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
     if (nflGames.length === 0) return;
 
     if (!userSelectedRef.current) {
-      const bestGame = findAutomaticNFLGame(nflGames);
+      const bestGame = findFeaturedNFLGame(nflGames, featuredFavoriteTeamId);
       if (bestGame && (bestGame.status === 'LIVE' || !nflGames.some((g) => g.id === selectedGameId))) {
         setSelectedGameId(bestGame.id);
         return;
@@ -185,10 +186,10 @@ export default function TheWire({ games, query, favorites, onToggleFavorite, ini
     }
 
     if (!nflGames.some((g) => g.id === selectedGameId)) {
-      const fallback = findAutomaticNFLGame(nflGames) ?? nflGames[0];
+      const fallback = findFeaturedNFLGame(nflGames, featuredFavoriteTeamId) ?? nflGames[0];
       setSelectedGameId(fallback.id);
     }
-  }, [games, nflGames, selectedGameId]);
+  }, [games, nflGames, selectedGameId, featuredFavoriteTeamId]);
 
   const selectedGame = nflGames.find((g) => g.id === selectedGameId) ?? nflGames[0];
   const selectedPrimetime = selectedGame ? getPrimetimeLabel(selectedGame) : null;

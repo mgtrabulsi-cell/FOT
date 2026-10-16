@@ -1694,3 +1694,32 @@ export function findAutomaticNFLGame(games: Game[], preferId?: string | null): G
   // 6. Default fallback to first game
   return nflGames[0] ?? null;
 }
+
+export function findFeaturedNFLGame(games: Game[], favoriteTeamId?: string | null, preferId?: string | null): Game | null {
+  const nflGames = games.filter((game) => game.sport === 'Football');
+  if (!nflGames.length) return null;
+
+  const favoriteGame = favoriteTeamId
+    ? nflGames.find((game) => game.home.id === favoriteTeamId || game.away.id === favoriteTeamId)
+    : undefined;
+
+  if (favoriteGame?.status === 'LIVE') return favoriteGame;
+  if (favoriteGame?.status === 'UPCOMING') {
+    const liveGame = findAutomaticNFLGame(nflGames);
+    if (liveGame?.status === 'LIVE') return liveGame;
+    const preferred = preferId ? nflGames.find((game) => game.id === preferId) : undefined;
+    return preferred ?? favoriteGame;
+  }
+  if (favoriteGame?.status === 'FINAL') {
+    const preferred = preferId ? nflGames.find((game) => game.id === preferId) : undefined;
+    if (preferred && preferred.id !== favoriteGame.id) return preferred;
+    const favoriteTime = Date.parse(favoriteGame.date);
+    const nextPrimetime = nflGames
+      .filter((game) => isPrimetimeGame(game) && Date.parse(game.date) > favoriteTime)
+      .sort((first, second) => Date.parse(first.date) - Date.parse(second.date))[0];
+    if (nextPrimetime) return nextPrimetime;
+    return findAutomaticNFLGame(nflGames);
+  }
+
+  return findAutomaticNFLGame(nflGames, preferId);
+}

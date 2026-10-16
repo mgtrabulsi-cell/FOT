@@ -565,7 +565,13 @@ td:first-child { color: #828c84; }
 .den-favorites .panel-heading h2, .den-timeline-heading h2 { margin: 4px 0 0; font: 500 20px var(--display); }
 .den-favorite-count { min-width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #eef3eb; color: #48644f; font: 10px var(--mono); }
 .den-favorite-list { display: grid; }
+.den-favorite-order-help { margin: 9px 0 2px; color: #869188; font-size: 9px; }
 .den-favorite { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 9px 1px; border-bottom: 1px solid #eff1ee; }
+.den-favorite-order { display: flex; gap: 3px; }
+.den-favorite-order button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid #dce2ec; border-radius: 4px; background: transparent; color: #68758a; cursor: pointer; }
+.den-favorite-order button:disabled { opacity: .35; cursor: not-allowed; }
+.den-favorite-order button:not(:disabled):hover { border-color: #9db9df; color: #172033; }
+.den-favorite-order button:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }
 .den-player-live { flex: 0 0 100%; min-width: 0; padding: 10px; background: #101928; border: 1px solid #34445b; border-radius: 5px; }
 .den-player-live-heading { display: flex; align-items: center; gap: 7px; font: 9px var(--mono); color: #bbc7d9; }
 .den-player-live-heading b { padding: 3px 5px; border-radius: 3px; background: #a51c28; color: #fff; }
@@ -828,6 +834,9 @@ td:first-child { color: #828c84; }
 .den-news-update > a, .den-news-update > b { color: #edf2f8; }
 .den-score-update > div b { color: #e6edf6; }
 .den-favorite > span:nth-child(2) small { color: #bbc7d9; }
+.den-favorite-order-help { color: #bbc7d9; }
+.den-favorite-order button { color: #c1cce0; border-color: #34445b; }
+.den-favorite-order button:not(:disabled):hover { color: #fff; border-color: #9db9df; }
 .page-footer { color: #8795aa; border-top-color: #2a394f; }
 .account-profile-heading h2, .account-setting > header b, .account-profile-identity b, .account-joined b { color: #e5eaf3; }
 .account-profile-summary, .account-setting { background: #151f2e; border-color: #34445b; }
