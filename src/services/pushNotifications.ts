@@ -1,9 +1,10 @@
 import { supabase } from './supabaseClient';
+import { nativeApp } from './nativeOffline';
 
 const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim() ?? '';
 
 export function supportsPushNotifications() {
-  return typeof window !== 'undefined'
+  return !nativeApp && typeof window !== 'undefined'
     && 'serviceWorker' in navigator
     && 'PushManager' in window
     && 'Notification' in window;

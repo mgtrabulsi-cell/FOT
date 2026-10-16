@@ -2,6 +2,7 @@ import {
   fetchNFLBoxScore, fetchNFLGameDetails, fetchNFLPlayerSeasonBoxScore, fetchNFLTeamSeasonAverages, fetchScoreboards, refreshNFLOfflineSources,
 } from './sportsData.ts';
 import type { Game } from './sportsData.ts';
+import { nativeApp, NativeOffline, warmNativeImages } from './nativeOffline.ts';
 
 export const offlineSnapshotInterval = 5 * 60_000;
 
@@ -17,7 +18,7 @@ export function collectOfflineImages(value: unknown, images = new Set<string>())
 }
 
 export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Promise<string[]> {
-  const baseline = await snapshotMessage({ type: 'GAMEWIRE_SNAPSHOT_START' }, signal);
+  const baseline = nativeApp ? await NativeOffline.status() : await snapshotMessage({ type: 'GAMEWIRE_SNAPSHOT_START' }, signal);
   if (typeof baseline.failures !== 'number') throw new Error('The offline worker needs an update. Reload while online.');
   refreshNFLOfflineSources();
   // The first scoreboard can load before the worker takes control on a new install.
@@ -56,10 +57,12 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
   }
   signal.throwIfAborted();
   await saveOfflineImages([...images], signal, baseline.failures);
+  if (nativeApp && (await NativeOffline.status()).failures !== baseline.failures) throw new Error('Some native content could not be refreshed or retained. Check connectivity and available storage, then retry online.');
   return failures;
 }
 
 export async function saveOfflineImages(urls: string[], signal: AbortSignal, failures?: number): Promise<void> {
+  if (nativeApp) return warmNativeImages(urls, signal);
   const result = await snapshotMessage({ type: 'GAMEWIRE_SAVE_IMAGES', urls, failures }, signal);
   if (result.saved !== true) throw new Error('Some images or stats could not be saved. Keep the app online to retry.');
 }

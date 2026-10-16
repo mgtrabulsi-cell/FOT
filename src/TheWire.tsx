@@ -1,3 +1,4 @@
+import OfflineImage from './OfflineImage';
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
@@ -153,6 +154,12 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   const [averagesLoading, setAveragesLoading] = useState(false);
   const [averagesFailed, setAveragesFailed] = useState(false);
   const [averagesRetry, setAveragesRetry] = useState(0);
+  const [savedRevision, setSavedRevision] = useState(0);
+  useEffect(() => {
+    const update = () => setSavedRevision((revision) => revision + 1);
+    window.addEventListener('gamewire-native-snapshot-ready', update);
+    return () => window.removeEventListener('gamewire-native-snapshot-ready', update);
+  }, []);
 
   // Wheel drag ref
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -242,7 +249,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       }
     });
     return () => controller.abort();
-  }, [isUpcoming, eventId, feedPath, seasonYear, awayTeamId, homeTeamId, averagesRetry]);
+  }, [isUpcoming, eventId, feedPath, seasonYear, awayTeamId, homeTeamId, averagesRetry, savedRevision]);
 
   // Load box score for the selected game
   useEffect(() => {
@@ -289,7 +296,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       controller.abort();
       if (intervalId) window.clearInterval(intervalId);
     };
-  }, [eventId, feedPath, isLive]);
+  }, [eventId, feedPath, isLive, savedRevision]);
 
   useEffect(() => {
     setPlayerAverages(null);
@@ -318,7 +325,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       }
     });
     return () => controller.abort();
-  }, [isUpcoming, subTab, eventId, feedPath, seasonYear, activeTeamId, activeTeamName, playerAveragesRetry]);
+  }, [isUpcoming, subTab, eventId, feedPath, seasonYear, activeTeamId, activeTeamName, playerAveragesRetry, savedRevision]);
 
   // Wheel horizontal drag handlers
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -636,7 +643,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     style={{ '--team-color': selectedGame.away.color } as React.CSSProperties}
                   >
                     {selectedGame.away.logo ? (
-                      <img src={selectedGame.away.logo} alt="" />
+                      <OfflineImage src={selectedGame.away.logo} alt="" />
                     ) : (
                       selectedGame.away.abbr.slice(0, 2)
                     )}
@@ -716,7 +723,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     style={{ '--team-color': selectedGame.home.color } as React.CSSProperties}
                   >
                     {selectedGame.home.logo ? (
-                      <img src={selectedGame.home.logo} alt="" />
+                      <OfflineImage src={selectedGame.home.logo} alt="" />
                     ) : (
                       selectedGame.home.abbr.slice(0, 2)
                     )}
@@ -751,7 +758,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     <tr className={selectedTeamSide === 'away' ? 'active-team-row' : ''}>
                       <td className="wire-col-team">
                         <div className="wire-team-inline">
-                          {awayBoxTeam?.logo && <img src={awayBoxTeam.logo} alt="" />}
+                          {awayBoxTeam?.logo && <OfflineImage src={awayBoxTeam.logo} alt="" />}
                           <span>{awayBoxTeam?.abbreviation ?? selectedGame.away.abbr}</span>
                         </div>
                       </td>
@@ -767,7 +774,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     <tr className={selectedTeamSide === 'home' ? 'active-team-row' : ''}>
                       <td className="wire-col-team">
                         <div className="wire-team-inline">
-                          {homeBoxTeam?.logo && <img src={homeBoxTeam.logo} alt="" />}
+                          {homeBoxTeam?.logo && <OfflineImage src={homeBoxTeam.logo} alt="" />}
                           <span>{homeBoxTeam?.abbreviation ?? selectedGame.home.abbr}</span>
                         </div>
                       </td>
@@ -805,7 +812,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                       style={{ '--team-color': awayBoxTeam?.color || selectedGame.away.color } as React.CSSProperties}
                     >
                       {awayBoxTeam?.logo ? (
-                        <img src={awayBoxTeam.logo} alt="" />
+                        <OfflineImage src={awayBoxTeam.logo} alt="" />
                       ) : (
                         (awayBoxTeam?.abbreviation || selectedGame.away.abbr).slice(0, 2)
                       )}
@@ -844,7 +851,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                       style={{ '--team-color': homeBoxTeam?.color || selectedGame.home.color } as React.CSSProperties}
                     >
                       {homeBoxTeam?.logo ? (
-                        <img src={homeBoxTeam.logo} alt="" />
+                        <OfflineImage src={homeBoxTeam.logo} alt="" />
                       ) : (
                         (homeBoxTeam?.abbreviation || selectedGame.home.abbr).slice(0, 2)
                       )}
@@ -926,7 +933,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                       className="team-mark"
                       style={{ '--team-color': compAwayColor } as React.CSSProperties}
                     >
-                      {selectedGame.away.logo ? <img src={selectedGame.away.logo} alt="" /> : selectedGame.away.abbr}
+                      {selectedGame.away.logo ? <OfflineImage src={selectedGame.away.logo} alt="" /> : selectedGame.away.abbr}
                     </span>
                     <b>{awayBoxTeam?.name ?? selectedGame.away.name}</b>
                     <span
@@ -947,7 +954,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                       className="team-mark"
                       style={{ '--team-color': compHomeColor } as React.CSSProperties}
                     >
-                      {selectedGame.home.logo ? <img src={selectedGame.home.logo} alt="" /> : selectedGame.home.abbr}
+                      {selectedGame.home.logo ? <OfflineImage src={selectedGame.home.logo} alt="" /> : selectedGame.home.abbr}
                     </span>
                   </div>
                 </header>
@@ -1043,7 +1050,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                                 <div className="wire-athlete-cell">
                                   <span className="wire-athlete-avatar">
                                     {athlete.headshot ? (
-                                      <img src={athlete.headshot} alt="" />
+                                      <OfflineImage src={athlete.headshot} alt="" />
                                     ) : (
                                       athlete.name.slice(0, 2).toUpperCase()
                                     )}

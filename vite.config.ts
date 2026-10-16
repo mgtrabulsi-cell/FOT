@@ -6,11 +6,13 @@ import { readFileSync } from 'node:fs';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', 'VITE_');
   return {
-    base: env.VITE_BASE_PATH || './',
+    base: mode === 'native' ? '/' : env.VITE_BASE_PATH || './',
+    build: { outDir: mode === 'native' ? 'dist-native' : 'dist' },
     plugins: [react(), {
       name: 'gamewire-offline',
       apply: 'build',
       generateBundle(_options, bundle) {
+        if (mode === 'native') return;
         const assets = ['index.html', 'manifest.webmanifest', 'gamewire-mark.png', 'gamewire-pulse.png', 'gamewire-pwa.svg', ...Object.keys(bundle)];
         const version = createHash('sha256').update(assets.join('|') + readFileSync('public/sw.js', 'utf8')).digest('hex').slice(0, 16);
         const config = { version, assets, publicApiOrigin: env.VITE_SUPABASE_URL ? new URL(env.VITE_SUPABASE_URL).origin : null };

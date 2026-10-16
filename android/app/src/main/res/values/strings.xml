@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GameWire</string>
+    <string name="title_activity_main">GameWire</string>
+    <string name="package_name">us.gamewire.app</string>
+    <string name="custom_url_scheme">us.gamewire.app</string>
+</resources>
