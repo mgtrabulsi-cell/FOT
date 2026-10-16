@@ -1104,6 +1104,10 @@ td:first-child { color: #828c84; }
 .wire-primetime-tag.tag-snf { background: #381e05; color: #fbbf24; border: 1px solid #d9770666; }
 .wire-primetime-tag.tag-mnf { background: #2e1065; color: #c084fc; border: 1px solid #9333ea66; }
 .livewire-themes { margin: 0; padding: 8px 0; border: 0; min-width: 0; }
+.livewire-theme-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 16px 0; font-size: 12px; }
+.livewire-theme-filters button { min-height: 40px; padding: 7px 10px; border: 1px solid #52647e; border-radius: 6px; background: #101a29; color: #edf2f8; cursor: pointer; }
+.livewire-theme-filters button[aria-pressed="true"] { border-color: #edf2f8; background: #30415b; box-shadow: inset 0 0 0 1px #edf2f8; }
+.livewire-theme-filters small { flex-basis: 100%; color: #bbc7d9; }
 .livewire-themes legend { font-size: 12px; color: #edf2f8; }
 .livewire-themes legend span { color: #bbc7d9; }
 .livewire-themes > div { display: flex; flex-wrap: wrap; gap: 10px; }

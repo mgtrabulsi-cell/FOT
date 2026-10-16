@@ -39,6 +39,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
   const [themes, setThemes] = useState<PostTheme[]>([]);
+  const [themeFilters, setThemeFilters] = useState<PostTheme[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const previews = useRef(new Set<string>());
   useEffect(() => () => { previews.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
@@ -94,8 +95,9 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       async function loadPosts() {
         const data: Post[] = [];
         for (let offset = 0; offset <= limit; offset += 500) {
-          const page = await client.from('livewire_posts').select('*')
-            .order('created_at', { ascending: false }).order('id', { ascending: false })
+          let query = client.from('livewire_posts').select('*');
+          if (themeFilters.length) query = query.overlaps('themes', themeFilters);
+          const page = await query.order('created_at', { ascending: false }).order('id', { ascending: false })
             .range(offset, Math.min(offset + 499, limit));
           if (page.error) return { data: [], error: page.error };
           data.push(...page.data);
@@ -134,7 +136,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
     });
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [user?.id, refresh, limit, postId]);
+  }, [user?.id, refresh, limit, postId, themeFilters]);
 
   useEffect(() => {
     if (!postId) { scrolledPost.current = null; return; }
@@ -147,6 +149,12 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
 
   const visiblePosts = linkedPost && linkedPost.id === postId && !posts.some((post) => post.id === postId)
     ? [linkedPost, ...posts] : posts;
+  const linkedOutsideFilter = linkedPost && themeFilters.length > 0
+    && !themeFilters.some((theme) => linkedPost.themes?.includes(theme));
+
+  function filterThemes(next: PostTheme[]) {
+    setThemeFilters(next); setLimit(20); setPosts([]); setHasMore(false); setLoaded(false);
+  }
 
   async function act(operation: () => PromiseLike<{ error: { message: string } | null }>, success: () => void) {
     setBusy(true); setActionError(''); setNotice('');
@@ -207,9 +215,19 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
     {postId && linkedReady === postId && linkedMissing && <p className="livewire-notice" role="status">This post is no longer available. You can read the latest LIVEWIRE posts below.</p>}
+    <div className="livewire-theme-filters" role="group" aria-label="Filter LIVEWIRE by theme">
+      <span>Filter by theme</span>
+      <button type="button" aria-pressed={!themeFilters.length} onClick={() => filterThemes([])}>All posts</button>
+      {postThemes.map((theme) => <button type="button" key={theme.value} aria-pressed={themeFilters.includes(theme.value)}
+        onClick={() => filterThemes(themeFilters.includes(theme.value) ? themeFilters.filter((value) => value !== theme.value) : [...themeFilters, theme.value])}>
+        <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
+      </button>)}
+      <small>Select multiple to show posts with any selected theme.</small>
+    </div>
+    {linkedOutsideFilter && <p className="livewire-notice">The post opened from your link is shown even though it does not match these filters.</p>}
     <div className="livewire-feed" aria-busy={!loaded && !error}>
       {!loaded && !error && <p>Loading LIVEWIRE...</p>}
-      {loaded && !visiblePosts.length && <p className="livewire-empty">No posts yet. News and takes from GameWire admins will appear here.</p>}
+      {loaded && !visiblePosts.length && <p className="livewire-empty">{themeFilters.length ? 'No posts match the selected themes. Select another theme or choose All posts.' : 'No posts yet. News and takes from GameWire admins will appear here.'}</p>}
       {visiblePosts.map((post) => <article className={`livewire-post${post.id === postId ? ' livewire-post-target' : ''}`} key={post.id} ref={post.id === postId ? focusedPost : undefined} tabIndex={post.id === postId ? -1 : undefined} aria-label={post.id === postId ? 'Post opened from notification' : undefined}>
         <span className="livewire-avatar" aria-hidden="true">{post.author_name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('').toUpperCase()}</span>
         <div className="livewire-post-content">
