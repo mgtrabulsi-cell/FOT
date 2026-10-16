@@ -1,9 +1,146 @@
+self.addEventListener('fetch', (event) => {
+  if (!self.GAMEWIRE_OFFLINE || event.request.method !== 'GET') return;
+  const kind = offlineRequestKind(event.request);
+  if (kind) event.respondWith(offlineResponse(event, kind));
+});
+
+const cachePrefix = `gamewire-offline:${self.registration.scope}:`;
+const shellCache = `${cachePrefix}shell:${self.GAMEWIRE_OFFLINE?.version ?? 'development'}`;
+const dataCache = `${cachePrefix}public:v1`;
+const imageCache = `${cachePrefix}images:v1`;
+const savedHeader = 'x-gamewire-saved-at';
+const offlineClients = new Set();
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'GAMEWIRE_CONNECTION_STATUS' && event.source) {
+    event.source.postMessage({ type: 'GAMEWIRE_CONNECTION_STATUS', offline: offlineClients.has(event.source.id) });
+  }
+});
+
+function offlineRequestKind(request) {
+  const url = new URL(request.url);
+  const scope = new URL(self.registration.scope);
+  if (url.origin === scope.origin && url.pathname.startsWith(scope.pathname)) {
+    if (request.mode === 'navigate') return 'shell';
+    if (self.GAMEWIRE_OFFLINE.assets.some((asset) => new URL(asset, scope).pathname === url.pathname)) return 'asset';
+  }
+  if (url.hostname === 'site.api.espn.com' || url.hostname === 'site.web.api.espn.com'
+    || url.hostname === 'sports.core.api.espn.com' || url.hostname === 'lm-api-reads.fantasy.espn.com') return 'data';
+  if (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin
+    && /^\/rest\/v1\/(livewire_posts|matchup_boards)$/.test(url.pathname)) return 'data';
+  if (request.destination === 'image' && (url.hostname === 'a.espncdn.com'
+    || (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin && url.pathname.startsWith('/storage/v1/object/public/livewire-photos/')))) return 'image';
+  return null;
+}
+
+async function notifyOffline(message, clientId) {
+  if (clientId) {
+    const client = await self.clients.get(clientId);
+    client?.postMessage(message);
+    return;
+  }
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  clients.forEach((client) => client.postMessage(message));
+}
+
+async function remember(cache, key, response, limit) {
+  await cache.put(key, response);
+  const keys = await cache.keys();
+  await Promise.all(keys.slice(0, Math.max(0, keys.length - limit)).map((entry) => cache.delete(entry)));
+}
+
+async function offlineResponse(event, kind) {
+  const request = event.request;
+  const cacheUrl = new URL(kind === 'shell' ? new URL('index.html', self.registration.scope).href : request.url);
+  if (kind === 'data') {
+    const filter = request.headers.get('x-fantasy-filter');
+    if (filter) cacheUrl.searchParams.set('__gamewire_filter', filter);
+    const accept = request.headers.get('accept');
+    if (accept) cacheUrl.searchParams.set('__gamewire_accept', accept);
+  }
+  const key = cacheUrl.href;
+  let cache;
+  let cached;
+  try {
+    cache = await caches.open(kind === 'shell' || kind === 'asset' ? shellCache : kind === 'image' ? imageCache : dataCache);
+    cached = await cache.match(key);
+  } catch (error) {
+    console.error('Offline storage is unavailable', error);
+    await notifyOffline({ type: 'GAMEWIRE_OFFLINE_SAVE_ERROR' }, event.clientId);
+    return fetch(request);
+  }
+  if (cached && (kind === 'asset' || kind === 'image')) return cached;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  request.signal.addEventListener('abort', abort, { once: true });
+  if (request.signal.aborted) controller.abort();
+  const timeout = setTimeout(abort, cached ? 4000 : 15000);
+  try {
+    const response = await fetch(request, { signal: controller.signal });
+    if (!response.ok && response.type !== 'opaque') throw new Error(`HTTP ${response.status}`);
+    if (kind === 'shell') offlineClients.delete(event.resultingClientId);
+    if (kind !== 'shell') {
+      const copy = response.clone();
+      event.waitUntil((async () => {
+        if (kind === 'data') {
+          const body = await copy.blob();
+          if (body.size > 5 * 1024 * 1024) return;
+          const headers = new Headers(copy.headers);
+          headers.set(savedHeader, new Date().toISOString());
+          headers.delete('vary');
+          headers.delete('content-encoding');
+          headers.delete('content-length');
+          await remember(cache, key, new Response(body, { status: copy.status, headers }), 300);
+        } else {
+          await remember(cache, key, copy, kind === 'image' ? 80 : 100);
+        }
+      })().catch(async (error) => {
+        console.error('Offline saving failed', error);
+        await notifyOffline({ type: 'GAMEWIRE_OFFLINE_SAVE_ERROR' }, event.clientId);
+      }));
+    }
+    return response;
+  } catch (error) {
+    if (request.signal.aborted) throw error;
+    if (cached) {
+      if (kind === 'shell' && event.resultingClientId) offlineClients.add(event.resultingClientId);
+      if (kind !== 'shell') event.waitUntil(notifyOffline({ type: 'GAMEWIRE_CACHED_RESPONSE', savedAt: cached.headers.get(savedHeader), url: request.url }, event.clientId));
+      return cached;
+    }
+    console.warn('No offline copy is available', request.url, error);
+    if (kind === 'data') return new Response(JSON.stringify({ message: 'This data has not been saved on this device. Reconnect to load it.' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    if (kind === 'shell') return new Response('GameWire is not saved on this device yet. Reconnect and open the app once to enable offline access.', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+    return Response.error();
+  } finally {
+    clearTimeout(timeout);
+    request.signal.removeEventListener('abort', abort);
+  }
+}
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil((async () => {
+    if (self.GAMEWIRE_OFFLINE) {
+      const cache = await caches.open(shellCache);
+      try {
+        await cache.addAll(self.GAMEWIRE_OFFLINE.assets.map((asset) => new URL(asset, self.registration.scope).href));
+      } catch (error) {
+        await caches.delete(shellCache);
+        console.error('GameWire offline installation failed', error);
+        throw error;
+      }
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    if (self.GAMEWIRE_OFFLINE) {
+      const names = await caches.keys();
+      await Promise.all(names.filter((name) => name.startsWith(`${cachePrefix}shell:`) && name !== shellCache).map((name) => caches.delete(name)));
+    }
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('push', (event) => {

@@ -21,6 +21,7 @@ import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
+import { useOnlineStatus } from './OfflineStatus';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
@@ -491,13 +492,16 @@ function TheDen({ favorites, games, items, plays, playerHistory, week, season, h
 }
 
 function App() {
-  const [authUser, setAuthUser] = useState<User | null>(null);
+  const online = useOnlineStatus();
+  const [sessionUser, setAuthUser] = useState<User | null>(null);
+  const authUser = online ? sessionUser : null;
   const [authLoading, setAuthLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const splashStartedAt = useRef<number | null>(Date.now());
   const [splashReplay, setSplashReplay] = useState(0);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
-  const [guestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
+  const [savedGuestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
+  const guestMode = savedGuestMode || !online;
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [view, setView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile'>(() => window.location.hash.startsWith('#livewire') ? 'LiveWire' : 'Wire');
   useEffect(() => {
@@ -781,6 +785,7 @@ function App() {
   }, [weeklyPlayGameKey, nflPlayFavoritesKey]);
 
   const toggleFavorite = (favorite: FavoriteTarget) => {
+    if (!online) { setFavoriteSyncError('Reconnect to change favorites. Offline browsing is read-only.'); return; }
     if (favorites.some((item) => item.key === favorite.key)) {
       setFavorites((current) => current.filter((item) => item.key !== favorite.key));
       return;
@@ -812,6 +817,7 @@ function App() {
   };
 
   const moveTeamFavorite = (favoriteKey: string, direction: -1 | 1) => {
+    if (!online) { setFavoriteSyncError('Reconnect to reorder favorites. Offline browsing is read-only.'); return; }
     setFavorites((current) => {
       const teamIndexes = current.flatMap((favorite, index) => favorite.type === 'team' ? [index] : []);
       const teamPosition = teamIndexes.findIndex((index) => current[index]?.key === favoriteKey);
@@ -981,7 +987,7 @@ function App() {
   };
 
   if (recoveringPassword && authUser) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
-  if (showSplash || (supabase && authLoading)) return <SplashScreen />;
+  if (online && (showSplash || (supabase && authLoading))) return <SplashScreen />;
   if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
 
   return (
@@ -1033,7 +1039,7 @@ function App() {
           ) : (
             <div className="guest-nav-controls">
               <span className="edition-label">GUEST</span>
-              <button className="guest-signin-btn" onClick={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>Sign in</button>
+              <button className="guest-signin-btn" disabled={!online} onClick={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>Sign in</button>
             </div>
           )}
         </div>
@@ -1069,7 +1075,7 @@ function App() {
         </div>
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
         {view === 'Profile' ? (
-          authUser ? <ProfilePage user={authUser} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
+          authUser ? <ProfilePage user={authUser} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Public saved browsing is available in The Wire, Stat Hub, and LIVEWIRE.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' ? (
           <>
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}

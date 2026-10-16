@@ -451,7 +451,9 @@ export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): 
     if (!response.ok) throw new Error(`${feed.league} returned HTTP ${response.status}`);
     const payload: unknown = await response.json();
     let scoreboard = asObject(payload);
-    const currentWeek = feed.league === 'NFL' ? getCurrentNFLWeek(payload) : null;
+    const currentWeek = feed.league === 'NFL'
+      ? response.headers.has('x-gamewire-saved-at') ? Number(asObject(scoreboard.week).number) || null : getCurrentNFLWeek(payload)
+      : null;
     if (!nflWeek && currentWeek !== null && currentWeek !== Number(asObject(scoreboard.week).number)) {
       const season = Number(asObject(scoreboard.season).year);
       const nextResponse = await fetch(`${apiBase}/${feed.path}/scoreboard?week=${currentWeek}&seasontype=2&dates=${season}`, { signal, cache: 'no-store' });

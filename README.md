@@ -77,6 +77,16 @@ Remove-Item Env:VITE_BASE_PATH
 
 Open `http://127.0.0.1:4173/FOT/`. Assets, the web app manifest, and the notification service worker stay within the deployed path. This static deployment does not require a Node.js server.
 
+## Offline access
+
+After opening the production site online once, GameWire saves its app shell for offline launches, including from a phone's Home Screen. Browse The Wire, Stat Hub, and LIVEWIRE while online to save their public responses for later. Offline browsing is read-only: private account data, favorites sync, sign-in, publishing, and new notifications require internet. Saved sessions are not removed; account access resumes when connected.
+
+An offline/saved-data banner warns that scores, game statuses, stats, odds, and projections are snapshots, not live updates. It shows the oldest saved response used on the current page when available. Only previously loaded requests are available: unseen games, weeks, searches, filters, and older post pages may require reconnecting. Previously viewed public ESPN pictures and LIVEWIRE photos are cached on a best-effort basis. An image that was not saved may be missing offline. The Locker Room's private account history is not cached by this feature.
+
+Public API requests use network-first caching, falling back to successful saved responses only when the network fails. Only ESPN feeds and the configured project's public LIVEWIRE/matchup-board reads are eligible. Authentication, role checks, private tables, RPCs, writes, and error responses are never cached. Theme/player filters and response formats keep separate cache keys. Public response storage is bounded to 300 requests (at most 5 MB each), with 80 runtime images; older entries are evicted. New builds replace the shell cache without touching existing notification routing. Cached public responses may remain after sign-out because they are public.
+
+Reload/reopen once online after an update to install the new offline worker. Offline access requires a secure origin (HTTPS or localhost), service-worker support, and browser storage; private browsing, storage pressure, or device cleanup can remove saved content. Run `node --test scripts/offline.test.mjs scripts/notification-routing.test.mjs` to check cache rules, isolation, and notification behavior. To verify in a browser, use a production preview (`npm run build`, then `npm run preview`), load public views online, enable network offline mode, and reload. Vite development mode does not cache the development module graph.
+
 ## Accounts and favorites
 
 GameWire uses Supabase Auth for email/password accounts and stores each user's favorites in a row protected by row-level security.
