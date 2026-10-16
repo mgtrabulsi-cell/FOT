@@ -1106,6 +1106,15 @@ td:first-child { color: #828c84; }
 /* Mobile and responsive rules */
 @media (min-width: 761px) {
   .app-shell { zoom: .85; min-height: calc(100vh / .85); }
+  .account-profile { zoom: 1.4; }
+  .account-profile-identity b { font-size: 16px; }
+  .account-profile-identity small, .account-joined b { font-size: 12px; }
+  .account-joined small { font-size: 10px; }
+  .account-back-button, .account-setting-form > button, .push-actions > button { font-size: 12px; min-height: 40px; }
+  .account-setting > header b, .push-enabled-status b { font-size: 15px; }
+  .account-setting > header small, .account-setting-form label, .push-enabled-status small { font-size: 12px; line-height: 1.5; }
+  .account-setting-form input { font-size: 14px; min-height: 40px; }
+  .account-profile :is(.auth-error, .auth-notice, .auth-config-note, .nfl-empty-note) { font-size: 12px; line-height: 1.5; }
   .page-wrap { max-width: 1920px; }
   .topbar { padding-inline: max(36px, calc((100% - 1848px) / 2)); }
   .wire-hero-banner { padding: 14px 20px; gap: 12px; }
@@ -1130,6 +1139,11 @@ td:first-child { color: #828c84; }
   .nfl-directory-player-main > span:last-child small { font-size: 10px; }
   .nfl-player-avatar-large { width: 72px; height: 72px; }
   .nfl-player-dialog-heading h3 { font-size: 24px; }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .account-profile .account-settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .account-profile-summary { flex-wrap: wrap; }
 }
 
 @media (max-width: 760px) {

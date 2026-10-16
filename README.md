@@ -17,6 +17,8 @@ The VS Code task **Start GameWire dev server** is also configured for launching 
 
 Desktop views use an 85% interface scale, with a compact matchup scoreboard and larger player names and headshots in The Wire, Stat Hub's player directory, and player cards. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
 
+Desktop account profiles have an additional 140% scale, larger text and form controls for readability, and single-column settings on narrower desktop screens. Mobile profile sizing is unchanged.
+
 The original navy-blue theme uses bold crimson (`#cc2633`) for selection indicators, live accents, and Stat Hub chart bars. Filled red controls use a deeper crimson with white labels for readability; official team colors remain unchanged.
 
 Player cards use slimmer per-game chart bars. Wide receiver and tight end cards include Targets in the draggable stat wheel, using ESPN's game box-score values and retaining unavailable values rather than estimating them.
