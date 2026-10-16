@@ -1,4 +1,4 @@
-import type { Game, NFLPlayerStatKey, NFLSkillPlayer } from './sportsData';
+import type { Game, NFLPlayerGame, NFLPlayerStatKey } from './sportsData';
 
 export const matchupPositions = ['QB', 'RB', 'WR', 'TE'] as const;
 export type MatchupPosition = typeof matchupPositions[number];
@@ -33,7 +33,7 @@ export function moveMatchupPick(picks: MatchupPick[], id: string, direction: -1 
   return next;
 }
 
-export function lastFiveAverage(player: NFLSkillPlayer | undefined, position: MatchupPosition, game: Game | undefined) {
+export function lastFiveAverage(player: { recentGames: Pick<NFLPlayerGame, 'gameId' | 'date' | 'stats'>[] } | undefined, position: MatchupPosition, game: Game | undefined) {
   const recent = (player?.recentGames ?? [])
     .filter((entry) => !game || (entry.gameId !== game.eventId && Date.parse(entry.date) < Date.parse(game.date)))
     .sort((first, second) => Date.parse(second.date) - Date.parse(first.date))
@@ -41,13 +41,48 @@ export function lastFiveAverage(player: NFLSkillPlayer | undefined, position: Ma
   const values = recent.map((entry) => entry.stats[matchupStats[position].key]);
   const available = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
   return {
-    average: available.length && available.length === recent.length ? available.reduce((sum, value) => sum + value, 0) / available.length : null,
-    games: recent.length,
+    average: available.length ? available.reduce((sum, value) => sum + value, 0) / available.length : null,
+    games: available.length,
   };
 }
 
 function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+export function readPlayerAverage(payload: unknown, position: MatchupPosition, game: Game) {
+  const data = object(payload);
+  if (!Array.isArray(data.names) || !Array.isArray(data.seasonTypes) || !data.events) {
+    throw new Error('ESPN returned an invalid player game log.');
+  }
+  const index = data.names.indexOf(matchupStats[position].key);
+  if (index < 0) return { average: null, games: 0 };
+  const events = object(data.events);
+  const recentGames = data.seasonTypes.flatMap((season) => {
+    const categories = object(season).categories;
+    return Array.isArray(categories) ? categories.flatMap((category) => {
+      const group = object(category);
+      if (String(group.splitType) !== '2' || !Array.isArray(group.events)) return [];
+      return group.events.flatMap((entry) => {
+        const row = object(entry);
+        const event = object(events[String(row.eventId)]);
+        const raw = Array.isArray(row.stats) ? row.stats[index] : undefined;
+        const value = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() && raw !== '--'
+          ? Number(raw.replace(/,/g, '')) : NaN;
+        return [{
+          gameId: String(row.eventId), date: typeof event.gameDate === 'string' ? event.gameDate : '',
+          stats: Number.isFinite(value) ? { [matchupStats[position].key]: value } : {},
+        }];
+      });
+    }) : [];
+  });
+  return lastFiveAverage({ recentGames }, position, game);
+}
+
+export async function fetchPlayerAverage(pick: MatchupPick, game: Game, signal: AbortSignal) {
+  const response = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${encodeURIComponent(pick.id)}/gamelog?season=${game.seasonYear}&seasontype=2`, { signal });
+  if (!response.ok) throw new Error(`${pick.name}'s game log returned HTTP ${response.status}.`);
+  return readPlayerAverage(await response.json(), pick.position, game);
 }
 
 export function readMatchupPicks(value: unknown): MatchupPick[] {

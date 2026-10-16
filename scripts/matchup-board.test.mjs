@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fetchPPRProjections, lastFiveAverage, moveMatchupPick, readMatchupPicks, readPPRProjections } from '../src/services/matchupBoard.ts';
+import { fetchPPRProjections, lastFiveAverage, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPPRProjections } from '../src/services/matchupBoard.ts';
 
 const pick = (id, position) => ({ id, position, name: `Player ${id}`, teamId: '1', gameId: 'NFL:123', headshot: '' });
 
@@ -37,7 +37,25 @@ test('Missing stats do not become zeros or pull in older games', () => {
     gameId: String(i), date: `2026-09-${String(i + 1).padStart(2, '0')}T17:00:00Z`,
     stats: i === 5 ? {} : { receivingYards: 40 },
   }));
-  assert.deepEqual(lastFiveAverage({ recentGames }, 'WR', { eventId: 'next', date: '2026-10-01T17:00:00Z' }), { average: null, games: 5 });
+  assert.deepEqual(lastFiveAverage({ recentGames }, 'WR', { eventId: 'next', date: '2026-10-01T17:00:00Z' }), { average: 40, games: 4 });
+});
+
+test('Bryce Young regular-season average excludes preseason, future games and blank stats', () => {
+  const events = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [String(i), { gameDate: `2026-09-${String(i + 1).padStart(2, '0')}T17:00:00Z` }]));
+  const payload = {
+    names: ['passingYards', 'rushingYards'], events,
+    seasonTypes: [{ categories: [
+      { splitType: '1', events: [{ eventId: '0', stats: ['999', '0'] }] },
+      { splitType: '2', events: [329, 291, 287, 361].map((value, i) => ({ eventId: String(i + 1), stats: [String(value), '0'] })).concat([
+        { eventId: '5', stats: ['--', '0'] }, { eventId: '6', stats: ['900', '0'] },
+      ]) },
+    ] }],
+  };
+  const game = { eventId: '6', date: events['6'].gameDate };
+  assert.deepEqual(readPlayerAverage(payload, 'QB', game), { average: 317, games: 4 });
+  assert.deepEqual(readPlayerAverage(payload, 'RB', game), { average: 0, games: 5 });
+  assert.deepEqual(readPlayerAverage(payload, 'WR', game), { average: null, games: 0 });
+  assert.throws(() => readPlayerAverage({}, 'QB', game), /invalid player game log/);
 });
 
 test('Projection requires the exact season/week, projected source and weekly split', () => {

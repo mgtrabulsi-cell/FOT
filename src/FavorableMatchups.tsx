@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { fetchNFLActiveSkillRoster, fetchNFLGameDetails } from './services/sportsData';
 import type { Game, NFLGameDetails } from './services/sportsData';
-import { fetchPPRProjections, isMatchupPosition, lastFiveAverage, matchupPositions, matchupStats, moveMatchupPick, readMatchupPicks } from './services/matchupBoard';
+import { fetchPlayerAverage, fetchPPRProjections, isMatchupPosition, matchupPositions, matchupStats, moveMatchupPick, readMatchupPicks } from './services/matchupBoard';
 import type { MatchupPick } from './services/matchupBoard';
 
 type Board = { picks: MatchupPick[]; revision: number };
@@ -28,9 +28,11 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
   const [rosterError, setRosterError] = useState('');
   const [details, setDetails] = useState<Map<string, NFLGameDetails>>(new Map());
   const [projections, setProjections] = useState<Map<string, number>>(new Map());
-  const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState('');
   const [projectionError, setProjectionError] = useState('');
+  const [averages, setAverages] = useState<Map<string, { average: number | null; games: number }>>(new Map());
+  const [averageLoading, setAverageLoading] = useState(false);
+  const [averageError, setAverageError] = useState('');
   const boardRevision = useRef(0);
   const picks = (admin ? draft : null)?.picks ?? published.picks;
   const weeklyGames = games.filter((game) => game.league === 'NFL' && game.seasonYear === season);
@@ -99,10 +101,9 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
 
   useEffect(() => {
     const controller = new AbortController();
-    if (!season || !week || !pickGameKey) { setDetails(new Map()); setStatsLoading(false); setStatsError(''); return; }
+    if (!season || !week || !pickGameKey) { setDetails(new Map()); setStatsError(''); return; }
     async function loadStats() {
-      setStatsLoading(true); setStatsError('');
-      setDetails(new Map());
+      setStatsError('');
       const selected = weeklyGames.filter((game) => pickGameKey.split('|').includes(game.id));
       const results = await Promise.allSettled(selected.map(async (game) => ({
         id: game.id,
@@ -117,13 +118,39 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
       });
       setDetails(next);
       setStatsError(errors.length ? `Some player statistics are unavailable. ${errors.join(' ')}` : '');
-      setStatsLoading(false);
     }
     void loadStats().catch((cause: unknown) => {
-      if (!controller.signal.aborted) { setStatsError(message(cause)); setStatsLoading(false); }
+      if (!controller.signal.aborted) setStatsError(message(cause));
     });
     return () => controller.abort();
   }, [season, week, scheduleKey, pickGameKey, refresh]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!pickPlayerKey || !scheduleKey) { setAverages(new Map()); setAverageLoading(false); setAverageError(''); return; }
+    async function load() {
+      setAverageLoading(true); setAverageError('');
+      const next = new Map<string, { average: number | null; games: number }>();
+      const errors: string[] = [];
+      for (let start = 0; start < picks.length; start += 4) {
+        await Promise.all(picks.slice(start, start + 4).map(async (pick) => {
+          const game = weeklyGames.find((item) => item.id === pick.gameId);
+          if (!game) return;
+          try { next.set(pick.id, await fetchPlayerAverage(pick, game, controller.signal)); }
+          catch (cause) { errors.push(`${pick.name}: ${message(cause)}`); }
+        }));
+        if (controller.signal.aborted) return;
+      }
+      setAverages((previous) => new Map(picks.flatMap((pick) => {
+        const value = next.get(pick.id) ?? previous.get(pick.id);
+        return value ? [[pick.id, value] as const] : [];
+      })));
+      setAverageError(errors.length ? `Player game logs could not refresh. ${errors.join(' ')}` : '');
+      setAverageLoading(false);
+    }
+    void load();
+    return () => controller.abort();
+  }, [season, week, scheduleKey, pickGameKey, pickPlayerKey, refresh]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -201,6 +228,7 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
     {notice && <p role="status" className="livewire-notice">{notice}</p>}
     {statsError && <p className="feed-warning" role="alert">{statsError}</p>}
     {projectionError && <p className="feed-warning" role="alert">{projectionError}</p>}
+    {averageError && <p className="feed-warning" role="alert">{averageError}</p>}
     {loaded && <div className="favorable-matchup-groups">{matchupPositions.map((position) => {
       const group = picks.filter((pick) => pick.position === position);
       const stat = matchupStats[position];
@@ -212,13 +240,12 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
           const team = game && [game.away, game.home].find((item) => item.id === pick.teamId);
           const opponent = game && (game.home.id === pick.teamId ? game.away : game.home);
           const gameDetails = details.get(pick.gameId);
-          const player = gameDetails?.teamForms.find((form) => form.teamId === pick.teamId)?.skillPlayers.find((item) => item.id === pick.id);
-          const average = lastFiveAverage(player, position, game);
+          const average = averages.get(pick.id) ?? { average: null, games: 0 };
           const rank = gameDetails?.teamForms.find((form) => form.teamId === opponent?.id)?.defenseRanks[stat.defense];
           const projection = projections.get(pick.id);
           return <article className="favorable-matchup-item" key={pick.id}>
             <div className="favorable-matchup-player"><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{pick.headshot ? <img src={pick.headshot} alt="" /> : pick.name.slice(0, 1)}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small></span></div>
-            <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? statsLoading ? 'Loading...' : 'Unavailable' : `last ${average.games} games`}</small></div>
+            <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? averageLoading ? 'Loading...' : averageError ? 'Retrying game log' : 'No recorded games' : `last ${average.games} reported games`}</small></div>
               <div><b>{rank === null || rank === undefined ? '—' : `#${rank}`}</b><span>{position === 'QB' ? 'Pass' : position === 'RB' ? 'Rush' : 'Receiving'} defense rank</span><small>{opponent?.abbr ?? 'Unavailable'} · NFL yards rank</small></div>
               <div><b>{projection?.toFixed(1) ?? '—'}</b><span>ESPN projected PPR</span><small>{projection === undefined ? 'Unavailable' : `Week ${week} · fantasy pts`}</small></div></div>
             {admin && <div className="matchup-rank-actions">
@@ -230,6 +257,6 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
         })}</div>
       </section>;
     })}</div>}
-    <p className="nfl-data-note">Averages use up to five reported games before the selected matchup; missing statistics are not treated as zero. Defense ranks are season-to-date yards ranks, not fantasy points allowed by position. ESPN projections use PPR scoring for the exact season and week; unavailable projections are not estimated. Selections are editorial, not confirmed starters.</p>
+    <p className="nfl-data-note">Averages use each player's regular-season game log before the selected matchup, with up to five recent games and the reported sample count shown. Preseason games are excluded; missing statistics are not treated as zero. Defense ranks are season-to-date yards ranks, not fantasy points allowed by position. ESPN projections use PPR scoring for the exact season and week; unavailable projections are not estimated. Selections are editorial, not confirmed starters.</p>
   </section>;
 }
