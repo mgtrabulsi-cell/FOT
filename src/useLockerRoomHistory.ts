@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from './services/supabaseClient';
 import { fetchNFLFavoritePlays, fetchNFLLivePlayerStats } from './services/sportsData';
 import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLPlayerStatKey, Team } from './services/sportsData';
+import { completedScoreUpdates } from './services/lockerRoomScores';
 
 export type DenScoreItem = {
+  checkpoint?: boolean;
   id: string; kind: 'score'; favoriteKey: string; favoriteName: string; timestamp: string;
   league: string; away: Team; home: Team; status: Game['status']; period: string; clock: string;
 };
@@ -185,13 +187,10 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
             if (!observed.current.has(key)) entries.push({ key, payload, observed_at: new Date().toISOString() });
           });
           gameFavorites.forEach((favorite) => {
-            const payload: DenScoreItem = {
-              id: `score:${game.id}:${game.away.score}:${game.home.score}${game.status === 'FINAL' ? ':final' : ''}`,
-              kind: 'score', favoriteKey: favorite.key, favoriteName: favorite.name, timestamp: game.date,
-              league: game.league, away: game.away, home: game.home, status: game.status, period: game.period, clock: game.clock,
-            };
+            completedScoreUpdates(game, favorite).forEach((payload) => {
             const key = `score:${payload.id}:${favorite.key}`;
             if (!observed.current.has(key)) entries.push({ key, payload, observed_at: new Date().toISOString() });
+            });
           });
         }));
         if (controller.signal.aborted) return;
@@ -251,7 +250,7 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
 
   const entries = state.scope === scope ? state.entries : [];
   return {
-    items: entries.flatMap((entry): DenItem[] => entry.payload.kind === 'news' || entry.payload.kind === 'score' ? [entry.payload] : []),
+    items: entries.flatMap((entry): DenItem[] => entry.payload.kind === 'news' || (entry.payload.kind === 'score' && entry.payload.checkpoint === true) ? [entry.payload] : []),
     plays: entries.flatMap((entry): DenPlayItem[] => entry.payload.kind === 'play' ? [entry.payload] : []),
     players: entries.flatMap((entry): PlayerHistory[] => entry.payload.kind === 'player' ? [entry.payload] : []),
     loading: !!scope && !loaded && !state.error,

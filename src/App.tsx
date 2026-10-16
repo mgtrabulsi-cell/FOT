@@ -18,6 +18,7 @@ import SplashScreen from './SplashScreen';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
+import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
 
@@ -713,7 +714,6 @@ function App() {
   const playUpdatesRef = useRef(playUpdates);
   playUpdatesRef.current = playUpdates;
   const [loadingNews, setLoadingNews] = useState(false);
-  const previousGameStates = useRef(new Map<string, string>());
   const favoritesRef = useRef(favorites);
   const nflPlayFavorites = favorites.filter((favorite) => favorite.feedPath === 'football/nfl'
     && (favorite.type === 'team' || (favorite.type === 'player'
@@ -827,7 +827,6 @@ function App() {
     setScoreUpdates([]);
     setPlayUpdates([]);
     setNewsItems([]);
-    previousGameStates.current.clear();
     if (!authUser) {
       setFavorites([]);
       setFavoritesOwnerId(null);
@@ -929,19 +928,7 @@ function App() {
           ? game.away.id === favorite.id || game.home.id === favorite.id
           : favorite.teamId === game.away.id || favorite.teamId === game.home.id)
       ));
-    const snapshots: DenScoreItem[] = matchingGames.map((game) => ({
-      id: `score:${game.id}:${game.away.score}:${game.home.score}${game.status === 'FINAL' ? ':final' : ''}`,
-      kind: 'score',
-      favoriteKey: favorite.key,
-      favoriteName: favorite.name,
-      timestamp: game.date || new Date().toISOString(),
-      league: game.league,
-      away: game.away,
-      home: game.home,
-      status: game.status,
-      period: game.period,
-      clock: game.clock,
-    }));
+    const snapshots = matchingGames.flatMap((game) => completedScoreUpdates(game, favorite));
     if (snapshots.length) {
       setScoreUpdates((current) => {
         const map = new Map<string, DenScoreItem>();
@@ -981,48 +968,13 @@ function App() {
           if (game.status === 'UPCOMING') return;
           if (game.date && isPastTuesdayCutoff(game.date)) return;
 
-          const previousState = previousGameStates.current.get(game.id);
-          const nextScore = `${game.away.score}:${game.home.score}`;
-          const isFinal = game.status === 'FINAL';
-          const nextState = isFinal ? `${nextScore}:final` : nextScore;
-
-          if (!previousState) {
-            previousGameStates.current.set(game.id, nextState);
-            const alreadyHasUpdateForGame = scoreUpdatesRef.current.some((item) => item.id.startsWith(`score:${game.id}:`));
-            if (!alreadyHasUpdateForGame) {
-              changedItems.push({
-                id: `score:${game.id}:${nextState}`,
-                kind: 'score',
-                favoriteKey: matchingFavorite.key,
-                favoriteName: matchingFavorite.name,
-                timestamp: game.date || new Date().toISOString(),
-                league: game.league,
-                away: game.away,
-                home: game.home,
-                status: game.status,
-                period: game.period,
-                clock: game.clock,
-              });
+          const checkpoints = completedScoreUpdates(game, matchingFavorite);
+          checkpoints.forEach((item) => {
+            const existing = scoreUpdatesRef.current.find((saved) => saved.id === item.id && saved.checkpoint);
+            if (!existing || existing.away.score !== item.away.score || existing.home.score !== item.home.score) {
+              changedItems.push({ ...item, timestamp: existing?.timestamp ?? new Date().toISOString() });
             }
-            return;
-          }
-
-          if (previousState !== nextState) {
-            previousGameStates.current.set(game.id, nextState);
-            changedItems.push({
-              id: `score:${game.id}:${nextState}`,
-              kind: 'score',
-              favoriteKey: matchingFavorite.key,
-              favoriteName: matchingFavorite.name,
-              timestamp: new Date().toISOString(),
-              league: game.league,
-              away: game.away,
-              home: game.home,
-              status: game.status,
-              period: game.period,
-              clock: game.clock,
-            });
-          }
+          });
         });
         if (changedItems.length) {
           setScoreUpdates((current) => {

@@ -93,6 +93,7 @@ export type NFLMarket = {
 };
 
 export type Game = {
+  completedPeriods?: Array<{ period: number; awayScore: number; homeScore: number }>;
   id: string;
   eventId: string;
   feedPath: string;
@@ -367,6 +368,23 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
     : feed.sport === 'Soccer' && periodNumber > 0 ? `${periodNumber === 1 ? '1ST' : '2ND'} HALF` : periodNumber ? `PERIOD ${periodNumber}` : shortDetail;
   const teamA = readTeam(awayEntry);
   const teamH = readTeam(homeEntry);
+  const atPeriodEnd = state === 'post' || /END_PERIOD|HALFTIME/.test(text(statusType.name)) || clockValue === '0:00';
+  const completedPeriods: NonNullable<Game['completedPeriods']> = [];
+  let awayTotal = 0;
+  let homeTotal = 0;
+  for (let period = 1; period <= periodNumber; period++) {
+    if (period === periodNumber && (!atPeriodEnd || state === 'post')) break;
+    const scoreFor = (entry: Record<string, unknown>) => {
+      const line = asArray(entry.linescores).map(asObject).find((row, index) => Number(row.period ?? index + 1) === period);
+      return line && typeof line.value === 'number' && Number.isFinite(line.value) ? line.value : null;
+    };
+    const away = scoreFor(awayEntry);
+    const home = scoreFor(homeEntry);
+    if (away === null || home === null) break;
+    awayTotal += away;
+    homeTotal += home;
+    completedPeriods.push({ period, awayScore: awayTotal, homeScore: homeTotal });
+  }
 
   return {
     id: `${feed.league}:${text(event.id)}`,
@@ -383,6 +401,7 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
     away: teamA,
     home: teamH,
     nflMarket: feed.league === 'NFL' ? readMarket(asArray(competition.odds)[0]) : undefined,
+    completedPeriods,
   };
 }
 
