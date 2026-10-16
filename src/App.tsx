@@ -492,6 +492,7 @@ function TheDen({ favorites, games, items, plays, playerHistory, week, season, h
 }
 
 function App() {
+  const [deletedAccount, setDeletedAccount] = useState<string[] | null>(null);
   const online = useOnlineStatus();
   const [sessionUser, setAuthUser] = useState<User | null>(null);
   const authUser = online ? sessionUser : null;
@@ -986,6 +987,7 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  if (deletedAccount) return <main className="page-wrap"><section className="account-profile" role="status"><h2>Account deleted</h2><p>Your account and associated personal data have been deleted.</p>{deletedAccount.length > 0 && <p className="auth-error">Some data on this device could not be cleared: {deletedAccount.join(', ')}. Clear this site's browsing data in your browser settings.</p>}<button onClick={() => window.location.replace(import.meta.env.BASE_URL)}>Back to GameWire</button></section></main>;
   if (recoveringPassword && authUser) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
   if (online && (showSplash || (supabase && authLoading))) return <SplashScreen />;
   if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
@@ -1075,7 +1077,7 @@ function App() {
         </div>
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
         {view === 'Profile' ? (
-          authUser ? <ProfilePage user={authUser} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Public saved browsing is available in The Wire, Stat Hub, and LIVEWIRE.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
+          authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Public saved browsing is available in The Wire, Stat Hub, and LIVEWIRE.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' ? (
           <>
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}

@@ -89,6 +89,16 @@ Reload/reopen once online after an update to install the new offline worker. Off
 
 ## Accounts and favorites
 
+### Permanent account deletion
+
+Profile includes **Delete my account**, requiring the current password and an exact `DELETE` confirmation. The server independently verifies the session and password; it never trusts a user ID supplied by the browser. Deletion removes uploaded files (including unpublished photos) through the Storage API, then hard-deletes the auth user. A database trigger removes authored LIVEWIRE posts, and foreign-key cascades remove favorites, Locker Room history, roles, push subscriptions, queued deliveries, and deletion state. Shared weekly matchup boards remain with `updated_by` cleared. Losing the last owner account also removes its owner access; transfer/grant a replacement owner administratively before deleting if needed.
+
+Apply [`supabase/account-deletion.sql`](supabase/account-deletion.sql) after the existing schemas, then deploy `delete-account` with `supabase functions deploy delete-account`. Its gateway JWT check is disabled because the function validates the bearer token itself with Auth `getUser`; service credentials stay server-side. Deletion preparation is service-role-only and pauses further uploads until deletion finishes. Storage failures retain the account for retry and are explicitly reported; already removed photos cannot be restored. Existing notification and read-only offline features continue unchanged.
+
+After success, the current device clears GameWire preferences, runtime public caches, its push subscription, and local auth session. Cleanup failures are reported separately from successful server deletion. Copies already downloaded on other devices, notifications already delivered, and provider-managed backups cannot be instantly erased; backup removal follows the provider's retention policy. Offline copies are public, not account-private data. An account cannot delete itself offline.
+
+Run [`supabase/tests/account-deletion.sql`](supabase/tests/account-deletion.sql) for rollback-only cascade/isolation/upload-guard tests, and `deno test --allow-env --allow-net supabase/functions/delete-account/index.test.ts` for mocked authentication, upload cleanup, hard deletion, and failure checks. Never test deletion with a real user account.
+
 GameWire uses Supabase Auth for email/password accounts and stores each user's favorites in a row protected by row-level security.
 
 1. Create a Supabase project and enable email authentication.
