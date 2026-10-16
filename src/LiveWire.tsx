@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 
-type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; source_url: string | null; created_at: string; updated_at: string };
+type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
+type DraftPhoto = { path?: string; file?: File; preview: string };
+
+function photoUrl(path: string) {
+  return supabase?.storage.from('livewire-photos').getPublicUrl(path).data.publicUrl ?? '';
+}
 
 function safeNewsLink(value: string): string | null {
   try {
@@ -27,6 +32,42 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   const [body, setBody] = useState('');
   const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
+  const [photos, setPhotos] = useState<DraftPhoto[]>([]);
+  const previews = useRef(new Set<string>());
+  useEffect(() => () => { previews.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+  function resetPhotos() {
+    previews.current.forEach((url) => URL.revokeObjectURL(url));
+    previews.current.clear();
+    setPhotos([]);
+  }
+  async function savePost() {
+    if (!supabase || !user) throw new Error('Sign in to upload photos.');
+    const storage = supabase.storage.from('livewire-photos');
+    const uploaded: string[] = [];
+    try {
+      const paths: string[] = [];
+      for (const photo of photos) {
+        if (photo.path) { paths.push(photo.path); continue; }
+        if (!photo.file) throw new Error('Photo file is missing. Select it again.');
+        const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[photo.file.type];
+        if (!extension || photo.file.size > 5 * 1024 * 1024) throw new Error('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.');
+        const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
+        const result = await storage.upload(path, photo.file, { contentType: photo.file.type, upsert: false });
+        if (result.error) throw result.error;
+        uploaded.push(path); paths.push(path);
+      }
+      const result = await supabase.rpc('save_livewire_post', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing, post_images: paths });
+      if (result.error) throw result.error;
+      return { error: null };
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not save the photos or post. Please retry.';
+      if (uploaded.length) {
+        const cleanup = await storage.remove(uploaded);
+        if (cleanup.error) throw new Error(`${message} Unused upload cleanup also failed: ${cleanup.error.message}`);
+      }
+      throw new Error(message);
+    }
+  }
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
@@ -118,8 +159,8 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       event.preventDefault();
       if (!supabase || busy) return;
       if (source.trim() && !safeNewsLink(source.trim())) { setActionError('Use a valid http or https news link.'); return; }
-      void act(() => supabase!.rpc('save_livewire_post', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing }), () => {
-        setTitle(''); setBody(''); setSource(''); setEditing(null); setNotice(editing ? 'Post updated.' : 'Post published.');
+      void act(savePost, () => {
+        resetPhotos(); setTitle(''); setBody(''); setSource(''); setEditing(null); setNotice(editing ? 'Post updated.' : 'Post published.');
       });
     }}>
       <label htmlFor="livewire-title">{editing ? 'Edit subject / title' : 'Subject / title'}</label>
@@ -128,7 +169,24 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       <textarea id="livewire-body" maxLength={500} required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Player news, game reactions, and your latest takes..." disabled={busy} />
       <label htmlFor="livewire-source">News link <span>(optional)</span></label>
       <input id="livewire-source" type="url" maxLength={2048} value={source} onChange={(event) => setSource(event.target.value)} placeholder="https://..." disabled={busy} />
-      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small>{editing && <button type="button" disabled={busy} onClick={() => { setEditing(null); setTitle(''); setBody(''); setSource(''); }}>Cancel edit</button>}<button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
+      <label htmlFor="livewire-photos">Photos <span>(optional, up to four)</span></label>
+      <input id="livewire-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={busy || photos.length >= 4} onChange={(event) => {
+        const files = Array.from(event.target.files ?? []); event.target.value = '';
+        if (photos.length + files.length > 4) { setActionError('Attach at most four photos.'); return; }
+        if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 5 * 1024 * 1024 || !file.size)) {
+          setActionError('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.'); return;
+        }
+        setActionError('');
+        setPhotos((current) => [...current, ...files.map((file) => {
+          const preview = URL.createObjectURL(file); previews.current.add(preview); return { file, preview };
+        })]);
+      }} />
+      <small className="livewire-photo-help">JPG, PNG, WebP or GIF · 5 MB per photo · Photos are public when posted.</small>
+      {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}><img src={photo.preview} alt={`Attachment preview ${index + 1}`} /><button type="button" disabled={busy} onClick={() => {
+        if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
+        setPhotos((current) => current.filter((_, item) => item !== index));
+      }}>Remove photo {index + 1}</button></div>)}</div>}
+      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small>{editing && <button type="button" disabled={busy} onClick={() => { resetPhotos(); setEditing(null); setTitle(''); setBody(''); setSource(''); }}>Cancel edit</button>}<button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
@@ -142,11 +200,12 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         <header><b>{post.author_name}</b><time dateTime={post.created_at}>{new Date(post.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{post.updated_at !== post.created_at ? ' · Edited' : ''}</time></header>
         {post.title && <h3>{post.title}</h3>}
         <p>{post.body}</p>
+        {!!post.image_paths?.length && <div className={`livewire-gallery livewire-gallery-${post.image_paths.length}`}>{post.image_paths.map((path, index) => <a key={path} href={photoUrl(path)} target="_blank" rel="noopener noreferrer" aria-label={`Open photo ${index + 1} for ${post.title ?? 'post'}`}><img src={photoUrl(path)} alt={`${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}`} loading="lazy" onError={(event) => { event.currentTarget.alt = 'Photo unavailable'; }} /></a>)}</div>}
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
-          <button disabled={busy} onClick={() => { setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
+          <button disabled={busy} onClick={() => { resetPhotos(); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {
-            if (editing === post.id) { setEditing(null); setTitle(''); setBody(''); setSource(''); }
+            if (editing === post.id) { resetPhotos(); setEditing(null); setTitle(''); setBody(''); setSource(''); }
             setNotice('Post deleted.');
           }); }}>Delete</button>
         </div>}

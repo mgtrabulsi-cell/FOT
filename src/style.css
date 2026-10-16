@@ -160,6 +160,15 @@ button { color: inherit; }
 .livewire-post { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 18px 0; border-top: 1px solid #35445b; }
 .livewire-avatar { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #24334a; color: #e5eaf3; font-size: 11px; font-weight: 700; }
 .livewire-post-content { min-width: 0; }
+.livewire-photo-help { color: #bbc7d9; font-size: 11px; }
+.livewire-photo-previews, .livewire-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0; max-width: 760px; }
+.livewire-photo-previews > div { min-width: 0; display: grid; gap: 6px; }
+.livewire-photo-previews img { width: 100%; height: 140px; object-fit: contain; background: #101a29; border-radius: 4px; }
+.livewire-post .livewire-gallery > a { display: block; margin: 0; min-width: 0; overflow: hidden; border-radius: 4px; background: #101a29; }
+.livewire-gallery img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
+.livewire-gallery-1 { grid-template-columns: minmax(0, 1fr); }
+.livewire-gallery-1 img { max-height: 480px; }
+.livewire-gallery-3 > a:first-child { grid-column: 1 / -1; }
 .livewire-post-target { outline: 2px solid #cc2633; outline-offset: 4px; scroll-margin-top: 24px; }
 .livewire-post header { justify-content: flex-start; font-size: 12px; overflow-wrap: anywhere; }
 .livewire-post h3 { margin: 9px 0 6px; color: #edf2f8; font: 600 23px/1.25 var(--display); overflow-wrap: anywhere; }
