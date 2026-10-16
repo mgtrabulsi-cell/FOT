@@ -1106,6 +1106,7 @@ td:first-child { color: #828c84; }
 /* Mobile and responsive rules */
 @media (min-width: 761px) {
   .app-shell { zoom: .85; min-height: calc(100vh / .85); }
+  .page-wrap.locker-room-zoom { zoom: 1.2; }
   .account-profile { zoom: 1.3; }
   .account-profile-identity b { font-size: 16px; }
   .account-profile-identity small, .account-joined b { font-size: 12px; }
