@@ -78,12 +78,12 @@ export default function PullToRefresh() {
     };
   }, []);
 
-  const label = refreshing ? 'Refreshing...' : distance >= refreshThreshold ? 'Release to refresh' : distance > 0 ? 'Pull to refresh' : 'Refresh page';
-  return <div className={`pull-refresh${distance > 0 ? ' is-pulling' : ''}`}>
-    <button type="button" onClick={refresh} disabled={refreshing} aria-label="Refresh page">
+  const label = refreshing ? 'Refreshing...' : distance >= refreshThreshold ? 'Release to refresh' : 'Pull to refresh';
+  return <div className={`pull-refresh${distance > 0 || refreshing || error ? ' is-visible' : ''}`}>
+    {(distance > 0 || refreshing) && <div className="pull-refresh-indicator" role="status">
       <RefreshCw size={15} aria-hidden="true" className={refreshing ? 'is-refreshing' : ''} style={{ transform: refreshing ? undefined : `rotate(${distance * 3}deg)` }} />
-      <span role="status">{label}</span>
-    </button>
+      <span>{label}</span>
+    </div>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }
