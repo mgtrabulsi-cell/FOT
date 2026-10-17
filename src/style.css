@@ -43,8 +43,10 @@ button { color: inherit; }
 .banner-search summary:hover, .banner-search[open] summary { background: #162438; border-color: #3d506d; color: #fff; }
 .banner-search summary:focus-visible { outline: 2px solid #8198bd; outline-offset: 2px; }
 .banner-search.has-query summary::after { content: ''; position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: #cc2633; }
-.banner-search-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: flex; align-items: center; gap: 4px; width: 280px; padding: 8px; border: 1px solid #35445b; border-radius: 6px; background: #101a29; box-shadow: 0 8px 24px #050a1280; }
+.banner-search[open] summary { z-index: 21; }
+.banner-search-panel { position: absolute; top: 50%; transform: translateY(-50%); right: 0; z-index: 20; display: flex; align-items: center; gap: 4px; width: 280px; height: 44px; padding: 0 48px 0 8px; border: 1px solid #35445b; border-radius: 6px; background: #101a29; }
 .banner-search-panel .search-field { flex: 1; min-width: 0; }
+.banner-search-panel .search-field input { color: #fff; caret-color: #fff; }
 .banner-search-panel .icon-button { min-width: 44px; min-height: 44px; }
 .banner-search-panel .icon-button:disabled { opacity: .4; cursor: default; }
 .edition-label { color: #bdc9db; font: 10px var(--mono); letter-spacing: .5px; }
@@ -682,7 +684,8 @@ td:first-child { color: #828c84; }
   .topbar-right { order: 2; margin-left: auto; gap: 8px; min-width: 0; }
   .banner-search { position: static; }
   .topbar { position: relative; }
-  .banner-search-panel { top: 50px; right: 12px; width: min(280px, calc(100% - 24px)); }
+  .banner-search[open] summary { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); }
+  .banner-search-panel { top: 50%; left: 12px; right: 12px; width: auto; }
   html { scroll-padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .app-shell { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .primary-nav { position: fixed; inset: auto 0 0; z-index: 40; height: calc(64px + env(safe-area-inset-bottom)); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); align-self: auto; justify-content: space-around; gap: 0; border-top: 1px solid #29354a; background: #0b111c; }

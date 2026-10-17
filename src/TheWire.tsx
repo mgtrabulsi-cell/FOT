@@ -201,15 +201,22 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
     ?? nflGames.find((g) => g.status === 'LIVE');
   const searchQuery = query.trim().toLowerCase();
 
-  const filteredGames = nflGames.filter((g) => {
-    if (!searchQuery) return true;
-    return (
+  const matchingGame = searchQuery ? nflGames.find((g) => (
       g.away.name.toLowerCase().includes(searchQuery)
       || g.away.abbr.toLowerCase().includes(searchQuery)
       || g.home.name.toLowerCase().includes(searchQuery)
       || g.home.abbr.toLowerCase().includes(searchQuery)
-    );
-  });
+  )) : undefined;
+  const matchingGameId = matchingGame?.id;
+  useEffect(() => {
+    if (!matchingGameId) return;
+    userSelectedRef.current = true;
+    setSelectedGameId(matchingGameId);
+    onSelectGame?.(matchingGameId);
+  }, [searchQuery, matchingGameId, onSelectGame]);
+  useEffect(() => {
+    wheelRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [selectedGameId]);
 
   const isLive = selectedGame?.status === 'LIVE';
   const eventId = selectedGame?.eventId;
@@ -564,7 +571,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
     <div className="the-wire-container">
       {/* Game Wheel */}
       <div className="wire-controls">
-        {filteredGames.length > 0 ? (
+        {nflGames.length > 0 ? (
           <div className="wire-game-wheel">
             <span className="eyebrow">NFL GAMES · THIS WEEK</span>
             <div
@@ -577,7 +584,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
               onPointerUp={finishPointer}
               onPointerCancel={finishPointer}
             >
-              {filteredGames.map((game) => {
+              {nflGames.map((game) => {
                 const live = game.status === 'LIVE';
                 const selected = game.id === selectedGame?.id;
                 const primetime = getPrimetimeLabel(game);
@@ -620,8 +627,9 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
             </div>
           </div>
         ) : (
-          <p className="nfl-empty-note">No games matched “{query}”.</p>
+          <p className="nfl-empty-note">No NFL games available this week.</p>
         )}
+        {searchQuery && !matchingGame && <p className="nfl-empty-note" role="status">No games matched “{query}”. All games remain available in the wheel.</p>}
       </div>
 
       {!selectedGame ? (
