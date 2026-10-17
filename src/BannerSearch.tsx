@@ -40,7 +40,7 @@ export default function BannerSearch({ kind, query, onQueryChange }: BannerSearc
 
   return <details
     ref={detailsRef}
-    className={`banner-search${query ? ' has-query' : ''}`}
+    className="banner-search"
     onToggle={(event) => {
       setExpanded(event.currentTarget.open);
       if (!event.currentTarget.open) setText('');

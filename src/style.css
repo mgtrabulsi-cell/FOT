@@ -42,7 +42,8 @@ button { color: inherit; }
 .banner-search summary::-webkit-details-marker { display: none; }
 .banner-search summary:hover, .banner-search[open] summary { background: #162438; border-color: #3d506d; color: #fff; }
 .banner-search summary:focus-visible { outline: 2px solid #8198bd; outline-offset: 2px; }
-.banner-search.has-query summary::after { content: ''; position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: #cc2633; }
+.livewire-nav-label { position: relative; }
+.livewire-unread-dot { position: absolute; top: -3px; right: -9px; width: 7px; height: 7px; border-radius: 50%; background: #ff5261; }
 .banner-search[open] summary { z-index: 21; background: transparent; border-color: transparent; }
 .banner-search-panel { position: absolute; top: 50%; transform: translateY(-50%); right: 0; z-index: 20; display: flex; align-items: center; gap: 4px; width: 280px; height: 44px; padding: 0 48px 0 12px; border: 1px solid #35445b; border-radius: 22px; background: #101a29; }
 .banner-search-panel:focus-within { border-color: var(--accent); }

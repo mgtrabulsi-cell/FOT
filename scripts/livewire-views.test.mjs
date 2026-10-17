@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { observePostViews } from '../src/services/livewireViews.ts';
 
-function fixture() {
+function fixture(options) {
   const original = Object.fromEntries(['document', 'navigator', 'window', 'IntersectionObserver', 'MutationObserver']
     .map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   const document = new EventTarget();
@@ -38,7 +38,7 @@ function fixture() {
   const stop = observePostViews(root, async (id) => {
     calls.push(id);
     if (fail) throw new Error('Write failed');
-  }, (error) => errors.push(error));
+  }, (error) => errors.push(error), options);
   return {
     calls, errors, first, second, observed,
     show(element, ratio = 0.5) { intersections([{ target: element, isIntersecting: ratio > 0, intersectionRatio: ratio }]); },
@@ -70,6 +70,22 @@ test('Counts viewport entry, not offscreen loading, and counts again after leavi
     f.show(f.first);
     f.show(f.second);
     assert.deepEqual(f.calls, ['first', 'first', 'second']);
+  } finally { f.restore(); }
+});
+
+test('Read observation ignores hidden/offscreen posts and supports offline guest receipts', () => {
+  const f = fixture({ minimumRatio: 0.01, bottomInset: 64, allowOffline: true });
+  try {
+    f.offline();
+    f.show(f.first, 0.005);
+    assert.deepEqual(f.calls, []);
+    f.hidden();
+    f.show(f.first, 0.5);
+    assert.deepEqual(f.calls, []);
+    f.visible();
+    assert.deepEqual(f.calls, ['first']);
+    f.show(f.second, 0);
+    assert.deepEqual(f.calls, ['first']);
   } finally { f.restore(); }
 });
 

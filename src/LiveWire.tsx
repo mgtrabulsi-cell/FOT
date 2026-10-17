@@ -30,7 +30,7 @@ function safeNewsLink(value: string): string | null {
   }
 }
 
-export default function LiveWire({ user, postId = null }: { user: User | null; postId?: string | null }) {
+export default function LiveWire({ user, postId = null, onPostSeen }: { user: User | null; postId?: string | null; onPostSeen?: (postId: string) => Promise<void> }) {
   const publicRevision = usePublicDataRevision('posts');
   const [posts, setPosts] = useState<Post[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
@@ -40,6 +40,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const [viewError, setViewError] = useState('');
+  const [readError, setReadError] = useState('');
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const feedElement = useRef<HTMLDivElement | null>(null);
   const [refresh, setRefresh] = useState(0);
@@ -236,6 +237,17 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   const linkedOutsideFilter = linkedPost && themeFilters.length > 0
     && !themeFilters.some((theme) => linkedPost.themes?.includes(theme));
 
+  useEffect(() => {
+    if (!feedElement.current || !onPostSeen) return;
+    return observePostViews(feedElement.current, async (id) => {
+      await onPostSeen(id);
+      setReadError('');
+    }, (cause) => {
+      console.error('Could not mark LIVEWIRE post as read', cause);
+      setReadError('Could not save your read status. Reconnect or reopen LIVEWIRE to retry.');
+    }, { minimumRatio: 0.01, bottomInset: 64, allowOffline: !user });
+  }, [onPostSeen, user?.id]);
+
   function filterThemes(next: PostTheme[]) {
     setThemeFilters(next); setLimit(20); setPosts([]); setHasMore(false); setLoaded(false);
   }
@@ -321,6 +333,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
     </div>
     {linkedOutsideFilter && <p className="livewire-notice">The post opened from your link is shown even though it does not match these filters.</p>}
     {viewError && <p className="livewire-error" role="status">{viewError}</p>}
+    {readError && <p className="livewire-error" role="status">{readError}</p>}
     <div className="livewire-feed" ref={feedElement} aria-busy={!loaded && !error}>
       {!loaded && !error && <p>Loading LIVEWIRE...</p>}
       {loaded && !visiblePosts.length && <p className="livewire-empty">{themeFilters.length ? 'No posts match the selected themes. Select another theme or choose All posts.' : 'No posts yet. News and takes from GameWire admins will appear here.'}</p>}

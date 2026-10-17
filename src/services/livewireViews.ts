@@ -2,13 +2,15 @@ export function observePostViews(
   root: HTMLElement,
   record: (postId: string) => Promise<void>,
   report: (error: unknown) => void,
+  options: { minimumRatio?: number; bottomInset?: number; allowOffline?: boolean } = {},
 ) {
+  const minimumRatio = options.minimumRatio ?? 0;
   const visible = new Set<Element>();
   const counted = new Set<Element>();
   const observed = new Set<Element>();
   let stopped = false;
   const count = (element: Element) => {
-    if (stopped || document.visibilityState !== 'visible' || !navigator.onLine || counted.has(element)) return;
+    if (stopped || document.visibilityState !== 'visible' || (!navigator.onLine && !options.allowOffline) || counted.has(element)) return;
     const id = element.getAttribute('data-post-id');
     if (!id) return;
     counted.add(element);
@@ -18,7 +20,7 @@ export function observePostViews(
   };
   const observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
-      if (entry.isIntersecting && entry.intersectionRatio > 0) {
+      if (entry.isIntersecting && entry.intersectionRatio > 0 && entry.intersectionRatio >= minimumRatio) {
         visible.add(entry.target);
         count(entry.target);
       } else {
@@ -26,7 +28,7 @@ export function observePostViews(
         counted.delete(entry.target);
       }
     }
-  }, { threshold: [0, 0.01] });
+  }, { threshold: minimumRatio ? [0, minimumRatio] : [0, 0.01], rootMargin: `0px 0px -${options.bottomInset ?? 0}px 0px` });
   const sync = () => {
     const current = new Set(root.querySelectorAll('[data-post-id]'));
     for (const element of observed) {

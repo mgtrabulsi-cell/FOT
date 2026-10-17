@@ -23,6 +23,7 @@ import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
 import PullToRefresh from './PullToRefresh';
 import BannerSearch from './BannerSearch';
+import { useLivewireUnread } from './useLivewireUnread';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
@@ -528,6 +529,7 @@ function App() {
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [savedGuestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
   const guestMode = savedGuestMode || !online;
+  const livewireUnread = useLivewireUnread(authUser?.id ?? null, deletedAccount === null && !authLoading && (!supabase || !!authUser || guestMode));
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
   const previousView = useRef(view);
@@ -1049,7 +1051,7 @@ function App() {
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={view === 'Wire' ? 'active' : ''} aria-current={view === 'Wire' ? 'page' : undefined} onClick={openWireTab}><Activity size={20} aria-hidden="true" /><span>The Wire</span></button>
           <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
-          <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><Zap size={20} aria-hidden="true" /><span>LIVEWIRE</span></button>
+          <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><Zap size={20} aria-hidden="true" /><span className="livewire-nav-label">LIVEWIRE{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span></button>
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </nav>
         <div className="topbar-right">
@@ -1076,6 +1078,7 @@ function App() {
       </header>
       <main className={view === 'Players' ? 'page-wrap players-zoom' : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
         <PullToRefresh />
+        {livewireUnread.error && <p className="feed-warning" role="status">{livewireUnread.error}</p>}
         <div className="page-heading">
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
@@ -1132,7 +1135,7 @@ function App() {
           />}
           </>
         ) : view === 'LiveWire' ? (
-          <LiveWire key={authUser?.id ?? 'guest'} user={authUser} postId={/^#livewire\/post\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
+          <LiveWire key={authUser?.id ?? 'guest'} user={authUser} onPostSeen={livewireUnread.markRead} postId={/^#livewire\/post\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
         ) : view === 'Den' ? (
           <TheDen favorites={favorites} games={lockerRoomReady ? games : []} items={lockerRoomHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={lockerRoomHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={lockerRoomHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={lockerRoomHistory.loading} historyError={lockerRoomHistory.error} signedIn={!!authUser} onRetryHistory={lockerRoomHistory.retry} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
         ) : (
