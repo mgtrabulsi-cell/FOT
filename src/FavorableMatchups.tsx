@@ -8,13 +8,16 @@ import { fetchNFLActiveSkillRoster, fetchNFLGameDetails } from './services/sport
 import type { Game, NFLGameDetails } from './services/sportsData';
 import { fetchPlayerAverage, fetchPPRProjections, isMatchupPosition, matchupPositions, matchupStats, moveMatchupPick, readMatchupPicks } from './services/matchupBoard';
 import type { MatchupPick } from './services/matchupBoard';
+import { picksReadKey } from './services/analystReads';
+import { useAnalystReadObserver } from './useAnalystReadObserver';
+import type { AnalystSeen } from './useAnalystReadObserver';
 
 type Board = { picks: MatchupPick[]; revision: number };
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; onSeen?: AnalystSeen };
 const message = (cause: unknown) => cause !== null && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The matchup request failed. Please retry.';
 
-export default function FavorableMatchups({ games, season, week, user }: Props) {
+export default function FavorableMatchups({ games, season, week, user, onSeen }: Props) {
   const publicRevision = usePublicDataRevision('matchups');
   const [published, setPublished] = useState<Board>({ picks: [], revision: 0 });
   const [draft, setDraft] = useState<Board | null>(null);
@@ -43,6 +46,9 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
   const scheduleKey = weeklyGames.map((game) => `${game.id}:${game.status}`).sort().join('|');
   const pickGameKey = [...new Set(picks.map((pick) => pick.gameId))].sort().join('|');
   const pickPlayerKey = picks.map((pick) => pick.id).sort().join('|');
+  const publishedVisible = loaded && published.revision > 0 && !(admin && draft);
+  const readObserver = useAnalystReadObserver('picks', onSeen, user?.id, `${season}:${week}:${published.revision}:${publishedVisible}`);
+  const readKey = (playerId: string) => publishedVisible && season && week ? picksReadKey(season, week, published.revision, playerId) : undefined;
 
   useEffect(() => { setProjections(new Map()); }, [season, week, pickPlayerKey]);
   useEffect(() => { setAdmin(false); }, [user?.id]);
@@ -244,9 +250,12 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
     </div>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p role="status" className="livewire-notice">{notice}</p>}
+    {readObserver.error && <p className="feed-warning" role="status">{readObserver.error}</p>}
     {statsError && <p className="feed-warning" role="alert">{statsError}</p>}
     {projectionError && <p className="feed-warning" role="alert">{projectionError}</p>}
     {averageError && <p className="feed-warning" role="alert">{averageError}</p>}
+    <div ref={readObserver.root}>
+    {publishedVisible && !picks.length && <p className="nfl-empty-note" data-post-id={readKey('empty')}>No Admins Picks are published on this version of the weekly board.</p>}
     {loaded && <div className="favorable-matchup-groups">{matchupPositions.map((position) => {
       const group = picks.filter((pick) => pick.position === position);
       const stat = matchupStats[position];
@@ -261,7 +270,7 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
           const average = averages.get(pick.id) ?? { average: null, games: 0 };
           const rank = gameDetails?.teamForms.find((form) => form.teamId === opponent?.id)?.defenseRanks[stat.defense];
           const projection = projections.get(pick.id);
-          return <article className="favorable-matchup-item" key={pick.id}>
+          return <article className="favorable-matchup-item" data-post-id={readKey(pick.id)} key={`${published.revision}:${pick.id}`}>
             <div className="favorable-matchup-player"><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{pick.headshot ? <OfflineImage src={pick.headshot} alt="" /> : pick.name.slice(0, 1)}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small></span></div>
             <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? averageLoading ? 'Loading...' : averageError ? 'Retrying game log' : 'No recorded games' : `last ${average.games} reported games`}</small></div>
               <div><b>{rank === null || rank === undefined ? '—' : `#${rank}`}</b><span>{position === 'QB' ? 'Pass' : position === 'RB' ? 'Rush' : 'Receiving'} defense rank</span><small>{opponent?.abbr ?? 'Unavailable'} · NFL yards rank</small></div>
@@ -275,6 +284,7 @@ export default function FavorableMatchups({ games, season, week, user }: Props) 
         })}</div>
       </section>;
     })}</div>}
+    </div>
     <p className="nfl-data-note">Averages use each player's regular-season game log before the selected matchup, with up to five recent games and the reported sample count shown. Preseason games are excluded; missing statistics are not treated as zero. Defense ranks are season-to-date yards ranks, not fantasy points allowed by position. ESPN projections use PPR scoring for the exact season and week; unavailable projections are not estimated. Selections are editorial, not confirmed starters.</p>
   </section>;
 }

@@ -26,6 +26,13 @@ export type AngleSuggestion = {
   key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string; subject?: string;
   history?: { evidence: string; meetings: Array<{ label: string; url: string }> };
 };
+export const angleLeadGroups = ['Birthdays', 'Game trends', 'Milestones & comebacks', 'Other storylines'] as const;
+export function angleLeadGroup(category: AngleCategory): typeof angleLeadGroups[number] {
+  if (category === 'Birthday') return 'Birthdays';
+  if (category === 'Milestone / comeback' || category === 'Public life event') return 'Milestones & comebacks';
+  if (category === 'Other') return 'Other storylines';
+  return 'Game trends';
+}
 
 export function angleWriteFields(angle: Angle, status: Angle['status']) {
   return {

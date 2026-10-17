@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { BookOpen, ExternalLink, Lightbulb } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSuggestion } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
 import { fetchMatchupHistorySuggestions } from './services/angleHistory';
 import type { Game } from './services/sportsData';
+import { useAnalystReadObserver } from './useAnalystReadObserver';
+import type { AnalystSeen } from './useAnalystReadObserver';
 
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; onSeen?: AnalystSeen };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The Angle request failed. Please retry.';
 
@@ -47,7 +49,7 @@ function newAngle(game: Game, season: number, week: number): Angle {
   };
 }
 
-export default function TheAngle({ games, season, week, user, storyId = null }: Props) {
+export default function TheAngle({ games, season, week, user, storyId = null, onSeen }: Props) {
   const [admin, setAdmin] = useState(false);
   const [rows, setRows] = useState<Angle[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -201,6 +203,7 @@ export default function TheAngle({ games, season, week, user, storyId = null }: 
     ...(visibleLinked ? [visibleLinked] : []),
     ...rows.filter((row) => row.id !== visibleLinked?.id && row.status === 'published' && (kind === 'all' || row.kind === kind)),
   ];
+  const readObserver = useAnalystReadObserver('angle', onSeen, user?.id, published.map((angle) => angle.id).join('|'));
   const drafts = rows.filter((row) => row.status === 'draft');
   const field = (key: 'title' | 'narrative' | 'pick', label: string, limit: number, multiline = false) => <label>{label}
     {multiline ? <textarea maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />
@@ -213,12 +216,13 @@ export default function TheAngle({ games, season, week, user, storyId = null }: 
     {loadError && <p className="feed-warning" role="alert">{loadError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
+    {readObserver.error && <p className="feed-warning" role="status">{readObserver.error}</p>}
     {storyId && linkedError && <p className="feed-warning" role="alert">{linkedError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {storyId && !linkedError && linkedReady !== storyId && <p role="status">Loading your linked storyline...</p>}
     {storyId && linkedReady === storyId && !linkedStory && <p role="status">This storyline is no longer published. You can browse the current week's storylines below.</p>}
     <div className="angle-filters" role="group" aria-label="Filter published angles">{(['all', 'player', 'team'] as const).map((value) => <button key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All angles' : value === 'player' ? 'Players' : 'Team matchups'}</button>)}</div>
     {!season || !week ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">Loading The Angle...</p> : loaded && !published.length && <p className="angle-empty">{rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
-    <div className="angle-cards">{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} key={angle.id}>
+    <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id}>
       <div className="angle-card-meta"><span>{angle.category}</span><span>{angle.kind === 'player' ? 'PLAYER ANGLE' : 'MATCHUP ANGLE'}</span></div>
       <h3>{angle.title}</h3><p className="angle-subject">{angle.subject}</p><p className="angle-matchup">{angle.matchup} · {angle.season} · Week {angle.week}</p>
       <p className="angle-story">{angle.narrative}</p>
@@ -229,14 +233,20 @@ export default function TheAngle({ games, season, week, user, storyId = null }: 
       {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>Edit angle</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
     </article>)}</div>
     {admin && <section className="angle-admin" aria-label="The Angle admin desk">
-      <h3>Admin desk <span>Private</span></h3><p>News suggestions are keyword-matched leads, not verified claims. Birthday leads use Wikidata birth dates matched by ESPN player ID for loaded QB/RB/WR/TE rosters, within three days of game day (Eastern time). Coverage may be incomplete. Check the source, player identity, opponent, dates, sample size, and current availability. Write your own summary before publishing.</p>
-      <p>Matchup-history leads use the rolling five years before kickoff, including regular-season and playoff finals. Win rates must be strictly above 70% across at least four meetings; ties are not wins. Unbeaten leads check the latest four meetings overall and at the upcoming home/away venue within that window. Neutral-site games count overall, not as home/away meetings. Missing history suppresses affected leads. Past success is not a prediction.</p>
-      <p>Public life events: review a sourced lead or cite a public announcement/reliable report in your storyline; omit children's names, photos, and unnecessary family details. Birthdays and parenthood do not establish a performance advantage.</p>
-      <div className="angle-actions"><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}>Create an angle</button><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor({ ...newAngle(weeklyGames[0], season, week), kind: 'player', category: 'Public life event' }); }}>Add public announcement</button><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
+      <h3>Admin desk <span>Private</span></h3><p>Review sourced birthday, matchup-history, milestone, and comeback leads, then write a headline, storyline, and optional admin pick. Verify identities, dates, records, and public reporting before publishing; coverage can be incomplete, family details stay private, and past results or personal events do not predict performance.</p>
+      <div className="angle-actions"><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}>Create an angle</button><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
       {!weeklyGames.length && <p>No NFL matchups are available for this week. Manual creation and suggestions need a loaded matchup.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
       {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news, birthday, or matchup-history leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
-      <div className="angle-suggestions">{suggestions.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small>{suggestion.history && <><p>{suggestion.article.description}</p><details><summary>Record, window, and game sources</summary><p>{suggestion.history.evidence}</p><ul>{suggestion.history.meetings.map((meeting) => <li key={meeting.url}><a href={meeting.url} target="_blank" rel="noopener noreferrer">{meeting.label}</a></li>)}</ul></details></>}<a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
+      {angleLeadGroups.map((group) => {
+        const leads = suggestions.filter((suggestion) => angleLeadGroup(suggestion.category) === group);
+        if (group === 'Other storylines' && !leads.length) return null;
+        return <section className="angle-lead-group" aria-label={`${group} leads`} key={group}>
+          <header><h4>{group}</h4><span>{leads.length} {leads.length === 1 ? 'LEAD' : 'LEADS'}</span></header>
+          {!leads.length && <p>{scanning ? 'Checking available sources...' : 'No qualifying leads in the available coverage.'}</p>}
+          <div className="angle-suggestions">{leads.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small>{suggestion.history && <><p>{suggestion.article.description}</p><details><summary>Record, window, and game sources</summary><p>{suggestion.history.evidence}</p><ul>{suggestion.history.meetings.map((meeting) => <li key={meeting.url}><a href={meeting.url} target="_blank" rel="noopener noreferrer">{meeting.label}</a></li>)}</ul></details></>}<a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
+        </section>;
+      })}
       <h4>Saved drafts ({drafts.length})</h4>
       {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || 'Untitled angle'}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
       {form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>

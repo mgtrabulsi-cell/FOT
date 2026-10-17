@@ -24,6 +24,7 @@ import SplashScreen from './SplashScreen';
 import PullToRefresh from './PullToRefresh';
 import BannerSearch from './BannerSearch';
 import { useLivewireUnread } from './useLivewireUnread';
+import { useAnalystUnread } from './useAnalystUnread';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
@@ -1016,6 +1017,8 @@ function App() {
   const lockerRoomSeason = games.find((game) => game.league === 'NFL')?.seasonYear
     ?? now.getFullYear() - (now.getMonth() < 2 ? 1 : 0);
   const lockerRoomWeek = selectedNFLWeek ?? currentNFLWeek;
+  const analystUnread = useAnalystUnread(authUser?.id ?? null,
+    deletedAccount === null && !authLoading && (!supabase || !!authUser || guestMode), lockerRoomSeason, lockerRoomWeek ?? 0);
   const lockerRoomReady = loadedNFLWeek !== null && loadedNFLWeek === (selectedNFLWeek ?? currentNFLWeek);
   const lockerRoomHistory = useLockerRoomHistory({
     userId: authUser?.id ?? null, season: lockerRoomSeason, week: lockerRoomWeek,
@@ -1057,7 +1060,7 @@ function App() {
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={view === 'Wire' ? 'active' : ''} aria-current={view === 'Wire' ? 'page' : undefined} onClick={openWireTab}><Activity size={20} aria-hidden="true" /><span>The Wire</span></button>
           <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => setView('Players')}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
-          <button className={view === 'Analyst' ? 'active' : ''} aria-current={view === 'Analyst' ? 'page' : undefined} onClick={() => { setView('Analyst'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10h18M4 10v11M20 10v11M14 10v8h6M16 14h2M7 10V3h10v7M10 6h4" /></svg><span>Analyst Desk</span></button>
+          <button className={view === 'Analyst' ? 'active' : ''} aria-current={view === 'Analyst' ? 'page' : undefined} aria-label={analystUnread.unread ? 'Analyst Desk, unread posts' : 'Analyst Desk'} onClick={() => { setView('Analyst'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="analyst-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10h18M4 10v11M20 10v11M14 10v8h6M16 14h2M7 10V3h10v7M10 6h4" /></svg>{analystUnread.unread && <i className="analyst-unread-dot" aria-hidden="true" />}</span><span>Analyst Desk</span></button>
           <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="livewire-nav-icon"><Zap size={20} aria-hidden="true" />{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span><span>LIVEWIRE</span></button>
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </nav>
@@ -1086,6 +1089,7 @@ function App() {
       <main className={view === 'Players' || view === 'Analyst' ? 'page-wrap players-zoom' : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
         <PullToRefresh />
         {livewireUnread.error && <p className="feed-warning" role="status">{livewireUnread.error}</p>}
+        {analystUnread.error && <p className="feed-warning" role="status">{analystUnread.error}</p>}
         <div className="page-heading">
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
@@ -1150,13 +1154,13 @@ function App() {
         ) : (
           <>
             <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
-              <button role="tab" aria-selected={analystMode === 'Matchups'} className={analystMode === 'Matchups' ? 'active' : ''} onClick={() => setAnalystMode('Matchups')}>Admins Picks</button>
-              <button role="tab" aria-selected={analystMode === 'Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle</button>
+              <button role="tab" aria-selected={analystMode === 'Matchups'} aria-label={analystUnread.picks ? 'Admins Picks, unread updates' : 'Admins Picks'} className={analystMode === 'Matchups' ? 'active' : ''} onClick={() => setAnalystMode('Matchups')}>Admins Picks{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+              <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
             </div>
             {analystMode === 'Angle' ? (
-              <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
+              <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
             ) : (
-              <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />
+              <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
             )}
           </>
         )}

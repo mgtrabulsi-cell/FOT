@@ -45,6 +45,10 @@ button { color: inherit; }
 .livewire-nav-icon { position: relative; display: inline-flex; width: 20px; height: 20px; margin-right: 6px; vertical-align: middle; }
 .primary-nav .livewire-nav-icon svg { display: block; }
 .livewire-unread-dot { position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ff5261; }
+.analyst-nav-icon { position: relative; display: inline-flex; width: 20px; height: 20px; margin-right: 6px; vertical-align: middle; }
+.primary-nav .analyst-nav-icon svg { display: block; }
+.analyst-unread-dot { position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: #ff5261; }
+.analyst-tab-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #ff5261; vertical-align: middle; }
 .banner-search[open] summary { z-index: 21; background: transparent; border-color: transparent; }
 .banner-search-panel { position: absolute; top: 50%; transform: translateY(-50%); right: 0; z-index: 20; display: flex; align-items: center; gap: 4px; width: 280px; height: 44px; padding: 0 48px 0 12px; border: 1px solid #35445b; border-radius: 22px; background: #101a29; }
 .banner-search-panel:focus-within { border-color: var(--accent); }
@@ -465,6 +469,10 @@ button { color: inherit; }
 .angle-suggestions details p { white-space: pre-line; }
 .angle-suggestions ul { padding-left: 18px; }
 .angle-suggestions li { margin-bottom: 8px; }
+.angle-lead-group { padding-top: 14px; border-top: 1px solid #35445b; }
+.angle-lead-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.angle-lead-group > header h4 { margin: 0; }
+.angle-lead-group > header span { color: #bbc7d9; font-size: 11px; }
 .angle-draft { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 0; border-bottom: 1px solid #35445b; }
 .angle-draft > span { display: grid; gap: 4px; flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
 .angle-draft small { color: #bbc7d9; }
@@ -764,6 +772,7 @@ td:first-child { color: #828c84; }
   .primary-nav button { display: flex; flex: 1; min-width: 0; min-height: 64px; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 4px; font-size: 11px; color: var(--muted); }
   .primary-nav button svg { display: block; flex-shrink: 0; }
   .livewire-nav-icon { margin-right: 0; }
+  .analyst-nav-icon { margin-right: 0; }
   .primary-nav button.active { color: var(--accent); }
   .primary-nav button.active::after { top: 0; bottom: auto; left: 18%; right: 18%; }
   .edition-label { display: none; }
