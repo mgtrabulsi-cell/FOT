@@ -221,6 +221,8 @@ The ESPN feeds used here are public, undocumented endpoints with no availability
 
 ## Favorites and Your Locker Room
 
+In **Following → Players**, use the position toggles (All, QB, RB, WR, TE, plus any additional saved positions) to filter the followed-player list and its game-stat rows. Select the active position again or choose All to reset. Players without position data appear under Unknown. This does not change favorites, team order, weekly history, Latest plays, or Latest updates.
+
 Run [`supabase/locker-room-history.sql`](supabase/locker-room-history.sql) once in the connected Supabase project's SQL editor (or with `supabase db query --linked --file supabase/locker-room-history.sql`). It adds account-isolated weekly history and an authenticated save function. The configured project has this migration applied.
 
 Database regression checks are in [`supabase/tests/locker-room-history.sql`](supabase/tests/locker-room-history.sql). Run them with `supabase db query --linked --file supabase/tests/locker-room-history.sql`; all test users and rows are rolled back.

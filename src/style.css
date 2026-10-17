@@ -591,6 +591,10 @@ td:first-child { color: #828c84; }
 .den-layout { display: grid; grid-template-columns: minmax(220px, 285px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .den-activity { min-width: 0; display: grid; gap: 14px; }
 .den-mode-tabs { margin-bottom: 0; }
+.den-position-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.den-position-filter button { min-width: 44px; min-height: 44px; padding: 6px 10px; border: 1px solid #34445b; border-radius: 6px; background: #202e43; color: #c1cce0; font: 11px var(--mono); cursor: pointer; }
+.den-position-filter button[aria-pressed="true"] { background: #8198bd; border-color: #8198bd; color: #101a29; }
+.den-position-filter button:focus-visible { outline: 2px solid #8198bd; outline-offset: 2px; }
 .den-favorites .player-mode-tabs button { padding: 8px; }
 .den-favorites, .den-timeline { min-width: 0; padding: 16px; background: #fff; border: 1px solid #e1e6df; border-radius: 4px; }
 .den-favorites .panel-heading { align-items: center; padding-bottom: 11px; border-bottom: 1px solid #edf0ec; }
