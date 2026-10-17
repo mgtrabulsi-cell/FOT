@@ -68,7 +68,7 @@ export function suggestedAngleCategory(text: string): AngleCategory | null {
 
 export type PlayerBirthday = { playerId: string; dateOfBirth: string; sourceUrl: string };
 
-export function readPlayerBirthdays(value: unknown): PlayerBirthday[] {
+export function readPlayerBirthdays(value: unknown, reportConflict?: (message: string) => void): PlayerBirthday[] {
   if (!value || typeof value !== 'object' || !('results' in value) || !value.results
     || typeof value.results !== 'object' || !('bindings' in value.results) || !Array.isArray(value.results.bindings)) {
     throw new Error('The birthday source returned invalid data.');
@@ -96,8 +96,12 @@ export function readPlayerBirthdays(value: unknown): PlayerBirthday[] {
     if (previous && (previous.dateOfBirth !== row.dateOfBirth || previous.sourceUrl !== row.sourceUrl)) ambiguous.add(row.playerId);
     unique.set(row.playerId, row);
   });
-  if (ambiguous.size) throw new Error('The birthday source contains conflicting identities or dates. Verify the biographies manually.');
-  return [...unique.values()];
+  if (ambiguous.size) {
+    const message = `Conflicting birthday identities or dates for ${ambiguous.size} player${ambiguous.size === 1 ? '' : 's'} (ESPN IDs: ${[...ambiguous].join(', ')}). Those players were skipped; verify their biographies manually.`;
+    if (!reportConflict) throw new Error(message);
+    reportConflict(message);
+  }
+  return [...unique.values()].filter((row) => !ambiguous.has(row.playerId));
 }
 
 export function birthdayNearGame(dateOfBirth: string, gameDate: string): { date: string; onGameDay: boolean } | null {

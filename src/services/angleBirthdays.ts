@@ -36,7 +36,7 @@ export async function fetchBirthdaySuggestions(games: Game[], signal: AbortSigna
         signal: request.signal, headers: { Accept: 'application/sparql-results+json' },
       });
       if (!response.ok) throw new Error(`Wikidata returned HTTP ${response.status}`);
-      birthdays.push(...readPlayerBirthdays(await response.json()));
+      birthdays.push(...readPlayerBirthdays(await response.json(), (message) => errors.push(message)));
     } catch (cause) {
       if (!signal.aborted) errors.push(`Birthday lookup: ${cause instanceof Error ? cause.message : 'Wikidata unavailable.'}`);
     } finally {

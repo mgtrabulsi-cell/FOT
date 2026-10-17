@@ -30,7 +30,13 @@ test('Birthdays require exact player IDs, Wikidata identity links, valid full da
   const response = (bindings) => ({ results: { bindings } });
   assert.deepEqual(readPlayerBirthdays(response([binding, binding])), [{ playerId: '123', dateOfBirth: '1996-10-18', sourceUrl: 'https://www.wikidata.org/entity/Q123' }]);
   assert.throws(() => readPlayerBirthdays(response([{ ...binding, dob: { value: '1996-02-31T00:00:00Z' } }])), /invalid birth date/);
-  assert.throws(() => readPlayerBirthdays(response([binding, { ...binding, dob: { value: '1996-10-19T00:00:00Z' } }])), /conflicting/);
+  assert.throws(() => readPlayerBirthdays(response([binding, { ...binding, dob: { value: '1996-10-19T00:00:00Z' } }])), /Conflicting/);
+  const warnings = [];
+  const unambiguous = { ...binding, espn: { value: '456' }, person: { value: 'http://www.wikidata.org/entity/Q456' } };
+  const partial = readPlayerBirthdays(response([binding, { ...binding, dob: { value: '1996-10-19T00:00:00Z' } }, unambiguous]), (warning) => warnings.push(warning));
+  assert.deepEqual(partial.map((row) => row.playerId), ['456']);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /123/);
   assert.throws(() => readPlayerBirthdays(response([{ ...binding, person: { value: 'https://untrusted.test/Q123' } }])), /invalid identity/);
   assert.throws(() => readPlayerBirthdays({}), /invalid data/);
 });
