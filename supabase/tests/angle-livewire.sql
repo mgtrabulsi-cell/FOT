@@ -20,8 +20,8 @@ declare mirrored public.livewire_posts;
 begin
   select * into strict mirrored from public.livewire_posts where angle_id='e9541111-1111-4111-8111-111111111121';
   assert mirrored.author_name='From The Analyst''s Desk','Requested attribution';
-  assert char_length(mirrored.title)=140 and char_length(mirrored.body)>4500,'Full maximum-length content is preserved';
-  assert position(repeat('N',1500) in mirrored.body)>0 and position(repeat('P',500) in mirrored.body)>0,'Narrative and pick are intact';
+  assert char_length(mirrored.title)=140 and char_length(mirrored.body)>4000,'Full maximum-length content is preserved';
+  assert position(repeat('N',1500) in mirrored.body)>0 and mirrored.admin_pick=repeat('P',500),'Narrative and pick are intact';
   assert mirrored.themes=array['news'],'Visible under News';
   assert (select count(*) from public.livewire_push_deliveries
     where angle_id=mirrored.angle_id and endpoint='https://example.invalid/angle-mirror-test')=1,'One storyline alert per device';

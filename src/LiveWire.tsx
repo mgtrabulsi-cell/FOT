@@ -5,7 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import { observePostViews } from './services/livewireViews';
 import { loadLivewireDraft, saveLivewireDraft } from './services/livewireDrafts';
-import PostPhotoViewer from './PostPhotoViewer';
+import PostGallery from './PostGallery';
 
 const postThemes = [
   { value: 'news', label: 'News', color: 'tnf' },
@@ -13,7 +13,7 @@ const postThemes = [
   { value: 'betting', label: 'Betting', color: 'mnf' },
 ] as const;
 type PostTheme = typeof postThemes[number]['value'];
-type Post = { id: string; author_id: string | null; author_name: string; angle_id?: string | null; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
+type Post = { id: string; author_id: string | null; author_name: string; angle_id?: string | null; admin_pick?: string; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
 
@@ -56,7 +56,6 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
   const [draftError, setDraftError] = useState('');
   const [draftRestoreFailed, setDraftRestoreFailed] = useState(false);
   const [draftRetry, setDraftRetry] = useState(0);
-  const [expandedPhoto, setExpandedPhoto] = useState<{ src: string; alt: string } | null>(null);
   const previews = useRef(new Set<string>());
   useEffect(() => () => { previews.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
   function resetPhotos() {
@@ -345,10 +344,11 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         </header>
         {post.title && <h3>{post.title}</h3>}
         <p>{post.body}</p>
+        {post.angle_id && post.admin_pick && <div className="angle-pick"><h4>Admin pick · Opinion</h4><p>{post.admin_pick}</p></div>}
         {(role === 'owner' || role === 'admin') && <span className="livewire-views">{post.view_count === undefined && viewCounts[post.id] === undefined
           ? 'Views unavailable'
           : `${new Intl.NumberFormat().format(Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0))} ${Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0) === 1 ? 'view' : 'views'}`}</span>}
-        {!!post.image_paths?.length && <div className={`livewire-gallery livewire-gallery-${post.image_paths.length}`}>{post.image_paths.map((path, index) => <button type="button" key={path} onClick={() => setExpandedPhoto({ src: photoUrl(path), alt: `${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}` })} aria-label={`Enlarge photo ${index + 1} for ${post.title ?? 'post'}`}><OfflineImage src={photoUrl(path)} alt={`${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}`} loading="lazy" onError={(event) => { event.currentTarget.alt = 'Photo unavailable'; }} /></button>)}</div>}
+        <PostGallery paths={post.image_paths ?? []} title={post.title ?? 'LIVEWIRE post'} />
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {post.angle_id && <a href={`#analyst-desk/story/${post.angle_id}`}>View in The Angle</a>}
         {!post.angle_id && role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
@@ -368,6 +368,5 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       </form>
       <ul>{admins.map((admin) => <li key={admin.user_id}><span>{admin.display_name} · {admin.role}</span>{admin.role === 'admin' && <button disabled={busy} onClick={() => { if (supabase && window.confirm(`Remove admin access for ${admin.display_name}?`)) void act(() => supabase!.rpc('manage_livewire_admin', { remove_user: admin.user_id }), () => setNotice('Admin access removed.')); }}>Remove access</button>}</li>)}</ul>
     </details>}
-    {expandedPhoto && <PostPhotoViewer {...expandedPhoto} onClose={() => setExpandedPhoto(null)} />}
   </section>;
 }

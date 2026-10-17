@@ -80,3 +80,12 @@ test('Saves whitelist editable columns and never send server-owned metadata back
   assert.equal(payload.pick, '');
   for (const field of ['id', 'season', 'week', 'revision', 'created_by', 'updated_at']) assert.equal(field in payload, false);
 });
+
+test('Storyline photos survive serialization and malformed attachment arrays fail explicitly', () => {
+  const story = { id: 'test', season: 2026, week: 6, revision: 1, game_id: 'NFL:123', matchup: 'Away @ Home',
+    kind: 'team', subject: '', category: 'Other', title: 'Title', narrative: 'Story', evidence: '', counterpoint: '',
+    pick: 'Exact pick', source_url: '', source_label: '', reviewed: true, status: 'published', image_paths: ['user/one.png', 'user/two.png'] };
+  assert.deepEqual(angleWriteFields(story, 'published').image_paths, story.image_paths);
+  assert.deepEqual(readAngles([story])[0].image_paths, story.image_paths);
+  for (const image_paths of [null, 'bad', [123], Array(5).fill('user/photo.png')]) assert.throws(() => readAngles([{ ...story, image_paths }]), /invalid angle data/);
+});

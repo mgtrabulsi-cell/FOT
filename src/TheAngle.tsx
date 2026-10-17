@@ -11,6 +11,8 @@ import type { Game } from './services/sportsData';
 import { useAnalystReadObserver } from './useAnalystReadObserver';
 import type { AnalystSeen } from './useAnalystReadObserver';
 import { observePostViews } from './services/livewireViews';
+import PostGallery, { postPhotoUrl } from './PostGallery';
+import OfflineImage from './OfflineImage';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -62,6 +64,14 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [form, setForm] = useState<Angle | null>(null);
+  const [photos, setPhotos] = useState<Array<{ path?: string; file?: File; preview: string }>>([]);
+  const previews = useRef(new Set<string>());
+  useEffect(() => () => { previews.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+  function resetPhotos() {
+    previews.current.forEach((url) => URL.revokeObjectURL(url));
+    previews.current.clear();
+    setPhotos([]);
+  }
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<'all' | 'player' | 'team'>('all');
@@ -153,6 +163,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
 
   function openEditor(next: Angle | null) {
     if (dirty && !window.confirm('Discard the unsaved changes to this angle?')) return;
+    resetPhotos();
+    setPhotos((next?.image_paths ?? []).map((path) => ({ path, preview: postPhotoUrl(path) })));
     setForm(next); setDirty(false); setActionError(''); setNotice('');
     if (next) window.setTimeout(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
   }
@@ -174,21 +186,43 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     if (validation) { setActionError(validation); return; }
     if (status === 'draft' && form.status === 'published' && !window.confirm('Move this published angle back to private drafts?')) return;
     setBusy(true); setActionError(''); setNotice('');
+    const uploaded: string[] = [];
+    let persisted = false;
     try {
+      if (!user) throw new Error('Sign in to upload storyline photos.');
+      const paths: string[] = [];
+      for (const photo of photos) {
+        if (photo.path) { paths.push(photo.path); continue; }
+        if (!photo.file) throw new Error('Photo file is missing. Select it again.');
+        const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[photo.file.type];
+        if (!extension || !photo.file.size || photo.file.size > 5 * 1024 * 1024) throw new Error('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.');
+        const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
+        const upload = await supabase.storage.from('livewire-photos').upload(path, photo.file, { contentType: photo.file.type, upsert: false });
+        if (upload.error) throw upload.error;
+        uploaded.push(path); paths.push(path);
+      }
       const { id, revision, season: boardSeason, week: boardWeek } = form;
-      const payload = angleWriteFields(form, status);
+      const payload = angleWriteFields({ ...form, image_paths: paths }, status);
       if (payload.source_url && !isAngleSource(payload.source_url)) throw new Error('Use a valid HTTP or HTTPS source link.');
       const result = id
         ? await supabase.from('angles').update({ ...payload, revision: revision + 1 }).eq('id', id).eq('revision', revision).select('*').maybeSingle()
         : await supabase.from('angles').insert({ ...payload, season: boardSeason, week: boardWeek }).select('*').single();
       if (result.error) throw result.error;
       if (!result.data) throw new Error('Another admin changed or removed this angle. Cancel and reopen the current version before saving.');
+      persisted = true;
       const saved = readAngles([result.data])[0];
       setRows((previous) => [saved, ...previous.filter((row) => row.id !== saved.id)]);
       if (saved.id === storyId) setLinkedStory(saved.status === 'published' ? saved : null);
-      setForm(null); setDirty(false); setRefresh((value) => value + 1);
+      resetPhotos(); setForm(null); setDirty(false); setRefresh((value) => value + 1);
       setNotice(status === 'published' ? 'Angle published for this NFL week.' : 'Draft saved privately for admin review.');
-    } catch (cause) { setActionError(errorMessage(cause)); }
+    } catch (cause) {
+      let message = errorMessage(cause);
+      if (!persisted && uploaded.length) {
+        const cleanup = await supabase.storage.from('livewire-photos').remove(uploaded);
+        if (cleanup.error) message += ` Unused photo cleanup failed: ${cleanup.error.message}`;
+      }
+      setActionError(message);
+    }
     finally { setBusy(false); }
   }
   async function remove(angle: Angle) {
@@ -274,6 +308,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       {angle.evidence && <div className="angle-context"><h4>The supporting context</h4><p>{angle.evidence}</p></div>}
       {angle.counterpoint && <div className="angle-counterpoint"><h4>The other side</h4><p>{angle.counterpoint}</p></div>}
       {angle.pick && <div className="angle-pick"><h4>Admin pick · Opinion</h4><p>{angle.pick}</p></div>}
+      <PostGallery paths={angle.image_paths ?? []} title={angle.title} />
       {admin && <span className="livewire-views">{viewCounts[angle.id] === undefined ? 'Views unavailable' : `${new Intl.NumberFormat().format(viewCounts[angle.id])} ${viewCounts[angle.id] === 1 ? 'view' : 'views'}`}</span>}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}
       {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>Edit angle</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
@@ -321,6 +356,21 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           {field('title', 'Headline (your own words)', 140)}
           {field('narrative', 'Storyline', 1500, true)}
           {field('pick', 'Admin pick (optional opinion; no guarantees)', 500, true)}
+          <label htmlFor="angle-photos">Photos (optional, up to four)</label>
+          <input id="angle-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
+            const files = Array.from(event.target.files ?? []); event.target.value = '';
+            if (photos.length + files.length > 4) { setActionError('Attach at most four photos.'); return; }
+            if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024)) {
+              setActionError('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.'); return;
+            }
+            setActionError(''); setDirty(true); change('reviewed', false);
+            setPhotos((current) => [...current, ...files.map((file) => { const preview = URL.createObjectURL(file); previews.current.add(preview); return { file, preview }; })]);
+          }} />
+          <small className="livewire-photo-help">JPG, PNG, WebP or GIF · 5 MB per photo · Uploaded photos have public URLs, including photos saved with private drafts.</small>
+          {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}><OfflineImage src={photo.preview} alt={`Attachment preview ${index + 1}`} /><button type="button" onClick={() => {
+            if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
+            setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
+          }}>Remove photo {index + 1}</button></div>)}</div>}
           <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I checked the source, matchup, and factual claims. Personal events are publicly announced or reliably reported, with unnecessary family details omitted. This is editorial context, not a guaranteed outcome.</label>
           <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : 'Publish angle'}</button><button type="button" onClick={() => openEditor(null)}>Cancel</button></div>
         </fieldset>

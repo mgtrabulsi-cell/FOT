@@ -21,6 +21,7 @@ export type Angle = {
   reviewed: boolean;
   status: 'draft' | 'published';
   revision: number;
+  image_paths?: string[];
 };
 export type AngleSuggestion = {
   key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string; subject?: string;
@@ -39,7 +40,7 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
     game_id: angle.game_id, matchup: angle.matchup, kind: angle.kind, subject: angle.subject.trim(),
     category: angle.category, title: angle.title.trim(), narrative: angle.narrative, evidence: angle.evidence,
     counterpoint: angle.counterpoint, pick: angle.pick, source_url: angle.source_url.trim(),
-    source_label: angle.source_label.trim(), reviewed: angle.reviewed, status,
+    source_label: angle.source_label.trim(), reviewed: angle.reviewed, status, image_paths: angle.image_paths ?? [],
   };
 }
 
@@ -53,6 +54,7 @@ export function readAngles(value: unknown): Angle[] {
       && 'kind' in row && (row.kind === 'player' || row.kind === 'team')
       && 'status' in row && (row.status === 'draft' || row.status === 'published')
       && 'category' in row && angleCategories.some((category) => category === row.category)
+      && (!('image_paths' in row) || (Array.isArray(row.image_paths) && row.image_paths.length <= 4 && row.image_paths.every((path: unknown) => typeof path === 'string')))
       && 'reviewed' in row && typeof row.reviewed === 'boolean';
   };
   if (!Array.isArray(value) || !value.every(isAngle)) throw new Error('The server returned invalid angle data. Please reload.');
