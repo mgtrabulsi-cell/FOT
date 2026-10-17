@@ -62,6 +62,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, on
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<'all' | 'player' | 'team'>('all');
+  const [leadGroup, setLeadGroup] = useState<typeof angleLeadGroups[number]>('Birthdays');
   const [suggestions, setSuggestions] = useState<AngleSuggestion[]>([]);
   const [suggestionErrors, setSuggestionErrors] = useState<string[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -238,10 +239,17 @@ export default function TheAngle({ games, season, week, user, storyId = null, on
       {!weeklyGames.length && <p>No NFL matchups are available for this week. Manual creation and suggestions need a loaded matchup.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
       {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news, birthday, or matchup-history leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
+      <div className="angle-filters" role="group" aria-label="Select lead category">
+        {angleLeadGroups.map((group) => {
+          const count = suggestions.filter((suggestion) => angleLeadGroup(suggestion.category) === group).length;
+          if (group === 'Other storylines' && !count && leadGroup !== group) return null;
+          return <button key={group} aria-pressed={leadGroup === group} aria-controls="angle-selected-leads" onClick={() => setLeadGroup(group)}>{group} ({count})</button>;
+        })}
+      </div>
       {angleLeadGroups.map((group) => {
+        if (group !== leadGroup) return null;
         const leads = suggestions.filter((suggestion) => angleLeadGroup(suggestion.category) === group);
-        if (group === 'Other storylines' && !leads.length) return null;
-        return <section className="angle-lead-group" aria-label={`${group} leads`} key={group}>
+        return <section className="angle-lead-group" id="angle-selected-leads" aria-label={`${group} leads`} key={group}>
           <header><h4>{group}</h4><span>{leads.length} {leads.length === 1 ? 'LEAD' : 'LEADS'}</span></header>
           {!leads.length && <p>{scanning ? 'Checking available sources...' : 'No qualifying leads in the available coverage.'}</p>}
           <div className="angle-suggestions">{leads.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small>{suggestion.history && <><p>{suggestion.article.description}</p><details><summary>Record, window, and game sources</summary><p>{suggestion.history.evidence}</p><ul>{suggestion.history.meetings.map((meeting) => <li key={meeting.url}><a href={meeting.url} target="_blank" rel="noopener noreferrer">{meeting.label}</a></li>)}</ul></details></>}<a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
