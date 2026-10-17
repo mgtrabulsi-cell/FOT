@@ -13,7 +13,7 @@ const postThemes = [
   { value: 'betting', label: 'Betting', color: 'mnf' },
 ] as const;
 type PostTheme = typeof postThemes[number]['value'];
-type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
+type Post = { id: string; author_id: string | null; author_name: string; angle_id?: string | null; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
 
@@ -350,7 +350,8 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
           : `${new Intl.NumberFormat().format(Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0))} ${Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0) === 1 ? 'view' : 'views'}`}</span>}
         {!!post.image_paths?.length && <div className={`livewire-gallery livewire-gallery-${post.image_paths.length}`}>{post.image_paths.map((path, index) => <button type="button" key={path} onClick={() => setExpandedPhoto({ src: photoUrl(path), alt: `${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}` })} aria-label={`Enlarge photo ${index + 1} for ${post.title ?? 'post'}`}><OfflineImage src={photoUrl(path)} alt={`${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}`} loading="lazy" onError={(event) => { event.currentTarget.alt = 'Photo unavailable'; }} /></button>)}</div>}
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
-        {role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
+        {post.angle_id && <a href={`#analyst-desk/story/${post.angle_id}`}>View in The Angle</a>}
+        {!post.angle_id && role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
           <button disabled={busy || !draftReady} onClick={() => { if ((draftRestoreFailed || title || body || source || themes.length || photos.length) && !window.confirm('Replace your saved draft with this post?')) return; resetPhotos(); setDraftRestoreFailed(false); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {
             if (editing === post.id) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); }

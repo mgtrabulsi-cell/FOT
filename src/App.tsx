@@ -23,6 +23,7 @@ import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
 import PullToRefresh from './PullToRefresh';
 import BannerSearch from './BannerSearch';
+import PrimaryNavigation from './PrimaryNavigation';
 import { useLivewireUnread } from './useLivewireUnread';
 import { useAnalystUnread } from './useAnalystUnread';
 import ProfilePage from './ProfilePage';
@@ -539,6 +540,7 @@ function App() {
   const guestMode = savedGuestMode || !online;
   const livewireUnread = useLivewireUnread(authUser?.id ?? null, deletedAccount === null && !authLoading && (!supabase || !!authUser || guestMode));
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
+  const [storyOpenKey, setStoryOpenKey] = useState(0);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
   const previousView = useRef(view);
   useEffect(() => connectMedianNavigation(), []);
@@ -568,7 +570,10 @@ function App() {
       } else {
         const nextView = viewFromHash(window.location.hash);
         if (nextView) {
-          if (nextView === 'Analyst' && window.location.hash.startsWith('#analyst-desk/story/')) setAnalystMode('Angle');
+          if (nextView === 'Analyst' && window.location.hash.startsWith('#analyst-desk/story/')) {
+            setAnalystMode('Angle');
+            setStoryOpenKey((value) => value + 1);
+          }
           setView(nextView);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -1057,13 +1062,13 @@ function App() {
           <OfflineImage className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" />
           <span>GAMEWIRE</span>
         </a>
-        <nav className="primary-nav" aria-label="Main navigation">
+        <PrimaryNavigation>
           <button className={view === 'Wire' ? 'active' : ''} aria-current={view === 'Wire' ? 'page' : undefined} onClick={openWireTab}><Activity size={20} aria-hidden="true" /><span>The Wire</span></button>
           <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => setView('Players')}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
           <button className={view === 'Analyst' ? 'active' : ''} aria-current={view === 'Analyst' ? 'page' : undefined} aria-label={analystUnread.unread ? 'Analyst Desk, unread posts' : 'Analyst Desk'} onClick={() => { setView('Analyst'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="analyst-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10h18M4 10v11M20 10v11M14 10v8h6M16 14h2M7 10V3h10v7M10 6h4" /></svg>{analystUnread.unread && <i className="analyst-unread-dot" aria-hidden="true" />}</span><span>Analyst Desk</span></button>
           <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="livewire-nav-icon"><Zap size={20} aria-hidden="true" />{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span><span>LIVEWIRE</span></button>
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
-        </nav>
+        </PrimaryNavigation>
         <div className="topbar-right">
           {(view === 'Wire' || view === 'Players') && (
             <BannerSearch
@@ -1158,7 +1163,7 @@ function App() {
               <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
             </div>
             {analystMode === 'Angle' ? (
-              <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
+              <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} storyOpenKey={storyOpenKey} />
             ) : (
               <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
             )}

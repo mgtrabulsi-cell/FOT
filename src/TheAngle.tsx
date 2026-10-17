@@ -11,7 +11,7 @@ import type { Game } from './services/sportsData';
 import { useAnalystReadObserver } from './useAnalystReadObserver';
 import type { AnalystSeen } from './useAnalystReadObserver';
 
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; onSeen?: AnalystSeen };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The Angle request failed. Please retry.';
 
@@ -49,7 +49,7 @@ function newAngle(game: Game, season: number, week: number): Angle {
   };
 }
 
-export default function TheAngle({ games, season, week, user, storyId = null, onSeen }: Props) {
+export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen }: Props) {
   const [admin, setAdmin] = useState(false);
   const [rows, setRows] = useState<Angle[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -90,9 +90,11 @@ export default function TheAngle({ games, season, week, user, storyId = null, on
 
   useEffect(() => {
     if (storyId && linkedReady === storyId && linkedStory) {
-      document.getElementById(`angle-${storyId}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      const target = document.getElementById(`angle-${storyId}`);
+      target?.scrollIntoView({ block: 'start' });
+      target?.focus({ preventScroll: true });
     }
-  }, [storyId, linkedReady, linkedStory?.id]);
+  }, [storyId, linkedReady, linkedStory?.id, storyOpenKey]);
 
   useEffect(() => {
     let active = true;
@@ -223,7 +225,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, on
     {storyId && linkedReady === storyId && !linkedStory && <p role="status">This storyline is no longer published. You can browse the current week's storylines below.</p>}
     <div className="angle-filters" role="group" aria-label="Filter published angles">{(['all', 'player', 'team'] as const).map((value) => <button key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All angles' : value === 'player' ? 'Players' : 'Team matchups'}</button>)}</div>
     {!season || !week ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">Loading The Angle...</p> : loaded && !published.length && <p className="angle-empty">{rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
-    <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id}>
+    <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
       <div className="angle-card-meta"><span>{angle.category}</span><span>{angle.kind === 'player' ? 'PLAYER ANGLE' : 'MATCHUP ANGLE'}</span></div>
       <h3>{angle.title}</h3><p className="angle-subject">{angle.subject}</p><p className="angle-matchup">{angle.matchup} · {angle.season} · Week {angle.week}</p>
       <p className="angle-story">{angle.narrative}</p>
