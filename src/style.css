@@ -448,6 +448,7 @@ button { color: inherit; }
 .angle-card .angle-matchup { color: #bbc7d9; font-size: 11px; }
 .angle-card h4 { margin: 0 0 5px; color: #c1cce0; font: 600 11px var(--mono); }
 .angle-context, .angle-counterpoint, .angle-pick { padding: 12px; border-radius: 5px; background: #101a29; }
+.angle-story, .angle-editor details p { white-space: pre-wrap; }
 .angle-counterpoint { border-left: 2px solid #8198bd; }
 .angle-pick { border-left: 2px solid #cc2633; }
 .angle-panel a { display: inline-flex; align-items: center; gap: 6px; color: #a9c5ed; font-size: 12px; }

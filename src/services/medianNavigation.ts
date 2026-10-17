@@ -7,6 +7,7 @@ const routes: Record<AppView, string> = {
 export function viewFromHash(hash: string): AppView | null {
   if (hash === '#wire' || /^#wire\/game\/\d+$/.test(hash)) return 'Wire';
   if (hash === '#livewire' || /^#livewire\/post\/[0-9a-f-]{36}$/i.test(hash)) return 'LiveWire';
+  if (/^#analyst-desk\/story\/[0-9a-f-]{36}$/i.test(hash)) return 'Analyst';
   return (Object.keys(routes) as AppView[]).find((view) => routes[view] === hash) ?? null;
 }
 

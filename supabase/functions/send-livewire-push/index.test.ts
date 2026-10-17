@@ -17,6 +17,8 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
   let emptyQueue = false;
   let databaseCalls = 0;
   let primaryTheme: string | null = null;
+  let storyline = false;
+  let published = true;
   try {
     const keys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
     Deno.env.set('VAPID_KEYS_JSON', JSON.stringify({
@@ -43,8 +45,9 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
       const request = input instanceof Request ? input : new Request(input, init);
       const path = new URL(request.url).pathname;
       if (path.endsWith('/rpc/claim_livewire_push')) {
-        return Response.json(emptyQueue ? [] : [{ id: 1, post_id: 'post-123', user_id: 'user-123', endpoint: 'https://push.example.invalid/device', subject: 'Player news', attempts: 1, primary_theme: primaryTheme }]);
+        return Response.json(emptyQueue ? [] : [{ id: 1, post_id: storyline ? null : 'post-123', angle_id: storyline ? 'story-123' : null, user_id: 'user-123', endpoint: 'https://push.example.invalid/device', subject: 'Player news', attempts: 1, primary_theme: primaryTheme }]);
       }
+      if (path.endsWith('/angles')) return Response.json(published ? { id: 'story-123' } : null);
       if (path.endsWith('/user_push_subscriptions')) return Response.json(subscribed ? { subscription: {} } : null);
       if (request.method === 'PATCH') writes.push(await request.json());
       return new Response(null, { status: 204 });
@@ -65,6 +68,15 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
       assert(latest.title === `${theme.toUpperCase()}: Player news` && latest.body === '', 'First theme replaces LIVEWIRE, with no body');
       assert(latest.tag === 'gamewire-livewire-post-123', 'Themed alerts retain their post tag');
     }
+    storyline = true;
+    assert((await invoke()).status === 200, 'Storyline delivery succeeds');
+    const story = payloads[payloads.length - 1];
+    assert(story.title === "ADMIN'S STORYLINE - Player news" && story.body === '', 'Storyline alert uses exact requested title and no body');
+    assert(story.url === 'https://mgtrabulsi-cell.github.io/FOT/#analyst-desk/story/story-123' && story.tag === 'gamewire-storyline-story-123', 'Storyline opens its own post and uses a stable tag');
+    published = false;
+    const beforeUnpublished = payloads.length;
+    assert((await invoke()).status === 200 && payloads.length === beforeUnpublished, 'Unpublished or deleted stories do not send');
+    published = true;
     failPush = true;
     const failure = await invoke();
     assert(failure.status === 503, 'Provider failures are surfaced');

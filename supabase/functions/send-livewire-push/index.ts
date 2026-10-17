@@ -20,7 +20,7 @@ Deno.serve(async (request: Request) => {
     let failed = 0;
     for (let start = 0; start < deliveries.length; start += 10) {
       await Promise.all(deliveries.slice(start, start + 10).map(async (delivery: {
-        id: number; post_id: string; user_id: string; endpoint: string; subject: string; attempts: number; primary_theme?: 'news' | 'fantasy' | 'betting' | null;
+        id: number; post_id: string | null; angle_id?: string | null; user_id: string; endpoint: string; subject: string; attempts: number; primary_theme?: 'news' | 'fantasy' | 'betting' | null;
       }) => {
         try {
           const { data: target, error: targetError } = await admin.from('user_push_subscriptions')
@@ -31,11 +31,21 @@ Deno.serve(async (request: Request) => {
             if (cleanupError) throw cleanupError;
             return;
           }
+          if (delivery.angle_id) {
+            const { data: story, error: storyError } = await admin.from('angles').select('id')
+              .eq('id', delivery.angle_id).eq('status', 'published').maybeSingle();
+            if (storyError) throw storyError;
+            if (!story) {
+              const { error: cleanupError } = await admin.from('livewire_push_deliveries').delete().eq('id', delivery.id);
+              if (cleanupError) throw cleanupError;
+              return;
+            }
+          }
           await sendWebPush(pushServer, target.subscription, {
-            title: `${delivery.primary_theme?.toUpperCase() ?? 'LIVEWIRE'}: ${delivery.subject}`,
+            title: delivery.angle_id ? `ADMIN'S STORYLINE - ${delivery.subject}` : `${delivery.primary_theme?.toUpperCase() ?? 'LIVEWIRE'}: ${delivery.subject}`,
             body: '',
-            url: new URL(`#livewire/post/${delivery.post_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
-            tag: `gamewire-livewire-${delivery.post_id}`,
+            url: new URL(delivery.angle_id ? `#analyst-desk/story/${delivery.angle_id}` : `#livewire/post/${delivery.post_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
+            tag: delivery.angle_id ? `gamewire-storyline-${delivery.angle_id}` : `gamewire-livewire-${delivery.post_id}`,
           });
           const { error: saveError } = await admin.from('livewire_push_deliveries')
             .update({ delivered_at: new Date().toISOString(), last_error: null }).eq('id', delivery.id);

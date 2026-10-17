@@ -113,9 +113,9 @@ function PushNotificationSettings({ user }: { user: User }) {
     }
   };
 
-  return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>New LIVEWIRE posts, plus game updates for teams and players you follow.</small></div></header><div className="account-setting-form push-settings-form">
+  return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>New LIVEWIRE posts and admin storylines, plus game updates for teams and players you follow.</small></div></header><div className="account-setting-form push-settings-form">
     {!supported ? <p className="nfl-empty-note">This browser does not support push notifications.</p> : !configured ? <p className="auth-config-note">Push is not configured for this site yet.</p> : checking ? <p className="nfl-empty-note">Checking this device…</p> : settingsError ? <p className="auth-error" role="alert">{settingsError} <button type="button" onClick={() => setSettingsRetry((value) => value + 1)}>Retry</button></p> : enabled ? <>
-      <p className="push-enabled-status" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span><b>Notifications enabled</b><small>Active on this device · LIVEWIRE post alerts are on.</small></span></p>
+      <p className="push-enabled-status" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span><b>Notifications enabled</b><small>Active on this device · LIVEWIRE and admin storyline alerts are on.</small></span></p>
       <label className="push-preference"><input type="checkbox" checked={notifyScores} onChange={(event) => void updatePreference(event.target.checked)} />Favorite game score and status changes</label>
       <div className="push-actions"><button type="button" onClick={() => void sendTest()} disabled={testBusy}>{testBusy ? 'Sending…' : 'Send test notification'}</button><button type="button" className="push-disable-button" onClick={() => void disable()} disabled={busy}>{busy ? 'Updating…' : 'Turn off on this device'}</button></div>
     </> : <button type="button" onClick={() => void enable()} disabled={busy}>{busy ? 'Enabling…' : 'Enable on this device'}</button>}

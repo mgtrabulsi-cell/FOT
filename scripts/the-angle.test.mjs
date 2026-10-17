@@ -48,14 +48,15 @@ test('Suggestions require safe sources, dated news near the selected game, and d
   assert.deepEqual(selectAngleSuggestions({ ...game, date: 'invalid' }, [article]), []);
   assert.equal(selectAngleSuggestions(game, [article])[0].category, 'Former team');
 });
-test('Publishing needs editorial context, a counterpoint, a source, and explicit review; a pick is optional', () => {
+test('Publishing needs a headline, storyline, and explicit review; other text and a pick are optional', () => {
   const draft = { title: 'The reunion angle', subject: 'Player', narrative: 'Editorial context', evidence: 'Cited evidence', counterpoint: 'Small sample', source_url: article.url, source_label: 'ESPN', reviewed: true };
   assert.equal(anglePublishError(draft), '');
-  for (const key of ['title', 'subject', 'narrative', 'evidence', 'counterpoint', 'source_label']) {
+  for (const key of ['title', 'narrative']) {
     assert.notEqual(anglePublishError({ ...draft, [key]: ' ' }), '');
   }
   assert.notEqual(anglePublishError({ ...draft, reviewed: false }), '');
   assert.notEqual(anglePublishError({ ...draft, source_url: 'data:text/html,test' }), '');
+  assert.equal(anglePublishError({ ...draft, subject: '', evidence: '', counterpoint: '', source_label: '', source_url: '' }), '');
 });
 test('Sources cannot execute scripts or embed credentials; malformed server rows fail visibly', () => {
   for (const url of ['javascript:alert(1)', 'https://', 'https://user:pass@example.com', 'https://example.com/space here']) assert.equal(isAngleSource(url), false);

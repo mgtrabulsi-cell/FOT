@@ -7,7 +7,7 @@ test('section routes and nested notification links preserve their destination', 
     assert.equal(viewFromHash(hash), view);
     assert.equal(hashForView(view, '#unknown'), hash);
   }
-  for (const [view, hash] of [['Wire', '#wire/game/123'], ['LiveWire', '#livewire/post/11111111-1111-4111-8111-111111111111']]) {
+  for (const [view, hash] of [['Wire', '#wire/game/123'], ['LiveWire', '#livewire/post/11111111-1111-4111-8111-111111111111'], ['Analyst', '#analyst-desk/story/11111111-1111-4111-8111-111111111111']]) {
     assert.equal(viewFromHash(hash), view);
     assert.equal(hashForView(view, hash), hash);
   }

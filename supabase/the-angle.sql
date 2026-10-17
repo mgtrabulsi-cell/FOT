@@ -21,11 +21,8 @@ create table if not exists public.angles (
   revision integer not null default 1 check (revision > 0),
   created_by uuid not null default auth.uid() references auth.users(id) on delete cascade,
   updated_at timestamptz not null default now(),
-  check (status <> 'published' or (
-    reviewed and char_length(btrim(title)) > 0 and char_length(btrim(subject)) > 0
-    and char_length(btrim(narrative)) > 0 and char_length(btrim(evidence)) > 0
-    and char_length(btrim(counterpoint)) > 0 and char_length(btrim(source_label)) > 0
-    and char_length(btrim(source_url)) > 0
+  constraint angles_published_check check (status <> 'published' or (
+    reviewed and char_length(btrim(title)) > 0 and char_length(btrim(narrative)) > 0
   ))
 );
 create index if not exists angles_week_idx on public.angles(season, week, updated_at desc);

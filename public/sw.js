@@ -210,13 +210,14 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil((async () => {
     const target = new URL(self.registration.scope);
     const postId = /^gamewire-livewire-([0-9a-f-]{36})$/i.exec(event.notification.tag ?? '')?.[1];
+    const storyId = /^gamewire-storyline-([0-9a-f-]{36})$/i.exec(event.notification.tag ?? '')?.[1];
     const gameId = /^gamewire-(?:play-)?(\d+)(?:-|$)/.exec(event.notification.tag ?? '')?.[1];
     try {
       const requested = new URL(event.notification.data?.url ?? '#wire', self.registration.scope);
-      target.hash = postId ? `livewire/post/${postId}` : gameId ? `wire/game/${gameId}` : requested.hash || '#wire';
+      target.hash = storyId ? `analyst-desk/story/${storyId}` : postId ? `livewire/post/${postId}` : gameId ? `wire/game/${gameId}` : requested.hash || '#wire';
     } catch (error) {
       console.error('Invalid notification destination', error);
-      target.hash = postId ? `livewire/post/${postId}` : gameId ? `wire/game/${gameId}` : '#wire';
+      target.hash = storyId ? `analyst-desk/story/${storyId}` : postId ? `livewire/post/${postId}` : gameId ? `wire/game/${gameId}` : '#wire';
     }
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const existing = clients.find((client) => {

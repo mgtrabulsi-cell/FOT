@@ -7,6 +7,7 @@ const worker = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8')
 const scope = 'https://mgtrabulsi-cell.github.io/FOT/';
 const postId = '11111111-1111-4111-8111-111111111111';
 const cases = [
+  { tag: `gamewire-storyline-${postId}`, url: '/#wire', hash: `#analyst-desk/story/${postId}` },
   { tag: `gamewire-livewire-${postId}`, url: '/#wire', hash: `#livewire/post/${postId}` },
   { tag: 'gamewire-play-401872980-12345', url: '/#wire', hash: '#wire/game/401872980' },
   { tag: 'gamewire-401872980', url: '/#wire', hash: '#wire/game/401872980' },

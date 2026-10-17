@@ -567,6 +567,7 @@ function App() {
       } else {
         const nextView = viewFromHash(window.location.hash);
         if (nextView) {
+          if (nextView === 'Analyst' && window.location.hash.startsWith('#analyst-desk/story/')) setAnalystMode('Angle');
           setView(nextView);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -587,7 +588,7 @@ function App() {
     };
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
-  const [analystMode, setAnalystMode] = useState<'Matchups' | 'Angle'>('Matchups');
+  const [analystMode, setAnalystMode] = useState<'Matchups' | 'Angle'>(() => window.location.hash.startsWith('#analyst-desk/story/') ? 'Angle' : 'Matchups');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
@@ -1153,7 +1154,7 @@ function App() {
               <button role="tab" aria-selected={analystMode === 'Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle</button>
             </div>
             {analystMode === 'Angle' ? (
-              <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />
+              <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
             ) : (
               <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />
             )}

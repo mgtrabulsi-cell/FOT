@@ -138,8 +138,8 @@ export function selectAngleSuggestions(game: Game, articles: DenNewsItem[]): Ang
 }
 
 export function anglePublishError(angle: Pick<Angle, 'title' | 'subject' | 'narrative' | 'evidence' | 'counterpoint' | 'source_url' | 'source_label' | 'reviewed'>) {
-  if (![angle.title, angle.subject, angle.narrative, angle.evidence, angle.counterpoint, angle.source_label].every((value) => value.trim())) return 'Add a title, subject, storyline, supporting context, counterpoint, and source name before publishing.';
-  if (!isAngleSource(angle.source_url)) return 'Add a valid HTTP or HTTPS source link before publishing.';
+  if (![angle.title, angle.narrative].every((value) => value.trim())) return 'Add a headline and storyline before publishing.';
+  if (angle.source_url && !isAngleSource(angle.source_url)) return 'Use a valid HTTP or HTTPS source link.';
   if (!angle.reviewed) return 'Confirm you checked the source, matchup, and factual claims before publishing.';
   return '';
 }
