@@ -244,8 +244,8 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       setReadError('');
     }, (cause) => {
       console.error('Could not mark LIVEWIRE post as read', cause);
-      setReadError('Could not save your read status. Reconnect or reopen LIVEWIRE to retry.');
-    }, { minimumRatio: 0.01, bottomInset: 64, allowOffline: !user });
+      setReadError('Could not save your read status. Reconnect or return to the app to retry.');
+    }, { minimumRatio: 0.01, bottomInset: 64, allowOffline: !user, retryFailed: true });
   }, [onPostSeen, user?.id]);
 
   function filterThemes(next: PostTheme[]) {

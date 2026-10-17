@@ -48,6 +48,7 @@ function fixture(options) {
     offline() { navigator.onLine = false; },
     online() { navigator.onLine = true; window.dispatchEvent(new Event('online')); },
     fail() { fail = true; },
+    recover() { fail = false; },
     stop,
     restore() {
       stop();
@@ -139,5 +140,37 @@ test('Failures are reported without retry loops, and cleanup prevents later reco
     f.visible();
     assert.equal(f.calls.length, 1);
     assert.equal(f.observed.size, 0);
+  } finally { f.restore(); }
+});
+
+test('Failed read receipts retry on reconnect or foreground without scrolling away', async () => {
+  const f = fixture({ minimumRatio: 0.01, retryFailed: true });
+  try {
+    f.fail();
+    f.show(f.first);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(f.errors.length, 1);
+    assert.deepEqual(f.calls, ['first']);
+    f.recover();
+    f.online();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(f.calls, ['first', 'first']);
+    f.online();
+    assert.equal(f.calls.length, 2);
+    f.fail();
+    f.show(f.second);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(f.errors.length, 2);
+    f.recover();
+    f.visible();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(f.calls, ['first', 'first', 'second', 'second']);
+    f.stop();
+    f.online();
+    assert.equal(f.calls.length, 4);
   } finally { f.restore(); }
 });

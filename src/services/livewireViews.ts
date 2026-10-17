@@ -2,7 +2,7 @@ export function observePostViews(
   root: HTMLElement,
   record: (postId: string) => Promise<void>,
   report: (error: unknown) => void,
-  options: { minimumRatio?: number; bottomInset?: number; allowOffline?: boolean } = {},
+  options: { minimumRatio?: number; bottomInset?: number; allowOffline?: boolean; retryFailed?: boolean } = {},
 ) {
   const minimumRatio = options.minimumRatio ?? 0;
   const visible = new Set<Element>();
@@ -15,6 +15,7 @@ export function observePostViews(
     if (!id) return;
     counted.add(element);
     void record(id).catch((error: unknown) => {
+      if (options.retryFailed) counted.delete(element);
       if (!stopped) report(error);
     });
   };
