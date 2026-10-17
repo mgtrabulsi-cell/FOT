@@ -1051,7 +1051,7 @@ function App() {
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={view === 'Wire' ? 'active' : ''} aria-current={view === 'Wire' ? 'page' : undefined} onClick={openWireTab}><Activity size={20} aria-hidden="true" /><span>The Wire</span></button>
           <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
-          <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><Zap size={20} aria-hidden="true" /><span className="livewire-nav-label">LIVEWIRE{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span></button>
+          <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="livewire-nav-icon"><Zap size={20} aria-hidden="true" />{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span><span>LIVEWIRE</span></button>
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </nav>
         <div className="topbar-right">
