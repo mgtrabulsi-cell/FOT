@@ -459,6 +459,11 @@ button { color: inherit; }
 .angle-suggestions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .angle-suggestions > article { display: grid; gap: 8px; padding: 14px; border: 1px solid #35445b; border-radius: 6px; background: #101a29; overflow-wrap: anywhere; }
 .angle-suggestions :is(span, small) { color: #bbc7d9; font-size: 11px; }
+.angle-suggestions details { min-width: 0; font-size: 12px; }
+.angle-suggestions summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.angle-suggestions details p { white-space: pre-line; }
+.angle-suggestions ul { padding-left: 18px; }
+.angle-suggestions li { margin-bottom: 8px; }
 .angle-draft { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 0; border-bottom: 1px solid #35445b; }
 .angle-draft > span { display: grid; gap: 4px; flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
 .angle-draft small { color: #bbc7d9; }

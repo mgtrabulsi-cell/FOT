@@ -241,6 +241,14 @@ The private Angle desk also checks [Wikidata's CC0 structured biographies](https
 
 Apply [`supabase/the-angle-personal.sql`](supabase/the-angle-personal.sql) to an existing Angle database to enable Birthday and Public life event categories; new installations use the updated base schema. The external Wikidata query requires internet access, runs only for admins, and reports source/roster failures rather than inventing dates.
 
+### Team matchup-history leads
+
+**Analyst Desk → The Angle → Admin desk** also scans ESPN's calendar-year NFL scoreboards for completed regular-season and playoff meetings between each selected matchup's teams. It uses a rolling five-calendar-year window, inclusive of the starting instant and exclusive of kickoff; the selected game and results dated in the future are excluded. A leap-day start clamps to February 28. The minimum win-rate sample is four meetings, and wins divided by all meetings must be **strictly greater than 70%** (ties count in the denominator, not as wins).
+
+Additional leads flag an unbeaten record in the latest four meetings overall, or the latest four at the upcoming game's home/away configuration, all within the same five-year window. Four unbeaten meetings can include ties and are not labeled four wins. Neutral-site finals count overall but never toward home/away leads; no venue-specific claim is made for an upcoming neutral-site game or when venue classification is unknown. These are franchise/team-ID records, not stadium, coach, roster, ATS, or player-performance trends.
+
+Each private lead includes its W-L-T record, sample size, date window, and individual ESPN game links. **Review this lead** carries the team focus, source, and computed supporting context into an unpublished editor; the admin must still write the headline/storyline/counterpoint and verify the claims before publishing. History is fetched only for admins, in batches of three calendar years, and cached in memory for ten minutes. Failed years suppress affected matchup leads rather than calculate a rate from partial history; malformed final scores and conflicting duplicate games are reported. No qualifying trend is a valid result. Run `node --test scripts/angle-history.test.mjs scripts/the-angle.test.mjs` for threshold, venue, date-window, parsing, and failure regressions.
+
 ## Favorites and Your Locker Room
 
 In **Following → Players**, use the position toggles (All, QB, RB, WR, TE, plus any additional saved positions) to filter the followed-player list and its game-stat rows. Select the active position again or choose All to reset. Players without position data appear under Unknown. This does not change favorites, team order, weekly history, Latest plays, or Latest updates.

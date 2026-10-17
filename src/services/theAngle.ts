@@ -22,7 +22,10 @@ export type Angle = {
   status: 'draft' | 'published';
   revision: number;
 };
-export type AngleSuggestion = { key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string };
+export type AngleSuggestion = {
+  key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string; subject?: string;
+  history?: { evidence: string; meetings: Array<{ label: string; url: string }> };
+};
 
 export function angleWriteFields(angle: Angle, status: Angle['status']) {
   return {

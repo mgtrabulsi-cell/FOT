@@ -6,6 +6,7 @@ import { angleCategories, anglePublishError, angleWriteFields, isAngleSource, re
 import type { Angle, AngleSuggestion } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
+import { fetchMatchupHistorySuggestions } from './services/angleHistory';
 import type { Game } from './services/sportsData';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null };
@@ -14,6 +15,7 @@ const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && '
 
 async function fetchAngleSuggestions(games: Game[], signal: AbortSignal) {
   const birthdayRequest = fetchBirthdaySuggestions(games, signal);
+  const historyRequest = fetchMatchupHistorySuggestions(games, signal);
   const suggestions: AngleSuggestion[] = [];
   const errors: string[] = [];
   for (let start = 0; start < games.length; start += 4) {
@@ -30,9 +32,9 @@ async function fetchAngleSuggestions(games: Game[], signal: AbortSignal) {
     }));
     if (signal.aborted) break;
   }
-  const birthdays = await birthdayRequest;
-  suggestions.push(...birthdays.suggestions);
-  errors.push(...birthdays.errors);
+  const [birthdays, history] = await Promise.all([birthdayRequest, historyRequest]);
+  suggestions.push(...birthdays.suggestions, ...history.suggestions);
+  errors.push(...birthdays.errors, ...history.errors);
   return { suggestions: suggestions.sort((a, b) => Date.parse(b.article.published) - Date.parse(a.article.published)), errors };
 }
 
@@ -131,7 +133,8 @@ export default function TheAngle({ games, season, week, user }: Props) {
     if (!season || !week) return;
     openEditor({ ...newAngle(suggestion.game, season, week), category: suggestion.category,
       kind: suggestion.playerName ? 'player' : 'team',
-      subject: suggestion.playerName ?? `${suggestion.game.away.abbr} @ ${suggestion.game.home.abbr}`,
+      subject: suggestion.playerName ?? suggestion.subject ?? `${suggestion.game.away.abbr} @ ${suggestion.game.home.abbr}`,
+      evidence: suggestion.history?.evidence ?? '',
       source_url: suggestion.article.url ?? '', source_label: suggestion.sourceLabel ?? 'ESPN', title: '' });
   }
   async function save(status: Angle['status']) {
@@ -195,12 +198,13 @@ export default function TheAngle({ games, season, week, user }: Props) {
     </article>)}</div>
     {admin && <section className="angle-admin" aria-label="The Angle admin desk">
       <h3>Admin desk <span>Private</span></h3><p>News suggestions are keyword-matched leads, not verified claims. Birthday leads use Wikidata birth dates matched by ESPN player ID for loaded QB/RB/WR/TE rosters, within three days of game day (Eastern time). Coverage may be incomplete. Check the source, player identity, opponent, dates, sample size, and current availability. Write your own summary before publishing.</p>
+      <p>Matchup-history leads use the rolling five years before kickoff, including regular-season and playoff finals. Win rates must be strictly above 70% across at least four meetings; ties are not wins. Unbeaten leads check the latest four meetings overall and at the upcoming home/away venue within that window. Neutral-site games count overall, not as home/away meetings. Missing history suppresses affected leads. Past success is not a prediction.</p>
       <p>Public life events: use only a public announcement or reliable report. Link to it and summarize in your own words; omit children's names, photos, and other unnecessary family details. Birthdays and parenthood do not establish a performance advantage.</p>
-      <div className="angle-actions"><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}>Create an angle</button><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor({ ...newAngle(weeklyGames[0], season, week), kind: 'player', category: 'Public life event', subject: '' }); }}>Add public announcement</button><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news and birthdays...' : 'Refresh suggestions'}</button></div>
+      <div className="angle-actions"><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}>Create an angle</button><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor({ ...newAngle(weeklyGames[0], season, week), kind: 'player', category: 'Public life event', subject: '' }); }}>Add public announcement</button><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
       {!weeklyGames.length && <p>No NFL matchups are available for this week. Manual creation and suggestions need a loaded matchup.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
-      {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news or birthday leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
-      <div className="angle-suggestions">{suggestions.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small><a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
+      {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news, birthday, or matchup-history leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
+      <div className="angle-suggestions">{suggestions.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small>{suggestion.history && <><p>{suggestion.article.description}</p><details><summary>Record, window, and game sources</summary><p>{suggestion.history.evidence}</p><ul>{suggestion.history.meetings.map((meeting) => <li key={meeting.url}><a href={meeting.url} target="_blank" rel="noopener noreferrer">{meeting.label}</a></li>)}</ul></details></>}<a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
       <h4>Saved drafts ({drafts.length})</h4>
       {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || 'Untitled angle'}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
       {form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
