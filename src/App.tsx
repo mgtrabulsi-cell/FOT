@@ -1148,8 +1148,8 @@ function App() {
         ) : (
           <>
             <div className="player-mode-tabs" role="tablist" aria-label="Stat Hub view">
-              <button role="tab" aria-selected={playerMode === 'NFL'} className={playerMode === 'NFL' ? 'active' : ''} onClick={() => setPlayerMode('NFL')}>NFL game players</button>
-              <button role="tab" aria-selected={playerMode === 'Matchups'} className={playerMode === 'Matchups' ? 'active' : ''} onClick={() => setPlayerMode('Matchups')}>Favorable matchups</button>
+              <button role="tab" aria-selected={playerMode === 'NFL'} className={playerMode === 'NFL' ? 'active' : ''} onClick={() => setPlayerMode('NFL')}>NFL Players</button>
+              <button role="tab" aria-selected={playerMode === 'Matchups'} className={playerMode === 'Matchups' ? 'active' : ''} onClick={() => setPlayerMode('Matchups')}>Admins Picks</button>
               <button role="tab" aria-selected={playerMode === 'Angle'} className={playerMode === 'Angle' ? 'active' : ''} onClick={() => setPlayerMode('Angle')}>The Angle</button>
             </div>
             {playerMode === 'NFL' ? (
