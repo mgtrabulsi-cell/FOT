@@ -8,7 +8,7 @@ create table if not exists public.angles (
   matchup text not null check (char_length(btrim(matchup)) between 1 and 200),
   kind text not null check (kind in ('player', 'team')),
   subject text not null check (char_length(subject) <= 120),
-  category text not null check (category in ('Former team', 'Head-to-head history', 'Rivalry / rematch', 'Milestone / comeback', 'Other')),
+  category text not null check (category in ('Former team', 'Head-to-head history', 'Rivalry / rematch', 'Milestone / comeback', 'Birthday', 'Public life event', 'Other')),
   title text not null check (char_length(title) <= 140),
   narrative text not null default '' check (char_length(narrative) <= 1500),
   evidence text not null default '' check (char_length(evidence) <= 1500),

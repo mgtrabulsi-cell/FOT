@@ -1,6 +1,6 @@
 import type { DenNewsItem, Game } from './sportsData';
 
-export const angleCategories = ['Former team', 'Head-to-head history', 'Rivalry / rematch', 'Milestone / comeback', 'Other'] as const;
+export const angleCategories = ['Former team', 'Head-to-head history', 'Rivalry / rematch', 'Milestone / comeback', 'Birthday', 'Public life event', 'Other'] as const;
 export type AngleCategory = typeof angleCategories[number];
 export type Angle = {
   id: string;
@@ -22,7 +22,7 @@ export type Angle = {
   status: 'draft' | 'published';
   revision: number;
 };
-export type AngleSuggestion = { key: string; game: Game; category: AngleCategory; article: DenNewsItem };
+export type AngleSuggestion = { key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string };
 
 export function angleWriteFields(angle: Angle, status: Angle['status']) {
   return {
@@ -57,10 +57,62 @@ export function isAngleSource(value: string) {
 }
 
 export function suggestedAngleCategory(text: string): AngleCategory | null {
+  if (/\b(birthday|turns \d{2})\b/i.test(text)) return 'Birthday';
+  if (/\b(new dad|new father|became a father|birth of (?:his|their) (?:child|son|daughter)|welcom(?:e[sd]?|ing) (?:his |their |a |an )?(?:first |second |third |fourth )?(?:child|baby|son|daughter))\b/i.test(text)) return 'Public life event';
   if (/\b(former team|former club|old team|reunion|reunites|revenge|homecoming)\b/i.test(text)) return 'Former team';
   if (/\b(head.to.head|historically|history against|career against|success against|dominat(?:e[sd]?|ing|ion))\b/i.test(text)) return 'Head-to-head history';
   if (/\b(rivalry|rivals?|rematch|aveng(?:e|ing))\b/i.test(text)) return 'Rivalry / rematch';
   if (/\b(milestone|comeback|record.breaking|returns? from injury)\b/i.test(text)) return 'Milestone / comeback';
+  return null;
+}
+
+export type PlayerBirthday = { playerId: string; dateOfBirth: string; sourceUrl: string };
+
+export function readPlayerBirthdays(value: unknown): PlayerBirthday[] {
+  if (!value || typeof value !== 'object' || !('results' in value) || !value.results
+    || typeof value.results !== 'object' || !('bindings' in value.results) || !Array.isArray(value.results.bindings)) {
+    throw new Error('The birthday source returned invalid data.');
+  }
+  const rows: PlayerBirthday[] = [];
+  for (const row of value.results.bindings) {
+    if (!row || typeof row !== 'object') throw new Error('The birthday source returned an invalid entry.');
+    const entryValue = (key: string) => {
+      const entry: unknown = Reflect.get(row, key);
+      return entry && typeof entry === 'object' && 'value' in entry && typeof entry.value === 'string' ? entry.value : '';
+    };
+    const playerId = entryValue('espn');
+    const dateOfBirth = entryValue('dob').slice(0, 10);
+    const sourceUrl = entryValue('person').replace(/^http:/, 'https:');
+    if (!/^\d+$/.test(playerId) || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
+      || !/^https:\/\/www\.wikidata\.org\/entity\/Q\d+$/.test(sourceUrl)) throw new Error('The birthday source returned an invalid identity or birth date.');
+    const timestamp = Date.parse(`${dateOfBirth}T00:00:00Z`);
+    if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== dateOfBirth) throw new Error('The birthday source returned an invalid birth date.');
+    rows.push({ playerId, dateOfBirth, sourceUrl });
+  }
+  const unique = new Map<string, PlayerBirthday>();
+  const ambiguous = new Set<string>();
+  rows.forEach((row) => {
+    const previous = unique.get(row.playerId);
+    if (previous && (previous.dateOfBirth !== row.dateOfBirth || previous.sourceUrl !== row.sourceUrl)) ambiguous.add(row.playerId);
+    unique.set(row.playerId, row);
+  });
+  if (ambiguous.size) throw new Error('The birthday source contains conflicting identities or dates. Verify the biographies manually.');
+  return [...unique.values()];
+}
+
+export function birthdayNearGame(dateOfBirth: string, gameDate: string): { date: string; onGameDay: boolean } | null {
+  const kickoff = new Date(gameDate);
+  if (!Number.isFinite(kickoff.getTime()) || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return null;
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(kickoff);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  const day = `${part('year')}-${part('month')}-${part('day')}`;
+  const dayTime = Date.parse(`${day}T00:00:00Z`);
+  for (const year of [Number(part('year')) - 1, Number(part('year')), Number(part('year')) + 1]) {
+    const date = `${year}-${dateOfBirth.slice(5)}`;
+    const timestamp = Date.parse(`${date}T00:00:00Z`);
+    if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date || year <= Number(dateOfBirth.slice(0, 4))) continue;
+    if (Math.abs(timestamp - dayTime) <= 3 * 86_400_000) return { date, onGameDay: date === day };
+  }
   return null;
 }
 

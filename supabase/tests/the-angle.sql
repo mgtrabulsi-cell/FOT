@@ -68,5 +68,8 @@ begin
   assert not exists(select 1 from public.angles where id = 'd9521111-1111-4111-8111-111111111121'), 'Account deletion removes authored angles';
 end;
 $$;
-select 'Angle draft isolation, publication, revision, and deletion tests passed' as result;
+insert into public.angles(season, week, game_id, matchup, kind, subject, category, title, created_by)
+values (2200, 18, 'NFL:123', 'Test matchup', 'player', 'Test player', 'Birthday', 'Birthday draft', 'd9521111-1111-4111-8111-111111111112'),
+ (2200, 18, 'NFL:123', 'Test matchup', 'player', 'Test player', 'Public life event', 'Public announcement draft', 'd9521111-1111-4111-8111-111111111112');
+select 'Angle draft isolation, publication, revision, deletion, and personal categories tests passed' as result;
 rollback;

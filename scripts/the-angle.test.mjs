@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+import { anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
@@ -10,6 +10,29 @@ test('News suggests unverified categories, never inventing a historical trend', 
   assert.equal(suggestedAngleCategory('Career against this opponent'), 'Head-to-head history');
   assert.equal(suggestedAngleCategory('A career milestone'), 'Milestone / comeback');
   assert.equal(suggestedAngleCategory('Team wins its third game'), null);
+  assert.equal(suggestedAngleCategory('A player celebrates his birthday'), 'Birthday');
+  assert.equal(suggestedAngleCategory('A player welcomes his first child'), 'Public life event');
+  assert.equal(suggestedAngleCategory('A player became a father'), 'Public life event');
+  assert.equal(suggestedAngleCategory('A team welcomes a new coach'), null);
+});
+
+test('Birthday leads use Eastern game dates, handle year boundaries and leap days without invented dates', () => {
+  assert.deepEqual(birthdayNearGame('1996-10-18', '2026-10-19T00:20:00Z'), { date: '2026-10-18', onGameDay: true });
+  assert.deepEqual(birthdayNearGame('1996-10-15', '2026-10-18T17:00:00Z'), { date: '2026-10-15', onGameDay: false });
+  assert.equal(birthdayNearGame('1996-10-14', '2026-10-18T17:00:00Z'), null);
+  assert.deepEqual(birthdayNearGame('1996-12-31', '2027-01-02T17:00:00Z'), { date: '2026-12-31', onGameDay: false });
+  assert.equal(birthdayNearGame('1996-02-29', '2027-03-01T17:00:00Z'), null);
+  assert.deepEqual(birthdayNearGame('1996-02-29', '2028-02-29T17:00:00Z'), { date: '2028-02-29', onGameDay: true });
+  assert.equal(birthdayNearGame('invalid', game.date), null);
+});
+test('Birthdays require exact player IDs, Wikidata identity links, valid full dates, and reject conflicts', () => {
+  const binding = { espn: { value: '123' }, person: { value: 'http://www.wikidata.org/entity/Q123' }, dob: { value: '1996-10-18T00:00:00Z' } };
+  const response = (bindings) => ({ results: { bindings } });
+  assert.deepEqual(readPlayerBirthdays(response([binding, binding])), [{ playerId: '123', dateOfBirth: '1996-10-18', sourceUrl: 'https://www.wikidata.org/entity/Q123' }]);
+  assert.throws(() => readPlayerBirthdays(response([{ ...binding, dob: { value: '1996-02-31T00:00:00Z' } }])), /invalid birth date/);
+  assert.throws(() => readPlayerBirthdays(response([binding, { ...binding, dob: { value: '1996-10-19T00:00:00Z' } }])), /conflicting/);
+  assert.throws(() => readPlayerBirthdays(response([{ ...binding, person: { value: 'https://untrusted.test/Q123' } }])), /invalid identity/);
+  assert.throws(() => readPlayerBirthdays({}), /invalid data/);
 });
 test('Suggestions require safe sources, dated news near the selected game, and deduplicate articles', () => {
   assert.equal(selectAngleSuggestions(game, [article, article]).length, 1);

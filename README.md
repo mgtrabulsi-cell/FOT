@@ -233,6 +233,14 @@ Use **Review this lead** or **Create an angle**, then **Save private draft** or 
 
 Apply [`supabase/the-angle.sql`](supabase/the-angle.sql) after LIVEWIRE and account-deletion schemas **before deploying** the UI. Run rollback-only database checks in [`supabase/tests/the-angle.sql`](supabase/tests/the-angle.sql) and `node --test scripts/the-angle.test.mjs` for source validation, suggestions, and publication requirements.
 
+### Birthday and public-announcement leads
+
+The private Angle desk also checks [Wikidata's CC0 structured biographies](https://www.wikidata.org/wiki/Wikidata:Licensing). Birth dates are joined to the loaded active QB/RB/WR/TE rosters by **ESPN NFL player ID** (P3686), never fuzzy name matching. Only day-precision, non-deprecated birth-date statements are used. Conflicting identities/dates fail visibly. Players missing from Wikidata, without a full date or matching ID, or outside those rosters are not covered. A lead appears for a birthday on or within three calendar days of its matchup's Eastern-time date, including cross-year dates. February 29 is not silently changed to another date in non-leap years. These remain unverified private leads until the admin checks the biography and current player context.
+
+**Add public announcement** opens a player-focused **Public life event** draft for a source URL and original summary (for example, a publicly announced new-parent story). Existing ESPN news suggestions can flag explicitly mentioned birthdays and new-parent announcements too. No social-account scraping or automatic external-news syndication is enabled. Source attribution is preserved when reviewing a lead. Admins must verify public reporting and omit children's names, photos, and unnecessary family details. Neither birthdays nor family events are treated as evidence of improved performance. NFL/team/publisher websites can be linked manually; automated feeds beyond the existing ESPN source require appropriate permission/licensing first.
+
+Apply [`supabase/the-angle-personal.sql`](supabase/the-angle-personal.sql) to an existing Angle database to enable Birthday and Public life event categories; new installations use the updated base schema. The external Wikidata query requires internet access, runs only for admins, and reports source/roster failures rather than inventing dates.
+
 ## Favorites and Your Locker Room
 
 In **Following → Players**, use the position toggles (All, QB, RB, WR, TE, plus any additional saved positions) to filter the followed-player list and its game-stat rows. Select the active position again or choose All to reset. Players without position data appear under Unknown. This does not change favorites, team order, weekly history, Latest plays, or Latest updates.

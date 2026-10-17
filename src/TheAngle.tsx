@@ -5,6 +5,7 @@ import { supabase } from './services/supabaseClient';
 import { angleCategories, anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSuggestion } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
+import { fetchBirthdaySuggestions } from './services/angleBirthdays';
 import type { Game } from './services/sportsData';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null };
@@ -12,6 +13,7 @@ const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && '
   ? cause.message : 'The Angle request failed. Please retry.';
 
 async function fetchAngleSuggestions(games: Game[], signal: AbortSignal) {
+  const birthdayRequest = fetchBirthdaySuggestions(games, signal);
   const suggestions: AngleSuggestion[] = [];
   const errors: string[] = [];
   for (let start = 0; start < games.length; start += 4) {
@@ -28,6 +30,9 @@ async function fetchAngleSuggestions(games: Game[], signal: AbortSignal) {
     }));
     if (signal.aborted) break;
   }
+  const birthdays = await birthdayRequest;
+  suggestions.push(...birthdays.suggestions);
+  errors.push(...birthdays.errors);
   return { suggestions: suggestions.sort((a, b) => Date.parse(b.article.published) - Date.parse(a.article.published)), errors };
 }
 
@@ -125,7 +130,9 @@ export default function TheAngle({ games, season, week, user }: Props) {
   function reviewSuggestion(suggestion: AngleSuggestion) {
     if (!season || !week) return;
     openEditor({ ...newAngle(suggestion.game, season, week), category: suggestion.category,
-      source_url: suggestion.article.url ?? '', source_label: 'ESPN', title: '' });
+      kind: suggestion.playerName ? 'player' : 'team',
+      subject: suggestion.playerName ?? `${suggestion.game.away.abbr} @ ${suggestion.game.home.abbr}`,
+      source_url: suggestion.article.url ?? '', source_label: suggestion.sourceLabel ?? 'ESPN', title: '' });
   }
   async function save(status: Angle['status']) {
     if (!form || !supabase || busy) return;
@@ -187,12 +194,13 @@ export default function TheAngle({ games, season, week, user }: Props) {
       {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>Edit angle</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
     </article>)}</div>
     {admin && <section className="angle-admin" aria-label="The Angle admin desk">
-      <h3>Admin desk <span>Private</span></h3><p>Suggestions are keyword-matched leads, not verified claims. Check the article, player identity, opponent, dates, sample size, and current availability. Write your own summary before publishing.</p>
-      <div className="angle-actions"><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}>Create an angle</button><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking ESPN news...' : 'Refresh suggestions'}</button></div>
+      <h3>Admin desk <span>Private</span></h3><p>News suggestions are keyword-matched leads, not verified claims. Birthday leads use Wikidata birth dates matched by ESPN player ID for loaded QB/RB/WR/TE rosters, within three days of game day (Eastern time). Coverage may be incomplete. Check the source, player identity, opponent, dates, sample size, and current availability. Write your own summary before publishing.</p>
+      <p>Public life events: use only a public announcement or reliable report. Link to it and summarize in your own words; omit children's names, photos, and other unnecessary family details. Birthdays and parenthood do not establish a performance advantage.</p>
+      <div className="angle-actions"><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}>Create an angle</button><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor({ ...newAngle(weeklyGames[0], season, week), kind: 'player', category: 'Public life event', subject: '' }); }}>Add public announcement</button><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news and birthdays...' : 'Refresh suggestions'}</button></div>
       {!weeklyGames.length && <p>No NFL matchups are available for this week. Manual creation and suggestions need a loaded matchup.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
-      {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed storyline leads found in the available news window. Nothing has been invented; you can create an angle manually.</p>}
-      <div className="angle-suggestions">{suggestions.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small><a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read ESPN source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
+      {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news or birthday leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
+      <div className="angle-suggestions">{suggestions.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small><a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
       <h4>Saved drafts ({drafts.length})</h4>
       {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || 'Untitled angle'}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
       {form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
@@ -211,7 +219,7 @@ export default function TheAngle({ games, season, week, user }: Props) {
           {field('counterpoint', 'The other side / what could weaken this angle', 1000, true)}
           {field('pick', 'Admin pick (optional opinion; no guarantees)', 500, true)}
           {field('source_label', 'Source name', 120)}{field('source_url', 'Source link (HTTP or HTTPS)', 2048)}
-          <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I checked the source, matchup, and factual claims. This is editorial context, not a guaranteed outcome.</label>
+          <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I checked the source, matchup, and factual claims. Personal events are publicly announced or reliably reported, with unnecessary family details omitted. This is editorial context, not a guaranteed outcome.</label>
           <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : 'Publish angle'}</button><button type="button" onClick={() => openEditor(null)}>Cancel</button></div>
         </fieldset>
       </form>}
