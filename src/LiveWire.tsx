@@ -3,6 +3,7 @@ import { usePublicDataRevision } from './usePublicDataRevision';
 import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
+import { observePostViews } from './services/livewireViews';
 
 const postThemes = [
   { value: 'news', label: 'News', color: 'tnf' },
@@ -10,7 +11,7 @@ const postThemes = [
   { value: 'betting', label: 'Betting', color: 'mnf' },
 ] as const;
 type PostTheme = typeof postThemes[number]['value'];
-type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string };
+type Post = { id: string; author_id: string | null; author_name: string; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
 
@@ -36,6 +37,9 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   const [accessError, setAccessError] = useState('');
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
+  const [viewError, setViewError] = useState('');
+  const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
+  const feedElement = useRef<HTMLDivElement | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [limit, setLimit] = useState(20);
   const [hasMore, setHasMore] = useState(false);
@@ -164,6 +168,24 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
 
   const visiblePosts = linkedPost && linkedPost.id === postId && !posts.some((post) => post.id === postId)
     ? [linkedPost, ...posts] : posts;
+  useEffect(() => {
+    if (!feedElement.current || !supabase) return;
+    const client = supabase;
+    let active = true;
+    const stop = observePostViews(feedElement.current, async (id) => {
+      const { data, error } = await client.rpc('record_livewire_view', { post_id: id });
+      if (error) throw error;
+      const count = Number(data);
+      if (data === null || !Number.isSafeInteger(count) || count < 0) throw new Error('The server returned an invalid post view count.');
+      if (!active) return;
+      setViewCounts((previous) => ({ ...previous, [id]: Math.max(previous[id] ?? 0, count) }));
+      setViewError('');
+    }, (cause) => {
+      console.error('Could not record LIVEWIRE view', cause);
+      setViewError('Some post views could not be recorded. Reconnect or reopen LIVEWIRE to try again.');
+    });
+    return () => { active = false; stop(); };
+  }, []);
   const linkedOutsideFilter = linkedPost && themeFilters.length > 0
     && !themeFilters.some((theme) => linkedPost.themes?.includes(theme));
 
@@ -241,10 +263,11 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       <small>Select multiple to show posts with any selected theme.</small>
     </div>
     {linkedOutsideFilter && <p className="livewire-notice">The post opened from your link is shown even though it does not match these filters.</p>}
-    <div className="livewire-feed" aria-busy={!loaded && !error}>
+    {viewError && <p className="livewire-error" role="status">{viewError}</p>}
+    <div className="livewire-feed" ref={feedElement} aria-busy={!loaded && !error}>
       {!loaded && !error && <p>Loading LIVEWIRE...</p>}
       {loaded && !visiblePosts.length && <p className="livewire-empty">{themeFilters.length ? 'No posts match the selected themes. Select another theme or choose All posts.' : 'No posts yet. News and takes from GameWire admins will appear here.'}</p>}
-      {visiblePosts.map((post) => <article className={`livewire-post${post.id === postId ? ' livewire-post-target' : ''}`} key={post.id} ref={post.id === postId ? focusedPost : undefined} tabIndex={post.id === postId ? -1 : undefined} aria-label={post.id === postId ? 'Post opened from notification' : undefined}>
+      {visiblePosts.map((post) => <article data-post-id={post.id} className={`livewire-post${post.id === postId ? ' livewire-post-target' : ''}`} key={post.id} ref={post.id === postId ? focusedPost : undefined} tabIndex={post.id === postId ? -1 : undefined} aria-label={post.id === postId ? 'Post opened from notification' : undefined}>
         <span className="livewire-avatar" aria-hidden="true">{post.author_name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('').toUpperCase()}</span>
         <div className="livewire-post-content">
         <header><b>{post.author_name}</b><time dateTime={post.created_at}>{new Date(post.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{post.updated_at !== post.created_at ? ' · Edited' : ''}</time>
@@ -252,6 +275,9 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         </header>
         {post.title && <h3>{post.title}</h3>}
         <p>{post.body}</p>
+        <span className="livewire-views">{post.view_count === undefined && viewCounts[post.id] === undefined
+          ? 'Views unavailable'
+          : `${new Intl.NumberFormat().format(Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0))} ${Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0) === 1 ? 'view' : 'views'}`}</span>
         {!!post.image_paths?.length && <div className={`livewire-gallery livewire-gallery-${post.image_paths.length}`}>{post.image_paths.map((path, index) => <a key={path} href={photoUrl(path)} target="_blank" rel="noopener noreferrer" aria-label={`Open photo ${index + 1} for ${post.title ?? 'post'}`}><OfflineImage src={photoUrl(path)} alt={`${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}`} loading="lazy" onError={(event) => { event.currentTarget.alt = 'Photo unavailable'; }} /></a>)}</div>}
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">

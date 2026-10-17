@@ -173,6 +173,7 @@ button { color: inherit; }
 .livewire-post header { justify-content: flex-start; font-size: 12px; overflow-wrap: anywhere; }
 .livewire-post h3 { margin: 9px 0 6px; color: #edf2f8; font: 600 23px/1.25 var(--display); overflow-wrap: anywhere; }
 .livewire-post time { font-family: var(--mono); }
+.livewire-views { display: block; margin: 8px 0; color: #bbc7d9; font: 11px var(--mono); }
 .livewire-post p { font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .livewire-post a { display: inline-block; margin-bottom: 10px; color: #9db9df; font-size: 12px; }
 .livewire-post .livewire-actions { justify-content: flex-end; }

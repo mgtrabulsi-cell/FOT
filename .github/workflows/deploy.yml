@@ -28,7 +28,7 @@ jobs:
         uses: actions/configure-pages@v5
       - run: npm ci
       - name: Test offline persistence
-        run: node --test scripts/*offline*.test.mjs scripts/notification-routing.test.mjs
+        run: node --test scripts/*offline*.test.mjs scripts/notification-routing.test.mjs scripts/livewire-views.test.mjs
       - name: Build site
         run: npm run build
         env:

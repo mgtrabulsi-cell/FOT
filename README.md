@@ -77,6 +77,12 @@ Remove-Item Env:VITE_BASE_PATH
 
 Open `http://127.0.0.1:4173/FOT/`. Assets, the web app manifest, and the notification service worker stay within the deployed path. This static deployment does not require a Node.js server.
 
+## LIVEWIRE views
+
+Apply [`supabase/livewire-views.sql`](supabase/livewire-views.sql) after the LIVEWIRE schema and before deploying the view-count UI. Each post displays its shared view count. Guests, members, and admins count equally; the count increases when any part of a post enters the visible viewport, again after scrolling away/back, reopening LIVEWIRE, or returning to the visible browser tab. Feed polling, editing, and loading older posts do not recount posts that remain visible. Posts below the fold or in hidden tabs do not count. Offline appearances are not uploaded later, but a still-visible post counts on reconnect. Totals start at zero when installed; historical views cannot be reconstructed.
+
+The anonymous/authenticated increment RPC performs an atomic increment without granting clients permission to overwrite totals or edit posts. It stores only the aggregate count, not device identifiers, IP addresses, or viewer accounts. These are impressions, not unique viewers or fraud-resistant analytics: repeat visits and scripted requests can increase them. Failed writes are logged and shown in LIVEWIRE rather than displaying a fabricated increment. Run [`supabase/tests/livewire-views.sql`](supabase/tests/livewire-views.sql) for rollback-only database validation and `node --test scripts/livewire-views.test.mjs` for visibility lifecycle tests.
+
 ## Offline access
 
 After opening the production site online once, GameWire saves its app shell for offline launches, including from a phone's Home Screen. Once the offline worker controls the page, it proactively saves the displayed NFL week's game summaries, both teams' player/season stats, recent-game sources, team logos, and player faces, even for games and team tabs you have not opened. It repeats every five minutes while open, visible, and online, and retries on reconnect or when returning to the app after that interval. Saving runs quietly without an online save-status banner on the website or native apps. Existing live-score polling remains unchanged. Browsing The Wire, Stat Hub, and LIVEWIRE also saves their public responses. Offline browsing is read-only: private account data, favorites sync, sign-in, publishing, and new notifications require internet.
