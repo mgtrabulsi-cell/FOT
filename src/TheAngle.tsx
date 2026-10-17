@@ -10,6 +10,7 @@ import { fetchMatchupHistorySuggestions } from './services/angleHistory';
 import type { Game } from './services/sportsData';
 import { useAnalystReadObserver } from './useAnalystReadObserver';
 import type { AnalystSeen } from './useAnalystReadObserver';
+import { observePostViews } from './services/livewireViews';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -55,6 +56,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [accessError, setAccessError] = useState('');
+  const [viewError, setViewError] = useState('');
+  const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
@@ -207,6 +210,44 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     ...rows.filter((row) => row.id !== visibleLinked?.id && row.status === 'published' && (kind === 'all' || row.kind === kind)),
   ];
   const readObserver = useAnalystReadObserver('angle', onSeen, user?.id, published.map((angle) => angle.id).join('|'));
+  const publishedKey = published.map((angle) => angle.id).join('|');
+  useEffect(() => {
+    if (!readObserver.root.current || !supabase) return;
+    const client = supabase;
+    let active = true;
+    const stop = observePostViews(readObserver.root.current, async (id) => {
+      const result = await client.rpc('record_angle_view', { story_id: id });
+      if (result.error) throw result.error;
+      if (result.data !== null) {
+        const count = Number(result.data);
+        if (!Number.isSafeInteger(count) || count < 0) throw new Error('The server returned an invalid storyline view count.');
+        if (active) setViewCounts((previous) => ({ ...previous, [id]: Math.max(previous[id] ?? 0, count) }));
+      }
+      if (active) setViewError('');
+    }, (cause) => {
+      console.error('Could not record Angle view', cause);
+      if (active) setViewError('Some storyline views could not be recorded. Reconnect or reopen The Angle to retry.');
+    }, { minimumRatio: 0.01, bottomInset: 64, retryFailed: true });
+    return () => { active = false; stop(); };
+  }, [user?.id]);
+  useEffect(() => {
+    if (!admin || !supabase || !publishedKey) return;
+    let active = true;
+    void Promise.resolve(supabase.from('angle_view_counts').select('angle_id,view_count').in('angle_id', publishedKey.split('|'))).then(({ data, error }) => {
+      if (error) throw error;
+      const counts: Record<string, number> = Object.fromEntries(publishedKey.split('|').map((id) => [id, 0]));
+      for (const row of data ?? []) {
+        const count = Number(row.view_count);
+        if (!Number.isSafeInteger(count) || count < 0) throw new Error('The server returned an invalid storyline view count.');
+        counts[row.angle_id] = count;
+      }
+      if (active) { setViewCounts((previous) => Object.fromEntries(Object.entries(counts).map(([id, count]) => [id, Math.max(previous[id] ?? 0, count)]))); setViewError(''); }
+    }).catch((cause: unknown) => {
+      console.error('Could not load Angle view counts', cause);
+      if (active) setViewError('Could not load storyline view counts. Reopen The Angle to retry.');
+    });
+    return () => { active = false; };
+  }, [admin, publishedKey, refresh]);
   const drafts = rows.filter((row) => row.status === 'draft');
   const field = (key: 'title' | 'narrative' | 'pick', label: string, limit: number, multiline = false) => <label>{label}
     {multiline ? <textarea maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />
@@ -220,6 +261,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
     {readObserver.error && <p className="feed-warning" role="status">{readObserver.error}</p>}
+    {viewError && <p className="feed-warning" role="status">{viewError}</p>}
     {storyId && linkedError && <p className="feed-warning" role="alert">{linkedError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {storyId && !linkedError && linkedReady !== storyId && <p role="status">Loading your linked storyline...</p>}
     {storyId && linkedReady === storyId && !linkedStory && <p role="status">This storyline is no longer published. You can browse the current week's storylines below.</p>}
@@ -232,6 +274,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       {angle.evidence && <div className="angle-context"><h4>The supporting context</h4><p>{angle.evidence}</p></div>}
       {angle.counterpoint && <div className="angle-counterpoint"><h4>The other side</h4><p>{angle.counterpoint}</p></div>}
       {angle.pick && <div className="angle-pick"><h4>Admin pick · Opinion</h4><p>{angle.pick}</p></div>}
+      {admin && <span className="livewire-views">{viewCounts[angle.id] === undefined ? 'Views unavailable' : `${new Intl.NumberFormat().format(viewCounts[angle.id])} ${viewCounts[angle.id] === 1 ? 'view' : 'views'}`}</span>}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}
       {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>Edit angle</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
     </article>)}</div>

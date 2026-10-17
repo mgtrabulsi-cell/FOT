@@ -220,7 +220,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
   return <section className="favorable-matchups">
     <header className="favorable-matchups-heading">
       <div><span className="eyebrow">{season && week ? `${season} · WEEK ${week} · NFL` : 'NFL'}</span>
-        <div className="matchup-title-row"><h2>Admins Picks</h2>
+        <div className="matchup-title-row"><h2>Admins Top Performers</h2>
           {admin && loaded && <label className="search-field matchup-admin-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search players to publish" placeholder="Search players or teams..." value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} /></label>}
         </div><p>Admin-selected players, ordered within each position. Last-five-game averages, opponent defense ranks, and ESPN weekly PPR projections.</p>
       </div><span className="favorable-matchups-count">{picks.length} PLAYERS{draft && admin ? ' · DRAFT' : ''}</span>
@@ -255,7 +255,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
     {projectionError && <p className="feed-warning" role="alert">{projectionError}</p>}
     {averageError && <p className="feed-warning" role="alert">{averageError}</p>}
     <div ref={readObserver.root}>
-    {publishedVisible && !picks.length && <p className="nfl-empty-note" data-post-id={readKey('empty')}>No Admins Picks are published on this version of the weekly board.</p>}
+    {publishedVisible && !picks.length && <p className="nfl-empty-note" data-post-id={readKey('empty')}>No Admins Top Performers are published on this version of the weekly board.</p>}
     {loaded && <div className="favorable-matchup-groups">{matchupPositions.map((position) => {
       const group = picks.filter((pick) => pick.position === position);
       const stat = matchupStats[position];
