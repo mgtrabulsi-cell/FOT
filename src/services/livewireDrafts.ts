@@ -13,20 +13,40 @@ const stopped = new Set<string>();
 
 function transact<T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
-    const opening = indexedDB.open(database, 1);
+    let settled = false;
+    let connection: IDBDatabase | undefined;
+    let transaction: IDBTransaction | undefined;
+    const finish = (result: { value: T } | { error: unknown }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      connection?.close();
+      if ('error' in result) reject(result.error);
+      else resolve(result.value);
+    };
+    const timer = setTimeout(() => {
+      finish({ error: new Error('Draft storage did not respond. You can keep editing and retry saving.') });
+      transaction?.abort();
+    }, 5000);
+    let opening: IDBOpenDBRequest;
+    try { opening = indexedDB.open(database, 1); }
+    catch (error) { finish({ error }); return; }
     opening.onupgradeneeded = () => opening.result.createObjectStore('drafts');
-    opening.onerror = () => reject(opening.error);
-    opening.onblocked = () => reject(new Error('Draft storage is blocked by another open version of GameWire.'));
+    opening.onerror = () => finish({ error: opening.error });
+    opening.onblocked = () => finish({ error: new Error('Draft storage is blocked by another open version of GameWire.') });
     opening.onsuccess = () => {
       const db = opening.result;
+      if (settled) { db.close(); return; }
+      connection = db;
+      db.onversionchange = () => db.close();
       try {
         const tx = db.transaction('drafts', mode);
+        transaction = tx;
         const request = operation(tx.objectStore('drafts'));
-        tx.oncomplete = () => { db.close(); resolve(request.result); };
-        tx.onabort = () => { db.close(); reject(tx.error ?? request.error ?? new Error('Draft storage failed.')); };
+        tx.oncomplete = () => finish({ value: request.result });
+        tx.onabort = () => finish({ error: tx.error ?? request.error ?? new Error('Draft storage failed.') });
       } catch (error) {
-        db.close();
-        reject(error);
+        finish({ error });
       }
     };
   });
@@ -46,10 +66,18 @@ export function loadLivewireDraft(userId: string): Promise<LivewireDraft | undef
       || (value.editing !== null && typeof value.editing !== 'string')
       || !Array.isArray(value.themes) || !value.themes.every((theme) => ['news', 'fantasy', 'betting'].includes(theme))
       || !Array.isArray(value.photos) || value.photos.length > 4
-      || !value.photos.every((photo) => photo && (typeof photo.path === 'string' || photo.file instanceof File))) {
+      || !value.photos.every((photo) => photo && (typeof photo.path === 'string' || photo.file instanceof Blob))) {
       throw new Error('The saved LIVEWIRE draft is invalid. It was not overwritten.');
     }
-    return value;
+    return {
+      ...value,
+      photos: value.photos.map((photo, index) => {
+        if (!photo.file || photo.file instanceof File) return photo;
+        const blob: Blob = photo.file;
+        const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[blob.type] ?? 'bin';
+        return { ...photo, file: new File([blob], `restored-photo-${index + 1}.${extension}`, { type: blob.type }) };
+      }),
+    };
   });
 }
 

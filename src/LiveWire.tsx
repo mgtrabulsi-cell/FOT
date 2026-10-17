@@ -53,6 +53,8 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [draftReady, setDraftReady] = useState(false);
   const [draftError, setDraftError] = useState('');
+  const [draftRestoreFailed, setDraftRestoreFailed] = useState(false);
+  const [draftRetry, setDraftRetry] = useState(0);
   const [expandedPhoto, setExpandedPhoto] = useState<{ src: string; alt: string } | null>(null);
   const previews = useRef(new Set<string>());
   useEffect(() => () => { previews.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
@@ -102,9 +104,11 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   useEffect(() => {
     if (!user) return;
     let active = true;
+    setDraftReady(false);
     void loadLivewireDraft(user.id).then((draft) => {
       if (!active) return;
       if (draft) {
+        resetPhotos();
         setTitle(draft.title); setBody(draft.body); setSource(draft.source); setThemes(draft.themes); setEditing(draft.editing);
         setPhotos(draft.photos.map((photo) => {
           const preview = photo.file ? URL.createObjectURL(photo.file) : photoUrl(photo.path ?? '');
@@ -114,16 +118,20 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         setNotice('Your saved draft was restored on this device.');
       }
       setDraftReady(true);
+      setDraftRestoreFailed(false);
+      setDraftError('');
     }).catch((cause: unknown) => {
       if (active) {
         console.error('Could not restore LIVEWIRE draft', cause);
-        setDraftError('Could not restore your saved draft. Reopen LIVEWIRE to retry before writing a new post.');
+        setDraftError('Could not restore your saved draft. You can still edit below, but automatic saving is paused to protect the previous copy. Retry restoring it, or discard it to start a new saved draft.');
+        setDraftRestoreFailed(true);
+        setDraftReady(true);
       }
     });
     return () => { active = false; };
-  }, [user?.id]);
+  }, [user?.id, draftRetry]);
   useEffect(() => {
-    if (!user || !draftReady) return;
+    if (!user || !draftReady || draftRestoreFailed) return;
     let active = true;
     void saveLivewireDraft(user.id, {
       title, body, source, themes, editing, photos: photos.map(({ path, file }) => ({ path, file })),
@@ -132,7 +140,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
       if (active) setDraftError('Your latest draft changes could not be saved on this device. Keep this page open and try again.');
     });
     return () => { active = false; };
-  }, [user?.id, draftReady, title, body, source, themes, editing, photos]);
+  }, [user?.id, draftReady, draftRestoreFailed, title, body, source, themes, editing, photos]);
 
   useEffect(() => {
     let active = true;
@@ -247,14 +255,22 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
   return <section className="livewire-panel" aria-labelledby="livewire-heading">
     <header className="livewire-heading"><div><span className="eyebrow">FROM THE GAMEWIRE DESK</span><h2 id="livewire-heading">LIVEWIRE</h2></div><span>{role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'News & takes'}</span></header>
     {(error || accessError) && <p className="livewire-error" role="alert">{error || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
-    {draftError && <p className="livewire-error" role="alert">{draftError}</p>}
+    {draftError && <div className="livewire-error" role="alert"><p>{draftError}</p><button type="button" disabled={busy} onClick={() => {
+      if (draftRestoreFailed) {
+        if ((title || body || photos.length || source || themes.length || editing) && !window.confirm('Retry restoring the saved draft? This replaces the text currently in the editor if restoration succeeds.')) return;
+        setDraftRetry((value) => value + 1);
+      } else if (user) {
+        void saveLivewireDraft(user.id, { title, body, source, themes, editing, photos: photos.map(({ path, file }) => ({ path, file })) })
+          .then(() => setDraftError('')).catch((cause: unknown) => { console.error('Could not retry draft saving', cause); setDraftError('Draft saving still failed. Your text remains editable; keep this page open or copy your text before leaving.'); });
+      }
+    }}>{draftRestoreFailed ? 'Retry restoring draft' : 'Retry saving draft'}</button></div>}
     {role && !draftReady && !draftError && <p role="status">Restoring your saved draft...</p>}
     {role && draftReady && <form className="livewire-composer" onSubmit={(event) => {
       event.preventDefault();
       if (!supabase || busy) return;
       if (source.trim() && !safeNewsLink(source.trim())) { setActionError('Use a valid http or https news link.'); return; }
       void act(savePost, () => {
-        resetPhotos(); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setNotice(editing ? 'Post updated.' : 'Post published.');
+        resetPhotos(); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setDraftRestoreFailed(false); setNotice(editing ? 'Post updated.' : 'Post published.');
       });
     }}>
       <label htmlFor="livewire-title">{editing ? 'Edit subject / title' : 'Subject / title'}</label>
@@ -289,7 +305,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
         setPhotos((current) => current.filter((_, item) => item !== index));
       }}>Remove photo {index + 1}</button></div>)}</div>}
-      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => { if (window.confirm('Discard this saved draft?')) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); } }}>{editing ? 'Cancel edit' : 'Discard draft'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
+      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => { if (window.confirm('Discard this saved draft?')) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setDraftRestoreFailed(false); } }}>{editing ? 'Cancel edit' : 'Discard draft'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
@@ -322,7 +338,7 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         {!!post.image_paths?.length && <div className={`livewire-gallery livewire-gallery-${post.image_paths.length}`}>{post.image_paths.map((path, index) => <button type="button" key={path} onClick={() => setExpandedPhoto({ src: photoUrl(path), alt: `${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}` })} aria-label={`Enlarge photo ${index + 1} for ${post.title ?? 'post'}`}><OfflineImage src={photoUrl(path)} alt={`${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}`} loading="lazy" onError={(event) => { event.currentTarget.alt = 'Photo unavailable'; }} /></button>)}</div>}
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
-          <button disabled={busy || !draftReady} onClick={() => { if ((title || body || source || themes.length || photos.length) && !window.confirm('Replace your saved draft with this post?')) return; resetPhotos(); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
+          <button disabled={busy || !draftReady} onClick={() => { if ((draftRestoreFailed || title || body || source || themes.length || photos.length) && !window.confirm('Replace your saved draft with this post?')) return; resetPhotos(); setDraftRestoreFailed(false); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {
             if (editing === post.id) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); }
             setNotice('Post deleted.');

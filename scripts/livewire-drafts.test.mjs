@@ -4,9 +4,11 @@ import { loadLivewireDraft, saveLivewireDraft, deleteLivewireDraft } from '../sr
 
 const records = new Map();
 let fail = false;
+let stalled = false;
 globalThis.indexedDB = {
   open() {
     const opening = {};
+    if (stalled) return opening;
     queueMicrotask(() => {
       opening.result = {
         close() {},
@@ -69,6 +71,31 @@ test('Storage errors reject explicitly without poisoning later successful saves'
   fail = false;
   await saveLivewireDraft('failure', draft);
   assert.equal((await loadLivewireDraft('failure')).body, draft.body);
+});
+
+test('Mobile storage restoring a File as a Blob preserves its bytes and restores an uploadable File', async () => {
+  records.set('mobile-blob', { ...draft, photos: [{ file: new Blob(['mobile photo'], { type: 'image/png' }) }] });
+  const restored = await loadLivewireDraft('mobile-blob');
+  assert.ok(restored.photos[0].file instanceof File);
+  assert.equal(restored.photos[0].file.type, 'image/png');
+  assert.equal(await restored.photos[0].file.text(), 'mobile photo');
+  assert.match(restored.photos[0].file.name, /\.png$/);
+});
+
+test('Invalid stored drafts reject without overwriting their recoverable text', async () => {
+  const invalid = { ...draft, photos: [{ file: {} }] };
+  records.set('invalid', invalid);
+  await assert.rejects(loadLivewireDraft('invalid'), /invalid/);
+  assert.equal(records.get('invalid').body, draft.body);
+});
+
+test('An unresponsive mobile database times out and later requests can recover', async () => {
+  stalled = true;
+  const pending = loadLivewireDraft('stalled');
+  await assert.rejects(pending, /did not respond/);
+  stalled = false;
+  await saveLivewireDraft('stalled', draft);
+  assert.equal((await loadLivewireDraft('stalled')).title, draft.title);
 });
 
 test('Account deletion clears its draft, preserves other accounts and prevents late writes', async () => {
