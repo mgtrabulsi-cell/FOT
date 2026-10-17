@@ -258,7 +258,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, on
       <h4>Saved drafts ({drafts.length})</h4>
       {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || 'Untitled angle'}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
       {form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
-        <h3>{form.id ? 'Edit storyline' : 'New storyline'}</h3><p>Draft changes are private. First publication sends an ADMIN'S STORYLINE notification to enabled devices. Edits and republication do not send another alert.</p>
+        <h3>{form.id ? 'Edit storyline' : 'New storyline'}</h3><p>Draft changes are private. First publication sends a SUNDAY SCRIPT: Headline notification to enabled devices. Edits and republication do not send another alert.</p>
         <fieldset disabled={busy}>
           <label>Matchup<select value={form.game_id} onChange={(event) => {
             const game = weeklyGames.find((item) => item.id === event.target.value);

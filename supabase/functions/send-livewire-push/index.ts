@@ -42,7 +42,7 @@ Deno.serve(async (request: Request) => {
             }
           }
           await sendWebPush(pushServer, target.subscription, {
-            title: delivery.angle_id ? `ADMIN'S STORYLINE - ${delivery.subject}` : `${delivery.primary_theme?.toUpperCase() ?? 'LIVEWIRE'}: ${delivery.subject}`,
+            title: delivery.angle_id ? `SUNDAY SCRIPT: ${delivery.subject}` : `${delivery.primary_theme?.toUpperCase() ?? 'LIVEWIRE'}: ${delivery.subject}`,
             body: '',
             url: new URL(delivery.angle_id ? `#analyst-desk/story/${delivery.angle_id}` : `#livewire/post/${delivery.post_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
             tag: delivery.angle_id ? `gamewire-storyline-${delivery.angle_id}` : `gamewire-livewire-${delivery.post_id}`,

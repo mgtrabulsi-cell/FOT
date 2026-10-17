@@ -71,7 +71,7 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
     storyline = true;
     assert((await invoke()).status === 200, 'Storyline delivery succeeds');
     const story = payloads[payloads.length - 1];
-    assert(story.title === "ADMIN'S STORYLINE - Player news" && story.body === '', 'Storyline alert uses exact requested title and no body');
+    assert(story.title === 'SUNDAY SCRIPT: Player news' && story.body === '', 'Storyline alert uses exact requested title and no body');
     assert(story.url === 'https://mgtrabulsi-cell.github.io/FOT/#analyst-desk/story/story-123' && story.tag === 'gamewire-storyline-story-123', 'Storyline opens its own post and uses a stable tag');
     published = false;
     const beforeUnpublished = payloads.length;
