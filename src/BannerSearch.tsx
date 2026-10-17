@@ -9,13 +9,20 @@ interface BannerSearchProps {
 
 export default function BannerSearch({ kind, query, onQueryChange }: BannerSearchProps) {
   const [text, setText] = useState('');
+  const [expanded, setExpanded] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const games = kind === 'games';
   const label = games ? 'Search NFL games' : 'Search NFL players or teams';
   const close = () => {
+    detailsRef.current?.querySelector('input')?.blur();
     if (detailsRef.current) detailsRef.current.open = false;
+    setExpanded(false);
     setText('');
   };
+
+  useEffect(() => {
+    if (expanded) detailsRef.current?.querySelector('input')?.focus();
+  }, [expanded]);
 
   useEffect(() => {
     const onOutsidePointer = (event: Event) => {
@@ -35,8 +42,8 @@ export default function BannerSearch({ kind, query, onQueryChange }: BannerSearc
     ref={detailsRef}
     className={`banner-search${query ? ' has-query' : ''}`}
     onToggle={(event) => {
-      if (event.currentTarget.open) event.currentTarget.querySelector('input')?.focus();
-      else setText('');
+      setExpanded(event.currentTarget.open);
+      if (!event.currentTarget.open) setText('');
     }}
     onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) close();
@@ -48,7 +55,7 @@ export default function BannerSearch({ kind, query, onQueryChange }: BannerSearc
     }}
   >
     <summary aria-label={label} title={label}><Search size={18} /></summary>
-    <div className="banner-search-panel">
+    {expanded && <div className="banner-search-panel">
       <label className="search-field">
         <input
           aria-label={games ? 'Search NFL games by team' : label}
@@ -70,6 +77,6 @@ export default function BannerSearch({ kind, query, onQueryChange }: BannerSearc
           detailsRef.current?.querySelector('input')?.focus();
         }}
       ><X size={16} /></button>
-    </div>
+    </div>}
   </details>;
 }
