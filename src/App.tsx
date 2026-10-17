@@ -9,7 +9,6 @@ import {
   ChevronUp,
   Clock3,
   LogOut,
-  Search,
   Star,
   Users,
   X,
@@ -23,6 +22,7 @@ import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
 import PullToRefresh from './PullToRefresh';
+import BannerSearch from './BannerSearch';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
@@ -1054,31 +1054,12 @@ function App() {
         </nav>
         <div className="topbar-right">
           {(view === 'Wire' || (view === 'Players' && playerMode === 'NFL')) && (
-            <details
+            <BannerSearch
               key={view}
-              className={`banner-search${(view === 'Wire' ? wireSearchQuery : playerSearchQuery) ? ' has-query' : ''}`}
-              onToggle={(event) => {
-                if (event.currentTarget.open) event.currentTarget.querySelector('input')?.focus();
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== 'Escape') return;
-                event.currentTarget.open = false;
-                event.currentTarget.querySelector('summary')?.focus();
-              }}
-            >
-              <summary aria-label={view === 'Wire' ? 'Search NFL games' : 'Search NFL players or teams'} title={view === 'Wire' ? 'Search NFL games' : 'Search NFL players or teams'}><Search size={18} /></summary>
-              <div className="banner-search-panel">
-                <label className="search-field">
-                  <input
-                    aria-label={view === 'Wire' ? 'Search NFL games by team' : 'Search NFL players or teams'}
-                    value={view === 'Wire' ? wireSearchQuery : playerSearchQuery}
-                    onChange={(event) => view === 'Wire' ? setWireSearchQuery(event.target.value) : setPlayerSearchQuery(event.target.value)}
-                    placeholder={view === 'Wire' ? 'Search teams…' : 'Search players or teams…'}
-                  />
-                </label>
-                <button className="icon-button" aria-label={view === 'Wire' ? 'Clear game search' : 'Clear player search'} disabled={!(view === 'Wire' ? wireSearchQuery : playerSearchQuery)} onClick={() => view === 'Wire' ? setWireSearchQuery('') : setPlayerSearchQuery('')}><X size={16} /></button>
-              </div>
-            </details>
+              kind={view === 'Wire' ? 'games' : 'players'}
+              query={view === 'Wire' ? wireSearchQuery : playerSearchQuery}
+              onQueryChange={view === 'Wire' ? setWireSearchQuery : setPlayerSearchQuery}
+            />
           )}
           {authUser ? (
             <>
