@@ -1146,8 +1146,11 @@ td:first-child { color: #828c84; }
 .livewire-themes { margin: 0; padding: 8px 0; border: 0; min-width: 0; }
 .offline-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px 20px; background: #381e05; color: #fde68a; border-bottom: 1px solid #f59e0b80; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .offline-status b { flex-shrink: 0; }
-.account-delete-setting { border: 1px solid #cc2633; }
-.account-delete-setting p { font-size: 13px; line-height: 1.5; }
+.account-delete-setting { padding: 12px; margin-top: 8px; border: 1px solid #cc2633; }
+.account-delete-setting p { margin: 0; font-size: 11px; line-height: 1.5; }
+.account-delete-setting > header { padding-bottom: 8px; }
+.account-delete-setting .account-setting-form { gap: 8px; padding-top: 8px; }
+.account-delete-setting .account-delete-button { justify-self: start; width: auto; font-size: 11px; padding: 8px 12px; }
 .account-delete-setting form { display: grid; gap: 12px; }
 .account-delete-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .account-delete-actions button, .account-delete-button { min-height: 44px; padding: 10px 14px; border-radius: 6px; }

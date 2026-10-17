@@ -133,6 +133,8 @@ This is native background-refresh groundwork, not an App Store approval guarante
 
 ### Permanent account deletion
 
+The compact delete-account section is last on Profile, below notifications, email, and password settings. Selecting Delete my account reveals the full deletion warnings and confirmation form; no account is deleted by opening it.
+
 Profile includes **Delete my account**, requiring the current password and an exact `DELETE` confirmation. The server independently verifies the session and password; it never trusts a user ID supplied by the browser. Deletion removes uploaded files (including unpublished photos) through the Storage API, then hard-deletes the auth user. A database trigger removes authored LIVEWIRE posts, and foreign-key cascades remove favorites, Locker Room history, roles, push subscriptions, queued deliveries, and deletion state. Shared weekly matchup boards remain with `updated_by` cleared. Losing the last owner account also removes its owner access; transfer/grant a replacement owner administratively before deleting if needed.
 
 Apply [`supabase/account-deletion.sql`](supabase/account-deletion.sql) after the existing schemas, then deploy `delete-account` with `supabase functions deploy delete-account`. Its gateway JWT check is disabled because the function validates the bearer token itself with Auth `getUser`; service credentials stay server-side. Deletion preparation is service-role-only and pauses further uploads until deletion finishes. Storage failures retain the account for retry and are explicitly reported; already removed photos cannot be restored. Existing notification and read-only offline features continue unchanged.
