@@ -2,10 +2,15 @@ import { supabase } from './supabaseClient';
 import { nativeApp, NativeOffline } from './nativeOffline';
 import { stopWebOffline } from './webOffline';
 import { stopRenderSnapshots } from './renderSnapshots';
+import { deleteLivewireDraft } from './livewireDrafts';
 
 export async function deleteAccount(password: string, confirmation: string): Promise<string[]> {
   if (!supabase) throw new Error('Account services are not configured.');
   if (!navigator.onLine) throw new Error('Reconnect to delete your account.');
+  const session = await supabase.auth.getSession();
+  if (session.error) throw session.error;
+  const userId = session.data.session?.user.id;
+  if (!userId) throw new Error('Sign in again before deleting your account.');
   const { data, error } = await supabase.functions.invoke('delete-account', { body: { password, confirmation } });
   if (error) {
     if ('context' in error && error.context instanceof Response) {
@@ -16,6 +21,7 @@ export async function deleteAccount(password: string, confirmation: string): Pro
   }
   if (data?.deleted !== true) throw new Error('The server did not confirm account deletion. Please retry.');
   const tasks: Array<{ name: string; run: () => Promise<void> }> = [
+    { name: 'unpublished LIVEWIRE draft', run: async () => { await deleteLivewireDraft(userId); } },
     { name: 'saved browsing', run: async () => {
       stopRenderSnapshots();
       if (nativeApp) await NativeOffline.clear();
