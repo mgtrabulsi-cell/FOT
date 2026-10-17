@@ -29,6 +29,8 @@ import { usePublicDataRevision } from './usePublicDataRevision';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
+import { connectMedianNavigation, hashForView, syncMedianTab, viewFromHash } from './services/medianNavigation';
+import type { AppView } from './services/medianNavigation';
 
 
 const guestFavoriteStorageKey = 'fieldhouse:favorites:v1';
@@ -523,7 +525,20 @@ function App() {
   const [savedGuestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
   const guestMode = savedGuestMode || !online;
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
-  const [view, setView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile'>(() => window.location.hash.startsWith('#livewire') ? 'LiveWire' : 'Wire');
+  const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
+  const viewRef = useRef(view);
+  const previousView = useRef(view);
+  viewRef.current = view;
+  useEffect(() => connectMedianNavigation(() => viewRef.current), []);
+  useEffect(() => {
+    const hash = hashForView(view, window.location.hash);
+    if (previousView.current !== view && hash !== window.location.hash) {
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${hash}`);
+      setNotificationHash(hash);
+    }
+    previousView.current = view;
+    syncMedianTab(view);
+  }, [view]);
   useEffect(() => {
     const openNotification = () => {
       setNotificationHash(window.location.hash);
@@ -539,6 +554,13 @@ function App() {
           setWirePlayerCard(null);
         }
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        const nextView = viewFromHash(window.location.hash);
+        if (nextView) {
+          if (nextView === 'Players') setPlayerMode('NFL');
+          setView(nextView);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       }
     };
     const onNotification = (event: MessageEvent) => {

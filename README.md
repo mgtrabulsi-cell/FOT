@@ -31,6 +31,8 @@ On mobile, The Wire player box scores place each player's labeled stats on one c
 
 The Wire's team/game search and Stat Hub's NFL player/team search open from a compact search icon in the top banner, with separate queries for each view. An indicator marks an active filter; the field has a clear action, and Escape closes it without removing the filter.
 
+Median apps use native bottom tabs for The Wire, Stat Hub, LIVEWIRE, and Locker Room. The embedded Median bridge sets the menu and synchronizes the selected tab without reloading the webview; the website's section tabs hide only after the bridge accepts the menu. The logo, search, and account controls stay at the top. Normal browsers keep the website navigation. Section links use `#wire`, `#stat-hub`, `#livewire`, and `#locker-room`; game/post notification links remain supported. Profile pages deselect the native tabs. Enable Median's Bottom Tab Bar in App Studio and rebuild the wrapper; on-device iOS/Android verification is still required.
+
 The Wire and Stat Hub game wheels both show color-coded TNF, SNF, and MNF badges for primetime games, identified by kickoff time in Eastern Time.
 
 Favorite NFL teams keep the order set in **Locker Room → Following → Teams**. Use the up/down controls to reorder them; the top team’s matchup is featured when it is live, or when no other NFL game is live. Once that matchup is final, the next later primetime game in the selected week is featured.

@@ -30,6 +30,7 @@ button { color: inherit; }
 .topbar .brand-logo { width: 72px; height: 48px; mix-blend-mode: lighten; }
 .brand-mark { width: 31px; height: 31px; color: #172033; background: var(--lime); display: grid; place-items: center; border-radius: 4px; }
 .primary-nav { align-self: stretch; display: flex; gap: 28px; }
+.median-native-tabs .topbar .primary-nav { display: none; }
 .primary-nav button { position: relative; padding: 0 2px; border: 0; background: transparent; color: #bec9da; font-size: 13px; font-weight: 600; cursor: pointer; }
 .primary-nav button.active { color: #fff; }
 .primary-nav button.active::after { content: ''; position: absolute; height: 2px; left: 0; right: 0; bottom: 0; background: var(--lime); }
