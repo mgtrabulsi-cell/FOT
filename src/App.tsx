@@ -32,7 +32,7 @@ import { usePublicDataRevision } from './usePublicDataRevision';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
-import { connectMedianNavigation, hashForView, syncMedianTab, viewFromHash } from './services/medianNavigation';
+import { connectMedianNavigation, hashForView, viewFromHash } from './services/medianNavigation';
 import type { AppView } from './services/medianNavigation';
 
 
@@ -529,10 +529,8 @@ function App() {
   const guestMode = savedGuestMode || !online;
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
-  const viewRef = useRef(view);
   const previousView = useRef(view);
-  viewRef.current = view;
-  useEffect(() => connectMedianNavigation(() => viewRef.current), []);
+  useEffect(() => connectMedianNavigation(), []);
   useEffect(() => {
     const hash = hashForView(view, window.location.hash);
     if (previousView.current !== view && hash !== window.location.hash) {
@@ -540,7 +538,6 @@ function App() {
       setNotificationHash(hash);
     }
     previousView.current = view;
-    syncMedianTab(view);
   }, [view]);
   useEffect(() => {
     const openNotification = () => {
