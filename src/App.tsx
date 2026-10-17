@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
   Activity,
+  ChartColumn,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -10,7 +11,9 @@ import {
   LogOut,
   Search,
   Star,
+  Users,
   X,
+  Zap,
 } from 'lucide-react';
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
 import { readGameDetailsSnapshot, readRenderSnapshot } from './services/renderSnapshots';
@@ -1046,10 +1049,10 @@ function App() {
           <span>GAMEWIRE</span>
         </a>
         <nav className="primary-nav" aria-label="Main navigation">
-          <button className={view === 'Wire' ? 'active' : ''} onClick={openWireTab}>The Wire</button>
-          <button className={view === 'Players' ? 'active' : ''} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}>Stat Hub</button>
-          <button className={view === 'LiveWire' ? 'active' : ''} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>LIVEWIRE</button>
-          <button className={view === 'Den' ? 'active' : ''} onClick={() => setView('Den')}>Locker Room</button>
+          <button className={view === 'Wire' ? 'active' : ''} aria-current={view === 'Wire' ? 'page' : undefined} onClick={openWireTab}><Activity size={20} aria-hidden="true" /><span>The Wire</span></button>
+          <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
+          <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><Zap size={20} aria-hidden="true" /><span>LIVEWIRE</span></button>
+          <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </nav>
         <div className="topbar-right">
           {(view === 'Wire' || (view === 'Players' && playerMode === 'NFL')) && (
