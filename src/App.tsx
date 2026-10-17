@@ -22,6 +22,7 @@ import { useLockerRoomHistory } from './useLockerRoomHistory';
 import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory } from './useLockerRoomHistory';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
+import PullToRefresh from './PullToRefresh';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
@@ -1093,6 +1094,7 @@ function App() {
         </div>
       </header>
       <main className={view === 'Players' ? 'page-wrap players-zoom' : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
+        <PullToRefresh />
         <div className="page-heading">
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
