@@ -18,11 +18,17 @@ export default function BannerSearch({ kind, query, onQueryChange }: BannerSearc
   };
 
   useEffect(() => {
-    const onOutsidePointer = (event: PointerEvent) => {
+    const onOutsidePointer = (event: Event) => {
       if (event.target instanceof Node && !detailsRef.current?.contains(event.target)) close();
     };
-    document.addEventListener('pointerdown', onOutsidePointer);
-    return () => document.removeEventListener('pointerdown', onOutsidePointer);
+    document.addEventListener('pointerdown', onOutsidePointer, true);
+    document.addEventListener('touchstart', onOutsidePointer, { capture: true, passive: true });
+    document.addEventListener('click', onOutsidePointer, true);
+    return () => {
+      document.removeEventListener('pointerdown', onOutsidePointer, true);
+      document.removeEventListener('touchstart', onOutsidePointer, true);
+      document.removeEventListener('click', onOutsidePointer, true);
+    };
   }, []);
 
   return <details

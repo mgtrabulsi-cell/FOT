@@ -45,6 +45,7 @@ button { color: inherit; }
 .banner-search.has-query summary::after { content: ''; position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: #cc2633; }
 .banner-search[open] summary { z-index: 21; }
 .banner-search-panel { position: absolute; top: 50%; transform: translateY(-50%); right: 0; z-index: 20; display: flex; align-items: center; gap: 4px; width: 280px; height: 44px; padding: 0 48px 0 8px; border: 1px solid #35445b; border-radius: 6px; background: #101a29; }
+.banner-search:not([open]) .banner-search-panel { display: none; }
 .banner-search-panel .search-field { flex: 1; min-width: 0; }
 .banner-search-panel .search-field input { color: #fff; caret-color: #fff; }
 .banner-search-panel .icon-button { min-width: 44px; min-height: 44px; }
