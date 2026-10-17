@@ -332,9 +332,9 @@ export default function LiveWire({ user, postId = null }: { user: User | null; p
         </header>
         {post.title && <h3>{post.title}</h3>}
         <p>{post.body}</p>
-        <span className="livewire-views">{post.view_count === undefined && viewCounts[post.id] === undefined
+        {(role === 'owner' || role === 'admin') && <span className="livewire-views">{post.view_count === undefined && viewCounts[post.id] === undefined
           ? 'Views unavailable'
-          : `${new Intl.NumberFormat().format(Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0))} ${Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0) === 1 ? 'view' : 'views'}`}</span>
+          : `${new Intl.NumberFormat().format(Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0))} ${Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0) === 1 ? 'view' : 'views'}`}</span>}
         {!!post.image_paths?.length && <div className={`livewire-gallery livewire-gallery-${post.image_paths.length}`}>{post.image_paths.map((path, index) => <button type="button" key={path} onClick={() => setExpandedPhoto({ src: photoUrl(path), alt: `${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}` })} aria-label={`Enlarge photo ${index + 1} for ${post.title ?? 'post'}`}><OfflineImage src={photoUrl(path)} alt={`${post.title ?? 'LIVEWIRE post'} - photo ${index + 1}`} loading="lazy" onError={(event) => { event.currentTarget.alt = 'Photo unavailable'; }} /></button>)}</div>}
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
