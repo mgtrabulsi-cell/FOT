@@ -499,7 +499,7 @@ function articleMatchesFavorite(article: Record<string, unknown>, favorite: Favo
   return story.includes(favorite.name.toLowerCase()) || (nickname.length > 2 && story.includes(nickname));
 }
 
-export async function fetchFavoriteNews(favorites: FavoriteTarget[], signal?: AbortSignal): Promise<DenNewsItem[]> {
+export async function fetchFavoriteNews(favorites: FavoriteTarget[], signal?: AbortSignal, requireAllFeeds = false): Promise<DenNewsItem[]> {
   const results = await Promise.allSettled(favorites.map(async (favorite) => {
     const newsTeamId = favorite.type === 'team' ? favorite.id : favorite.teamId;
     const url = newsTeamId
@@ -528,6 +528,10 @@ export async function fetchFavoriteNews(favorites: FavoriteTarget[], signal?: Ab
       });
   }));
 
+  if (requireAllFeeds) {
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  }
   return results.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
     .sort((first, second) => Date.parse(second.published) - Date.parse(first.published));
 }

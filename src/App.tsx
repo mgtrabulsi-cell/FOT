@@ -28,6 +28,7 @@ import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
+import TheAngle from './TheAngle';
 import { useOnlineStatus } from './OfflineStatus';
 import { useOfflineSnapshots } from './useOfflineSnapshots';
 import { usePublicDataRevision } from './usePublicDataRevision';
@@ -587,7 +588,7 @@ function App() {
     };
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den'>('Wire');
-  const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups'>('NFL');
+  const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups' | 'Angle'>('NFL');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
@@ -1149,9 +1150,12 @@ function App() {
             <div className="player-mode-tabs" role="tablist" aria-label="Stat Hub view">
               <button role="tab" aria-selected={playerMode === 'NFL'} className={playerMode === 'NFL' ? 'active' : ''} onClick={() => setPlayerMode('NFL')}>NFL game players</button>
               <button role="tab" aria-selected={playerMode === 'Matchups'} className={playerMode === 'Matchups' ? 'active' : ''} onClick={() => setPlayerMode('Matchups')}>Favorable matchups</button>
+              <button role="tab" aria-selected={playerMode === 'Angle'} className={playerMode === 'Angle' ? 'active' : ''} onClick={() => setPlayerMode('Angle')}>The Angle</button>
             </div>
             {playerMode === 'NFL' ? (
               <NFLPlayersDirectory games={games} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
+            ) : playerMode === 'Angle' ? (
+              <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />
             ) : (
               <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />
             )}

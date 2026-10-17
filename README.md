@@ -223,6 +223,16 @@ Selecting an NFL game also opens team player lists and a trends view with the fe
 
 The ESPN feeds used here are public, undocumented endpoints with no availability or latency guarantee. For a production launch, use a licensed sports-data provider and confirm its coverage, terms, and update guarantees.
 
+## The Angle
+
+**Stat Hub → The Angle** is a weekly NFL editorial board, separate from Favorable matchups. Public readers can filter player and team-matchup angles. Cards show an original storyline, supporting context, a counterpoint, a source link, and an optional clearly labeled admin-opinion pick. Narratives and past results are not projections, guaranteed outcomes, or betting recommendations.
+
+LIVEWIRE owners/admins share a private editorial desk. ESPN team news for the selected week's matchups is automatically scanned for keyword leads (former-team reunions, head-to-head history, rivalries/rematches, and milestones/comebacks). Only dated articles within seven days before through one day after the matchup are suggested. A keyword match is an **unverified lead**, not evidence that the claim applies to the selected game. Admins must check the actual article, identities, opponent, date, sample size, and availability, write their own summary, and confirm review before publishing. No AI service, paid API, or automatic pick generation is used. No available leads is a valid empty state; partial feed failures are shown explicitly. ESPN's current news feed is not a historical news archive.
+
+Use **Review this lead** or **Create an angle**, then **Save private draft** or **Publish angle**. Drafts are stored server-side and visible only to admins; unsaved editor changes must be saved before switching tabs/weeks. Edits do not auto-publish. Moving a published angle to drafts explicitly unpublishes it. Concurrent edits use revision checks instead of overwriting another admin's work. Boards refresh every 30 seconds; this feature does not send push notifications. Authored angles cascade on account deletion. Private drafts are not included in the public offline cache.
+
+Apply [`supabase/the-angle.sql`](supabase/the-angle.sql) after LIVEWIRE and account-deletion schemas **before deploying** the UI. Run rollback-only database checks in [`supabase/tests/the-angle.sql`](supabase/tests/the-angle.sql) and `node --test scripts/the-angle.test.mjs` for source validation, suggestions, and publication requirements.
+
 ## Favorites and Your Locker Room
 
 In **Following → Players**, use the position toggles (All, QB, RB, WR, TE, plus any additional saved positions) to filter the followed-player list and its game-stat rows. Select the active position again or choose All to reset. Players without position data appear under Unknown. This does not change favorites, team order, weekly history, Latest plays, or Latest updates.
