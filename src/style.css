@@ -172,6 +172,11 @@ button { color: inherit; }
 .livewire-avatar { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: #24334a; color: #e5eaf3; font-size: 11px; font-weight: 700; }
 .livewire-post-content { min-width: 0; }
 .livewire-photo-help { color: #bbc7d9; font-size: 11px; }
+.livewire-composer input[type="file"] { padding: 6px; color: #bbc7d9; }
+.livewire-composer input[type="file"]::file-selector-button { min-height: 44px; margin-right: 12px; padding: 8px 14px; border: 1px solid #8198bd; border-radius: 4px; background: #303d52; color: #e5eaf3; font: inherit; font-weight: 600; cursor: pointer; }
+.livewire-composer input[type="file"]:not(:disabled)::file-selector-button:hover { background: #40536f; border-color: #bcc8da; }
+.livewire-composer input[type="file"]:disabled { opacity: .5; cursor: not-allowed; }
+.livewire-composer input[type="file"]:disabled::file-selector-button { cursor: not-allowed; }
 .livewire-photo-previews, .livewire-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0; max-width: 760px; }
 .livewire-photo-previews > div { min-width: 0; display: grid; gap: 6px; }
 .livewire-photo-previews img { width: 100%; height: 140px; object-fit: contain; background: #101a29; border-radius: 4px; }
