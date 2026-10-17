@@ -1,7 +1,7 @@
-export type AppView = 'Wire' | 'Players' | 'LiveWire' | 'Den' | 'Profile';
+export type AppView = 'Wire' | 'Players' | 'Analyst' | 'LiveWire' | 'Den' | 'Profile';
 
 const routes: Record<AppView, string> = {
-  Wire: '#wire', Players: '#stat-hub', LiveWire: '#livewire', Den: '#locker-room', Profile: '#profile',
+  Wire: '#wire', Players: '#stat-hub', Analyst: '#analyst-desk', LiveWire: '#livewire', Den: '#locker-room', Profile: '#profile',
 };
 
 export function viewFromHash(hash: string): AppView | null {

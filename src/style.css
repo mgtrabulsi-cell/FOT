@@ -474,8 +474,8 @@ button { color: inherit; }
   .angle-heading { flex-direction: column; gap: 8px; }
   .angle-cards, .angle-suggestions { grid-template-columns: minmax(0, 1fr); }
   .angle-card, .angle-admin { padding: 14px; }
-  .player-mode-tabs[aria-label="Stat Hub view"] { gap: 14px; }
-  .player-mode-tabs[aria-label="Stat Hub view"] button { min-height: 44px; }
+  .player-mode-tabs[aria-label="Analyst Desk view"] { gap: 14px; }
+  .player-mode-tabs[aria-label="Analyst Desk view"] button { min-height: 44px; }
 }
 .nfl-players-directory { display: grid; gap: 14px; }
 .nfl-directory-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; }

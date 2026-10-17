@@ -567,7 +567,6 @@ function App() {
       } else {
         const nextView = viewFromHash(window.location.hash);
         if (nextView) {
-          if (nextView === 'Players') setPlayerMode('NFL');
           setView(nextView);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -587,8 +586,8 @@ function App() {
       navigator.serviceWorker?.removeEventListener('message', onNotification);
     };
   }, []);
-  const [profileReturnView, setProfileReturnView] = useState<'Wire' | 'Players' | 'LiveWire' | 'Den'>('Wire');
-  const [playerMode, setPlayerMode] = useState<'NFL' | 'Matchups' | 'Angle'>('NFL');
+  const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
+  const [analystMode, setAnalystMode] = useState<'Matchups' | 'Angle'>('Matchups');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
@@ -1030,7 +1029,6 @@ function App() {
   };
   const openGamePlayers = (game: Game) => {
     setSelectedGameId(game.id);
-    setPlayerMode('NFL');
     setView('Players');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1057,12 +1055,13 @@ function App() {
         </a>
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={view === 'Wire' ? 'active' : ''} aria-current={view === 'Wire' ? 'page' : undefined} onClick={openWireTab}><Activity size={20} aria-hidden="true" /><span>The Wire</span></button>
-          <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => { setPlayerMode('NFL'); setView('Players'); }}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
+          <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => setView('Players')}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
+          <button className={view === 'Analyst' ? 'active' : ''} aria-current={view === 'Analyst' ? 'page' : undefined} onClick={() => { setView('Analyst'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10h18M4 10v11M20 10v11M14 10v8h6M16 14h2M7 10V3h10v7M10 6h4" /></svg><span>Analyst Desk</span></button>
           <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="livewire-nav-icon"><Zap size={20} aria-hidden="true" />{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span><span>LIVEWIRE</span></button>
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </nav>
         <div className="topbar-right">
-          {(view === 'Wire' || (view === 'Players' && playerMode === 'NFL')) && (
+          {(view === 'Wire' || view === 'Players') && (
             <BannerSearch
               key={view}
               kind={view === 'Wire' ? 'games' : 'players'}
@@ -1083,15 +1082,15 @@ function App() {
           )}
         </div>
       </header>
-      <main className={view === 'Players' ? 'page-wrap players-zoom' : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
+      <main className={view === 'Players' || view === 'Analyst' ? 'page-wrap players-zoom' : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
         <PullToRefresh />
         {livewireUnread.error && <p className="feed-warning" role="status">{livewireUnread.error}</p>}
         <div className="page-heading">
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
             {view !== 'Wire' && <>
-              <h1>{view === 'LiveWire' ? 'LIVEWIRE' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : 'Stat Hub'}</h1>
-              <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>
+              <h1>{view === 'LiveWire' ? 'LIVEWIRE' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : view === 'Analyst' ? 'Analyst Desk' : 'Stat Hub'}</h1>
+              <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : view === 'Analyst' ? 'Admin picks and the stories behind the matchups.' : 'The numbers behind the names.'}</p>
             </>}
           </div>
           <div className="heading-actions">
@@ -1145,16 +1144,15 @@ function App() {
           <LiveWire key={authUser?.id ?? 'guest'} user={authUser} onPostSeen={livewireUnread.markRead} postId={/^#livewire\/post\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
         ) : view === 'Den' ? (
           <TheDen favorites={favorites} games={lockerRoomReady ? games : []} items={lockerRoomHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={lockerRoomHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={lockerRoomHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={lockerRoomHistory.loading} historyError={lockerRoomHistory.error} signedIn={!!authUser} onRetryHistory={lockerRoomHistory.retry} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
+        ) : view === 'Players' ? (
+          <NFLPlayersDirectory games={games} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
         ) : (
           <>
-            <div className="player-mode-tabs" role="tablist" aria-label="Stat Hub view">
-              <button role="tab" aria-selected={playerMode === 'NFL'} className={playerMode === 'NFL' ? 'active' : ''} onClick={() => setPlayerMode('NFL')}>NFL Players</button>
-              <button role="tab" aria-selected={playerMode === 'Matchups'} className={playerMode === 'Matchups' ? 'active' : ''} onClick={() => setPlayerMode('Matchups')}>Admins Picks</button>
-              <button role="tab" aria-selected={playerMode === 'Angle'} className={playerMode === 'Angle' ? 'active' : ''} onClick={() => setPlayerMode('Angle')}>The Angle</button>
+            <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
+              <button role="tab" aria-selected={analystMode === 'Matchups'} className={analystMode === 'Matchups' ? 'active' : ''} onClick={() => setAnalystMode('Matchups')}>Admins Picks</button>
+              <button role="tab" aria-selected={analystMode === 'Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle</button>
             </div>
-            {playerMode === 'NFL' ? (
-              <NFLPlayersDirectory games={games} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
-            ) : playerMode === 'Angle' ? (
+            {analystMode === 'Angle' ? (
               <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />
             ) : (
               <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} />

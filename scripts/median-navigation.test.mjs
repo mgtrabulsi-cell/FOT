@@ -3,7 +3,7 @@ import test from 'node:test';
 import { connectMedianNavigation, hashForView, viewFromHash } from '../src/services/medianNavigation.ts';
 
 test('section routes and nested notification links preserve their destination', () => {
-  for (const [view, hash] of [['Wire', '#wire'], ['Players', '#stat-hub'], ['LiveWire', '#livewire'], ['Den', '#locker-room'], ['Profile', '#profile']]) {
+  for (const [view, hash] of [['Wire', '#wire'], ['Players', '#stat-hub'], ['Analyst', '#analyst-desk'], ['LiveWire', '#livewire'], ['Den', '#locker-room'], ['Profile', '#profile']]) {
     assert.equal(viewFromHash(hash), view);
     assert.equal(hashForView(view, '#unknown'), hash);
   }
