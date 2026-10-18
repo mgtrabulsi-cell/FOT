@@ -456,8 +456,9 @@ button { color: inherit; }
 .angle-story, .angle-editor details p { white-space: pre-wrap; }
 .angle-counterpoint { border-left: 2px solid #8198bd; }
 .angle-pick { border-left: 2px solid #cc2633; }
-.pick-result { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font: 600 12px var(--mono); }
-.pick-result-pending { color: #bbc7d9; }
+.angle-pick-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.angle-pick .angle-pick-heading > :is(h3, h4) { min-width: 0; margin: 0; }
+.pick-result { display: inline-flex; align-items: center; flex-shrink: 0; }
 .pick-result-hit { color: #75dfa6; }
 .pick-result-miss { color: #ff8f98; }
 .angle-pick-editor, .angle-pick-editor > div, .results-stories { display: grid; gap: 12px; min-width: 0; }

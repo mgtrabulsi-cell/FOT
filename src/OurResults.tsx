@@ -79,7 +79,7 @@ export default function OurResults({ user }: { user: User | null }) {
     {!loaded && !error && <p role="status">Loading results...</p>}
     {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
     <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
-      <div className="angle-pick"><h3>Admin pick · Opinion</h3><p>{pick.text}</p><PickResult result={pick.result} /></div>
+      <div className="angle-pick"><div className="angle-pick-heading"><h3>Admin pick · Opinion</h3><PickResult result={pick.result} /></div><p>{pick.text}</p></div>
       <h4>{story.title}</h4><p className="angle-matchup">{story.matchup} · {story.season} · Week {story.week}</p>
       <a href={`#analyst-desk/story/${story.id}`}>View storyline in The Angle</a>
       {admin && <div className="angle-actions" role="group" aria-label={`Result for pick: ${pick.text}`}>
