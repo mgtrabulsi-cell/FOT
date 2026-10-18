@@ -1,4 +1,6 @@
 import { detailsSnapshotKey, saveRenderSnapshot, teamSnapshotKey } from './renderSnapshots.ts';
+import { readNFLSituation } from './nflSituation.ts';
+import type { NFLSituation } from './nflSituation.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -95,6 +97,7 @@ export type NFLMarket = {
 };
 
 export type Game = {
+  situation?: NFLSituation;
   completedPeriods?: Array<{ period: number; awayScore: number; homeScore: number }>;
   id: string;
   eventId: string;
@@ -406,6 +409,8 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
     home: teamH,
     nflMarket: feed.league === 'NFL' ? readMarket(asArray(competition.odds)[0]) : undefined,
     completedPeriods,
+    situation: feed.league === 'NFL' && statusValue === 'LIVE'
+      ? readNFLSituation(competition.situation, [teamA.id, teamH.id]) : undefined,
   };
 }
 

@@ -38,6 +38,7 @@ import { usePublicDataRevision } from './usePublicDataRevision';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
+import { nflFieldPosition } from './services/nflSituation.ts';
 import { connectMedianNavigation, hashForView, viewFromHash } from './services/medianNavigation';
 import type { AppView } from './services/medianNavigation';
 
@@ -246,7 +247,7 @@ function DraggableTabs<T extends string>({
 function NFLGameWheel({ games, selectedGame, onSelect }: { games: Game[]; selectedGame: Game; onSelect: (gameId: string) => void }) {
   const options = games.map((game) => ({
     key: game.id,
-    label: `${game.away.abbr} @ ${game.home.abbr}`,
+    label: `${game.away.abbr}${game.status === 'LIVE' && game.situation?.possessionTeamId === game.away.id ? ' 🏈' : ''} @ ${game.home.abbr}${game.status === 'LIVE' && game.situation?.possessionTeamId === game.home.id ? ' 🏈' : ''}`,
     primetime: getPrimetimeLabel(game),
     secondary: `${game.status === 'LIVE' ? 'LIVE · ' : ''}${formatGameTime(game)}`,
   }));
@@ -452,6 +453,7 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
     <div className="nfl-directory-controls">
       {game ? <NFLGameWheel games={nflGames} selectedGame={game} onSelect={setSelectedGameId} /> : <p className="nfl-empty-note">No NFL games are available.</p>}
     </div>
+    {isLiveGame && <p className="nfl-field-position">{nflFieldPosition(game.situation)}</p>}
     {searchStatus && <p className="nfl-player-search-status" role="status">{searchStatus}</p>}
     <div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter players by position">{['All', 'QB', 'RB', 'WR', 'TE'].map((item) => <button key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div>{isLiveGame ? <span className="live-clock">LIVE</span> : <span>{visiblePlayerCount} active players</span>}</div>
     {failed && <div className="feed-warning">Could not load this game’s players. Try selecting the game again later.</div>}

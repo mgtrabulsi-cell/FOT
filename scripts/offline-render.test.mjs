@@ -15,6 +15,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
   .replace(/from ['"].\/services\/sportsData['"]/g, `from '${new URL('../src/services/sportsData.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/renderSnapshots['"]/g, `from '${new URL('../src/services/renderSnapshots.ts', import.meta.url)}'`)
+  .replace(/from ['"].\/services\/nflSituation.ts['"]/g, `from '${new URL('../src/services/nflSituation.ts', import.meta.url)}'`)
   .replace(/import OfflineImage from ['"].\/OfflineImage['"];/, 'const OfflineImage = () => null;')
   .replace(/import \{ getInterfaceScale \} from ['"].\/uiScale['"];/, 'const getInterfaceScale = () => 1;')
   .replace(/import \{ usePublicDataRevision \} from ['"].\/usePublicDataRevision['"];/, 'const usePublicDataRevision = () => 0;');
@@ -87,6 +88,27 @@ test('Live and final game tables also render synchronously from their own saved 
     assert.match(html, /Saved Quarterback/);
     assert.match(html, /1381/);
     assert.doesNotMatch(html, /Loading live box score/);
+  }
+}));
+
+test('Live matchup and wheel show the possessing team and reported field location only while live', () => withStorage(() => {
+  const situation = { possessionTeamId: away.id, fieldPosition: 'AWY 39', downDistance: '2nd & 3' };
+  const render = (status, next = situation) => renderToStaticMarkup(createElement(TheWire, {
+    ...props, games: [{ ...game, status, situation: next }],
+  }));
+  const live = render('LIVE');
+  assert.equal((live.match(/aria-label="Away Team has possession"/g) ?? []).length, 2);
+  assert.doesNotMatch(live, /Home Team has possession/);
+  assert.match(live, /Ball at AWY 39/);
+  const turnover = render('LIVE', { ...situation, possessionTeamId: home.id });
+  assert.equal((turnover.match(/aria-label="Home Team has possession"/g) ?? []).length, 2);
+  assert.doesNotMatch(turnover, /Away Team has possession/);
+  const unavailable = render('LIVE', {});
+  assert.match(unavailable, /Field position unavailable/);
+  assert.doesNotMatch(unavailable, /has possession/);
+  for (const status of ['FINAL', 'UPCOMING']) {
+    const html = render(status);
+    assert.doesNotMatch(html, /has possession|Ball at AWY 39|Field position unavailable/);
   }
 }));
 

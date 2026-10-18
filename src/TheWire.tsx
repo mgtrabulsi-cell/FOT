@@ -26,6 +26,7 @@ import {
 import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { readRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
+import { nflFieldPosition } from './services/nflSituation.ts';
 
 type TheWireProps = {
   games: Game[];
@@ -613,14 +614,15 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     </div>
                     <div className="wire-wheel-teams">
                       <div className="wire-wheel-row">
-                        <span className="wire-wheel-team-abbr">{game.away.abbr}</span>
+                        <span className="wire-wheel-team-abbr">{game.away.abbr}{live && game.situation?.possessionTeamId === game.away.id && <span className="possession-football" role="img" aria-label={`${game.away.name} has possession`}>🏈</span>}</span>
                         <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : game.away.score}</strong>
                       </div>
                       <div className="wire-wheel-row">
-                        <span className="wire-wheel-team-abbr">{game.home.abbr}</span>
+                        <span className="wire-wheel-team-abbr">{game.home.abbr}{live && game.situation?.possessionTeamId === game.home.id && <span className="possession-football" role="img" aria-label={`${game.home.name} has possession`}>🏈</span>}</span>
                         <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : game.home.score}</strong>
                       </div>
                     </div>
+                    {live && <small className="wire-wheel-field-position">{nflFieldPosition(game.situation)}</small>}
                   </button>
                 );
               })}
@@ -683,7 +685,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                 </div>
                 <div className="wire-matchup-team-details">
                   <b>{selectedGame.away.abbr}</b>
-                  <h2>{selectedGame.away.name}</h2>
+                  <h2>{selectedGame.away.name}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.away.id && <span className="possession-football" role="img" aria-label={`${selectedGame.away.name} has possession`}>🏈</span>}</h2>
                   <small>{selectedGame.away.record || 'Away'}</small>
                 </div>
                 <div className="wire-matchup-score">
@@ -706,6 +708,9 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                       ? 'FINAL'
                       : formatGameTime(selectedGame)}
                 </span>
+                {isLive && (
+                  <p className="nfl-field-position">{nflFieldPosition(selectedGame.situation)}</p>
+                )}
                 {isLive && (
                   <span className="wire-live-notice">
                     <Activity size={12} /> Live box score · polls every 15s
@@ -739,7 +744,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                 </div>
                 <div className="wire-matchup-team-details text-right">
                   <b>{selectedGame.home.abbr}</b>
-                  <h2>{selectedGame.home.name}</h2>
+                  <h2>{selectedGame.home.name}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.home.id && <span className="possession-football" role="img" aria-label={`${selectedGame.home.name} has possession`}>🏈</span>}</h2>
                   <small>{selectedGame.home.record || 'Home'}</small>
                 </div>
                 <div className="wire-matchup-mark-wrapper">

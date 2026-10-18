@@ -1064,6 +1064,9 @@ td:first-child { color: #828c84; }
 .wire-wheel-teams { display: grid; gap: 2px; }
 .wire-wheel-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .wire-wheel-team-abbr { font-size: 11px; line-height: 1.2; font-weight: 700; color: #dbe4f2; }
+.possession-football { display: inline-block; margin-left: 5px; font-size: .85em; line-height: 1; vertical-align: middle; }
+.nfl-field-position { margin: 0; color: #dbe4f2; font: 600 12px/1.5 var(--mono); overflow-wrap: anywhere; }
+.wire-wheel-field-position { display: block; margin-top: 5px; color: #bbc7d9; font: 500 9px/1.4 var(--mono); white-space: normal; }
 .wire-wheel-score { font: 700 12px/1.2 var(--mono); color: #e5eaf3; }
 .wire-wheel-card.selected .wire-wheel-team-abbr, .wire-wheel-card.selected .wire-wheel-score { color: #fff; }
 
