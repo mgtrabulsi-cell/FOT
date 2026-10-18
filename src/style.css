@@ -462,10 +462,8 @@ button { color: inherit; }
 .pick-result-miss { color: #ff8f98; }
 .angle-pick-editor, .angle-pick-editor > div, .results-stories { display: grid; gap: 12px; min-width: 0; }
 .angle-pick-editor p { margin: 0; font-size: 12px; line-height: 1.6; }
-.results-picks { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
-.results-picks li { padding: 12px; border: 1px solid #35445b; border-radius: 5px; background: #101a29; }
-.results-picks .angle-actions { margin-top: 12px; }
-.results-picks .angle-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.results-panel .angle-actions { margin-top: 12px; }
+.results-panel .angle-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 .results-panel .grade-hit[aria-pressed="true"] { background: #163c2b; border-color: #75dfa6; color: #75dfa6; }
 .results-panel .grade-miss[aria-pressed="true"] { background: #48212b; border-color: #ff8f98; color: #ff8f98; }
 .livewire-post .angle-pick { margin-bottom: 12px; }

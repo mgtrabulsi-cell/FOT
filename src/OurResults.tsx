@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Check, ClipboardCheck, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { anglePicks, readAngles } from './services/theAngle';
+import { anglePicks, publishedAnglePicks, readAngles } from './services/theAngle';
 import type { Angle, AnglePick } from './services/theAngle';
 import { PickResult } from './AnglePicks';
 
@@ -68,25 +68,23 @@ export default function OurResults({ user }: { user: User | null }) {
       setRefresh((value) => value + 1);
     } finally { setBusy(false); }
   }
-  const stories = rows.filter((story) => anglePicks(story).length);
+  const picks = publishedAnglePicks(rows);
   return <section className="angle-panel results-panel" aria-label="Our results">
-    <header className="angle-heading"><div><span className="eyebrow">THE DESK'S TRACK RECORD</span><h2><ClipboardCheck size={24} aria-hidden="true" />Our results</h2><p>Every published Admin pick, all weeks, newest stories first.</p></div></header>
+    <header className="angle-heading"><div><span className="eyebrow">THE DESK'S TRACK RECORD</span><h2><ClipboardCheck size={24} aria-hidden="true" />Our results</h2><p>Every published Admin pick appears here automatically as its own item, across all weeks, newest stories first.</p></div></header>
     <p className="angle-disclaimer">Results are marked manually by admins, not automatically verified. Pending picks have not been graded. These are editorial opinions, not betting recommendations; past results do not guarantee future outcomes.</p>
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
     {error && <p className="feed-warning" role="alert">{error} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
     {!loaded && !error && <p role="status">Loading results...</p>}
-    {loaded && !stories.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
-    <div className="results-stories">{stories.map((story) => <article className="angle-card" key={story.id}>
-      <h3>{story.title}</h3><p className="angle-matchup">{story.matchup} · {story.season} · Week {story.week}</p>
+    {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
+    <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
+      <div className="angle-pick"><h3>Admin pick · Opinion</h3><p>{pick.text}</p><PickResult result={pick.result} /></div>
+      <h4>{story.title}</h4><p className="angle-matchup">{story.matchup} · {story.season} · Week {story.week}</p>
       <a href={`#analyst-desk/story/${story.id}`}>View storyline in The Angle</a>
-      <ul className="results-picks">{anglePicks(story).map((pick, index) => <li key={pick.id}>
-        <p>{pick.text}</p><PickResult result={pick.result} />
-        {admin && <div className="angle-actions" role="group" aria-label={`Result for pick ${index + 1}: ${pick.text}`}>
-          {(['hit', 'miss', 'pending'] as const).map((result) => <button key={result} className={`grade-${result}`} aria-pressed={pick.result === result} disabled={busy} onClick={() => void grade(story, pick.id, result)}>{result === 'hit' ? <Check size={18} aria-hidden="true" /> : result === 'miss' ? <X size={18} aria-hidden="true" /> : null}{result === 'hit' ? 'Mark hit' : result === 'miss' ? 'Mark missed' : 'Reset to pending'}</button>)}
-        </div>}
-      </li>)}</ul>
+      {admin && <div className="angle-actions" role="group" aria-label={`Result for pick: ${pick.text}`}>
+        {(['hit', 'miss', 'pending'] as const).map((result) => <button key={result} className={`grade-${result}`} aria-pressed={pick.result === result} disabled={busy} onClick={() => void grade(story, pick.id, result)}>{result === 'hit' ? <Check size={18} aria-hidden="true" /> : result === 'miss' ? <X size={18} aria-hidden="true" /> : null}{result === 'hit' ? 'Mark hit' : result === 'miss' ? 'Mark missed' : 'Reset to pending'}</button>)}
+      </div>}
     </article>)}</div>
   </section>;
 }

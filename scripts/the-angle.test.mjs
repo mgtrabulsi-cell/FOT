@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { anglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+import { anglePicks, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
@@ -108,4 +108,26 @@ test('Separate picks preserve IDs and independent grades, and reject malformed r
   assert.deepEqual(saved.picks, picks);
   assert.equal(saved.pick, 'Team ML');
   assert.equal('published_at' in saved, false);
+});
+
+test('Results include every published Admin pick as a separate item without splitting or duplicating text', () => {
+  const picks = [
+    { id: 'a8541111-1111-4111-8111-111111111131', text: 'Team ML', result: 'pending' },
+    { id: 'a8541111-1111-4111-8111-111111111132', text: 'Player TD', result: 'hit' },
+  ];
+  const first = { id: 'first', status: 'published', picks, pick: 'Team ML', week: 7 };
+  const legacy = { id: 'legacy', status: 'published', pick: 'Keep this\ncombined pick', week: 6 };
+  const rows = [
+    first,
+    { ...first, id: 'draft', status: 'draft' },
+    { ...first, id: 'empty', picks: [], pick: '' },
+    legacy,
+  ];
+  assert.deepEqual(publishedAnglePicks(rows), [
+    { story: first, pick: picks[0] },
+    { story: first, pick: picks[1] },
+    { story: legacy, pick: { id: 'legacy', text: legacy.pick, result: 'pending' } },
+  ]);
+  assert.equal(publishedAnglePicks(rows.filter((story) => story.id !== 'first')).length, 1);
+  assert.deepEqual(publishedAnglePicks([]), []);
 });
