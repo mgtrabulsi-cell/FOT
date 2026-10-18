@@ -31,6 +31,7 @@ import TheWire from './TheWire';
 import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
 import TheAngle from './TheAngle';
+import OurResults from './OurResults';
 import { useOnlineStatus } from './OfflineStatus';
 import { useOfflineSnapshots } from './useOfflineSnapshots';
 import { usePublicDataRevision } from './usePublicDataRevision';
@@ -594,7 +595,7 @@ function App() {
     };
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
-  const [analystMode, setAnalystMode] = useState<'Matchups' | 'Angle'>('Angle');
+  const [analystMode, setAnalystMode] = useState<'Matchups' | 'Angle' | 'Results'>('Angle');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
@@ -1160,10 +1161,13 @@ function App() {
           <>
             <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
               <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+              <button role="tab" aria-selected={analystMode === 'Results'} className={analystMode === 'Results' ? 'active' : ''} onClick={() => setAnalystMode('Results')}>Our results</button>
               <button role="tab" aria-selected={analystMode === 'Matchups'} aria-label={analystUnread.picks ? 'Admins Top Performers, unread updates' : 'Admins Top Performers'} className={analystMode === 'Matchups' ? 'active' : ''} onClick={() => setAnalystMode('Matchups')}>Admins Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
             </div>
             {analystMode === 'Angle' ? (
               <TheAngle key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} storyOpenKey={storyOpenKey} />
+            ) : analystMode === 'Results' ? (
+              <OurResults key={authUser?.id ?? 'guest'} user={authUser} />
             ) : (
               <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
             )}

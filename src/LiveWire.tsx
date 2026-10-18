@@ -6,6 +6,9 @@ import { supabase } from './services/supabaseClient';
 import { observePostViews } from './services/livewireViews';
 import { loadLivewireDraft, saveLivewireDraft } from './services/livewireDrafts';
 import PostGallery from './PostGallery';
+import AnglePicks from './AnglePicks';
+import { anglePicks, readAnglePicks } from './services/theAngle';
+import type { AnglePick } from './services/theAngle';
 
 const postThemes = [
   { value: 'news', label: 'News', color: 'tnf' },
@@ -13,7 +16,7 @@ const postThemes = [
   { value: 'betting', label: 'Betting', color: 'mnf' },
 ] as const;
 type PostTheme = typeof postThemes[number]['value'];
-type Post = { id: string; author_id: string | null; author_name: string; angle_id?: string | null; admin_pick?: string; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
+type Post = { id: string; author_id: string | null; author_name: string; angle_id?: string | null; admin_pick?: string; admin_picks?: AnglePick[]; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
 
@@ -171,6 +174,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
           const page = await query.order('created_at', { ascending: false }).order('id', { ascending: false })
             .range(offset, Math.min(offset + 499, limit));
           if (page.error) return { data: [], error: page.error };
+          page.data.forEach((post: Post) => { if (post.angle_id && post.admin_picks !== undefined) readAnglePicks(post.admin_picks); });
           data.push(...page.data);
           if (page.data.length < Math.min(500, limit + 1 - offset)) break;
         }
@@ -182,6 +186,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         const linked = await client.from('livewire_posts').select('*').eq('id', postId).maybeSingle();
         if (!active) return;
         if (linked.error) { setError(`Could not load the requested post: ${linked.error.message}`); return; }
+        if (linked.data?.angle_id && linked.data.admin_picks !== undefined) readAnglePicks(linked.data.admin_picks);
         setLinkedPost(linked.data);
         setLinkedMissing(!linked.data);
         setLinkedReady(postId);
@@ -344,7 +349,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         </header>
         {post.title && <h3>{post.title}</h3>}
         <p>{post.body}</p>
-        {post.angle_id && post.admin_pick && <div className="angle-pick"><h4>Admin pick · Opinion</h4><p>{post.admin_pick}</p></div>}
+        {post.angle_id && <AnglePicks picks={post.admin_picks ?? anglePicks({ id: post.angle_id, pick: post.admin_pick ?? '' })} />}
         {(role === 'owner' || role === 'admin') && <span className="livewire-views">{post.view_count === undefined && viewCounts[post.id] === undefined
           ? 'Views unavailable'
           : `${new Intl.NumberFormat().format(Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0))} ${Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0) === 1 ? 'view' : 'views'}`}</span>}

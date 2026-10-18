@@ -2,6 +2,18 @@ import type { DenNewsItem, Game } from './sportsData';
 
 export const angleCategories = ['Former team', 'Head-to-head history', 'Rivalry / rematch', 'Milestone / comeback', 'Birthday', 'Public life event', 'Other'] as const;
 export type AngleCategory = typeof angleCategories[number];
+export type AnglePick = { id: string; text: string; result: 'pending' | 'hit' | 'miss' };
+export function readAnglePicks(value: unknown): AnglePick[] {
+  if (!Array.isArray(value) || !value.every((pick) => pick && typeof pick === 'object'
+    && typeof pick.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pick.id)
+    && typeof pick.text === 'string' && pick.text.trim().length > 0 && pick.text.length <= 500
+    && ['pending', 'hit', 'miss'].includes(pick.result))
+    || new Set(value.map((pick) => pick.id.toLowerCase())).size !== value.length) throw new Error('The server returned invalid admin picks. Please reload.');
+  return value;
+}
+export function anglePicks(angle: { id: string; pick: string; picks?: AnglePick[] }): AnglePick[] {
+  return angle.picks ?? (angle.pick.trim() ? [{ id: angle.id, text: angle.pick, result: 'pending' }] : []);
+}
 export type Angle = {
   id: string;
   season: number;
@@ -16,6 +28,8 @@ export type Angle = {
   evidence: string;
   counterpoint: string;
   pick: string;
+  picks?: AnglePick[];
+  published_at?: string | null;
   source_url: string;
   source_label: string;
   reviewed: boolean;
@@ -39,7 +53,9 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
   return {
     game_id: angle.game_id, matchup: angle.matchup, kind: angle.kind, subject: angle.subject.trim(),
     category: angle.category, title: angle.title.trim(), narrative: angle.narrative, evidence: angle.evidence,
-    counterpoint: angle.counterpoint, pick: angle.pick, source_url: angle.source_url.trim(),
+    counterpoint: angle.counterpoint, pick: angle.picks?.[0]?.text ?? (angle.picks ? '' : angle.pick),
+    ...(angle.picks ? { picks: angle.picks.filter((pick) => pick.text.trim()).map((pick) => ({ ...pick, text: pick.text.trim() })) } : {}),
+    source_url: angle.source_url.trim(),
     source_label: angle.source_label.trim(), reviewed: angle.reviewed, status, image_paths: angle.image_paths ?? [],
   };
 }
@@ -58,6 +74,11 @@ export function readAngles(value: unknown): Angle[] {
       && 'reviewed' in row && typeof row.reviewed === 'boolean';
   };
   if (!Array.isArray(value) || !value.every(isAngle)) throw new Error('The server returned invalid angle data. Please reload.');
+  value.forEach((angle) => {
+    if ('picks' in angle) readAnglePicks(angle.picks);
+    if ('published_at' in angle && angle.published_at !== null
+      && (typeof angle.published_at !== 'string' || !Number.isFinite(Date.parse(angle.published_at)))) throw new Error('The server returned an invalid publication date. Please reload.');
+  });
   return value;
 }
 

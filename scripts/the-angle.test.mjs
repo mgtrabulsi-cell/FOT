@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+import { anglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
@@ -88,4 +88,24 @@ test('Storyline photos survive serialization and malformed attachment arrays fai
   assert.deepEqual(angleWriteFields(story, 'published').image_paths, story.image_paths);
   assert.deepEqual(readAngles([story])[0].image_paths, story.image_paths);
   for (const image_paths of [null, 'bad', [123], Array(5).fill('user/photo.png')]) assert.throws(() => readAngles([{ ...story, image_paths }]), /invalid angle data/);
+});
+
+test('Separate picks preserve IDs and independent grades, and reject malformed results', () => {
+  const picks = [
+    { id: 'a8541111-1111-4111-8111-111111111131', text: 'Team ML', result: 'hit' },
+    { id: 'a8541111-1111-4111-8111-111111111132', text: 'Player TD', result: 'miss' },
+  ];
+  assert.deepEqual(readAnglePicks(picks), picks);
+  assert.deepEqual(anglePicks({ id: 'legacy', pick: 'Combined old pick' }), [{ id: 'legacy', text: 'Combined old pick', result: 'pending' }]);
+  assert.deepEqual(anglePicks({ id: 'new', pick: 'Old fallback', picks: [] }), []);
+  for (const invalid of [null, {}, [picks[0], picks[0]], [{ ...picks[0], result: 'win' }], [{ ...picks[0], text: '' }], [{ ...picks[0], id: 'invalid' }]]) {
+    assert.throws(() => readAnglePicks(invalid), /invalid admin picks/);
+  }
+  const story = { game_id: 'NFL:123', matchup: 'A @ B', kind: 'team', subject: '', category: 'Other',
+    title: 'Story', narrative: 'Story', evidence: '', counterpoint: '', pick: 'Old', source_url: '', source_label: '',
+    reviewed: true, picks: [...picks, { id: 'a8541111-1111-4111-8111-111111111133', text: ' ', result: 'pending' }] };
+  const saved = angleWriteFields(story, 'published');
+  assert.deepEqual(saved.picks, picks);
+  assert.equal(saved.pick, 'Team ML');
+  assert.equal('published_at' in saved, false);
 });

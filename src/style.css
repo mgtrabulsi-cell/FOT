@@ -428,6 +428,7 @@ button { color: inherit; }
 .nfl-recent-team > div strong { color: #25362b; font: 500 9px var(--mono); }
 .nfl-inline-warning { margin: 0; padding: 8px 12px; border-left: 2px solid #cc2633; color: #76525a; background: #fff7f7; font-size: 9px; }
 .player-mode-tabs { display: flex; gap: 22px; margin: 0 0 16px; border-bottom: 1px solid #dfe4dd; }
+.player-mode-tabs[aria-label="Analyst Desk view"] { flex-wrap: wrap; }
 .player-mode-tabs button { padding: 0 2px 10px; border: 0; background: transparent; color: #748078; font-size: 11px; font-weight: 600; cursor: pointer; }
 .player-mode-tabs button.active { color: #344968; box-shadow: inset 0 -2px #cc2633; }
 .angle-panel { display: grid; gap: 16px; min-width: 0; color: #e5eaf3; }
@@ -455,6 +456,18 @@ button { color: inherit; }
 .angle-story, .angle-editor details p { white-space: pre-wrap; }
 .angle-counterpoint { border-left: 2px solid #8198bd; }
 .angle-pick { border-left: 2px solid #cc2633; }
+.pick-result { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font: 600 12px var(--mono); }
+.pick-result-pending { color: #bbc7d9; }
+.pick-result-hit { color: #75dfa6; }
+.pick-result-miss { color: #ff8f98; }
+.angle-pick-editor, .angle-pick-editor > div, .results-stories { display: grid; gap: 12px; min-width: 0; }
+.angle-pick-editor p { margin: 0; font-size: 12px; line-height: 1.6; }
+.results-picks { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.results-picks li { padding: 12px; border: 1px solid #35445b; border-radius: 5px; background: #101a29; }
+.results-picks .angle-actions { margin-top: 12px; }
+.results-picks .angle-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.results-panel .grade-hit[aria-pressed="true"] { background: #163c2b; border-color: #75dfa6; color: #75dfa6; }
+.results-panel .grade-miss[aria-pressed="true"] { background: #48212b; border-color: #ff8f98; color: #ff8f98; }
 .livewire-post .angle-pick { margin-bottom: 12px; }
 .livewire-post .angle-pick h4 { margin: 0 0 5px; color: #c1cce0; font: 600 11px var(--mono); }
 .livewire-post .angle-pick p { margin: 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }

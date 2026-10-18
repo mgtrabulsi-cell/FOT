@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { BookOpen, ExternalLink, Lightbulb } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { angleLeadGroup, angleLeadGroups, anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSuggestion } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
@@ -13,6 +13,7 @@ import type { AnalystSeen } from './useAnalystReadObserver';
 import { observePostViews } from './services/livewireViews';
 import PostGallery, { postPhotoUrl } from './PostGallery';
 import OfflineImage from './OfflineImage';
+import AnglePicks from './AnglePicks';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -165,7 +166,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     if (dirty && !window.confirm('Discard the unsaved changes to this angle?')) return;
     resetPhotos();
     setPhotos((next?.image_paths ?? []).map((path) => ({ path, preview: postPhotoUrl(path) })));
-    setForm(next); setDirty(false); setActionError(''); setNotice('');
+    setForm(next ? { ...next, picks: anglePicks(next) } : null); setDirty(false); setActionError(''); setNotice('');
     if (next) window.setTimeout(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
   }
   function change<K extends keyof Angle>(key: K, value: Angle[K]) {
@@ -307,7 +308,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       <p className="angle-story">{angle.narrative}</p>
       {angle.evidence && <div className="angle-context"><h4>The supporting context</h4><p>{angle.evidence}</p></div>}
       {angle.counterpoint && <div className="angle-counterpoint"><h4>The other side</h4><p>{angle.counterpoint}</p></div>}
-      {angle.pick && <div className="angle-pick"><h4>Admin pick · Opinion</h4><p>{angle.pick}</p></div>}
+      <AnglePicks picks={anglePicks(angle)} />
       <PostGallery paths={angle.image_paths ?? []} title={angle.title} />
       {admin && <span className="livewire-views">{viewCounts[angle.id] === undefined ? 'Views unavailable' : `${new Intl.NumberFormat().format(viewCounts[angle.id])} ${viewCounts[angle.id] === 1 ? 'view' : 'views'}`}</span>}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}
@@ -355,7 +356,14 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           {(form.evidence || form.counterpoint) && <details><summary>Retained source context</summary>{form.evidence && <p>{form.evidence}</p>}{form.counterpoint && <p>{form.counterpoint}</p>}</details>}
           {field('title', 'Headline (your own words)', 140)}
           {field('narrative', 'Storyline', 1500, true)}
-          {field('pick', 'Admin pick (optional opinion; no guarantees)', 500, true)}
+          <div className="angle-pick-editor">
+            <p>Admin picks (optional opinions; no guarantees). Add each bet separately so it can have its own result.</p>
+            {(form.picks ?? []).map((pick, index) => <div key={pick.id}>
+              <label>Admin pick {index + 1}<textarea maxLength={500} value={pick.text} onChange={(event) => change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, text: event.target.value, result: 'pending' as const } : item))} /></label>
+              <button type="button" onClick={() => change('picks', (form.picks ?? []).filter((item) => item.id !== pick.id))}>Remove pick {index + 1}</button>
+            </div>)}
+            <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
+          </div>
           <label htmlFor="angle-photos">Photos (optional, up to four)</label>
           <input id="angle-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
             const files = Array.from(event.target.files ?? []); event.target.value = '';
