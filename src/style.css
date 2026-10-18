@@ -184,16 +184,16 @@ button { color: inherit; }
 .livewire-photo-previews, .livewire-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0; max-width: 760px; }
 .livewire-photo-previews > div { min-width: 0; display: grid; gap: 6px; }
 .livewire-photo-previews img { width: 100%; height: 140px; object-fit: contain; background: #101a29; border-radius: 4px; }
-.livewire-post .livewire-gallery > button, .angle-panel .livewire-gallery > button { display: block; padding: 0; border: 0; cursor: zoom-in; margin: 0; min-width: 0; overflow: hidden; border-radius: 4px; background: #101a29; }
-.livewire-gallery img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
+.livewire-post .livewire-gallery > button, .angle-panel .livewire-gallery > button { display: block; justify-self: start; align-self: start; width: fit-content; max-width: 100%; padding: 0; border: 0; cursor: zoom-in; margin: 0; min-width: 0; min-height: 0; overflow: hidden; border-radius: 4px; background: transparent; }
+.livewire-gallery img { display: block; width: auto; height: auto; max-width: 100%; max-height: 480px; }
 .livewire-gallery-1 { grid-template-columns: minmax(0, 1fr); }
 .livewire-gallery-1 img { max-height: 480px; }
 .livewire-gallery-3 > button:first-child { grid-column: 1 / -1; }
-.livewire-photo-dialog { border: 1px solid #35445b; border-radius: 10px; padding: 12px; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: 92dvh; background: #101a29; color: #edf2f8; }
+.livewire-photo-dialog { border: 0; border-radius: 10px; padding: 0; width: fit-content; max-width: calc(100vw - 24px); max-height: 92dvh; background: transparent; color: #edf2f8; }
 .livewire-photo-dialog::backdrop { background: rgb(0 0 0 / 80%); }
-.livewire-photo-dialog-content { display: flex; flex-direction: column; gap: 10px; }
-.livewire-photo-dialog-content button { align-self: flex-end; min-height: 44px; padding: 8px 16px; cursor: pointer; }
-.livewire-photo-dialog-content img { display: block; width: 100%; max-height: calc(92dvh - 90px); object-fit: contain; }
+.livewire-photo-dialog-content { position: relative; display: flex; }
+.livewire-photo-dialog-content button { position: absolute; top: 8px; right: 8px; min-height: 44px; padding: 8px 16px; cursor: pointer; border: 1px solid #8198bd; border-radius: 6px; background: #101a29; color: #edf2f8; }
+.livewire-photo-dialog-content img { display: block; width: auto; height: auto; max-width: min(960px, calc(100vw - 24px)); max-height: 92dvh; }
 .livewire-post-target { outline: 2px solid #cc2633; outline-offset: 4px; scroll-margin-top: 24px; }
 .livewire-post header { justify-content: flex-start; font-size: 12px; overflow-wrap: anywhere; }
 .livewire-post h3 { margin: 9px 0 6px; color: #edf2f8; font: 600 23px/1.25 var(--display); overflow-wrap: anywhere; }

@@ -2,21 +2,21 @@ import OfflineImage from './OfflineImage';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { supabase } from './services/supabaseClient';
+import { publicSupabaseConfig, supabase } from './services/supabaseClient';
 import { observePostViews } from './services/livewireViews';
 import { loadLivewireDraft, saveLivewireDraft } from './services/livewireDrafts';
 import PostGallery from './PostGallery';
 import AnglePicks from './AnglePicks';
-import { anglePicks, readAnglePicks } from './services/theAngle';
-import type { AnglePick } from './services/theAngle';
+import { anglePicks } from './services/theAngle';
+import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
+import type { LivewirePost as Post, PostTheme } from './services/livewirePosts';
+import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 
 const postThemes = [
   { value: 'news', label: 'News', color: 'tnf' },
   { value: 'fantasy', label: 'Fantasy', color: 'snf' },
   { value: 'betting', label: 'Betting', color: 'mnf' },
 ] as const;
-type PostTheme = typeof postThemes[number]['value'];
-type Post = { id: string; author_id: string | null; author_name: string; angle_id?: string | null; admin_pick?: string; admin_picks?: AnglePick[]; title: string | null; body: string; themes?: PostTheme[]; image_paths?: string[]; source_url: string | null; created_at: string; updated_at: string; view_count?: number };
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
 
@@ -35,9 +35,10 @@ function safeNewsLink(value: string): string | null {
 
 export default function LiveWire({ user, postId = null, onPostSeen }: { user: User | null; postId?: string | null; onPostSeen?: (postId: string) => Promise<void> }) {
   const publicRevision = usePublicDataRevision('posts');
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [savedFeed] = useState(() => readRenderSnapshot('posts', 'livewire'));
+  const [posts, setPosts] = useState<Post[]>(savedFeed?.posts ?? []);
   const [admins, setAdmins] = useState<Admin[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(!!savedFeed);
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -48,7 +49,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
   const feedElement = useRef<HTMLDivElement | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [limit, setLimit] = useState(20);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(savedFeed?.hasMore ?? false);
   const [body, setBody] = useState('');
   const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
@@ -84,6 +85,17 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       }
       const result = await supabase.rpc('save_livewire_post', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing, post_images: paths, post_themes: themes });
       if (result.error) throw result.error;
+      try {
+        if (!publicSupabaseConfig) throw new Error('Account services are not configured.');
+        const latest = await fetchLivewirePosts(publicSupabaseConfig, { limit: 20, themes: [] });
+        saveRenderSnapshot('posts', 'livewire', livewireSnapshot(latest, 20));
+        if (!themeFilters.length && limit === 20) {
+          setPosts(latest.slice(0, 20)); setHasMore(latest.length > 20); setLoaded(true);
+        }
+      } catch (cause) {
+        console.error('Post saved, but LIVEWIRE could not be refreshed', cause);
+        setError('Your post was saved, but the feed could not refresh. Retry loading LIVEWIRE; do not publish the post again.');
+      }
       return { error: null };
     } catch (cause) {
       const message = cause !== null && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -163,42 +175,24 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     async function load() {
-      if (!supabase) { setError('LIVEWIRE is unavailable: account services are not configured.'); return; }
-      const client = supabase;
-      async function loadPosts() {
-        const data: Post[] = [];
-        for (let offset = 0; offset <= limit; offset += 500) {
-          let query = client.from('livewire_posts').select('*');
-          if (themeFilters.length) query = query.overlaps('themes', themeFilters);
-          const page = await query.order('created_at', { ascending: false }).order('id', { ascending: false })
-            .range(offset, Math.min(offset + 499, limit));
-          if (page.error) return { data: [], error: page.error };
-          page.data.forEach((post: Post) => { if (post.angle_id && post.admin_picks !== undefined) readAnglePicks(post.admin_picks); });
-          data.push(...page.data);
-          if (page.data.length < Math.min(500, limit + 1 - offset)) break;
-        }
-        return { data, error: null };
-      }
-      const feed = await loadPosts();
+      if (!publicSupabaseConfig) { setError('LIVEWIRE is unavailable: account services are not configured.'); return; }
+      const [feed, linked] = await Promise.all([
+        fetchLivewirePosts(publicSupabaseConfig, { limit, themes: themeFilters }, controller.signal),
+        postId ? fetchLivewirePosts(publicSupabaseConfig, { limit: 1, themes: [], postId }, controller.signal) : Promise.resolve([]),
+      ]);
       if (!active) return;
       if (postId) {
-        const linked = await client.from('livewire_posts').select('*').eq('id', postId).maybeSingle();
-        if (!active) return;
-        if (linked.error) { setError(`Could not load the requested post: ${linked.error.message}`); return; }
-        if (linked.data?.angle_id && linked.data.admin_picks !== undefined) readAnglePicks(linked.data.admin_picks);
-        setLinkedPost(linked.data);
-        setLinkedMissing(!linked.data);
+        setLinkedPost(linked[0] ?? null);
+        setLinkedMissing(!linked.length);
         setLinkedReady(postId);
       } else {
         setLinkedPost(null); setLinkedMissing(false); setLinkedReady(null);
       }
-      if (feed.error) {
-        setError(`Could not refresh LIVEWIRE: ${feed.error.message}`);
-        return;
-      }
-      setPosts((feed.data ?? []).slice(0, limit));
-      setHasMore((feed.data?.length ?? 0) > limit);
+      if (!themeFilters.length) saveRenderSnapshot('posts', 'livewire', livewireSnapshot(feed, 20));
+      setPosts(feed.slice(0, limit));
+      setHasMore(feed.length > limit);
       setLoaded(true);
       setError('');
     }
@@ -206,7 +200,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       if (active) setError(cause instanceof Error ? cause.message : 'Could not load LIVEWIRE. Please retry.');
     });
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; controller.abort(); window.clearInterval(timer); };
   }, [user?.id, refresh, limit, postId, themeFilters, publicRevision]);
 
   useEffect(() => {

@@ -1,4 +1,6 @@
 import type { Game, NFLBoxScoreData, NFLGameDetails, NFLPlayerSeasonBoxScore, NFLSkillPlayer, NFLTeamSeasonAverages } from './sportsData.ts';
+import { readLivewirePosts } from './livewirePosts.ts';
+import type { LivewireSnapshot } from './livewirePosts.ts';
 
 type Snapshots = {
   scoreboard: { games: Game[]; failedLeagues: string[]; nflWeek: number | null };
@@ -6,6 +8,7 @@ type Snapshots = {
   players: { data: NFLPlayerSeasonBoxScore; players: NFLSkillPlayer[] };
   box: NFLBoxScoreData;
   team: NFLTeamSeasonAverages;
+  posts: LivewireSnapshot;
 };
 
 const prefix = `gamewire-render-v1:${import.meta.env?.BASE_URL ?? '/'}:`;
@@ -39,6 +42,8 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
         object(team) && typeof team.id === 'string' && Array.isArray(team.categories) && Array.isArray(team.teamStats) && Array.isArray(team.linescores));
     case 'team':
       return typeof data.teamId === 'string' && 'pointsPerGame' in data;
+    case 'posts':
+      return typeof data.hasMore === 'boolean' && readLivewirePosts(data.posts).length <= 20;
   }
   return false;
 }
