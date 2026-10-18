@@ -25,6 +25,8 @@ The original navy-blue theme uses bold crimson (`#cc2633`) for selection indicat
 
 Player cards use slimmer per-game chart bars. Wide receiver and tight end cards include Targets in the draggable stat wheel, using ESPN's game box-score values and retaining unavailable values rather than estimating them.
 
+Stat Hub player cards stay open during background feed and saved-data refreshes, including while fresh game details are still loading. Switching to a different matchup closes the previous game's player card; Close, Escape, and backdrop dismissal remain available.
+
 The Wire omits the large page title, description, and normal feed-status label on desktop and mobile, keeping a compact date/week row immediately below navigation so games and stats appear sooner. Feed warnings remain visible.
 
 On mobile, The Wire player box scores place each player's labeled stats on one compact horizontal row, with all stats visible without scrolling or wrapping into another row. Player identity stays above that row. The compact scoreboard uses stacked team rows with logos and names on the left and scores on the right. Stat Hub remains unchanged: its player-popup stat types retain a single horizontally scrollable, draggable row with touch-sized controls and a chart that fits the dialog width. The game selection wheels remain horizontally draggable.

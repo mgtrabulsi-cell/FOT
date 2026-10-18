@@ -394,6 +394,11 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
   const awayTeamName = game?.away.name;
 
   useEffect(() => {
+    setSelectedPlayer(null);
+    setSelectedTeam(null);
+  }, [gameId]);
+
+  useEffect(() => {
     if (!gameId || !feedPath || !eventId || !seasonYear || !homeTeamId || !awayTeamId) {
       setLoading(false);
       return;
@@ -426,8 +431,6 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
 
     if (detailsGame.current !== gameId) {
       setDetails(null);
-      setSelectedPlayer(null);
-      setSelectedTeam(null);
       setLoading(true);
     }
     void load();
