@@ -42,6 +42,8 @@ type TheWireProps = {
   onSelectGame?: (gameId: string) => void;
   onOpenStatHub?: (game: Game) => void;
   onOpenPlayer: (player: NFLSkillPlayer, team: Team) => void;
+  /** Fixed current time in ms (tests); otherwise the board checks the clock every minute. */
+  now?: number;
 };
 
 function formatGameTime(game: Game) {
@@ -114,6 +116,25 @@ function slotLabel(game: Game): SlotLabel | null {
   }
   const primetime = getPrimetimeLabel(game);
   return primetime ? { tag: primetime, tagClass: `tag-${primetime.toLowerCase()}`, title: getPrimetimeFullTitle(primetime) } : null;
+}
+
+const easternParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+});
+
+function easternDay(time: number) {
+  const parts = Object.fromEntries(easternParts.formatToParts(new Date(time)).map((part) => [part.type, part.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday, hour: Number(parts.hour) };
+}
+
+/** That Monday's MNF game(s), featured from 6:00 AM Monday until 2:00 AM Tuesday ET. */
+function spotlightMnfGames(games: Game[], now: number): Game[] {
+  // Shifting back two hours turns the window into "Monday, 4 AM or later" on a single ET date.
+  const shifted = easternDay(now - 2 * 60 * 60 * 1000);
+  if (shifted.weekday !== 'Mon' || shifted.hour < 4) return [];
+  return games.filter((game) => (
+    getPrimetimeLabel(game) === 'MNF' && Number.isFinite(kickoffTime(game)) && easternDay(kickoffTime(game)).date === shifted.date
+  ));
 }
 
 function groupGamesByDay(games: Game[]): GameDay[] {
@@ -226,7 +247,7 @@ function areColorsSimilar(color1?: string, color2?: string): boolean {
   return false;
 }
 
-export default function TheWire({ games, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer }: TheWireProps) {
+export default function TheWire({ games, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer, now }: TheWireProps) {
   const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
   const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
@@ -340,10 +361,21 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   );
   const matchingGame = searchQuery ? nflGames.find(matchesSearch) : undefined;
   const matchingGameId = matchingGame?.id;
-  const boardDays = useMemo(
-    () => groupGamesByDay(searchQuery ? nflGames.filter(matchesSearch) : nflGames),
-    [nflGames, searchQuery],
-  );
+  const [clockNow, setClockNow] = useState(() => now ?? Date.now());
+  useEffect(() => {
+    if (now !== undefined) return;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [now]);
+  const boardNow = now ?? clockNow;
+  const { spotlightGames, boardDays } = useMemo(() => {
+    const visible = searchQuery ? nflGames.filter(matchesSearch) : nflGames;
+    const spotlight = spotlightMnfGames(visible, boardNow);
+    return {
+      spotlightGames: spotlight,
+      boardDays: groupGamesByDay(visible.filter((game) => !spotlight.includes(game))),
+    };
+  }, [nflGames, searchQuery, boardNow]);
   useEffect(() => {
     if (!matchingGameId || !detailOpen) return;
     userSelectedRef.current = true;
@@ -718,6 +750,63 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
     const liveCount = nflGames.filter((g) => g.status === 'LIVE').length;
     const finalCount = nflGames.filter((g) => g.status === 'FINAL').length;
     const upcomingCount = nflGames.length - liveCount - finalCount;
+    const renderBoardCard = (game: Game) => {
+      const live = game.status === 'LIVE';
+      const final = game.status === 'FINAL';
+      const upcoming = game.status === 'UPCOMING';
+      const intl = internationalVenue(game);
+      return (
+        <li key={game.id}>
+          <button
+            type="button"
+            data-game-id={game.id}
+            className={`wire-board-card${live ? ' is-live' : ''}${final ? ' is-final' : ''}`}
+            onClick={() => openGame(game.id)}
+          >
+            <span className="wire-board-status">
+              {live ? (
+                <span className="live-pill"><i /> LIVE</span>
+              ) : final ? (
+                <span className="wire-board-final">FINAL</span>
+              ) : (
+                <span>{formatGameTime(game)}</span>
+              )}
+              {live && game.clock && <small>{game.clock}</small>}
+            </span>
+            <span className="wire-board-teams">
+              {[game.away, game.home].map((team, index) => {
+                const opponent = index === 0 ? game.home : game.away;
+                const lost = final && team.score < opponent.score;
+                return (
+                  <span className={`wire-board-team${lost ? ' is-loser' : ''}`} key={team.id}>
+                    <span className="team-mark wire-board-mark" style={{ '--team-color': team.color } as React.CSSProperties}>
+                      {team.logo ? <OfflineImage src={team.logo} alt="" /> : team.abbr.slice(0, 2)}
+                    </span>
+                    <span className="wire-board-team-name">
+                      <b>
+                        {team.name}
+                        {isTeamFavorite(team.id) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
+                        {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
+                      </b>
+                      <small>{team.abbr}{team.record ? ` · ${team.record}` : ''}</small>
+                    </span>
+                    <strong className="wire-board-score">{upcoming ? '' : team.score}</strong>
+                  </span>
+                );
+              })}
+            </span>
+            <span className="wire-board-footer">
+              <span className="wire-board-meta">
+                {live ? nflFieldPosition(game.situation) : <><MapPin size={12} aria-hidden="true" /> {game.venue || 'Venue TBD'}{intl ? `, ${intl.city ?? intl.country}` : ''}</>}
+              </span>
+              <span className="wire-board-open">
+                {upcoming ? 'Pregame stats' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
+              </span>
+            </span>
+          </button>
+        </li>
+      );
+    };
     return (
       <div className="the-wire-container">
         <div className="wire-board" ref={boardRef}>
@@ -733,9 +822,22 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
           </header>
           {nflGames.length === 0 ? (
             <p className="nfl-empty-note">No NFL games available this week.</p>
-          ) : boardDays.length === 0 ? (
+          ) : boardDays.length === 0 && spotlightGames.length === 0 ? (
             <p className="nfl-empty-note" role="status">No games matched “{query}”.</p>
-          ) : boardDays.map((day) => {
+          ) : <>
+          {spotlightGames.length > 0 && (
+            <section className="wire-board-spotlight" aria-labelledby="wire-spotlight-title">
+              <h2 className="wire-board-spotlight-title" id="wire-spotlight-title">
+                <span className="wire-primetime-tag tag-mnf">MNF</span>
+                <span>{spotlightGames.length > 1 ? 'Tonight’s Monday Night Football' : 'Tonight · Monday Night Football'}</span>
+                <small>{formatGameTime(spotlightGames[0])}</small>
+              </h2>
+              <ol className="wire-board-list">
+                {spotlightGames.map(renderBoardCard)}
+              </ol>
+            </section>
+          )}
+          {boardDays.map((day) => {
             const dayId = `wire-day-${day.key.replace(/[^a-z0-9]+/gi, '-')}`;
             return (
             <section className="wire-board-day" key={day.key} aria-labelledby={dayId}>
@@ -753,69 +855,14 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                   {slot.time && <small>{slot.time}</small>}
                 </h3>
               <ol className="wire-board-list">
-                {slot.games.map((game) => {
-                  const live = game.status === 'LIVE';
-                  const final = game.status === 'FINAL';
-                  const upcoming = game.status === 'UPCOMING';
-                  const intl = internationalVenue(game);
-                  return (
-                    <li key={game.id}>
-                      <button
-                        type="button"
-                        data-game-id={game.id}
-                        className={`wire-board-card${live ? ' is-live' : ''}${final ? ' is-final' : ''}`}
-                        onClick={() => openGame(game.id)}
-                      >
-                        <span className="wire-board-status">
-                          {live ? (
-                            <span className="live-pill"><i /> LIVE</span>
-                          ) : final ? (
-                            <span className="wire-board-final">FINAL</span>
-                          ) : (
-                            <span>{formatGameTime(game)}</span>
-                          )}
-                          {live && game.clock && <small>{game.clock}</small>}
-                        </span>
-                        <span className="wire-board-teams">
-                          {[game.away, game.home].map((team, index) => {
-                            const opponent = index === 0 ? game.home : game.away;
-                            const lost = final && team.score < opponent.score;
-                            return (
-                              <span className={`wire-board-team${lost ? ' is-loser' : ''}`} key={team.id}>
-                                <span className="team-mark wire-board-mark" style={{ '--team-color': team.color } as React.CSSProperties}>
-                                  {team.logo ? <OfflineImage src={team.logo} alt="" /> : team.abbr.slice(0, 2)}
-                                </span>
-                                <span className="wire-board-team-name">
-                                  <b>
-                                    {team.name}
-                                    {isTeamFavorite(team.id) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
-                                    {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
-                                  </b>
-                                  <small>{team.abbr}{team.record ? ` · ${team.record}` : ''}</small>
-                                </span>
-                                <strong className="wire-board-score">{upcoming ? '' : team.score}</strong>
-                              </span>
-                            );
-                          })}
-                        </span>
-                        <span className="wire-board-footer">
-                          <span className="wire-board-meta">
-                            {live ? nflFieldPosition(game.situation) : <><MapPin size={12} aria-hidden="true" /> {game.venue || 'Venue TBD'}{intl ? `, ${intl.city ?? intl.country}` : ''}</>}
-                          </span>
-                          <span className="wire-board-open">
-                            {upcoming ? 'Pregame stats' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
-                          </span>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
+                {slot.games.map(renderBoardCard)}
               </ol>
               </div>
               ))}
             </section>
             );
           })}
+          </>}
         </div>
       </div>
     );

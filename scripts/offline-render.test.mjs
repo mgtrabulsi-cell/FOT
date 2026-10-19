@@ -72,7 +72,7 @@ test('The Wire opens to a kickoff-ordered game board grouped TNF to MNF, with no
     at('3', '2026-10-18T20:25:00Z'),
     at('6', '2026-10-18T13:30:00Z', 'FINAL', { venue: 'Wembley Stadium', venueCity: 'London', venueCountry: 'England' }),
   ];
-  const html = renderToStaticMarkup(createElement(TheWire, { ...props, games, openGameId: null }));
+  const html = renderToStaticMarkup(createElement(TheWire, { ...props, games, openGameId: null, now: Date.parse('2026-10-17T16:00:00Z') }));
   const order = [...html.matchAll(/data-game-id="NFL:(\d)"/g)].map((match) => match[1]);
   assert.deepEqual(order, ['1', '6', '2', '3', '4', '5']);
   const days = [...html.matchAll(/class="wire-board-day-title"[^>]*>(.*?)<\/h2>/g)].map((match) => match[1]);
@@ -89,10 +89,35 @@ test('The Wire opens to a kickoff-ordered game board grouped TNF to MNF, with no
   assert.match(html, /Home Team has possession/);
   assert.match(html, /Ball at HME 20/);
   assert.match(html, /class="wire-board-team is-loser"/);
-  assert.doesNotMatch(html, /wire-hero-banner|Player Box Score|All games/);
+  assert.doesNotMatch(html, /wire-hero-banner|Player Box Score|All games|wire-board-spotlight/);
   const filtered = renderToStaticMarkup(createElement(TheWire, { ...props, games, openGameId: null, query: 'zzz' }));
   assert.match(filtered, /No games matched/);
   assert.doesNotMatch(filtered, /data-game-id=/);
+}));
+
+test('The MNF game is featured above the board from 6 AM Monday until 2 AM Tuesday ET', () => withStorage(() => {
+  const at = (id, date, status = 'UPCOMING') => ({ ...game, id: `NFL:${id}`, eventId: id, date, status });
+  const games = [
+    at('1', '2026-10-16T00:15:00Z', 'FINAL'),
+    at('2', '2026-10-18T17:00:00Z', 'FINAL'),
+    at('3', '2026-10-20T00:15:00Z'),
+  ];
+  const render = (iso) => renderToStaticMarkup(createElement(TheWire, { ...props, games, openGameId: null, now: Date.parse(iso) }));
+  const order = (html) => [...html.matchAll(/data-game-id="NFL:(\d)"/g)].map((match) => match[1]);
+  // 6:00 AM Monday and 1:59 AM Tuesday ET (EDT = UTC-4).
+  for (const iso of ['2026-10-19T10:00:00Z', '2026-10-20T05:59:00Z']) {
+    const html = render(iso);
+    assert.match(html, /class="wire-board-spotlight"[^]*?Tonight · Monday Night Football/);
+    assert.deepEqual(order(html), ['3', '1', '2'], iso);
+    assert.doesNotMatch(html, /class="wire-board-slot-title">.*?Monday Night Football/);
+  }
+  for (const iso of ['2026-10-19T09:59:00Z', '2026-10-20T06:00:00Z']) {
+    const html = render(iso);
+    assert.doesNotMatch(html, /wire-board-spotlight/, iso);
+    assert.deepEqual(order(html), ['1', '2', '3'], iso);
+  }
+  const filtered = renderToStaticMarkup(createElement(TheWire, { ...props, games, openGameId: null, query: 'zzz', now: Date.parse('2026-10-19T12:00:00Z') }));
+  assert.match(filtered, /No games matched/);
 }));
 
 test('Opening a game shows its stats area with a way back to the board', () => withStorage(() => {

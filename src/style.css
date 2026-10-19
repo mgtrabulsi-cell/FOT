@@ -1084,6 +1084,10 @@ td:first-child { color: #828c84; }
 .wire-board-slot.is-snf .wire-board-list > li > .wire-board-card { border-left: 3px solid #d97706; }
 .wire-board-slot.is-mnf .wire-board-list > li > .wire-board-card { border-left: 3px solid #9333ea; }
 .wire-board-slot.is-intl .wire-board-list > li > .wire-board-card { border-left: 3px solid #10b981; }
+.wire-board-spotlight { display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid #9333ea66; border-radius: 10px; background: linear-gradient(135deg, #2e106566, #131d2c 70%); box-shadow: 0 0 0 1px #9333ea22, 0 8px 24px #0006; }
+.wire-board-spotlight-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; font: 600 18px/1.3 var(--display); letter-spacing: .5px; color: #fff; }
+.wire-board-spotlight-title small { font: 600 12px var(--mono); color: #c4b5fd; }
+.wire-board-spotlight .wire-board-card { border-left: 3px solid #9333ea; background: #161f31; }
 .wire-primetime-tag.tag-intl { display: inline-flex; align-items: center; gap: 4px; background: #052e22; color: #6ee7b7; border: 1px solid #10b98166; }
 .wire-primetime-pill.pill-intl { background: #052e22; color: #a7f3d0; border: 1px solid #10b98180; }
 .wire-flag { display: inline-block; flex: 0 0 auto; height: 11px; width: auto; border-radius: 1.5px; box-shadow: 0 0 0 1px #ffffff40; vertical-align: middle; }
