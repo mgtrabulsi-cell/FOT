@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { Check, ClipboardCheck, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { anglePicks, publishedAnglePicks, readAngles } from './services/theAngle';
 import type { Angle, AnglePick } from './services/theAngle';
@@ -70,8 +70,7 @@ export default function OurResults({ user }: { user: User | null }) {
   }
   const picks = publishedAnglePicks(rows);
   return <section className="angle-panel results-panel" aria-label="Our results">
-    <header className="angle-heading"><div><span className="eyebrow">THE DESK'S TRACK RECORD</span><h2><ClipboardCheck size={24} aria-hidden="true" />Our results</h2><p>Every published Admin pick appears here automatically as its own item, across all weeks, newest stories first.</p></div></header>
-    <p className="angle-disclaimer">Results are marked manually by admins, not automatically verified. Pending picks have not been graded. These are editorial opinions, not betting recommendations; past results do not guarantee future outcomes.</p>
+    <p className="angle-disclaimer">Results are marked by admins. Editorial opinions, not betting recommendations.</p>
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
     {error && <p className="feed-warning" role="alert">{error} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}

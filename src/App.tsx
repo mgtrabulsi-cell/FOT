@@ -1103,7 +1103,7 @@ function App() {
           )}
         </div>
       </header>
-      <main className={view === 'Players' || view === 'Analyst' ? 'page-wrap players-zoom' : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
+      <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
         <PullToRefresh />
         {livewireUnread.error && <p className="feed-warning" role="status">{livewireUnread.error}</p>}
         {analystUnread.error && <p className="feed-warning" role="status">{analystUnread.error}</p>}
@@ -1112,7 +1112,7 @@ function App() {
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
             {view !== 'Wire' && <>
               <h1>{view === 'LiveWire' ? 'LIVEWIRE' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : view === 'Analyst' ? 'Analyst Desk' : 'Stat Hub'}</h1>
-              <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : view === 'Analyst' ? 'Admin picks and the stories behind the matchups.' : 'The numbers behind the names.'}</p>
+              {view !== 'Analyst' && <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>}
             </>}
           </div>
           <div className="heading-actions">

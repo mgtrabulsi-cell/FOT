@@ -438,6 +438,9 @@ button { color: inherit; }
 .angle-heading p, .angle-heading > span { margin: 0; color: #bbc7d9; font-size: 12px; line-height: 1.5; }
 .angle-disclaimer { margin: 0; padding-left: 12px; border-left: 2px solid #8198bd; color: #bbc7d9; font-size: 11px; line-height: 1.6; }
 .angle-filters, .angle-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.angle-admin-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.angle-panel .angle-create-button { display: inline-flex; align-items: center; gap: 6px; background: #8198bd; border-color: #8198bd; color: #101a29; font-weight: 700; }
+.angle-admin-bar > span { color: #bbc7d9; font: 10px var(--mono); }
 .angle-panel button { min-height: 44px; padding: 8px 12px; border: 1px solid #35445b; border-radius: 6px; background: #202e43; color: #e5eaf3; font: inherit; font-size: 12px; cursor: pointer; }
 .angle-panel button:disabled { opacity: .5; cursor: not-allowed; }
 .angle-panel button:not(:disabled):hover { border-color: #9db9df; }
@@ -1367,6 +1370,16 @@ td:first-child { color: #828c84; }
 }
 
 @media (max-width: 760px) {
+  .analyst-page { padding-top: 8px; }
+  .analyst-page .page-heading { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .analyst-page .page-heading h1 { margin: 2px 0 0; font-size: 24px; }
+  .analyst-page .page-heading .date-line { font-size: 8px; }
+  .analyst-page .date-line .date-divider, .analyst-page .date-line > span:last-child, .analyst-page .feed-status { display: none; }
+  .analyst-page .date-button { min-height: 38px; padding: 4px 8px; font-size: 10px; }
+  .analyst-page .player-mode-tabs { gap: 16px; margin-bottom: 10px; }
+  .analyst-page .angle-panel { gap: 10px; }
+  .analyst-page .angle-filters { flex-wrap: nowrap; overflow-x: auto; gap: 6px; scrollbar-width: none; }
+  .analyst-page .angle-filters button { flex: 0 0 auto; min-height: 36px; padding: 6px 10px; }
   .wire-page { padding-top: 8px; }
   .wire-page .page-heading { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 8px; }
   .wire-page .page-heading .date-line { display: flex; font-size: 8px; }

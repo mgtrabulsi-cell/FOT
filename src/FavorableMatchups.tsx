@@ -219,16 +219,14 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
 
   return <section className="favorable-matchups">
     <header className="favorable-matchups-heading">
-      <div><span className="eyebrow">{season && week ? `${season} · WEEK ${week} · NFL` : 'NFL'}</span>
-        <div className="matchup-title-row"><h2>Admins Top Performers</h2>
-          {admin && loaded && <label className="search-field matchup-admin-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search players to publish" placeholder="Search players or teams..." value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} /></label>}
-        </div><p>Admin-selected players, ordered within each position. Last-five-game averages, opponent defense ranks, and ESPN weekly PPR projections.</p>
-      </div><span className="favorable-matchups-count">{picks.length} PLAYERS{draft && admin ? ' · DRAFT' : ''}</span>
+      <div className="matchup-title-row"><span className="favorable-matchups-count">{season && week ? `WEEK ${week} · ` : ''}{picks.length} PLAYERS{draft && admin ? ' · DRAFT' : ''}</span>
+        {admin && loaded && <label className="search-field matchup-admin-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search players to publish" placeholder="Search players or teams..." value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} /></label>}
+      </div>
     </header>
     {(loadError || accessError) && <p className="feed-warning" role="alert">{loadError || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {!loaded && !loadError && <p role="status">Loading this week's published matchups...</p>}
     {admin && loaded && <div className="matchup-editor">
-      <p>Select up to four players per position. Changes stay private until you publish.</p>
+      <p>Up to four players per position. Private until published.</p>
       {rosterLoading && <p role="status">Loading player search...</p>}
       {rosterError && <p className="feed-warning" role="alert">{rosterError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
       {normalizedQuery && <div className="matchup-search-results" aria-label="Player search results">

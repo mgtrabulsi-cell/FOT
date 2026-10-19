@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { BookOpen, ExternalLink, Lightbulb } from 'lucide-react';
+import { BookOpen, ExternalLink, Plus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSuggestion } from './services/theAngle';
@@ -289,8 +289,56 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       : <input type="text" maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />}
   </label>;
   return <section className="angle-panel" aria-label="The Angle">
-    <header className="angle-heading"><div><span className="eyebrow">BEYOND THE BOX SCORE</span><h2><Lightbulb size={24} aria-hidden="true" />The Angle</h2><p>Players. Matchups. The story behind the spot.</p></div><span>{season && week ? `${season} · Week ${week}` : 'Loading NFL week...'}</span></header>
-    <p className="angle-disclaimer">Editorial storylines, not predictions. Past results and personal narratives do not guarantee future performance. Any pick is an admin opinion, not a recommendation or a verified edge.</p>
+    {admin && <div className="angle-admin-bar">
+      <button className="angle-create-button" disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}><Plus size={16} aria-hidden="true" />Create an angle</button>
+      <span>{drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}</span>
+    </div>}
+    {admin && form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
+      <h3>{form.id ? 'Edit storyline' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
+      <fieldset disabled={busy}>
+        <label>Matchup<select value={form.game_id} onChange={(event) => {
+          const game = weeklyGames.find((item) => item.id === event.target.value);
+          if (game && game.id !== form.game_id) {
+            setForm({ ...form, game_id: game.id, matchup: `${game.away.name} @ ${game.home.name}`,
+              kind: 'team', subject: `${game.away.abbr} @ ${game.home.abbr}`, category: 'Other',
+              evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: false });
+            setDirty(true);
+          }
+        }}>{!weeklyGames.some((game) => game.id === form.game_id) && <option value={form.game_id}>{form.matchup}</option>}{weeklyGames.map((game) => <option key={game.id} value={game.id}>{game.away.name} @ {game.home.name}</option>)}</select></label>
+        <p>{form.subject || form.matchup} · {form.category}</p>
+        {form.source_url && isAngleSource(form.source_url) && <p><a href={form.source_url} target="_blank" rel="noopener noreferrer">{form.source_label || 'Original source'} <ExternalLink size={12} aria-hidden="true" /></a> · Source retained automatically</p>}
+        {!form.source_url && <p>Include sources and context in your storyline.</p>}
+        {(form.evidence || form.counterpoint) && <details><summary>Retained source context</summary>{form.evidence && <p>{form.evidence}</p>}{form.counterpoint && <p>{form.counterpoint}</p>}</details>}
+        {field('title', 'Headline (your own words)', 140)}
+        {field('narrative', 'Storyline', 1500, true)}
+        <div className="angle-pick-editor">
+          <p>Admin picks (optional opinions). Add each bet separately.</p>
+          {(form.picks ?? []).map((pick, index) => <div key={pick.id}>
+            <label>Admin pick {index + 1}<textarea maxLength={500} value={pick.text} onChange={(event) => change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, text: event.target.value, result: 'pending' as const } : item))} /></label>
+            <button type="button" onClick={() => change('picks', (form.picks ?? []).filter((item) => item.id !== pick.id))}>Remove pick {index + 1}</button>
+          </div>)}
+          <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
+        </div>
+        <label htmlFor="angle-photos">Photos (optional, up to four)</label>
+        <input id="angle-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
+          const files = Array.from(event.target.files ?? []); event.target.value = '';
+          if (photos.length + files.length > 4) { setActionError('Attach at most four photos.'); return; }
+          if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024)) {
+            setActionError('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.'); return;
+          }
+          setActionError(''); setDirty(true); change('reviewed', false);
+          setPhotos((current) => [...current, ...files.map((file) => { const preview = URL.createObjectURL(file); previews.current.add(preview); return { file, preview }; })]);
+        }} />
+        <small className="livewire-photo-help">JPG, PNG, WebP or GIF · 5 MB each · Photo URLs are public, even in drafts.</small>
+        {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}><OfflineImage src={photo.preview} alt={`Attachment preview ${index + 1}`} /><button type="button" onClick={() => {
+          if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
+          setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
+        }}>Remove photo {index + 1}</button></div>)}</div>}
+        <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
+        <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : 'Publish angle'}</button><button type="button" onClick={() => openEditor(null)}>Cancel</button></div>
+      </fieldset>
+    </form>}
+    <p className="angle-disclaimer">Editorial opinions, not predictions or betting recommendations.</p>
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
     {loadError && <p className="feed-warning" role="alert">{loadError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
@@ -315,8 +363,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>Edit angle</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
     </article>)}</div>
     {admin && <section className="angle-admin" aria-label="The Angle admin desk">
-      <h3>Admin desk <span>Private</span></h3><p>Review sourced birthday, matchup-history, milestone, and comeback leads, then write a headline, storyline, and optional admin pick. Verify identities, dates, records, and public reporting before publishing; coverage can be incomplete, family details stay private, and past results or personal events do not predict performance.</p>
-      <div className="angle-actions"><button disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}>Create an angle</button><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
+      <h3>Admin desk <span>Private</span></h3><p>Verify every lead before publishing.</p>
+      <div className="angle-actions"><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
       {!weeklyGames.length && <p>No NFL matchups are available for this week. Manual creation and suggestions need a loaded matchup.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
       {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news, birthday, or matchup-history leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
@@ -338,51 +386,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       })}
       <h4>Saved drafts ({drafts.length})</h4>
       {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || 'Untitled angle'}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
-      {form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
-        <h3>{form.id ? 'Edit storyline' : 'New storyline'}</h3><p>Draft changes are private. First publication sends a SUNDAY SCRIPT: Headline notification to enabled devices. Edits and republication do not send another alert.</p>
-        <fieldset disabled={busy}>
-          <label>Matchup<select value={form.game_id} onChange={(event) => {
-            const game = weeklyGames.find((item) => item.id === event.target.value);
-            if (game && game.id !== form.game_id) {
-              setForm({ ...form, game_id: game.id, matchup: `${game.away.name} @ ${game.home.name}`,
-                kind: 'team', subject: `${game.away.abbr} @ ${game.home.abbr}`, category: 'Other',
-                evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: false });
-              setDirty(true);
-            }
-          }}>{!weeklyGames.some((game) => game.id === form.game_id) && <option value={form.game_id}>{form.matchup}</option>}{weeklyGames.map((game) => <option key={game.id} value={game.id}>{game.away.name} @ {game.home.name}</option>)}</select></label>
-          <p>{form.subject || form.matchup} · {form.category}</p>
-          {form.source_url && isAngleSource(form.source_url) && <p><a href={form.source_url} target="_blank" rel="noopener noreferrer">{form.source_label || 'Original source'} <ExternalLink size={12} aria-hidden="true" /></a> · Source retained automatically</p>}
-          {!form.source_url && <p>Include any sources and factual context in your storyline. Reviewing a suggestion retains its source automatically.</p>}
-          {(form.evidence || form.counterpoint) && <details><summary>Retained source context</summary>{form.evidence && <p>{form.evidence}</p>}{form.counterpoint && <p>{form.counterpoint}</p>}</details>}
-          {field('title', 'Headline (your own words)', 140)}
-          {field('narrative', 'Storyline', 1500, true)}
-          <div className="angle-pick-editor">
-            <p>Admin picks (optional opinions; no guarantees). Add each bet separately so it can have its own result.</p>
-            {(form.picks ?? []).map((pick, index) => <div key={pick.id}>
-              <label>Admin pick {index + 1}<textarea maxLength={500} value={pick.text} onChange={(event) => change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, text: event.target.value, result: 'pending' as const } : item))} /></label>
-              <button type="button" onClick={() => change('picks', (form.picks ?? []).filter((item) => item.id !== pick.id))}>Remove pick {index + 1}</button>
-            </div>)}
-            <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
-          </div>
-          <label htmlFor="angle-photos">Photos (optional, up to four)</label>
-          <input id="angle-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
-            const files = Array.from(event.target.files ?? []); event.target.value = '';
-            if (photos.length + files.length > 4) { setActionError('Attach at most four photos.'); return; }
-            if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024)) {
-              setActionError('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.'); return;
-            }
-            setActionError(''); setDirty(true); change('reviewed', false);
-            setPhotos((current) => [...current, ...files.map((file) => { const preview = URL.createObjectURL(file); previews.current.add(preview); return { file, preview }; })]);
-          }} />
-          <small className="livewire-photo-help">JPG, PNG, WebP or GIF · 5 MB per photo · Uploaded photos have public URLs, including photos saved with private drafts.</small>
-          {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}><OfflineImage src={photo.preview} alt={`Attachment preview ${index + 1}`} /><button type="button" onClick={() => {
-            if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
-            setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
-          }}>Remove photo {index + 1}</button></div>)}</div>}
-          <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I checked the source, matchup, and factual claims. Personal events are publicly announced or reliably reported, with unnecessary family details omitted. This is editorial context, not a guaranteed outcome.</label>
-          <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : 'Publish angle'}</button><button type="button" onClick={() => openEditor(null)}>Cancel</button></div>
-        </fieldset>
-      </form>}
     </section>}
   </section>;
 }
