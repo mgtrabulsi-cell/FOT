@@ -1200,9 +1200,9 @@ td:first-child { color: #828c84; }
 .wire-category-filters button.active { background: #24364e; border-color: #5f80ac; color: #fff; }
 
 /* Category Card & Player Stat Table */
-.wire-player-boxscore-view { min-width: 0; max-width: 100%; width: 100%; display: grid; gap: 16px; }
+.wire-player-boxscore-view { min-width: 0; max-width: 100%; width: 100%; display: grid; gap: 10px; }
 .wire-category-card { background: #131c2b; border: 1px solid #26374d; border-radius: 8px; overflow: hidden; margin-bottom: 0; box-shadow: 0 4px 14px #060b1340; min-width: 0; max-width: 100%; }
-.wire-category-header { padding: 12px 16px; background: #101826; border-bottom: 1px solid #23344a; display: flex; align-items: center; justify-content: space-between; }
+.wire-category-header { padding: 8px 12px; background: #101826; border-bottom: 1px solid #23344a; display: flex; align-items: center; justify-content: space-between; }
 .wire-category-title-wrap { display: flex; align-items: center; gap: 8px; }
 .wire-category-title-wrap h3 { margin: 0; font: 600 14px var(--display); letter-spacing: .5px; color: #fff; text-transform: uppercase; }
 .wire-team-tag { font: 700 10px var(--mono); color: #8ba2c3; background: #182538; padding: 2px 6px; border-radius: 3px; }
@@ -1211,7 +1211,7 @@ td:first-child { color: #828c84; }
 .wire-table-scroll-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .wire-stat-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .wire-mobile-stat-label { display: none; }
-.wire-stat-table th, .wire-stat-table td { padding: 9px 12px; border-bottom: 1px solid #1c2a3d; white-space: nowrap; }
+.wire-stat-table th, .wire-stat-table td { padding: 5px 10px; border-bottom: 1px solid #1c2a3d; white-space: nowrap; }
 .wire-stat-table th { font: 600 11px var(--mono); color: #889ebd; background: #0f1724; text-transform: uppercase; letter-spacing: .5px; }
 .wire-stat-table th.wire-col-athlete, .wire-stat-table td.wire-col-athlete { text-align: left; position: sticky; left: 0; background: #131c2b; z-index: 2; box-shadow: 2px 0 6px #00000045; min-width: 210px; width: 30%; }
 .wire-stat-table th.wire-col-athlete { background: #0f1724; padding-left: 16px; }
@@ -1230,7 +1230,7 @@ td:first-child { color: #828c84; }
 .wire-athlete-avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #1e2c40; flex: 0 0 28px; display: grid; place-items: center; font: 600 9px var(--mono); color: #8ba2c2; }
 .wire-athlete-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
 .wire-athlete-meta { display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
-.wire-player-card-button { min-height: 44px; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.wire-player-card-button { min-height: 32px; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .wire-player-card-button:hover .wire-athlete-name { text-decoration: underline; }
 .wire-player-card-button:focus-visible { outline: 2px solid #77b7ff; outline-offset: 3px; border-radius: 3px; }
 .wire-athlete-name { font-weight: 600; color: #e5edf8; text-overflow: ellipsis; overflow: hidden; }
@@ -1342,16 +1342,16 @@ td:first-child { color: #828c84; }
   .wire-matchup-team-details h2 { font-size: 21px; }
   .wire-linescore-wrapper { padding-top: 10px; }
   .wire-linescore-table th, .wire-linescore-table td { padding-block: 6px; }
-  .wire-stat-table { font-size: 16px; }
-  .wire-stat-table th { font-size: 13px; }
-  .wire-stat-table td.wire-col-data { font-size: 17px; }
+  .wire-stat-table { font-size: 14px; }
+  .wire-stat-table th { font-size: 12px; }
+  .wire-stat-table td.wire-col-data { font-size: 15px; }
   .wire-season-table { table-layout: fixed; min-width: 900px; }
   .wire-season-table col { width: calc(70% / 6); }
   .wire-season-table col.wire-season-athlete-column { width: 30%; }
-  .wire-stat-table th, .wire-stat-table td { padding: 14px 16px; }
-  .wire-category-title-wrap h3 { font-size: 18px; }
-  .wire-athlete-avatar { width: 60px; height: 60px; flex-basis: 60px; }
-  .wire-athlete-name { font-size: 19px; }
+  .wire-stat-table th, .wire-stat-table td { padding: 6px 14px; }
+  .wire-category-title-wrap h3 { font-size: 16px; }
+  .wire-athlete-avatar { width: 36px; height: 36px; flex-basis: 36px; }
+  .wire-athlete-name { font-size: 15px; }
   .wire-athlete-sub { font-size: 11px; }
   .nfl-directory-player .nfl-player-avatar { width: 48px; height: 48px; }
   .nfl-directory-player-main { min-height: 54px; gap: 11px; }
@@ -1415,21 +1415,21 @@ td:first-child { color: #828c84; }
   .wire-stat-table, .wire-stat-table tbody { display: block; width: 100%; }
   .wire-season-table colgroup { display: none; }
   .wire-stat-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .wire-stat-table tbody tr { display: grid; grid-template-columns: repeat(var(--wire-stat-count), minmax(0, 1fr)); padding: 10px 8px; gap: 3px; border-bottom: 1px solid #30435c; }
+  .wire-stat-table tbody tr { display: grid; grid-template-columns: repeat(var(--wire-stat-count), minmax(0, 1fr)); padding: 6px 8px; gap: 2px; border-bottom: 1px solid #30435c; }
   .wire-stat-table tbody tr:last-child { border-bottom: 0; }
-  .wire-stat-table td.wire-col-athlete { grid-column: 1 / -1; position: static; width: auto; min-width: 0; padding: 0 0 4px; border: 0; box-shadow: none; background: transparent; }
-  .wire-stat-table td.wire-col-data { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; padding: 8px 0; border: 0; border-radius: 4px; background: #101928; font-size: clamp(9px, 2.8vw, 13px); white-space: nowrap; }
+  .wire-stat-table td.wire-col-athlete { grid-column: 1 / -1; position: static; width: auto;   min-width: 0; padding: 0 0 2px; border: 0; box-shadow: none; background: transparent; }
+    .wire-stat-table td.wire-col-data { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; padding: 3px 0; border: 0; border-radius: 4px; background: #101928; font-size: clamp(9px, 2.8vw, 13px); white-space: nowrap; }
   .wire-season-table td.wire-empty-stat { display: none; }
   .wire-mobile-stat-label { display: block; color: #a4b7d1; font: 500 clamp(7px, 2.1vw, 10px)/1.3 var(--mono); letter-spacing: -.3px; }
   .wire-season-table .wire-mobile-stat-label { font-size: clamp(6px, 1.85vw, 10px); letter-spacing: -.4px; }
   .wire-stat-unavailable { font-size: 0; }
   .wire-stat-unavailable::after { content: '\2014'; font-size: 12px; }
   .wire-athlete-cell { min-width: 0; font-size: 14px; }
-  .wire-athlete-avatar { width: 36px; height: 36px; flex-basis: 36px; }
+  .wire-athlete-avatar { width: 28px; height: 28px; flex-basis: 28px; }
   .wire-athlete-meta { flex: 1; }
   .wire-athlete-name { white-space: normal; overflow-wrap: anywhere; }
-  .wire-athlete-sub { font-size: 11px; }
-  .wire-star { min-width: 44px; min-height: 44px; }
+  .wire-athlete-sub { font-size: 10px; }
+  .wire-star { width: 32px; height: 32px; }
   .wire-stat-table tr.wire-totals-row td { border-top: 0; }
   .wire-hero-banner { padding: 14px; gap: 8px; }
   .wire-matchup-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: center; }
