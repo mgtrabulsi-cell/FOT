@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { anglePicks, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+import { anglePicks, angleSport, angleSportGameId, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
@@ -130,4 +130,14 @@ test('Results include every published Admin pick as a separate item without spli
   ]);
   assert.equal(publishedAnglePicks(rows.filter((story) => story.id !== 'first')).length, 1);
   assert.deepEqual(publishedAnglePicks([]), []);
+});
+
+test('Angle sports map game IDs to labels and emoji, defaulting to NFL', () => {
+  assert.equal(angleSport('NFL:123').key, 'NFL');
+  assert.equal(angleSport(angleSportGameId('NBA')).label, 'NBA');
+  assert.equal(angleSport('NHL:0').emoji, '\u{1F3D2}');
+  assert.equal(angleSport('SOCCER:0').label, 'Soccer');
+  assert.equal(angleSport('UCL:0').key, 'UCL');
+  assert.equal(anglePublishError({ title: 'T', narrative: 'N', subject: '', evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: true, matchup: ' ' }), 'Add the matchup before saving.');
+  assert.equal(angleWriteFields({ game_id: 'NBA:0', matchup: ' Lakers @ Celtics ', kind: 'team', subject: '', category: 'Other', title: 'T', narrative: 'N', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true }, 'draft').matchup, 'Lakers @ Celtics');
 });

@@ -6,7 +6,7 @@ import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { fetchNFLActiveSkillRoster, fetchNFLGameDetails } from './services/sportsData';
 import type { Game, NFLGameDetails } from './services/sportsData';
-import { fetchPlayerAverage, fetchPPRProjections, isMatchupPosition, matchupPositions, matchupStats, moveMatchupPick, readMatchupPicks } from './services/matchupBoard';
+import { fetchPlayerAverage, fetchPPRWeek, isMatchupPosition, matchupPositions, matchupStats, moveMatchupPick, readMatchupPicks } from './services/matchupBoard';
 import type { MatchupPick } from './services/matchupBoard';
 import { picksReadKey } from './services/analystReads';
 import { useAnalystReadObserver } from './useAnalystReadObserver';
@@ -35,6 +35,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
   const [rosterError, setRosterError] = useState('');
   const [details, setDetails] = useState<Map<string, NFLGameDetails>>(new Map());
   const [projections, setProjections] = useState<Map<string, number>>(new Map());
+  const [actuals, setActuals] = useState<Map<string, number>>(new Map());
   const [statsError, setStatsError] = useState('');
   const [projectionError, setProjectionError] = useState('');
   const [averages, setAverages] = useState<Map<string, { average: number | null; games: number }>>(new Map());
@@ -50,7 +51,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
   const readObserver = useAnalystReadObserver('picks', onSeen, user?.id, `${season}:${week}:${published.revision}:${publishedVisible}`);
   const readKey = (playerId: string) => publishedVisible && season && week ? picksReadKey(season, week, published.revision, playerId) : undefined;
 
-  useEffect(() => { setProjections(new Map()); }, [season, week, pickPlayerKey]);
+  useEffect(() => { setProjections(new Map()); setActuals(new Map()); }, [season, week, pickPlayerKey]);
   useEffect(() => { setAdmin(false); }, [user?.id]);
 
   useEffect(() => {
@@ -180,8 +181,8 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
     const controller = new AbortController();
     setProjectionError('');
     if (!season || !week || !pickPlayerKey) return;
-    void fetchPPRProjections(season, week, pickPlayerKey.split('|'), controller.signal).then((data) => {
-      if (!controller.signal.aborted) setProjections(data);
+    void fetchPPRWeek(season, week, pickPlayerKey.split('|'), controller.signal).then((data) => {
+      if (!controller.signal.aborted) { setProjections(data.projections); setActuals(data.actuals); }
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setProjectionError(`ESPN weekly PPR projections are unavailable. ${message(cause)}`);
     });
@@ -268,11 +269,15 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
           const average = averages.get(pick.id) ?? { average: null, games: 0 };
           const rank = gameDetails?.teamForms.find((form) => form.teamId === opponent?.id)?.defenseRanks[stat.defense];
           const projection = projections.get(pick.id);
+          const actual = game?.status === 'UPCOMING' ? undefined : actuals.get(pick.id);
+          const final = game?.status === 'FINAL';
+          const actualTone = !final || actual === undefined || projection === undefined || actual === projection ? '' : actual > projection ? ' is-over' : ' is-under';
           return <article className="favorable-matchup-item" data-post-id={readKey(pick.id)} key={`${published.revision}:${pick.id}`}>
             <div className="favorable-matchup-player"><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{pick.headshot ? <OfflineImage src={pick.headshot} alt="" /> : pick.name.slice(0, 1)}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small></span></div>
-            <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? averageLoading ? 'Loading...' : averageError ? 'Retrying game log' : 'No recorded games' : `last ${average.games} reported games`}</small></div>
-              <div><b>{rank === null || rank === undefined ? '—' : `#${rank}`}</b><span>{position === 'QB' ? 'Pass' : position === 'RB' ? 'Rush' : 'Receiving'} defense rank</span><small>{opponent?.abbr ?? 'Unavailable'} · NFL yards rank</small></div>
-              <div><b>{projection?.toFixed(1) ?? '—'}</b><span>ESPN projected PPR</span><small>{projection === undefined ? 'Unavailable' : `Week ${week} · fantasy pts`}</small></div></div>
+            <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? averageLoading ? 'Loading...' : averageError ? 'Retrying game log' : 'No recorded games' : `last ${average.games} games`}</small></div>
+              <div><b>{rank === null || rank === undefined ? '—' : `#${rank}`}</b><span>{position === 'QB' ? 'Pass' : position === 'RB' ? 'Rush' : 'Receiving'} defense rank</span><small>{opponent?.abbr ?? 'Unavailable'} · yards</small></div>
+              <div><b>{projection?.toFixed(1) ?? '—'}</b><span>Projected PPR</span><small>{projection === undefined ? 'Unavailable' : `ESPN · Week ${week}`}</small></div>
+              <div><b className={`favorable-matchup-actual${actualTone}`}>{actual?.toFixed(1) ?? '—'}</b><span>Actual PPR</span><small>{game?.status === 'UPCOMING' ? 'Not started' : actual === undefined ? 'Unavailable' : final ? 'Final' : 'Live'}</small></div></div>
             {admin && <div className="matchup-rank-actions">
               <button aria-label={`Move ${pick.name} up`} disabled={busy || index === 0} onClick={() => edit(moveMatchupPick(picks, pick.id, -1))}><ChevronUp size={16} /></button>
               <button aria-label={`Move ${pick.name} down`} disabled={busy || index === group.length - 1} onClick={() => edit(moveMatchupPick(picks, pick.id, 1))}><ChevronDown size={16} /></button>
@@ -283,6 +288,6 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
       </section>;
     })}</div>}
     </div>
-    <p className="nfl-data-note">Averages use each player's regular-season game log before the selected matchup, with up to five recent games and the reported sample count shown. Preseason games are excluded; missing statistics are not treated as zero. Defense ranks are season-to-date yards ranks, not fantasy points allowed by position. ESPN projections use PPR scoring for the exact season and week; unavailable projections are not estimated. Selections are editorial, not confirmed starters.</p>
+    <p className="nfl-data-note">Averages use each player's regular-season game log before the selected matchup, with up to five recent games and the reported sample count shown. Preseason games are excluded; missing statistics are not treated as zero. Defense ranks are season-to-date yards ranks, not fantasy points allowed by position. ESPN projections and actual points use PPR scoring for the exact season and week; actual points are colored green above or red below the projection once the game is final. Unavailable projections are not estimated. Selections are editorial, not confirmed starters.</p>
   </section>;
 }

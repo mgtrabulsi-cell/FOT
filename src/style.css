@@ -965,6 +965,10 @@ td:first-child { color: #828c84; }
 .favorable-matchup-item, .den-play-item, .den-feed-item, .den-favorite, .den-favorites .panel-heading { border-color: #2c3b51; }
 .favorable-matchup-metrics b.is-positive { color: #7ea6d6; }
 .favorable-matchup-metrics b.is-negative { color: #fff; background: #a51c28; border-radius: 3px; padding: 2px 4px; }
+.favorable-matchup-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.favorable-matchup-metrics b.favorable-matchup-actual.is-over { color: #4ade80; }
+.favorable-matchup-metrics b.favorable-matchup-actual.is-under { color: #f87171; }
+.angle-sport-emoji { margin-right: 6px; font-style: normal; }
 .den-activity .den-timeline, .den-favorites { color: #e3e9f2; background: #151f2e; border-color: #34445b; }
 .den-timeline-heading, .den-timeline-heading h2, .den-favorites .panel-heading h2 { color: #e5eaf3; }
 .den-refresh, .den-empty, .den-play-copy > header, .den-play-copy > p, .den-plays-empty p, .den-news-update > p, .den-score-update > p, .den-feed-content > header, .den-feed-content time { color: #bbc7d9; }

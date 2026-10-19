@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fetchPPRProjections, lastFiveAverage, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPPRProjections } from '../src/services/matchupBoard.ts';
+import { fetchPPRProjections, lastFiveAverage, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPPRActuals, readPPRProjections } from '../src/services/matchupBoard.ts';
 
 const pick = (id, position) => ({ id, position, name: `Player ${id}`, teamId: '1', gameId: 'NFL:123', headshot: '' });
 
@@ -71,6 +71,8 @@ test('Projection requires the exact season/week, projected source and weekly spl
   assert.deepEqual([...readPPRProjections(payload, 2026, 6)], [['123', 17.8], ['456', 0]]);
   assert.equal(readPPRProjections(payload, 2026, 7).size, 0);
   assert.throws(() => readPPRProjections({}, 2026, 6));
+  assert.deepEqual([...readPPRActuals(payload, 2026, 6)], [['123', 77]]);
+  assert.equal(readPPRActuals(payload, 2025, 6).size, 0);
 });
 
 test('Projection requests target selected players with the required limit sort and verify PPR', async (t) => {

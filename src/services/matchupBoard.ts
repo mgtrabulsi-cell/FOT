@@ -99,6 +99,14 @@ export function readMatchupPicks(value: unknown): MatchupPick[] {
 }
 
 export function readPPRProjections(payload: unknown, season: number, week: number): Map<string, number> {
+  return readPPRPoints(payload, season, week, 1);
+}
+
+export function readPPRActuals(payload: unknown, season: number, week: number): Map<string, number> {
+  return readPPRPoints(payload, season, week, 0);
+}
+
+function readPPRPoints(payload: unknown, season: number, week: number, statSourceId: 0 | 1): Map<string, number> {
   const players = object(payload).players;
   const result = new Map<string, number>();
   if (!Array.isArray(players)) throw new Error('ESPN returned an invalid fantasy player feed.');
@@ -106,7 +114,7 @@ export function readPPRProjections(payload: unknown, season: number, week: numbe
     const player = object(object(entry).player);
     if (!Array.isArray(player.stats)) continue;
     const projection = player.stats.map(object).find((stat) => stat.seasonId === season
-      && stat.scoringPeriodId === week && stat.statSourceId === 1 && stat.statSplitTypeId === 1);
+      && stat.scoringPeriodId === week && stat.statSourceId === statSourceId && stat.statSplitTypeId === 1);
     if (typeof player.id === 'number' && typeof projection?.appliedTotal === 'number' && Number.isFinite(projection.appliedTotal)) {
       result.set(String(player.id), projection.appliedTotal);
     }
@@ -115,7 +123,11 @@ export function readPPRProjections(payload: unknown, season: number, week: numbe
 }
 
 export async function fetchPPRProjections(season: number, week: number, playerIds: readonly string[], signal: AbortSignal) {
-  if (!playerIds.length) return new Map<string, number>();
+  return (await fetchPPRWeek(season, week, playerIds, signal)).projections;
+}
+
+export async function fetchPPRWeek(season: number, week: number, playerIds: readonly string[], signal: AbortSignal) {
+  if (!playerIds.length) return { projections: new Map<string, number>(), actuals: new Map<string, number>() };
   const base = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/segments/0/leaguedefaults/3`;
   const response = await fetch(`${base}?view=kona_player_info&view=mSettings&scoringPeriodId=${week}`, {
     signal,
@@ -131,5 +143,5 @@ export async function fetchPPRProjections(season: number, week: number, playerId
   if (!Array.isArray(scoring) || !scoring.some((item) => object(item).statId === 53 && object(item).points === 1)) {
     throw new Error('ESPN PPR scoring could not be verified.');
   }
-  return readPPRProjections(payload, season, week);
+  return { projections: readPPRProjections(payload, season, week), actuals: readPPRActuals(payload, season, week) };
 }

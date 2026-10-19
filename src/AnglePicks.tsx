@@ -6,6 +6,6 @@ export function PickResult({ result }: { result: AnglePick['result'] }) {
   return <span className={`pick-result pick-result-${result}`} role="img" aria-label={result === 'hit' ? 'Hit' : 'Missed'}>{result === 'hit' ? <Check size={22} aria-hidden="true" /> : <X size={22} aria-hidden="true" />}</span>;
 }
 
-export default function AnglePicks({ picks }: { picks: AnglePick[] }) {
-  return <>{picks.map((pick) => <div className="angle-pick" key={pick.id}><div className="angle-pick-heading"><h4>Admin pick · Opinion</h4><PickResult result={pick.result} /></div><p>{pick.text}</p></div>)}</>;
+export default function AnglePicks({ picks, emoji }: { picks: AnglePick[]; emoji?: string }) {
+  return <>{picks.map((pick) => <div className="angle-pick" key={pick.id}><div className="angle-pick-heading"><h4>{emoji && <span className="angle-sport-emoji" aria-hidden="true">{emoji}</span>}Admin pick · Opinion</h4><PickResult result={pick.result} /></div><p>{pick.text}</p></div>)}</>;
 }

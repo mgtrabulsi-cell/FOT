@@ -53,9 +53,23 @@ export function angleLeadGroup(category: AngleCategory): typeof angleLeadGroups[
   return 'Game trends';
 }
 
+export const angleSports = [
+  { key: 'NBA', label: 'NBA', emoji: '🏀' },
+  { key: 'NHL', label: 'NHL', emoji: '🏒' },
+  { key: 'UCL', label: 'UCL', emoji: '⚽' },
+  { key: 'SOCCER', label: 'Soccer', emoji: '⚽' },
+] as const;
+export type AngleSportKey = 'NFL' | typeof angleSports[number]['key'];
+const nflSport = { key: 'NFL', label: 'NFL', emoji: '🏈' } as const;
+export function angleSport(gameId: string): { key: AngleSportKey; label: string; emoji: string } {
+  const prefix = gameId.split(':')[0];
+  return angleSports.find((sport) => sport.key === prefix) ?? nflSport;
+}
+export const angleSportGameId = (key: typeof angleSports[number]['key']) => `${key}:0`;
+
 export function angleWriteFields(angle: Angle, status: Angle['status']) {
   return {
-    game_id: angle.game_id, matchup: angle.matchup, kind: angle.kind, subject: angle.subject.trim(),
+    game_id: angle.game_id, matchup: angle.matchup.trim(), kind: angle.kind, subject: angle.subject.trim(),
     category: angle.category, title: angle.title.trim(), narrative: angle.narrative, evidence: angle.evidence,
     counterpoint: angle.counterpoint, pick: angle.picks?.[0]?.text ?? (angle.picks ? '' : angle.pick),
     ...(angle.picks ? { picks: angle.picks.filter((pick) => pick.text.trim()).map((pick) => ({ ...pick, text: pick.text.trim() })) } : {}),
@@ -171,7 +185,8 @@ export function selectAngleSuggestions(game: Game, articles: DenNewsItem[]): Ang
   });
 }
 
-export function anglePublishError(angle: Pick<Angle, 'title' | 'subject' | 'narrative' | 'evidence' | 'counterpoint' | 'source_url' | 'source_label' | 'reviewed'>) {
+export function anglePublishError(angle: Pick<Angle, 'title' | 'subject' | 'narrative' | 'evidence' | 'counterpoint' | 'source_url' | 'source_label' | 'reviewed'> & { matchup?: string }) {
+  if (angle.matchup !== undefined && !angle.matchup.trim()) return 'Add the matchup before saving.';
   if (![angle.title, angle.narrative].every((value) => value.trim())) return 'Add a headline and storyline before publishing.';
   if (angle.source_url && !isAngleSource(angle.source_url)) return 'Use a valid HTTP or HTTPS source link.';
   if (!angle.reviewed) return 'Confirm you checked the source, matchup, and factual claims before publishing.';

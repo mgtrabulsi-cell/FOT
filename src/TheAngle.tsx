@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { BookOpen, ExternalLink, Plus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSuggestion } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
@@ -183,7 +183,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }
   async function save(status: Angle['status']) {
     if (!form || !supabase || busy) return;
-    const validation = status === 'published' ? anglePublishError(form) : '';
+    const validation = status === 'published' ? anglePublishError(form) : !form.matchup.trim() ? 'Add the matchup before saving.' : '';
     if (validation) { setActionError(validation); return; }
     if (status === 'draft' && form.status === 'published' && !window.confirm('Move this published angle back to private drafts?')) return;
     setBusy(true); setActionError(''); setNotice('');
@@ -297,15 +297,26 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       <h3>{form.id ? 'Edit storyline' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
       <fieldset disabled={busy}>
         <label>Matchup<select value={form.game_id} onChange={(event) => {
-          const game = weeklyGames.find((item) => item.id === event.target.value);
-          if (game && game.id !== form.game_id) {
+          const value = event.target.value;
+          if (value === form.game_id) return;
+          const game = weeklyGames.find((item) => item.id === value);
+          const sport = angleSports.find((item) => angleSportGameId(item.key) === value);
+          if (game) {
             setForm({ ...form, game_id: game.id, matchup: `${game.away.name} @ ${game.home.name}`,
               kind: 'team', subject: `${game.away.abbr} @ ${game.home.abbr}`, category: 'Other',
               evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: false });
             setDirty(true);
+          } else if (sport) {
+            setForm({ ...form, game_id: value, matchup: '', kind: 'team', subject: '', category: 'Other',
+              evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: false });
+            setDirty(true);
           }
-        }}>{!weeklyGames.some((game) => game.id === form.game_id) && <option value={form.game_id}>{form.matchup}</option>}{weeklyGames.map((game) => <option key={game.id} value={game.id}>{game.away.name} @ {game.home.name}</option>)}</select></label>
-        <p>{form.subject || form.matchup} · {form.category}</p>
+        }}>{!weeklyGames.some((game) => game.id === form.game_id) && angleSport(form.game_id).key === 'NFL' && <option value={form.game_id}>{form.matchup}</option>}
+          <optgroup label="NFL">{weeklyGames.map((game) => <option key={game.id} value={game.id}>{game.away.name} @ {game.home.name}</option>)}</optgroup>
+          <optgroup label="Other sports">{angleSports.map((sport) => <option key={sport.key} value={angleSportGameId(sport.key)}>{sport.emoji} {sport.label}</option>)}</optgroup>
+        </select></label>
+        {angleSport(form.game_id).key !== 'NFL' && <label>{angleSport(form.game_id).label} matchup<input type="text" maxLength={200} placeholder="e.g. Lakers @ Celtics" value={form.matchup} onChange={(event) => change('matchup', event.target.value)} /></label>}
+        <p>{form.subject || form.matchup || angleSport(form.game_id).label} · {form.category}</p>
         {form.source_url && isAngleSource(form.source_url) && <p><a href={form.source_url} target="_blank" rel="noopener noreferrer">{form.source_label || 'Original source'} <ExternalLink size={12} aria-hidden="true" /></a> · Source retained automatically</p>}
         {!form.source_url && <p>Include sources and context in your storyline.</p>}
         {(form.evidence || form.counterpoint) && <details><summary>Retained source context</summary>{form.evidence && <p>{form.evidence}</p>}{form.counterpoint && <p>{form.counterpoint}</p>}</details>}
@@ -352,11 +363,11 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {!season || !week ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">Loading The Angle...</p> : loaded && !published.length && <p className="angle-empty">{rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
       <div className="angle-card-meta"><span>{angle.category}</span><span>{angle.kind === 'player' ? 'PLAYER ANGLE' : 'MATCHUP ANGLE'}</span></div>
-      <h3>{angle.title}</h3><p className="angle-subject">{angle.subject}</p><p className="angle-matchup">{angle.matchup} · {angle.season} · Week {angle.week}</p>
+      <h3>{angle.title}</h3>{angle.subject && <p className="angle-subject">{angle.subject}</p>}<p className="angle-matchup">{angleSport(angle.game_id).key === 'NFL' ? '' : `${angleSport(angle.game_id).emoji} ${angleSport(angle.game_id).label} · `}{angle.matchup} · {angle.season} · Week {angle.week}</p>
       <p className="angle-story">{angle.narrative}</p>
       {angle.evidence && <div className="angle-context"><h4>The supporting context</h4><p>{angle.evidence}</p></div>}
       {angle.counterpoint && <div className="angle-counterpoint"><h4>The other side</h4><p>{angle.counterpoint}</p></div>}
-      <AnglePicks picks={anglePicks(angle)} />
+      <AnglePicks picks={anglePicks(angle)} emoji={angleSport(angle.game_id).emoji} />
       <PostGallery paths={angle.image_paths ?? []} title={angle.title} />
       {admin && <span className="livewire-views">{viewCounts[angle.id] === undefined ? 'Views unavailable' : `${new Intl.NumberFormat().format(viewCounts[angle.id])} ${viewCounts[angle.id] === 1 ? 'view' : 'views'}`}</span>}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}
