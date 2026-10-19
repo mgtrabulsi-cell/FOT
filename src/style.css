@@ -1070,6 +1070,53 @@ td:first-child { color: #828c84; }
 .wire-wheel-score { font: 700 12px/1.2 var(--mono); color: #e5eaf3; }
 .wire-wheel-card.selected .wire-wheel-team-abbr, .wire-wheel-card.selected .wire-wheel-score { color: #fff; }
 
+/* Game Board (The Wire landing view) */
+.wire-board { display: grid; gap: 22px; width: 100%; max-width: 920px; margin-inline: auto; min-width: 0; }
+.wire-board-day { display: grid; gap: 12px; min-width: 0; }
+.wire-board-day-title { margin: 0; padding-bottom: 6px; border-bottom: 1px solid #2c3d55; font: 600 18px/1.3 var(--display); letter-spacing: .5px; color: #fff; }
+.wire-board-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.wire-board-counts { display: flex; gap: 12px; font: 600 11px var(--mono); color: #8fa4c2; text-transform: uppercase; letter-spacing: .5px; }
+.wire-board-count-live { color: #ff6b75; }
+.wire-board-slot { display: grid; gap: 8px; min-width: 0; }
+.wire-board-slot-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; font: 600 14px/1.3 var(--display); letter-spacing: .5px; color: #e5edf8; }
+.wire-board-slot-title small { font: 600 12px var(--mono); color: #9bb1cf; }
+.wire-board-slot.is-tnf .wire-board-list > li > .wire-board-card { border-left: 3px solid #2563eb; }
+.wire-board-slot.is-snf .wire-board-list > li > .wire-board-card { border-left: 3px solid #d97706; }
+.wire-board-slot.is-mnf .wire-board-list > li > .wire-board-card { border-left: 3px solid #9333ea; }
+.wire-board-slot.is-intl .wire-board-list > li > .wire-board-card { border-left: 3px solid #10b981; }
+.wire-primetime-tag.tag-intl { display: inline-flex; align-items: center; gap: 4px; background: #052e22; color: #6ee7b7; border: 1px solid #10b98166; }
+.wire-primetime-pill.pill-intl { background: #052e22; color: #a7f3d0; border: 1px solid #10b98180; }
+.wire-flag { display: inline-block; flex: 0 0 auto; height: 11px; width: auto; border-radius: 1.5px; box-shadow: 0 0 0 1px #ffffff40; vertical-align: middle; }
+.wire-flag-generic { height: auto; box-shadow: none; font-size: 1.2em; line-height: 1; }
+.wire-board-slot-title .wire-flag { height: 12px; }
+.wire-primetime-pill .wire-flag { height: 12px; }
+.wire-board-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.wire-board-card { display: grid; grid-template-columns: 92px minmax(0, 1fr); grid-template-areas: "status teams" "footer footer"; gap: 8px 14px; width: 100%; min-height: 44px; padding: 12px 14px; border: 1px solid #28374d; border-radius: 8px; background: #131d2c; color: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, transform .12s, box-shadow .15s; }
+.wire-board-card:hover { border-color: #445b7c; background: #182537; transform: translateY(-1px); }
+.wire-board-card:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }
+.wire-board-card.is-live { border-color: #cc263388; box-shadow: 0 0 14px #cc263325; }
+.wire-board-status { grid-area: status; display: flex; flex-direction: column; justify-content: center; gap: 4px; font: 600 12px var(--mono); color: #c7d3e4; }
+.wire-board-status small { font: 500 11px var(--mono); color: #9bb1cf; }
+.wire-board-status .live-pill { display: inline-flex; align-items: center; gap: 4px; width: fit-content; padding: 2px 6px; border-radius: 3px; background: #a51c28; color: #fff; font-size: 11px; }
+.wire-board-status .live-pill i { width: 6px; height: 6px; border-radius: 50%; background: #ff4d5a; box-shadow: 0 0 6px #cc2633; display: inline-block; }
+.wire-board-final { color: #8fa4c2; }
+.wire-board-teams { grid-area: teams; display: grid; gap: 6px; min-width: 0; }
+.wire-board-team { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; }
+.wire-board-team.is-loser { opacity: .6; }
+.wire-board-mark { width: 30px; height: 30px; border-radius: 6px; font-size: 11px; }
+.wire-board-team-name { display: grid; min-width: 0; }
+.wire-board-team-name b { display: flex; align-items: center; gap: 4px; overflow: hidden; font: 600 15px/1.25 var(--display); color: #fff; letter-spacing: .3px; white-space: nowrap; text-overflow: ellipsis; }
+.wire-board-team-name small { font: 500 10px var(--mono); color: #8fa4c2; }
+.wire-board-favorite { display: inline-flex; color: #fbbf24; }
+.wire-board-score { min-width: 34px; font: 700 22px/1 var(--mono); color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
+.wire-board-footer { grid-area: footer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px solid #1f2d40; min-width: 0; }
+.wire-board-meta { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; font: 500 11px var(--mono); color: #9bb1cf; white-space: nowrap; text-overflow: ellipsis; }
+.wire-board-open { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; font: 600 11px var(--mono); color: #c7d3e4; }
+.wire-board-card:hover .wire-board-open { color: #fff; }
+.wire-back-button { display: inline-flex; align-items: center; gap: 4px; justify-self: start; min-height: 40px; padding: 6px 12px 6px 8px; border: 1px solid #334863; border-radius: 6px; background: #162335; color: #dbe4f2; font: 600 12px var(--mono); cursor: pointer; }
+.wire-back-button:hover { background: #1f314a; color: #fff; border-color: #4a688f; }
+@media (prefers-reduced-motion: reduce) { .wire-board-card, .wire-board-card:hover { transition: none; transform: none; } }
+
 /* Hero Banner & Matchup */
 .wire-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; max-width: 100%; }
 .wire-hero-banner { background: #131c2b; border: 1px solid #27374d; border-radius: 8px; padding: 20px 24px; display: grid; gap: 18px; box-shadow: 0 8px 24px #050a1250; min-width: 0; max-width: 100%; }
@@ -1200,6 +1247,7 @@ td:first-child { color: #828c84; }
 .wire-comparison-list { display: grid; gap: 1px; background: #1e2c3f; }
 .wire-comp-row { background: #131c2b; padding: 12px 18px; display: grid; grid-template-columns: 70px 1fr 70px; align-items: center; gap: 14px; }
 .wire-comp-val { font: 700 13px var(--mono); color: #e1e9f5; }
+.wire-comp-rank { display: block; margin-top: 4px; color: #a9bfdf; font: 500 10px/1.4 var(--mono); }
 .wire-comp-away { text-align: left; }
 .wire-comp-home { text-align: right; }
 .wire-comp-center { display: grid; gap: 6px; text-align: center; }
@@ -1324,6 +1372,14 @@ td:first-child { color: #828c84; }
   .wire-page .the-wire-container, .wire-page .wire-content { gap: 10px; }
   .wire-page .wire-game-wheel { gap: 4px; }
   .wire-page .wire-game-wheel > .eyebrow { display: none; }
+  .wire-board { gap: 14px; }
+  .wire-board-card { grid-template-columns: 64px minmax(0, 1fr); gap: 8px 10px; padding: 10px; }
+  .wire-board-status { font-size: 11px; }
+  .wire-board-team { grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; }
+  .wire-board-mark { width: 26px; height: 26px; }
+  .wire-board-team-name b { font-size: 14px; }
+  .wire-board-score { font-size: 19px; }
+  .wire-back-button { min-height: 44px; }
   .page-heading { align-items: stretch; flex-direction: column; gap: 14px; }
   .page-heading p { max-width: none; font-size: 13px; line-height: 1.5; }
   .date-line { flex-wrap: wrap; font-size: 9px; }

@@ -110,6 +110,8 @@ export type Game = {
   date: string;
   venue: string;
   neutralSite?: boolean;
+  venueCity?: string;
+  venueCountry?: string;
   seasonYear: number;
   away: Team;
   home: Team;
@@ -404,6 +406,8 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
     date: text(event.date),
     venue: text(asObject(competition.venue).fullName, text(asObject(event.venue).fullName, 'Venue TBA')),
     neutralSite: typeof competition.neutralSite === 'boolean' ? competition.neutralSite : undefined,
+    venueCity: text(asObject(asObject(competition.venue).address).city) || undefined,
+    venueCountry: text(asObject(asObject(competition.venue).address).country) || undefined,
     seasonYear: Number(asObject(event.season).year) || new Date().getFullYear(),
     away: teamA,
     home: teamH,

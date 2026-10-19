@@ -608,6 +608,7 @@ function App() {
   const [currentNFLWeek, setCurrentNFLWeek] = useState<number | null>(() => readRenderSnapshot('scoreboard', 'current')?.nflWeek ?? null);
   const [loadedNFLWeek, setLoadedNFLWeek] = useState<number | null>(() => readRenderSnapshot('scoreboard', 'current')?.nflWeek ?? null);
   const [wireSearchQuery, setWireSearchQuery] = useState('');
+  const [wireBoardKey, setWireBoardKey] = useState(0);
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
   const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
@@ -1052,6 +1053,11 @@ function App() {
     if (auto) {
       setSelectedGameId(auto.id);
     }
+    setWireBoardKey((value) => value + 1);
+    if (/^#wire\/game\//i.test(window.location.hash)) {
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#wire`);
+      setNotificationHash('#wire');
+    }
     setView('Wire');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1137,12 +1143,14 @@ function App() {
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}
           {notificationEventId && !notificationGame && !notificationGameError && <p role="status">Loading your notification matchup...</p>}
           {(!notificationEventId || notificationGame?.eventId === notificationEventId) && <TheWire
+            key={wireBoardKey}
             games={notificationGame && !games.some((game) => game.id === notificationGame.id) ? [notificationGame, ...games] : games}
             query={wireSearchQuery}
             favorites={favorites}
             featuredFavoriteTeamId={featuredFavoriteTeamId}
             onToggleFavorite={toggleFavorite}
             initialGameId={selectedGameId}
+            openGameId={notificationEventId ? `NFL:${notificationEventId}` : null}
             onSelectGame={setSelectedGameId}
             onOpenStatHub={openGamePlayers}
             onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })}

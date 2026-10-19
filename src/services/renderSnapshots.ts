@@ -1,6 +1,7 @@
 import type { Game, NFLBoxScoreData, NFLGameDetails, NFLPlayerSeasonBoxScore, NFLSkillPlayer, NFLTeamSeasonAverages } from './sportsData.ts';
 import { readLivewirePosts } from './livewirePosts.ts';
 import type { LivewireSnapshot } from './livewirePosts.ts';
+import type { TeamComparisonRanks } from './teamComparisonRanks.ts';
 
 type Snapshots = {
   scoreboard: { games: Game[]; failedLeagues: string[]; nflWeek: number | null };
@@ -9,6 +10,7 @@ type Snapshots = {
   box: NFLBoxScoreData;
   team: NFLTeamSeasonAverages;
   posts: LivewireSnapshot;
+  teamRanks: TeamComparisonRanks;
 };
 
 const prefix = `gamewire-render-v1:${import.meta.env?.BASE_URL ?? '/'}:`;
@@ -44,6 +46,16 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
       return typeof data.teamId === 'string' && 'pointsPerGame' in data;
     case 'posts':
       return typeof data.hasMore === 'boolean' && readLivewirePosts(data.posts).length <= 20;
+    case 'teamRanks':
+      return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.length === 32
+        && new Set(data.teams.map((team: unknown) => object(team) ? team.teamId : null)).size === 32
+        && data.teams.every((team: unknown) => object(team) && typeof team.teamId === 'string'
+          && object(team.ranks) && Object.values(team.ranks).length === 8
+          && ['pointsPerGame', 'totalYardsPerGame', 'passingYardsPerGame', 'rushingYardsPerGame',
+            'pointsAllowedPerGame', 'totalYardsAllowedPerGame', 'passingYardsAllowedPerGame', 'rushingYardsAllowedPerGame']
+            .every((key) => object(team.ranks) && key in team.ranks)
+          && Object.values(team.ranks).every((rank) => rank === null || (object(rank)
+            && Number.isInteger(rank.rank) && Number(rank.rank) >= 1 && Number(rank.rank) <= 32 && typeof rank.tied === 'boolean')));
   }
   return false;
 }

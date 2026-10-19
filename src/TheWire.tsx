@@ -1,6 +1,6 @@
 import OfflineImage from './OfflineImage';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
+import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
   FavoriteTarget,
   Game,
@@ -25,8 +25,10 @@ import {
 } from './services/sportsData';
 import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
-import { readRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
+import { readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
 import { nflFieldPosition } from './services/nflSituation.ts';
+import { fetchTeamComparisonRanks, teamComparisonMetrics } from './services/teamComparisonRanks.ts';
+import type { TeamComparisonRank, TeamComparisonRanks } from './services/teamComparisonRanks.ts';
 
 type TheWireProps = {
   games: Game[];
@@ -35,6 +37,8 @@ type TheWireProps = {
   featuredFavoriteTeamId: string | null;
   onToggleFavorite: (favorite: FavoriteTarget) => void;
   initialGameId?: string | null;
+  /** Opens this game's stats directly instead of the game board (e.g. notification links). */
+  openGameId?: string | null;
   onSelectGame?: (gameId: string) => void;
   onOpenStatHub?: (game: Game) => void;
   onOpenPlayer: (player: NFLSkillPlayer, team: Team) => void;
@@ -42,6 +46,96 @@ type TheWireProps = {
 
 function formatGameTime(game: Game) {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(game.date));
+}
+
+function kickoffTime(game: Game) {
+  const time = Date.parse(game.date);
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function compareKickoff(first: Game, second: Game) {
+  const a = kickoffTime(first);
+  const b = kickoffTime(second);
+  if (a !== b) return a < b ? -1 : 1;
+  return first.id.localeCompare(second.id);
+}
+
+type SlotLabel = { tag: string; tagClass: string; title: string; country?: string };
+type GameSlot = { key: string; time: string; label: SlotLabel | null; games: Game[] };
+type GameDay = { key: string; title: string; slots: GameSlot[] };
+
+function UnionJack() {
+  return (
+    <>
+      <rect width="60" height="30" fill="#012169" />
+      <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" strokeWidth="6" />
+      <path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" strokeWidth="2" />
+      <path d="M30,0 V30 M0,15 H60" stroke="#fff" strokeWidth="10" />
+      <path d="M30,0 V30 M0,15 H60" stroke="#C8102E" strokeWidth="6" />
+    </>
+  );
+}
+
+const flagArt: Record<string, { width: number; height: number; art: React.ReactNode }> = {
+  england: { width: 30, height: 18, art: <><rect width="30" height="18" fill="#fff" /><path d="M15,0 V18 M0,9 H30" stroke="#CE1124" strokeWidth="4" /></> },
+  'united kingdom': { width: 60, height: 30, art: <UnionJack /> },
+  germany: { width: 30, height: 18, art: <><rect width="30" height="6" fill="#000" /><rect y="6" width="30" height="6" fill="#DD0000" /><rect y="12" width="30" height="6" fill="#FFCE00" /></> },
+  mexico: { width: 28, height: 16, art: <><rect width="28" height="16" fill="#fff" /><rect width="9.33" height="16" fill="#006847" /><rect x="18.67" width="9.33" height="16" fill="#CE1126" /><circle cx="14" cy="8" r="2.4" fill="#8C5A2B" /></> },
+  brazil: { width: 30, height: 21, art: <><rect width="30" height="21" fill="#009C3B" /><path d="M15,2.5 L27.5,10.5 L15,18.5 L2.5,10.5 Z" fill="#FFDF00" /><circle cx="15" cy="10.5" r="4.2" fill="#002776" /></> },
+  ireland: { width: 30, height: 15, art: <><rect width="10" height="15" fill="#169B62" /><rect x="10" width="10" height="15" fill="#fff" /><rect x="20" width="10" height="15" fill="#FF883E" /></> },
+  spain: { width: 30, height: 20, art: <><rect width="30" height="20" fill="#AA151B" /><rect y="5" width="30" height="10" fill="#F1BF00" /></> },
+  france: { width: 30, height: 20, art: <><rect width="10" height="20" fill="#0055A4" /><rect x="10" width="10" height="20" fill="#fff" /><rect x="20" width="10" height="20" fill="#EF4135" /></> },
+  australia: { width: 60, height: 30, art: <><rect width="60" height="30" fill="#012169" /><svg width="30" height="15" viewBox="0 0 60 30"><UnionJack /></svg><circle cx="15" cy="23" r="3" fill="#fff" /><circle cx="45" cy="6" r="1.6" fill="#fff" /><circle cx="39" cy="14" r="1.6" fill="#fff" /><circle cx="51" cy="12" r="1.6" fill="#fff" /><circle cx="45" cy="25" r="1.8" fill="#fff" /></> },
+  canada: { width: 30, height: 15, art: <><rect width="30" height="15" fill="#fff" /><rect width="7.5" height="15" fill="#D80621" /><rect x="22.5" width="7.5" height="15" fill="#D80621" /><path d="M15,3 L17.5,7.5 L15,12 L12.5,7.5 Z" fill="#D80621" /></> },
+};
+const flagAliases: Record<string, string> = { uk: 'united kingdom', 'great britain': 'united kingdom', scotland: 'united kingdom', wales: 'united kingdom' };
+
+function CountryFlag({ country }: { country: string }) {
+  const normalized = country.trim().toLowerCase();
+  const flag = flagArt[flagAliases[normalized] ?? normalized];
+  if (!flag) return <span className="wire-flag wire-flag-generic" aria-hidden="true">🌍</span>;
+  return (
+    <svg className="wire-flag" viewBox={`0 0 ${flag.width} ${flag.height}`} style={{ aspectRatio: `${flag.width} / ${flag.height}` }} aria-hidden="true" focusable="false">
+      {flag.art}
+    </svg>
+  );
+}
+
+function internationalVenue(game: Game): { country: string; city?: string } | null {
+  const country = game.venueCountry?.trim();
+  if (!country || /^(usa|us|united states( of america)?)$/i.test(country)) return null;
+  return { country, city: game.venueCity };
+}
+
+function slotLabel(game: Game): SlotLabel | null {
+  const international = internationalVenue(game);
+  if (international) {
+    return { tag: 'INTL', tagClass: 'tag-intl', title: `International Series · ${international.city ?? international.country}`, country: international.country };
+  }
+  const primetime = getPrimetimeLabel(game);
+  return primetime ? { tag: primetime, tagClass: `tag-${primetime.toLowerCase()}`, title: getPrimetimeFullTitle(primetime) } : null;
+}
+
+function groupGamesByDay(games: Game[]): GameDay[] {
+  const days: GameDay[] = [];
+  for (const game of games) {
+    const known = Number.isFinite(kickoffTime(game));
+    const dayTitle = known
+      ? new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(game.date))
+      : 'Kickoff TBD';
+    let day = days[days.length - 1];
+    if (day?.key !== dayTitle) {
+      day = { key: dayTitle, title: dayTitle, slots: [] };
+      days.push(day);
+    }
+    const label = known ? slotLabel(game) : null;
+    const time = known ? formatGameTime(game) : '';
+    const slotKey = `${time}:${label?.title ?? ''}`;
+    const slot = day.slots[day.slots.length - 1];
+    if (slot?.key === slotKey) slot.games.push(game);
+    else day.slots.push({ key: slotKey, time, label, games: [game] });
+  }
+  return days;
 }
 
 function parseStatNumber(val: string): number | null {
@@ -132,16 +226,20 @@ function areColorsSimilar(color1?: string, color2?: string): boolean {
   return false;
 }
 
-export default function TheWire({ games, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, onSelectGame, onOpenStatHub, onOpenPlayer }: TheWireProps) {
-  const nflGames = games.filter((g) => g.sport === 'Football');
+export default function TheWire({ games, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer }: TheWireProps) {
+  const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
+  const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
 
   // Auto-select: prioritize live primetime games (TNF, SNF, MNF), then any live game
   const initialAutoGame = findFeaturedNFLGame(nflGames, featuredFavoriteTeamId, initialGameId);
 
   const [selectedGameId, setSelectedGameId] = useState<string>(
-    (initialGameId && nflGames.some((g) => g.id === initialGameId) ? initialGameId : initialAutoGame?.id ?? nflGames[0]?.id ?? '')
+    openRequest ?? (initialGameId && nflGames.some((g) => g.id === initialGameId) ? initialGameId : initialAutoGame?.id ?? nflGames[0]?.id ?? '')
   );
+  const [detailOpen, setDetailOpen] = useState(!!openRequest);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const returnToGameRef = useRef<string | null>(null);
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats'>('boxscore');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
@@ -157,6 +255,10 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   const [averagesLoading, setAveragesLoading] = useState(false);
   const [averagesFailed, setAveragesFailed] = useState(false);
   const [averagesRetry, setAveragesRetry] = useState(0);
+  const [loadedRanks, setLoadedRanks] = useState<TeamComparisonRanks | null>(null);
+  const [ranksLoading, setRanksLoading] = useState(false);
+  const [ranksError, setRanksError] = useState('');
+  const [ranksRetry, setRanksRetry] = useState(0);
   const savedRevision = usePublicDataRevision('sports');
 
   // Wheel drag ref
@@ -170,13 +272,40 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
     onSelectGame?.(gameId);
   };
 
+  const openGame = (gameId: string) => {
+    selectGame(gameId);
+    setDetailOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const closeGame = () => {
+    returnToGameRef.current = selectedGameId;
+    setDetailOpen(false);
+  };
+
+  useEffect(() => {
+    if (!openRequest) return;
+    userSelectedRef.current = true;
+    setSelectedGameId(openRequest);
+    setDetailOpen(true);
+  }, [openRequest]);
+
+  // Return the reader to the card they opened when they come back to the board
+  useEffect(() => {
+    const gameId = returnToGameRef.current;
+    if (detailOpen || !gameId) return;
+    returnToGameRef.current = null;
+    boardRef.current?.querySelector(`[data-game-id="${CSS.escape(gameId)}"]`)?.scrollIntoView({ block: 'center' });
+  }, [detailOpen]);
+
   // When initialGameId prop changes (e.g. user clicked on a specific game card)
   useEffect(() => {
+    if (detailOpen) return;
     if (initialGameId && nflGames.some((g) => g.id === initialGameId)) {
       userSelectedRef.current = true;
       setSelectedGameId(initialGameId);
     }
-  }, [initialGameId, nflGames]);
+  }, [initialGameId, nflGames, detailOpen]);
 
   // Update selectedGameId if list changes or live primetime game is active
   useEffect(() => {
@@ -198,26 +327,32 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
 
   const selectedGame = nflGames.find((g) => g.id === selectedGameId) ?? nflGames[0];
   const selectedPrimetime = selectedGame ? getPrimetimeLabel(selectedGame) : null;
+  const selectedIntl = selectedGame ? internationalVenue(selectedGame) : null;
   const livePrimetimeGame = nflGames.find((g) => g.status === 'LIVE' && isPrimetimeGame(g))
     ?? nflGames.find((g) => g.status === 'LIVE');
   const searchQuery = query.trim().toLowerCase();
 
-  const matchingGame = searchQuery ? nflGames.find((g) => (
+  const matchesSearch = (g: Game) => (
       g.away.name.toLowerCase().includes(searchQuery)
       || g.away.abbr.toLowerCase().includes(searchQuery)
       || g.home.name.toLowerCase().includes(searchQuery)
       || g.home.abbr.toLowerCase().includes(searchQuery)
-  )) : undefined;
+  );
+  const matchingGame = searchQuery ? nflGames.find(matchesSearch) : undefined;
   const matchingGameId = matchingGame?.id;
+  const boardDays = useMemo(
+    () => groupGamesByDay(searchQuery ? nflGames.filter(matchesSearch) : nflGames),
+    [nflGames, searchQuery],
+  );
   useEffect(() => {
-    if (!matchingGameId) return;
+    if (!matchingGameId || !detailOpen) return;
     userSelectedRef.current = true;
     setSelectedGameId(matchingGameId);
     onSelectGame?.(matchingGameId);
-  }, [searchQuery, matchingGameId, onSelectGame]);
+  }, [searchQuery, matchingGameId, onSelectGame, detailOpen]);
   useEffect(() => {
     wheelRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [selectedGameId]);
+  }, [selectedGameId, detailOpen]);
 
   const isLive = selectedGame?.status === 'LIVE';
   const eventId = selectedGame?.eventId;
@@ -247,10 +382,29 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   const playerAverages = loadedPlayerAverages && loadedPlayerAverages.gameId === eventId && loadedPlayerAverages.data.teamId === activeTeamId
     ? loadedPlayerAverages : savedDisplay?.players ?? null;
   const seasonAverages = loadedSeasonAverages?.gameId === eventId ? loadedSeasonAverages : savedDisplay?.teams ?? null;
+  const seasonRanks = loadedRanks?.season === seasonYear ? loadedRanks
+    : feedPath && seasonYear ? readRenderSnapshot('teamRanks', `${feedPath}:${seasonYear}`) : null;
+
+  useEffect(() => {
+    if (!detailOpen || !isUpcoming || subTab !== 'teamStats' || !feedPath || !seasonYear) return;
+    let active = true;
+    setRanksLoading(true); setRanksError('');
+    void fetchTeamComparisonRanks(feedPath, seasonYear).then((data) => {
+      if (!active) return;
+      saveRenderSnapshot('teamRanks', `${feedPath}:${seasonYear}`, data);
+      setLoadedRanks(data); setRanksLoading(false);
+    }).catch((cause: unknown) => {
+      if (!active) return;
+      console.error('Could not load NFL team comparison ranks', cause);
+      setRanksError('Could not refresh NFL ranks. Saved ranks remain visible when available.');
+      setRanksLoading(false);
+    });
+    return () => { active = false; };
+  }, [detailOpen, isUpcoming, subTab, feedPath, seasonYear, ranksRetry]);
 
   useEffect(() => {
     setAveragesFailed(false);
-    if (!isUpcoming || !eventId || !feedPath || !seasonYear || !awayTeamId || !homeTeamId) {
+    if (!detailOpen || !isUpcoming || !eventId || !feedPath || !seasonYear || !awayTeamId || !homeTeamId) {
       setAveragesLoading(false);
       return;
     }
@@ -270,11 +424,11 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       }
     });
     return () => controller.abort();
-  }, [isUpcoming, eventId, feedPath, seasonYear, awayTeamId, homeTeamId, averagesRetry, savedRevision]);
+  }, [detailOpen, isUpcoming, eventId, feedPath, seasonYear, awayTeamId, homeTeamId, averagesRetry, savedRevision]);
 
   // Load box score for the selected game
   useEffect(() => {
-    if (!eventId || !feedPath) {
+    if (!detailOpen || !eventId || !feedPath) {
       setLoading(false);
       return undefined;
     }
@@ -317,11 +471,11 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       controller.abort();
       if (intervalId) window.clearInterval(intervalId);
     };
-  }, [eventId, feedPath, isLive, savedRevision]);
+  }, [detailOpen, eventId, feedPath, isLive, savedRevision]);
 
   useEffect(() => {
     setPlayerAveragesFailed(false);
-    if (!isUpcoming || subTab !== 'boxscore' || !eventId || !feedPath || !seasonYear || !activeTeamId || !activeTeamName) {
+    if (!detailOpen || !isUpcoming || subTab !== 'boxscore' || !eventId || !feedPath || !seasonYear || !activeTeamId || !activeTeamName) {
       setPlayerAveragesLoading(false);
       return;
     }
@@ -350,7 +504,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       }
     });
     return () => controller.abort();
-  }, [isUpcoming, subTab, eventId, feedPath, seasonYear, activeTeamId, activeTeamName, playerAveragesRetry, savedRevision]);
+  }, [detailOpen, isUpcoming, subTab, eventId, feedPath, seasonYear, activeTeamId, activeTeamName, playerAveragesRetry, savedRevision]);
 
   // Wheel horizontal drag handlers
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -454,22 +608,12 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
   }
 
   // Team comparison rows
-  const comparisonStats: Array<{ label: string; awayVal: string; homeVal: string; percentAway?: number }> = [];
+  const comparisonStats: Array<{ label: string; awayVal: string; homeVal: string; percentAway?: number; awayRank?: TeamComparisonRank | null; homeRank?: TeamComparisonRank | null }> = [];
   if (isUpcoming) {
     const teams = seasonAverages?.gameId === eventId ? seasonAverages.teams : [];
     const away = teams.find((team) => team.teamId === awayTeamId);
     const home = teams.find((team) => team.teamId === homeTeamId);
-    const metrics: Array<{ key: Exclude<keyof NFLTeamSeasonAverages, 'teamId'>; label: string }> = [
-      { key: 'pointsPerGame', label: 'Points / game' },
-      { key: 'totalYardsPerGame', label: 'Total yards / game' },
-      { key: 'passingYardsPerGame', label: 'Passing yards / game' },
-      { key: 'rushingYardsPerGame', label: 'Rushing yards / game' },
-      { key: 'pointsAllowedPerGame', label: 'Points allowed / game' },
-      { key: 'totalYardsAllowedPerGame', label: 'Total yards allowed / game' },
-      { key: 'passingYardsAllowedPerGame', label: 'Passing yards allowed / game' },
-      { key: 'rushingYardsAllowedPerGame', label: 'Rushing yards allowed / game' },
-    ];
-    for (const { key, label } of metrics) {
+    for (const { key, label } of teamComparisonMetrics) {
       const awayValue = away?.[key] ?? null;
       const homeValue = home?.[key] ?? null;
       const percentAway = awayValue !== null && homeValue !== null && awayValue + homeValue > 0
@@ -479,6 +623,8 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
         label,
         awayVal: awayValue === null ? 'Unavailable' : awayValue.toFixed(1),
         homeVal: homeValue === null ? 'Unavailable' : homeValue.toFixed(1),
+        awayRank: awayValue === null ? null : seasonRanks?.teams.find((team) => team.teamId === awayTeamId)?.ranks[key],
+        homeRank: homeValue === null ? null : seasonRanks?.teams.find((team) => team.teamId === homeTeamId)?.ranks[key],
         percentAway,
       });
     }
@@ -568,8 +714,118 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
     onToggleFavorite(target);
   };
 
+  if (!detailOpen) {
+    const liveCount = nflGames.filter((g) => g.status === 'LIVE').length;
+    const finalCount = nflGames.filter((g) => g.status === 'FINAL').length;
+    const upcomingCount = nflGames.length - liveCount - finalCount;
+    return (
+      <div className="the-wire-container">
+        <div className="wire-board" ref={boardRef}>
+          <header className="wire-board-header">
+            <span className="eyebrow">NFL GAMES · THIS WEEK</span>
+            {nflGames.length > 0 && (
+              <small className="wire-board-counts">
+                {liveCount > 0 && <span className="wire-board-count-live">{liveCount} live</span>}
+                {finalCount > 0 && <span>{finalCount} final</span>}
+                {upcomingCount > 0 && <span>{upcomingCount} upcoming</span>}
+              </small>
+            )}
+          </header>
+          {nflGames.length === 0 ? (
+            <p className="nfl-empty-note">No NFL games available this week.</p>
+          ) : boardDays.length === 0 ? (
+            <p className="nfl-empty-note" role="status">No games matched “{query}”.</p>
+          ) : boardDays.map((day) => {
+            const dayId = `wire-day-${day.key.replace(/[^a-z0-9]+/gi, '-')}`;
+            return (
+            <section className="wire-board-day" key={day.key} aria-labelledby={dayId}>
+              <h2 className="wire-board-day-title" id={dayId}>{day.title}</h2>
+              {day.slots.map((slot) => (
+              <div className={`wire-board-slot${slot.label ? ` is-${slot.label.tagClass.slice(4)}` : ''}`} key={slot.key}>
+                <h3 className="wire-board-slot-title">
+                  {slot.label && (
+                    <span className={`wire-primetime-tag ${slot.label.tagClass}`}>
+                      {slot.label.country && <CountryFlag country={slot.label.country} />}
+                      {slot.label.tag}
+                    </span>
+                  )}
+                  {slot.label && <span>{slot.label.title}</span>}
+                  {slot.time && <small>{slot.time}</small>}
+                </h3>
+              <ol className="wire-board-list">
+                {slot.games.map((game) => {
+                  const live = game.status === 'LIVE';
+                  const final = game.status === 'FINAL';
+                  const upcoming = game.status === 'UPCOMING';
+                  const intl = internationalVenue(game);
+                  return (
+                    <li key={game.id}>
+                      <button
+                        type="button"
+                        data-game-id={game.id}
+                        className={`wire-board-card${live ? ' is-live' : ''}${final ? ' is-final' : ''}`}
+                        onClick={() => openGame(game.id)}
+                      >
+                        <span className="wire-board-status">
+                          {live ? (
+                            <span className="live-pill"><i /> LIVE</span>
+                          ) : final ? (
+                            <span className="wire-board-final">FINAL</span>
+                          ) : (
+                            <span>{formatGameTime(game)}</span>
+                          )}
+                          {live && game.clock && <small>{game.clock}</small>}
+                        </span>
+                        <span className="wire-board-teams">
+                          {[game.away, game.home].map((team, index) => {
+                            const opponent = index === 0 ? game.home : game.away;
+                            const lost = final && team.score < opponent.score;
+                            return (
+                              <span className={`wire-board-team${lost ? ' is-loser' : ''}`} key={team.id}>
+                                <span className="team-mark wire-board-mark" style={{ '--team-color': team.color } as React.CSSProperties}>
+                                  {team.logo ? <OfflineImage src={team.logo} alt="" /> : team.abbr.slice(0, 2)}
+                                </span>
+                                <span className="wire-board-team-name">
+                                  <b>
+                                    {team.name}
+                                    {isTeamFavorite(team.id) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
+                                    {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
+                                  </b>
+                                  <small>{team.abbr}{team.record ? ` · ${team.record}` : ''}</small>
+                                </span>
+                                <strong className="wire-board-score">{upcoming ? '' : team.score}</strong>
+                              </span>
+                            );
+                          })}
+                        </span>
+                        <span className="wire-board-footer">
+                          <span className="wire-board-meta">
+                            {live ? nflFieldPosition(game.situation) : <><MapPin size={12} aria-hidden="true" /> {game.venue || 'Venue TBD'}{intl ? `, ${intl.city ?? intl.country}` : ''}</>}
+                          </span>
+                          <span className="wire-board-open">
+                            {upcoming ? 'Pregame stats' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+              </div>
+              ))}
+            </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="the-wire-container">
+      <button type="button" className="wire-back-button" onClick={closeGame}>
+        <ChevronLeft size={16} aria-hidden="true" /> All games
+      </button>
       {/* Game Wheel */}
       <div className="wire-controls">
         {nflGames.length > 0 ? (
@@ -589,6 +845,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                 const live = game.status === 'LIVE';
                 const selected = game.id === selectedGame?.id;
                 const primetime = getPrimetimeLabel(game);
+                const intl = internationalVenue(game);
                 return (
                   <button
                     key={game.id}
@@ -598,7 +855,11 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     onClick={() => selectGame(game.id)}
                   >
                     <div className="wire-wheel-status">
-                      {primetime && (
+                      {intl ? (
+                        <span className="wire-primetime-tag tag-intl" title={`International Series · ${intl.city ?? intl.country}`}>
+                          <CountryFlag country={intl.country} />INTL
+                        </span>
+                      ) : primetime && (
                         <span className={`wire-primetime-tag tag-${primetime.toLowerCase()}`}>
                           {primetime}
                         </span>
@@ -695,7 +956,11 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
 
               {/* Center Game State */}
               <div className="wire-matchup-center">
-                {selectedPrimetime && (
+                {selectedIntl ? (
+                  <span className="wire-primetime-pill pill-intl">
+                    <CountryFlag country={selectedIntl.country} /> International Series · {selectedIntl.city ?? selectedIntl.country}
+                  </span>
+                ) : selectedPrimetime && (
                   <span className={`wire-primetime-pill pill-${selectedPrimetime.toLowerCase()}`}>
                     <Tv size={12} /> {getPrimetimeFullTitle(selectedPrimetime)}
                   </span>
@@ -999,7 +1264,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     </div>
                   ) : comparisonStats.map((item, index) => (
                     <div className="wire-comp-row" key={index}>
-                      <span className="wire-comp-val wire-comp-away">{item.awayVal}</span>
+                      <span className="wire-comp-val wire-comp-away">{item.awayVal}{isUpcoming && <small className="wire-comp-rank">{item.awayRank ? `${item.awayRank.tied ? 'T-' : '#'}${item.awayRank.rank} NFL` : ranksLoading && !seasonRanks ? 'Loading rank…' : 'Rank unavailable'}</small>}</span>
                       <div className="wire-comp-center">
                         <span className="wire-comp-label">{item.label}</span>
                         {item.percentAway !== undefined && (
@@ -1021,14 +1286,15 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                           </div>
                         )}
                       </div>
-                      <span className="wire-comp-val wire-comp-home">{item.homeVal}</span>
+                      <span className="wire-comp-val wire-comp-home">{item.homeVal}{isUpcoming && <small className="wire-comp-rank">{item.homeRank ? `${item.homeRank.tied ? 'T-' : '#'}${item.homeRank.rank} NFL` : ranksLoading && !seasonRanks ? 'Loading rank…' : 'Rank unavailable'}</small>}</span>
                     </div>
                   ))}
                   {comparisonStats.length === 0 && (
                     <p className="nfl-empty-note">Detailed team stats will populate once the game begins.</p>
                   )}
                 </div>
-                {isUpcoming && <p className="nfl-data-note wire-comparison-note">Season-to-date regular-season averages from ESPN, not projections. Missing values are unavailable. Lower allowed values mean fewer points or yards conceded.</p>}
+                {isUpcoming && ranksError && <div className="wire-comparison-error" role="alert"><p>{ranksError}</p><button className="wire-stathub-link" onClick={() => setRanksRetry((value) => value + 1)}>Retry NFL ranks</button></div>}
+                {isUpcoming && <p className="nfl-data-note wire-comparison-note">Season-to-date regular-season averages from ESPN, not projections. NFL ranks compare all 32 teams: higher offense and lower allowed values rank better; T- denotes a tie. Missing values or incomplete league coverage leave ranks unavailable.</p>}
               </div>
             </div>
           ) : (

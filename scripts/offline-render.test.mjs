@@ -4,7 +4,11 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
+
+// Board day grouping follows the viewer's local clock; pin it so CI (UTC) matches US viewers.
+process.env.TZ = 'America/New_York';
 import { detailsSnapshotKey, readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, stopRenderSnapshots, teamSnapshotKey } from '../src/services/renderSnapshots.ts';
+import { rankTeamAverages, teamComparisonMetrics } from '../src/services/teamComparisonRanks.ts';
 
 const source = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, {
@@ -16,10 +20,12 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"].\/services\/sportsData['"]/g, `from '${new URL('../src/services/sportsData.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/renderSnapshots['"]/g, `from '${new URL('../src/services/renderSnapshots.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/nflSituation.ts['"]/g, `from '${new URL('../src/services/nflSituation.ts', import.meta.url)}'`)
+  .replace(/from ['"].\/services\/teamComparisonRanks.ts['"]/g, `from '${new URL('../src/services/teamComparisonRanks.ts', import.meta.url)}'`)
   .replace(/import OfflineImage from ['"].\/OfflineImage['"];/, 'const OfflineImage = () => null;')
   .replace(/import \{ getInterfaceScale \} from ['"].\/uiScale['"];/, 'const getInterfaceScale = () => 1;')
   .replace(/import \{ usePublicDataRevision \} from ['"].\/usePublicDataRevision['"];/, 'const usePublicDataRevision = () => 0;');
 const { default: TheWire } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+const { default: TeamComparison } = await import(`data:text/javascript;base64,${Buffer.from(compiled.replace("useState('boxscore')", "useState('teamStats')")).toString('base64')}`);
 
 function withStorage(run) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
@@ -54,7 +60,47 @@ const categories = [{
   athletes: [{ ...player, shortName: player.name, stats: ['5', '120', '150', '1381', '10', '2'] }],
 }];
 const players = { data: { teamId: away.id, categories, failedPlayers: 0 }, players: [player] };
-const props = { games: [game], query: '', favorites: [], featuredFavoriteTeamId: null, onToggleFavorite() {}, onOpenPlayer() {} };
+const props = { games: [game], query: '', favorites: [], featuredFavoriteTeamId: null, onToggleFavorite() {}, onOpenPlayer() {}, openGameId: game.id };
+
+test('The Wire opens to a kickoff-ordered game board grouped TNF to MNF, with no stats until a game is opened', () => withStorage(() => {
+  const at = (id, date, status = 'UPCOMING', extra = {}) => ({ ...game, ...extra, id: `NFL:${id}`, eventId: id, date, status });
+  const games = [
+    at('5', '2026-10-20T00:15:00Z', 'UPCOMING'),
+    at('2', '2026-10-18T17:00:00Z', 'FINAL', { away: { ...away, score: 10 }, home: { ...home, score: 24 } }),
+    at('1', '2026-10-16T00:15:00Z', 'FINAL'),
+    at('4', '2026-10-19T00:20:00Z', 'LIVE', { situation: { possessionTeamId: home.id, fieldPosition: 'HME 20' } }),
+    at('3', '2026-10-18T20:25:00Z'),
+    at('6', '2026-10-18T13:30:00Z', 'FINAL', { venue: 'Wembley Stadium', venueCity: 'London', venueCountry: 'England' }),
+  ];
+  const html = renderToStaticMarkup(createElement(TheWire, { ...props, games, openGameId: null }));
+  const order = [...html.matchAll(/data-game-id="NFL:(\d)"/g)].map((match) => match[1]);
+  assert.deepEqual(order, ['1', '6', '2', '3', '4', '5']);
+  const days = [...html.matchAll(/class="wire-board-day-title"[^>]*>(.*?)<\/h2>/g)].map((match) => match[1]);
+  assert.equal(days.length, 3);
+  assert.equal(days.filter((day) => /^Sunday/.test(day)).length, 1);
+  const titles = [...html.matchAll(/class="wire-board-slot-title">(.*?)<\/h3>/g)].map((match) => match[1]);
+  assert.match(titles[0], /Thursday Night Football/);
+  assert.match(titles[1], /INTL.*International Series · London/);
+  assert.match(titles[1], /<svg class="wire-flag"/);
+  assert.match(titles[4], /Sunday Night Football/);
+  assert.match(titles[5], /Monday Night Football/);
+  assert.match(html, /Wembley Stadium, London/);
+  assert.match(html, /1 live/);
+  assert.match(html, /Home Team has possession/);
+  assert.match(html, /Ball at HME 20/);
+  assert.match(html, /class="wire-board-team is-loser"/);
+  assert.doesNotMatch(html, /wire-hero-banner|Player Box Score|All games/);
+  const filtered = renderToStaticMarkup(createElement(TheWire, { ...props, games, openGameId: null, query: 'zzz' }));
+  assert.match(filtered, /No games matched/);
+  assert.doesNotMatch(filtered, /data-game-id=/);
+}));
+
+test('Opening a game shows its stats area with a way back to the board', () => withStorage(() => {
+  const html = renderToStaticMarkup(createElement(TheWire, props));
+  assert.match(html, /All games/);
+  assert.match(html, /wire-hero-banner/);
+  assert.doesNotMatch(html, /wire-board-card/);
+}));
 
 test('An opening with no saved scoreboard renders safely before the first download', () => withStorage(() => {
   assert.doesNotThrow(() => renderToStaticMarkup(createElement(TheWire, { ...props, games: [] })));
@@ -89,6 +135,33 @@ test('Live and final game tables also render synchronously from their own saved 
     assert.match(html, /1381/);
     assert.doesNotMatch(html, /Loading live box score/);
   }
+}));
+
+test('Pregame comparison shows all eight saved ranks on both sides, never in live/final stats', () => withStorage(() => {
+  const teams = Array.from({ length: 32 }, (_, index) => ({
+    teamId: String(index + 1),
+    ...Object.fromEntries(teamComparisonMetrics.map(({ key }) => [key, index + 1])),
+  }));
+  teams[0].pointsPerGame = 2;
+  const ranks = rankTeamAverages(teams, game.seasonYear);
+  saveRenderSnapshot('teamRanks', `${game.feedPath}:${game.seasonYear}`, ranks);
+  for (const team of teams.slice(0, 2)) saveRenderSnapshot('team', teamSnapshotKey(game.feedPath, team.teamId, game.seasonYear), team);
+  const render = (status) => renderToStaticMarkup(createElement(TeamComparison, { ...props, games: [{ ...game, status }] }));
+  const html = render('UPCOMING');
+  assert.equal((html.match(/class="wire-comp-rank"/g) ?? []).length, 16);
+  assert.equal((html.match(/T-31 NFL/g) ?? []).length, 2);
+  assert.match(html, /#1 NFL/);
+  assert.doesNotMatch(html, /Rank unavailable/);
+  for (const status of ['LIVE', 'FINAL']) assert.doesNotMatch(render(status), /wire-comp-rank|T-31 NFL/);
+  assert.equal(readRenderSnapshot('teamRanks', `${game.feedPath}:2025`), null);
+  const originalError = console.error;
+  let errors = 0;
+  console.error = () => errors++;
+  try {
+    saveRenderSnapshot('teamRanks', 'invalid', { ...ranks, teams: Array(32).fill(ranks.teams[0]) });
+    assert.equal(readRenderSnapshot('teamRanks', 'invalid'), null);
+    assert.equal(errors, 1);
+  } finally { console.error = originalError; }
 }));
 
 test('Live matchup and wheel show the possessing team and reported field location only while live', () => withStorage(() => {
