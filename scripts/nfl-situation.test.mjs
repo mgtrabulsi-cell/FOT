@@ -68,5 +68,9 @@ test('Unspotted ball right after a score shows TOUCHDOWN! or FIELD GOAL instead 
   assert.equal(label({ type: { text: 'Blocked Field Goal' } }), 'Field position unavailable');
   assert.equal(label({ type: { text: 'Scoring Play' }, scoreValue: 3 }), 'FIELD GOAL');
   assert.equal(label({ type: { text: 'Rush' } }), 'Field position unavailable');
+  for (const type of ['Kickoff', 'Kickoff Return (Offense)', 'End of Half', 'End of Regulation']) assert.equal(label({ type: { text: type } }), 'Kickoff');
+  assert.equal(label({ type: { text: 'Kickoff Return Touchdown' } }), 'TOUCHDOWN!');
+  assert.equal(label({ type: { text: 'End Period' } }), 'Field position unavailable');
+  assert.equal(label({ type: { text: 'Kickoff' } }, { possessionText: 'NYG 25', shortDownDistanceText: '1st & 10' }), '1st & 10 · Ball at NYG 25');
   assert.equal(label({ type: { text: 'Passing Touchdown' } }, { possessionText: 'DAL 35', shortDownDistanceText: '1st & 10' }), '1st & 10 · Ball at DAL 35');
 });
