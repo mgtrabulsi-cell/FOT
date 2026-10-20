@@ -1566,3 +1566,20 @@ td:first-child { color: #828c84; }
 }
 @keyframes score-ticker-glow { 0% { text-shadow: 0 0 0 rgba(255, 211, 77, 0); } 25% { text-shadow: 0 0 .35em rgba(255, 211, 77, .9); } 100% { text-shadow: 0 0 0 rgba(255, 211, 77, 0); } }
 @media (prefers-reduced-motion: reduce) { .score-ticker, .score-ticker-reel, .score-fireworks i { animation: none; } .score-fireworks { display: none; } }
+
+/* Latest play card under the open game's scoreboard */
+.wire-latest-play { display: grid; gap: 8px; margin: 4px 0 16px; padding: 12px 14px; border: 1px solid #2a3b54; border-left: 3px solid #e2334a; border-radius: 8px; background: #0f1826; }
+.wire-latest-play.is-scoring { border-color: #6b5a1d; border-left-color: #ffd34d; background: linear-gradient(90deg, rgba(255, 211, 77, .09), #0f1826 60%); }
+.wire-latest-play-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.wire-latest-play-label { display: inline-flex; align-items: center; gap: 7px; font: 700 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #ff6b7d; }
+.wire-latest-play.is-scoring .wire-latest-play-label { color: #ffd34d; }
+.wire-latest-play-label i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: wire-latest-pulse 1.6s ease-in-out infinite; }
+.wire-latest-play-type { font: 600 11px/1.2 var(--mono); color: #9fb0c8; text-transform: uppercase; letter-spacing: .04em; }
+.wire-latest-play-body { display: flex; align-items: flex-start; gap: 10px; animation: wire-latest-in .45s ease-out both; }
+.wire-latest-play-body p { margin: 0; color: #e8edf5; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+.wire-latest-play-team.team-mark { flex: none; width: 30px; height: 30px; font-size: 11px; }
+.wire-latest-play-drive { color: #8394ad; font: 500 11px/1.3 var(--mono); }
+@keyframes wire-latest-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes wire-latest-pulse { 50% { opacity: .35; } }
+@media (max-width: 640px) { .wire-latest-play { padding: 10px 12px; margin-bottom: 12px; } .wire-latest-play-body p { font-size: 14px; } }
+@media (prefers-reduced-motion: reduce) { .wire-latest-play-label i, .wire-latest-play-body { animation: none; } }

@@ -74,3 +74,14 @@ test('Unspotted ball right after a score shows TOUCHDOWN! or FIELD GOAL instead 
   assert.equal(label({ type: { text: 'Kickoff' } }, { possessionText: 'NYG 25', shortDownDistanceText: '1st & 10' }), '1st & 10 · Ball at NYG 25');
   assert.equal(label({ type: { text: 'Passing Touchdown' } }, { possessionText: 'DAL 35', shortDownDistanceText: '1st & 10' }), '1st & 10 · Ball at DAL 35');
 });
+
+test('Latest play keeps ESPN text, type, team, yardage and drive without inventing missing values', () => {
+  const situation = readNFLSituation({
+    possession: '28', possessionText: 'SF 36', shortDownDistanceText: '2nd & 6',
+    lastPlay: { id: 401, type: { text: 'Rush' }, text: '  (Shotgun) J.Daniels scrambles   up the middle to SF 36 for 4 yards.', scoreValue: 0, team: { id: '28' }, statYardage: 4, drive: { description: '7 plays, 42 yards, 3:35' } },
+  }, ['28', '25']);
+  assert.deepEqual(situation.lastPlay, { id: '401', text: '(Shotgun) J.Daniels scrambles up the middle to SF 36 for 4 yards.', type: 'Rush', teamId: '28', yards: 4, scoreValue: 0, drive: '7 plays, 42 yards, 3:35' });
+  const bare = readNFLSituation({ lastPlay: { text: 'End of 3rd Quarter', team: { id: '99' } } }, ['28', '25']);
+  assert.deepEqual(bare.lastPlay, { id: null, text: 'End of 3rd Quarter', type: null, teamId: null, yards: null, scoreValue: 0, drive: null });
+  assert.equal(readNFLSituation({ possession: '28', lastPlay: { text: '   ' } }, ['28', '25']).lastPlay, undefined);
+});

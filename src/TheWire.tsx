@@ -26,7 +26,7 @@ import {
 import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
-import { nflFieldPosition } from './services/nflSituation.ts';
+import { nflFieldPosition, type NFLLastPlay } from './services/nflSituation.ts';
 import { ScoreTicker } from './ScoreTicker.tsx';
 import { fetchTeamComparisonRanks, teamComparisonMetrics } from './services/teamComparisonRanks.ts';
 import type { TeamComparisonRank, TeamComparisonRanks } from './services/teamComparisonRanks.ts';
@@ -249,6 +249,30 @@ function areColorsSimilar(color1?: string, color2?: string): boolean {
     if ((hsl1.h >= 75 && hsl1.h <= 165) && (hsl2.h >= 75 && hsl2.h <= 165)) return true;
   }
   return false;
+}
+
+function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
+  const team = play.teamId === game.away.id ? game.away : play.teamId === game.home.id ? game.home : null;
+  const text = play.text.replace(/^(\([^)]*\)\s*)+/, '').replace(/([.)])(?=[A-Z]{2,})/g, '$1 ');
+  const scoring = play.scoreValue > 0 || /touchdown/i.test(play.type ?? '');
+  const meta = [play.type, play.yards !== null && play.yards !== 0 && !/kickoff|punt|timeout|end /i.test(play.type ?? '') ? `${play.yards > 0 ? '+' : ''}${play.yards} yds` : null].filter(Boolean).join(' \u00b7 ');
+  return (
+    <section className={`wire-latest-play${scoring ? ' is-scoring' : ''}`} aria-label="Latest play" aria-live="polite">
+      <div className="wire-latest-play-head">
+        <span className="wire-latest-play-label"><i aria-hidden="true" />Latest play</span>
+        {meta && <span className="wire-latest-play-type">{meta}</span>}
+      </div>
+      <div className="wire-latest-play-body" key={play.id ?? play.text}>
+        {team && (
+          <span className="team-mark wire-latest-play-team" style={{ '--team-color': team.color } as React.CSSProperties} title={team.name}>
+            {team.logo ? <OfflineImage src={team.logo} alt="" /> : team.abbr.slice(0, 2)}
+          </span>
+        )}
+        <p>{text}</p>
+      </div>
+      {play.drive && <small className="wire-latest-play-drive">{team ? `${team.abbr} drive` : 'Drive'}: {play.drive}</small>}
+    </section>
+  );
 }
 
 export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer, now }: TheWireProps) {
@@ -1104,6 +1128,10 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                 </div>
               </div>
             </div>
+
+            {isLive && selectedGame.situation?.lastPlay && (
+              <LatestPlay play={selectedGame.situation.lastPlay} game={selectedGame} />
+            )}
 
             {/* Quarter-by-Quarter Linescore */}
             {boxScore && boxScore.teams.length === 2 && (boxScore.isLive || boxScore.isFinal) && (

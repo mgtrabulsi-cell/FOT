@@ -3,9 +3,46 @@ export type NFLSituation = {
   fieldPosition: string | null;
   downDistance: string | null;
   playHighlight?: NFLPlayHighlight;
+  lastPlay?: NFLLastPlay;
+};
+
+export type NFLLastPlay = {
+  id: string | null;
+  text: string;
+  type: string | null;
+  teamId: string | null;
+  yards: number | null;
+  scoreValue: number;
+  drive: string | null;
 };
 
 export type NFLPlayHighlight = 'TOUCHDOWN' | 'FIELD_GOAL' | 'KICKOFF';
+
+function readLastPlay(value: object, teamIds: string[]): NFLLastPlay | undefined {
+  const play: unknown = Reflect.get(value, 'lastPlay');
+  if (!play || typeof play !== 'object') return undefined;
+  const str = (entry: unknown) => (typeof entry === 'string' ? entry.trim() : '');
+  const sub = (key: string, inner: string) => {
+    const parent: unknown = Reflect.get(play, key);
+    return parent && typeof parent === 'object' ? Reflect.get(parent, inner) : undefined;
+  };
+  const text = str(Reflect.get(play, 'text')).replace(/\s+/g, ' ');
+  if (!text) return undefined;
+  const rawId: unknown = Reflect.get(play, 'id');
+  const rawTeam = sub('team', 'id');
+  const teamId = typeof rawTeam === 'string' || typeof rawTeam === 'number' ? String(rawTeam) : '';
+  const yards: unknown = Reflect.get(play, 'statYardage');
+  const score: unknown = Reflect.get(play, 'scoreValue');
+  return {
+    id: typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : null,
+    text,
+    type: str(sub('type', 'text')) || null,
+    teamId: teamIds.includes(teamId) ? teamId : null,
+    yards: typeof yards === 'number' && Number.isFinite(yards) ? yards : null,
+    scoreValue: typeof score === 'number' && Number.isFinite(score) ? score : 0,
+    drive: str(sub('drive', 'description')) || null,
+  };
+}
 
 export function readNFLSituation(value: unknown, teamIds: string[]): NFLSituation | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -21,8 +58,13 @@ export function readNFLSituation(value: unknown, teamIds: string[]): NFLSituatio
   const downDistance = read('shortDownDistanceText') || full.replace(/\s+at\s+.+$/i, '').trim() || null;
   const possessionTeamId = teamIds.includes(teamId) ? teamId : lastPlayPossession(value, teamIds);
   const playHighlight = fieldPosition ? null : lastPlayHighlight(value);
-  if (playHighlight) return { possessionTeamId, fieldPosition, downDistance, playHighlight };
-  return possessionTeamId || fieldPosition || downDistance ? { possessionTeamId, fieldPosition, downDistance } : undefined;
+  const lastPlay = readLastPlay(value, teamIds);
+  if (!possessionTeamId && !fieldPosition && !downDistance && !playHighlight && !lastPlay) return undefined;
+  return {
+    possessionTeamId, fieldPosition, downDistance,
+    ...(playHighlight ? { playHighlight } : {}),
+    ...(lastPlay ? { lastPlay } : {}),
+  };
 }
 
 // Between a score/kickoff and the next snap ESPN drops the ball spot; the last play tells us what just happened.
