@@ -1103,7 +1103,7 @@ function App() {
           )}
         </div>
       </header>
-      <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
+      <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : view === 'LiveWire' ? 'page-wrap livewire-page' : 'page-wrap'}>
         <PullToRefresh />
         {livewireUnread.error && <p className="feed-warning" role="status">{livewireUnread.error}</p>}
         {analystUnread.error && <p className="feed-warning" role="status">{analystUnread.error}</p>}

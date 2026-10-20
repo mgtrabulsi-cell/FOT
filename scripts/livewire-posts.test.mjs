@@ -18,6 +18,7 @@ const compiled = ts.transpileModule(source, {
 }).outputText
   .replace(/from ['"]react['"]/g, `from '${import.meta.resolve('react')}'`)
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
+  .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
   .replace(/from ['"]\.\/services\/renderSnapshots['"]/g, `from '${new URL('../src/services/renderSnapshots.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/livewirePosts['"]/g, `from '${new URL('../src/services/livewirePosts.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/theAngle['"]/g, `from '${new URL('../src/services/theAngle.ts', import.meta.url)}'`)

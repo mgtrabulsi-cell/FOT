@@ -1,6 +1,7 @@
 import OfflineImage from './OfflineImage';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { useEffect, useRef, useState } from 'react';
+import { Plus } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { publicSupabaseConfig, supabase } from './services/supabaseClient';
 import { observePostViews } from './services/livewireViews';
@@ -108,6 +109,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
     }
   }
   const [editing, setEditing] = useState<string | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
   const [linkedPost, setLinkedPost] = useState<Post | null>(null);
@@ -262,8 +264,12 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
     } finally { setBusy(false); }
   }
 
-  return <section className="livewire-panel" aria-labelledby="livewire-heading">
-    <header className="livewire-heading"><div><span className="eyebrow">FROM THE GAMEWIRE DESK</span><h2 id="livewire-heading">LIVEWIRE</h2></div><span>{role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'News & takes'}</span></header>
+  const hasDraft = Boolean(title || body || source || themes.length || photos.length || editing);
+  return <section className="livewire-panel" aria-label="LIVEWIRE">
+    {role && <div className="angle-admin-bar livewire-admin-bar">
+      <button type="button" className="angle-create-button" aria-expanded={composerOpen} aria-controls="livewire-composer" disabled={busy || !draftReady} onClick={() => setComposerOpen(true)}><Plus size={16} aria-hidden="true" />{editing ? 'Continue editing' : hasDraft ? 'Continue draft' : 'Create post'}</button>
+      <span>{role === 'owner' ? 'Owner' : 'Admin'}{hasDraft ? ' ? Draft saved' : ''}</span>
+    </div>}
     {(error || accessError) && <p className="livewire-error" role="alert">{error || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {draftError && <div className="livewire-error" role="alert"><p>{draftError}</p><button type="button" disabled={busy} onClick={() => {
       if (draftRestoreFailed) {
@@ -275,27 +281,27 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       }
     }}>{draftRestoreFailed ? 'Retry restoring draft' : 'Retry saving draft'}</button></div>}
     {role && !draftReady && !draftError && <p role="status">Restoring your saved draft...</p>}
-    {role && draftReady && <form className="livewire-composer" onSubmit={(event) => {
+    {role && draftReady && composerOpen && <form id="livewire-composer" className="livewire-composer" onSubmit={(event) => {
       event.preventDefault();
       if (!supabase || busy) return;
       if (source.trim() && !safeNewsLink(source.trim())) { setActionError('Use a valid http or https news link.'); return; }
       void act(savePost, () => {
-        resetPhotos(); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setDraftRestoreFailed(false); setNotice(editing ? 'Post updated.' : 'Post published.');
+        resetPhotos(); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setDraftRestoreFailed(false); setComposerOpen(false); setNotice(editing ? 'Post updated.' : 'Post published.');
       });
     }}>
-      <label htmlFor="livewire-title">{editing ? 'Edit subject / title' : 'Subject / title'}</label>
-      <input id="livewire-title" maxLength={120} required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Give your post a headline..." disabled={busy} />
+      <h3>{editing ? 'Edit post' : 'New post'}</h3>
+      <label htmlFor="livewire-title">Subject / title</label>
+      <input id="livewire-title" maxLength={120} required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Headline" disabled={busy} />
       <fieldset className="livewire-themes" disabled={busy}>
-        <legend>Themes <span>(optional, select multiple)</span></legend>
+        <legend>Themes <span>(optional)</span></legend>
         <div>{postThemes.map((theme) => <label key={theme.value}>
           <input type="checkbox" checked={themes.includes(theme.value)} onChange={(event) => setThemes((current) => event.target.checked
             ? [...current, theme.value] : current.filter((value) => value !== theme.value))} />
           <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
         </label>)}</div>
-        <small className="livewire-photo-help">Notification: {themes[0]?.toUpperCase() ?? 'LIVEWIRE'}: {title.trim() || 'Subject of post'}{editing ? ' (edits do not send another notification)' : ''}</small>
       </fieldset>
       <label htmlFor="livewire-body">Post</label>
-      <textarea id="livewire-body" maxLength={500} required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Player news, game reactions, and your latest takes..." disabled={busy} />
+      <textarea id="livewire-body" maxLength={500} required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Player news, reactions, takes..." disabled={busy} />
       <label htmlFor="livewire-source">News link <span>(optional)</span></label>
       <input id="livewire-source" type="url" maxLength={2048} value={source} onChange={(event) => setSource(event.target.value)} placeholder="https://..." disabled={busy} />
       <label htmlFor="livewire-photos">Photos <span>(optional, up to four)</span></label>
@@ -310,24 +316,22 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
           const preview = URL.createObjectURL(file); previews.current.add(preview); return { file, preview };
         })]);
       }} />
-      <small className="livewire-photo-help">JPG, PNG, WebP or GIF · 5 MB per photo · Photos are public when posted.</small>
+      <small className="livewire-photo-help">JPG, PNG, WebP or GIF · 5 MB each · Public when posted.</small>
       {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}><OfflineImage src={photo.preview} alt={`Attachment preview ${index + 1}`} /><button type="button" disabled={busy} onClick={() => {
         if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
         setPhotos((current) => current.filter((_, item) => item !== index));
       }}>Remove photo {index + 1}</button></div>)}</div>}
-      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => { if (window.confirm('Discard this saved draft?')) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setDraftRestoreFailed(false); } }}>{editing ? 'Cancel edit' : 'Discard draft'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
+      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => setComposerOpen(false)}>Close</button><button type="button" disabled={busy} onClick={() => { if (!hasDraft || window.confirm(editing ? 'Discard your changes to this post?' : 'Discard this saved draft?')) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setDraftRestoreFailed(false); setComposerOpen(false); } }}>{editing ? 'Cancel edit' : 'Discard'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
     {postId && linkedReady === postId && linkedMissing && <p className="livewire-notice" role="status">This post is no longer available. You can read the latest LIVEWIRE posts below.</p>}
     <div className="livewire-theme-filters" role="group" aria-label="Filter LIVEWIRE by theme">
-      <span>Filter by theme</span>
       <button type="button" aria-pressed={!themeFilters.length} onClick={() => filterThemes([])}>All posts</button>
       {postThemes.map((theme) => <button type="button" key={theme.value} aria-pressed={themeFilters.includes(theme.value)}
         onClick={() => filterThemes(themeFilters.includes(theme.value) ? themeFilters.filter((value) => value !== theme.value) : [...themeFilters, theme.value])}>
         <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
       </button>)}
-      <small>Select multiple to show posts with any selected theme.</small>
     </div>
     {linkedOutsideFilter && <p className="livewire-notice">The post opened from your link is shown even though it does not match these filters.</p>}
     {viewError && <p className="livewire-error" role="status">{viewError}</p>}
@@ -351,9 +355,9 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {post.angle_id && <a href={`#analyst-desk/story/${post.angle_id}`}>{post.themes?.includes('fantasy') ? 'View in Fantasy News' : 'View in The Angle'}</a>}
         {!post.angle_id && role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
-          <button disabled={busy || !draftReady} onClick={() => { if ((draftRestoreFailed || title || body || source || themes.length || photos.length) && !window.confirm('Replace your saved draft with this post?')) return; resetPhotos(); setDraftRestoreFailed(false); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
+          <button disabled={busy || !draftReady} onClick={() => { if ((draftRestoreFailed || title || body || source || themes.length || photos.length) && !window.confirm('Replace your saved draft with this post?')) return; resetPhotos(); setDraftRestoreFailed(false); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); setComposerOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {
-            if (editing === post.id) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); }
+            if (editing === post.id) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setComposerOpen(false); }
             setNotice('Post deleted.');
           }); }}>Delete</button>
         </div>}
