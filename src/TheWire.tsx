@@ -1,5 +1,6 @@
 import OfflineImage from './OfflineImage';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
   FavoriteTarget,
@@ -331,6 +332,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
     returnToGameRef.current = selectedGameId;
     setDetailOpen(false);
   };
+  const detailRef = useSwipeBack<HTMLDivElement>(closeGame, detailOpen);
 
   useEffect(() => {
     if (!openRequest) return;
@@ -917,14 +919,14 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
   }
 
   return (
-    <div className="the-wire-container">
+    <div className="the-wire-container" ref={detailRef}>
       <button type="button" className="wire-back-button" onClick={closeGame}>
         <ChevronLeft size={16} aria-hidden="true" /> All games
       </button>
       {/* Game Wheel */}
       <div className="wire-controls">
         {nflGames.length > 0 ? (
-          <div className="wire-game-wheel">
+          <div className="wire-game-wheel" data-swipe-back-ignore>
             <span className="eyebrow">NFL GAMES · THIS WEEK</span>
             <div
               ref={wheelRef}

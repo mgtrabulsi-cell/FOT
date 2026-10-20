@@ -4,6 +4,7 @@ import { ArrowLeft, Bell, CalendarDays, CheckCircle2, KeyRound, Mail, Trash2 } f
 import { supabase } from './services/supabaseClient';
 import { deleteAccount } from './services/deleteAccount';
 import OwnerUserActivity from './OwnerUserActivity';
+import { useSwipeBack } from './useSwipeBack';
 import { disablePushNotifications, enablePushNotifications, getPushSettings, hasPushConfiguration, sendTestPushNotification, supportsPushNotifications, updatePushPreference } from './services/pushNotifications';
 
 function PushNotificationSettings({ user }: { user: User }) {
@@ -158,6 +159,7 @@ function DeleteAccountSettings({ onDeleted }: { onDeleted: (warnings: string[]) 
 }
 
 export default function ProfilePage({ user, onBack, onDeleted }: { user: User; onBack: () => void; onDeleted: (warnings: string[]) => void }) {
+  const profileRef = useSwipeBack<HTMLElement>(onBack);
   const currentEmail = user.email ?? '';
   const displayName = typeof user.user_metadata.display_name === 'string' && user.user_metadata.display_name.trim()
     ? user.user_metadata.display_name.trim()
@@ -215,7 +217,7 @@ export default function ProfilePage({ user, onBack, onDeleted }: { user: User; o
     setPasswordBusy(false);
   };
 
-  return <section className="account-profile">
+  return <section className="account-profile" ref={profileRef}>
     <header className="account-profile-heading"><div><span className="eyebrow">ACCOUNT</span><h2>Profile</h2></div><button className="account-back-button" onClick={onBack}><ArrowLeft size={15} />Back to GameWire</button></header>
     <section className="account-profile-summary"><span className="account-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><span className="account-profile-identity"><b>{displayName}</b><small>{currentEmail}</small></span><span className="account-joined"><CalendarDays size={15} /><span><small>JOINED</small><b>{joinedAt}</b></span></span></section>
     <div className="account-settings-grid">

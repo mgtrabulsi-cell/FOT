@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import OfflineImage from './OfflineImage';
+import { useSwipeBack } from './useSwipeBack';
 
 export default function PostPhotoViewer({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useSwipeBack<HTMLDialogElement>(onClose);
   useEffect(() => {
     const element = dialog.current;
     const previous = document.activeElement;

@@ -472,7 +472,12 @@ button { color: inherit; }
 .results-panel .grade-hit[aria-pressed="true"] { background: #163c2b; border-color: #75dfa6; color: #75dfa6; }
 .results-panel .grade-miss[aria-pressed="true"] { background: #48212b; border-color: #ff8f98; color: #ff8f98; }
 .results-records { min-width: 0; padding: 16px; border: 1px solid #35445b; border-radius: 6px; background: #101a29; }
-.results-records h3 { margin: 0 0 8px; font-size: 16px; }
+.results-records summary { min-height: 44px; cursor: pointer; font-size: 14px; }
+.results-records summary > span { font-weight: 700; }
+.results-records summary strong { display: block; margin-top: 8px; font-size: 22px; font-variant-numeric: tabular-nums; }
+.results-records summary small { display: block; margin-top: 6px; color: #a9b8ce; }
+.results-records[open] summary { margin-bottom: 12px; }
+.results-records summary:focus-visible { outline: 2px solid #9db9df; outline-offset: 3px; }
 .results-records p { margin: 0 0 12px; color: #a9b8ce; font-size: 12px; line-height: 1.6; }
 .results-records table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .results-records th, .results-records td { padding: 10px 8px; border-bottom: 1px solid #35445b; text-align: center; }

@@ -33,6 +33,7 @@ import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
 import TheAngle from './TheAngle';
 import OurResults from './OurResults';
+import { useSwipeBack } from './useSwipeBack';
 import { useOnlineStatus } from './OfflineStatus';
 import { useOfflineSnapshots } from './useOfflineSnapshots';
 import { usePublicDataRevision } from './usePublicDataRevision';
@@ -252,7 +253,7 @@ function NFLGameWheel({ games, selectedGame, onSelect }: { games: Game[]; select
     primetime: getPrimetimeLabel(game),
     secondary: `${game.status === 'LIVE' ? 'LIVE · ' : ''}${formatGameTime(game)}`,
   }));
-  return <section className="nfl-game-wheel"><span className="eyebrow">SELECT GAME</span><DraggableTabs options={options} ariaLabel="NFL games" className="nfl-game-wheel-tabs" selected={selectedGame.id} onSelect={onSelect} /></section>;
+  return <section className="nfl-game-wheel" data-swipe-back-ignore><span className="eyebrow">SELECT GAME</span><DraggableTabs options={options} ariaLabel="NFL games" className="nfl-game-wheel-tabs" selected={selectedGame.id} onSelect={onSelect} /></section>;
 }
 
 function getNFLPlayerStatValue(stats: Partial<Record<NFLPlayerStatKey, number>>, key: NFLPlayerStatKey) {
@@ -263,7 +264,7 @@ function getNFLPlayerStatValue(stats: Partial<Record<NFLPlayerStatKey, number>>,
 }
 
 function NFLPlayerMiniWindow({ player, team, isFavorite, onToggleFavorite, onClose }: { player: NFLSkillPlayer; team: Team; isFavorite: boolean; onToggleFavorite: (favorite: FavoriteTarget) => void; onClose: () => void }) {
-  const dialogRef = useRef<HTMLElement>(null);
+  const dialogRef = useSwipeBack<HTMLElement>(onClose);
   useEffect(() => {
     const trigger = document.activeElement;
     dialogRef.current?.focus();

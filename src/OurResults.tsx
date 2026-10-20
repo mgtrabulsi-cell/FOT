@@ -76,8 +76,14 @@ export default function OurResults({ user }: { user: User | null }) {
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
     {!loaded && !error && <p role="status">Loading results...</p>}
-    {loaded && <section className="results-records" aria-label="Record by sport">
-      <h3>Record by sport</h3>
+    {loaded && <details className="results-records">
+      <summary>
+        <span>Overall record</span>
+        <strong><span className="results-record-wins">{picks.filter(({ pick }) => pick.result === 'hit').length} Wins</span>
+          <span aria-hidden="true"> - </span>
+          <span className="results-record-losses">{picks.filter(({ pick }) => pick.result === 'miss').length} Losses</span></strong>
+        <small>Record by sport</small>
+      </summary>
       <p>All published picks across all weeks. Hit counts as a win; Missed counts as a loss. Pending picks are excluded.</p>
       <table aria-label="Admin-reported wins and losses by sport">
         <thead><tr><th scope="col">Sport</th><th scope="col">Wins</th><th scope="col">Losses</th></tr></thead>
@@ -87,7 +93,7 @@ export default function OurResults({ user }: { user: User | null }) {
           <td className="results-record-losses">{sport.losses}</td>
         </tr>)}</tbody>
       </table>
-    </section>}
+    </details>}
     {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
     <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
       <div className="angle-pick"><div className="angle-pick-heading"><h3><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</h3><PickResult result={pick.result} /></div><p>{pick.text}</p></div>
