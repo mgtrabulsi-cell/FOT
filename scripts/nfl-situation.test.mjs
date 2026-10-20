@@ -23,6 +23,17 @@ test('Missing, unknown, or partial fields do not invent possession or infer fiel
   assert.equal(nflFieldPosition(readNFLSituation({ possession: '3' }, ['3', '1'])), 'Field position unavailable');
 });
 
+test('Missing possession falls back to the last play only when that play kept the ball', () => {
+  const read = (type, extra = {}) => readNFLSituation({
+    down: 1, possessionText: 'WSH 43', shortDownDistanceText: '1st & 10', lastPlay: { type: { text: type }, team: { id: '28' } }, ...extra,
+  }, ['28', '25']).possessionTeamId;
+  assert.equal(read('Kickoff'), '28');
+  assert.equal(read('Rush'), '28');
+  for (const type of ['Punt', 'Interception Return', 'Fumble Recovery (Opponent)', 'Penalty', 'Passing Touchdown']) assert.equal(read(type), null);
+  assert.equal(read('Rush', { down: 0 }), null);
+  assert.equal(read('Rush', { possession: '25' }), '25');
+});
+
 test('Scoreboard mapping carries live situations, updates turnovers, and clears pregame/final values', async () => {
   const original = globalThis.fetch;
   let state = 'in';
