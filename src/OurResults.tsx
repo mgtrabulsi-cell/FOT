@@ -69,7 +69,7 @@ export default function OurResults({ user }: { user: User | null }) {
     } finally { setBusy(false); }
   }
   const picks = publishedAnglePicks(rows);
-  return <section className="angle-panel results-panel" aria-label="Our results">
+  return <section className="angle-panel results-panel" aria-label="Our Results">
     <p className="angle-disclaimer">Results are marked by admins. Editorial opinions, not betting recommendations.</p>
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
     {error && <p className="feed-warning" role="alert">{error} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
