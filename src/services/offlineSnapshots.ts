@@ -6,6 +6,24 @@ import { nativeApp, NativeOffline, settleNativeReads, warmNativeImages } from '.
 import { warmWebImages, webOfflineStore } from './webOffline.ts';
 
 export const offlineSnapshotInterval = 5 * 60_000;
+const savedGamesKey = 'gamewire-offline-games';
+// Final games no longer change and upcoming ones change slowly; only live games need the five-minute refresh.
+const gameRefreshAge = { FINAL: 24 * 60 * 60_000, UPCOMING: 60 * 60_000, LIVE: 0 } as const;
+type SavedGames = Record<string, { status: Game['status']; savedAt: number }>;
+
+function readSavedGames(): SavedGames {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(savedGamesKey) ?? '{}');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as SavedGames : {};
+  } catch { return {}; }
+}
+
+export function offlineGamesDue(games: Game[], saved: SavedGames, now = Date.now()): Game[] {
+  return games.filter((game) => {
+    const entry = saved[`${game.seasonYear}:${game.eventId}`];
+    return !entry || entry.status !== game.status || now - entry.savedAt >= gameRefreshAge[game.status];
+  });
+}
 
 export function collectOfflineImages(value: unknown, images = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((entry) => collectOfflineImages(entry, images));
@@ -34,11 +52,21 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
     console.error('Offline team images could not all be saved', error);
     failures.push('team images');
   }
-  const nflGames = games.filter((game) => game.league === 'NFL');
+  const savedGames = readSavedGames();
+  const weekGames = new Set(games.map((game) => `${game.seasonYear}:${game.eventId}`));
+  const recordSavedGames = async () => {
+    if (nativeApp) await settleNativeReads();
+    else await webOfflineStore().settle();
+    try {
+      localStorage.setItem(savedGamesKey, JSON.stringify(Object.fromEntries(Object.entries(savedGames).filter(([key]) => weekGames.has(key)))));
+    } catch (error) { console.error('Could not record saved offline games', error); }
+  };
+  const nflGames = offlineGamesDue(games.filter((game) => game.league === 'NFL'), savedGames);
   // Limit parallel games; each existing loader already batches its own player requests.
   for (let start = 0; start < nflGames.length; start += 2) {
     signal.throwIfAborted();
     await Promise.all(nflGames.slice(start, start + 2).map(async (game) => {
+      const failuresBefore = failures.length;
       try {
         const teams = [game.away, game.home];
         const box = await fetchNFLBoxScore(game.feedPath, game.eventId, signal);
@@ -68,18 +96,23 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
             failures.push(team.name);
           }
         }
+        if (failures.length === failuresBefore) savedGames[`${game.seasonYear}:${game.eventId}`] = { status: game.status, savedAt: Date.now() };
       } catch (error) {
         if (signal.aborted) throw error;
         console.error(`Offline snapshot incomplete for ${game.away.abbr} at ${game.home.abbr}`, error);
         failures.push(`${game.away.abbr} at ${game.home.abbr}`);
       }
     }));
+    signal.throwIfAborted();
+    // Record progress per batch so a reload never repeats games that were already saved.
+    await recordSavedGames();
   }
   signal.throwIfAborted();
   if (nativeApp) await settleNativeReads();
   else await webOfflineStore().settle();
   signal.throwIfAborted();
   await saveOfflineImages([...images], signal, baseline.failures);
+  await recordSavedGames();
   if (nativeApp && (await NativeOffline.status()).failures !== baseline.failures) throw new Error('Some native content could not be refreshed or retained. Check connectivity and available storage, then retry online.');
   return failures;
 }

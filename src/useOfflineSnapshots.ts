@@ -18,7 +18,8 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
       window.dispatchEvent(new CustomEvent('gamewire-offline-snapshot', { detail }));
     };
     const save = async () => {
-      if (running || !navigator.onLine || document.visibilityState === 'hidden'
+      const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+      if (running || !navigator.onLine || document.visibilityState === 'hidden' || connection?.saveData
         || Date.now() - lastAttempt < offlineSnapshotInterval) return;
       running = true;
       lastAttempt = Date.now();
@@ -45,7 +46,12 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
         }
       }
     };
-    const resume = () => { void save(); };
+    let idle = 0;
+    // Wait for an idle moment so background saving never competes with the page the user just opened.
+    const resume = () => {
+      if (idle || typeof window.requestIdleCallback !== 'function') { if (!idle) void save(); return; }
+      idle = window.requestIdleCallback(() => { idle = 0; void save(); }, { timeout: 10_000 });
+    };
     const reconnect = () => {
       lastAttempt = 0;
       if (running) refreshPending = true;
@@ -56,10 +62,11 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
     window.addEventListener('online', reconnect);
     document.addEventListener('visibilitychange', resume);
     const timer = window.setInterval(resume, offlineSnapshotInterval);
-    const startup = window.setTimeout(resume, 5_000);
+    const startup = window.setTimeout(resume, 20_000);
     return () => {
       controller.abort();
       window.clearTimeout(startup);
+      if (idle) window.cancelIdleCallback(idle);
       window.clearInterval(timer);
       navigator.serviceWorker?.removeEventListener('controllerchange', reconnect);
       if (nativeListener) void nativeListener.then((listener) => listener.remove());

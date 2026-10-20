@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { fetchScoreboards } from '../src/services/sportsData.ts';
-import { collectOfflineImages, offlineSnapshotInterval } from '../src/services/offlineSnapshots.ts';
+import { collectOfflineImages, offlineGamesDue, offlineSnapshotInterval } from '../src/services/offlineSnapshots.ts';
 
 const worker = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 
@@ -191,6 +191,20 @@ test('Weekly snapshots run on a five-minute cadence and collect nested logos/fac
   const logo = 'https://a.espncdn.com/i/teamlogos/nfl/500/car.png';
   const headshot = 'https://a.espncdn.com/i/headshots/nfl/players/full/123.png';
   assert.deepEqual([...collectOfflineImages({ games: [{ logo, players: [{ headshot }, { headshot }] }], url: 'https://example.com/private', headshot: 'https://example.com/private.png' })], [logo, headshot]);
+});
+
+test('Weekly snapshots skip games already saved unless they are live, changed status, or stale', () => {
+  const now = Date.UTC(2026, 8, 14);
+  const game = (eventId, status) => ({ eventId, status, seasonYear: 2026 });
+  const games = [game('1', 'FINAL'), game('2', 'FINAL'), game('3', 'UPCOMING'), game('4', 'LIVE'), game('5', 'FINAL'), game('6', 'UPCOMING')];
+  const saved = {
+    '2026:1': { status: 'FINAL', savedAt: now - 60_000 },
+    '2026:2': { status: 'LIVE', savedAt: now - 60_000 },
+    '2026:3': { status: 'UPCOMING', savedAt: now - 10 * 60_000 },
+    '2026:4': { status: 'LIVE', savedAt: now - 1_000 },
+    '2026:6': { status: 'UPCOMING', savedAt: now - 2 * 60 * 60_000 },
+  };
+  assert.deepEqual(offlineGamesDue(games, saved, now).map((entry) => entry.eventId), ['2', '4', '5', '6']);
 });
 
 test('Unopened team/player images are explicitly saved, survive more than 80 images, and remain available offline', async () => {
