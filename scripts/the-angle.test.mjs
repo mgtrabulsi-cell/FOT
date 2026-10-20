@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { anglePicks, angleSport, angleSportGameId, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+import { anglePicks, angleSport, angleSportGameId, angleSportRecords, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
@@ -155,4 +155,55 @@ test('Fantasy News posts require a type and keep tags out of angles', () => {
   assert.equal(readAngles([{ ...row, section: 'news', news_types: ['injury'] }]).length, 1);
   assert.throws(() => readAngles([{ ...row, section: 'other' }]));
   assert.throws(() => readAngles([{ ...row, section: 'news', news_types: ['rumor'] }]));
+});
+
+test('Sport records count individual published Hit and Missed picks across weeks and sections, not pending or drafts', () => {
+  const story = (id, game_id, results, extra = {}) => ({
+    id, game_id, status: 'published', pick: '', week: 7,
+    picks: results.map((result, index) => ({ id: `${id}-${index}`, text: `Pick ${index}`, result })),
+    ...extra,
+  });
+  const rows = [
+    story('nfl', 'NFL:123', ['hit', 'miss', 'pending', 'hit']),
+    story('past', 'NFL:456', ['miss'], { week: 1, season: 2025 }),
+    story('nba', 'NBA:0', ['hit', 'miss']),
+    story('nhl', 'NHL:0', ['miss', 'miss']),
+    story('ucl', 'UCL:0', ['hit']),
+    story('soccer', 'SOCCER:0', ['miss', 'hit'], { section: 'news' }),
+    story('private', 'NFL:789', ['hit', 'miss'], { status: 'draft' }),
+    { id: 'legacy', game_id: 'NFL:999', status: 'published', pick: 'Ungraded legacy pick' },
+  ];
+  const records = angleSportRecords(rows);
+  assert.deepEqual(records.map(({ key, wins, losses }) => ({ key, wins, losses })), [
+    { key: 'NFL', wins: 2, losses: 2 },
+    { key: 'NBA', wins: 1, losses: 1 },
+    { key: 'NHL', wins: 0, losses: 2 },
+    { key: 'UCL', wins: 1, losses: 0 },
+    { key: 'SOCCER', wins: 1, losses: 1 },
+  ]);
+  assert.equal(rows[0].picks[0].result, 'hit');
+  assert.deepEqual(angleSportRecords(rows), records);
+  assert.ok(angleSportRecords([]).every((sport) => sport.wins === 0 && sport.losses === 0));
+  assert.deepEqual(angleSportRecords([]).map((sport) => sport.label), ['NFL', 'NBA', 'NHL', 'UCL', 'Soccer']);
+});
+
+test('Regrading, resetting, removing and unpublishing picks recompute records without double counting', () => {
+  const row = { id: 'story', game_id: 'NBA:0', status: 'published', pick: '', picks: [
+    { id: 'one', text: 'First', result: 'pending' },
+    { id: 'two', text: 'Second', result: 'miss' },
+  ] };
+  const record = (story) => {
+    const { wins, losses } = angleSportRecords([story]).find((sport) => sport.key === 'NBA');
+    return { wins, losses };
+  };
+  assert.deepEqual(record(row), { wins: 0, losses: 1 });
+  row.picks[0].result = 'hit';
+  assert.deepEqual(record(row), { wins: 1, losses: 1 });
+  assert.deepEqual(record(row), { wins: 1, losses: 1 });
+  row.picks[0].result = 'miss';
+  assert.deepEqual(record(row), { wins: 0, losses: 2 });
+  row.picks[0].result = 'pending';
+  assert.deepEqual(record(row), { wins: 0, losses: 1 });
+  assert.deepEqual(record({ ...row, picks: [] }), { wins: 0, losses: 0 });
+  assert.deepEqual(record({ ...row, status: 'draft' }), { wins: 0, losses: 0 });
 });

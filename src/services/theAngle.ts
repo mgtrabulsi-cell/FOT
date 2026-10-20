@@ -76,6 +76,16 @@ export function angleSport(gameId: string): { key: AngleSportKey; label: string;
 }
 export const angleSportGameId = (key: typeof angleSports[number]['key']) => `${key}:0`;
 
+export function angleSportRecords(stories: Angle[]) {
+  const records = [nflSport, ...angleSports].map((sport) => ({ ...sport, wins: 0, losses: 0 }));
+  for (const { story, pick } of publishedAnglePicks(stories)) {
+    const record = records.find((sport) => sport.key === angleSport(story.game_id).key);
+    if (record && pick.result === 'hit') record.wins += 1;
+    if (record && pick.result === 'miss') record.losses += 1;
+  }
+  return records;
+}
+
 export function angleWriteFields(angle: Angle, status: Angle['status']) {
   return {
     game_id: angle.game_id, matchup: angle.matchup.trim(), kind: angle.kind, subject: angle.subject.trim(),

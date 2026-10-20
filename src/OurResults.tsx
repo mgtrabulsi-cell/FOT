@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Check, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { anglePicks, angleSport, publishedAnglePicks, readAngles } from './services/theAngle';
+import { anglePicks, angleSport, angleSportRecords, publishedAnglePicks, readAngles } from './services/theAngle';
 import type { Angle, AnglePick } from './services/theAngle';
 import { PickResult } from './AnglePicks';
 
@@ -76,6 +76,18 @@ export default function OurResults({ user }: { user: User | null }) {
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
     {!loaded && !error && <p role="status">Loading results...</p>}
+    {loaded && <section className="results-records" aria-label="Record by sport">
+      <h3>Record by sport</h3>
+      <p>All published picks across all weeks. Hit counts as a win; Missed counts as a loss. Pending picks are excluded.</p>
+      <table aria-label="Admin-reported wins and losses by sport">
+        <thead><tr><th scope="col">Sport</th><th scope="col">Wins</th><th scope="col">Losses</th></tr></thead>
+        <tbody>{angleSportRecords(rows).map((sport) => <tr key={sport.key}>
+          <th scope="row"><span className="angle-sport-emoji" aria-hidden="true">{sport.emoji}</span>{sport.label}</th>
+          <td className="results-record-wins">{sport.wins}</td>
+          <td className="results-record-losses">{sport.losses}</td>
+        </tr>)}</tbody>
+      </table>
+    </section>}
     {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
     <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
       <div className="angle-pick"><div className="angle-pick-heading"><h3><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</h3><PickResult result={pick.result} /></div><p>{pick.text}</p></div>
