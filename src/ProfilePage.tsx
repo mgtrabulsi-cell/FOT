@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { ArrowLeft, Bell, CalendarDays, CheckCircle2, KeyRound, Mail, Trash2 } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { deleteAccount } from './services/deleteAccount';
+import OwnerUserActivity from './OwnerUserActivity';
 import { disablePushNotifications, enablePushNotifications, getPushSettings, hasPushConfiguration, sendTestPushNotification, supportsPushNotifications, updatePushPreference } from './services/pushNotifications';
 
 function PushNotificationSettings({ user }: { user: User }) {
@@ -222,6 +223,7 @@ export default function ProfilePage({ user, onBack, onDeleted }: { user: User; o
       <section className="account-setting"><header><Mail size={16} /><div><b>Email address</b><small>Update the address used to sign in.</small></div></header><form className="account-setting-form" onSubmit={updateEmail}><label>New email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>{emailError && <p className="auth-error" role="alert">{emailError}</p>}{emailMessage && <p className="auth-notice" role="status">{emailMessage}</p>}<button type="submit" disabled={emailBusy}>{emailBusy ? 'Sending confirmation…' : 'Change email'}</button></form></section>
       <section className="account-setting"><header><KeyRound size={16} /><div><b>Password</b><small>Choose a new password for your account.</small></div></header><form className="account-setting-form" onSubmit={updatePassword}><label>New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} /></label><label>Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} /></label>{passwordError && <p className="auth-error" role="alert">{passwordError}</p>}{passwordMessage && <p className="auth-notice" role="status">{passwordMessage}</p>}<button type="submit" disabled={passwordBusy}>{passwordBusy ? 'Updating…' : 'Change password'}</button></form></section>
     </div>
+    <OwnerUserActivity user={user} />
     <DeleteAccountSettings onDeleted={onDeleted} />
   </section>;
 }

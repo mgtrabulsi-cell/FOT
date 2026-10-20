@@ -153,6 +153,10 @@ After success, the current device clears GameWire preferences, runtime public ca
 
 Run [`supabase/tests/account-deletion.sql`](supabase/tests/account-deletion.sql) for rollback-only cascade/isolation/upload-guard tests, and `deno test --allow-env --allow-net supabase/functions/delete-account/index.test.ts` for mocked authentication, upload cleanup, hard deletion, and failure checks. Never test deletion with a real user account.
 
+### Owner user activity
+
+Apply [`supabase/site-opens.sql`](supabase/site-opens.sql) to show **Registered users** on the LIVEWIRE owner's Profile page (hidden for admins, members, and guests; the `owner_user_activity` RPC rejects any non-owner). It lists every registered account with display name, email, join date, total site opens, and last open. A signed-in open is counted once per browser/app session and again after returning from 30+ minutes in the background; repeats within 30 seconds are ignored server-side. Counts start when the migration is installed, are stored privately in `site_opens` (no client table access), and are removed when the account is deleted. Guests are not counted. Rollback-only checks are in [`supabase/tests/site-opens.sql`](supabase/tests/site-opens.sql).
+
 GameWire uses Supabase Auth for email/password accounts and stores each user's favorites in a row protected by row-level security.
 
 1. Create a Supabase project and enable email authentication.

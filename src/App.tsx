@@ -18,6 +18,7 @@ import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFL
 import { readGameDetailsSnapshot, readRenderSnapshot } from './services/renderSnapshots';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
+import { useSiteOpenTracking } from './useSiteOpenTracking';
 import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory } from './useLockerRoomHistory';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
@@ -613,6 +614,7 @@ function App() {
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
   const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
   useOfflineSnapshots(games, deletedAccount === null && (!!authUser || guestMode));
+  useSiteOpenTracking(deletedAccount === null ? authUser?.id : null);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;
   const notificationEventRef = useRef(notificationEventId);
