@@ -605,6 +605,10 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
     ? playerAverages.data : null;
   const categoriesToDisplay = (isUpcoming ? currentPlayerAverages?.categories ?? [] : activeBoxTeam?.categories ?? []).map((sourceCategory) => {
     const category = isUpcoming && playerStatMode === 'average' ? averageNFLPlayerSeasonCategory(sourceCategory) : sourceCategory;
+    if (selectedGame?.status === 'FINAL' && ['passing', 'rushing', 'receiving'].includes(category.name)) {
+      const yards = category.labels.indexOf('YDS');
+      return yards < 0 ? category : { ...category, athletes: category.athletes.filter((athlete) => String(athlete.stats[yards] ?? '').trim() === '' || Number(athlete.stats[yards]) !== 0) };
+    }
     if (!isUpcoming || !['passing', 'rushing', 'receiving'].includes(category.name)) return category;
     const slots = category.name === 'rushing' ? [0, 1, null, 2, 3, 4] : [0, 1, 2, 3, 4, 5];
     return {
@@ -616,6 +620,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
       })),
     };
   }).filter((cat) => {
+    if (!cat.athletes.length) return false;
     if (activeCategoryFilter === 'All') return true;
     if (activeCategoryFilter === 'Offense') return ['passing', 'rushing', 'receiving'].includes(cat.name);
     if (activeCategoryFilter === 'Defense') return ['defensive', 'interceptions', 'fumbles'].includes(cat.name);
