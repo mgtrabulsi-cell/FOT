@@ -5,7 +5,7 @@ import type { AnalystKind } from './services/analystReads';
 
 export function useAnalystUnread(userId: string | null, enabled: boolean, season: number, week: number) {
   const scope = `${userId ?? 'guest'}:${season}:${week}`;
-  const [state, setState] = useState({ scope, angle: false, picks: false, error: '' });
+  const [state, setState] = useState({ scope, angle: false, news: false, picks: false, error: '' });
   const [refresh, setRefresh] = useState(0);
   const generation = useRef(0);
   const seen = useRef(new Set<string>());
@@ -27,13 +27,13 @@ export function useAnalystUnread(userId: string | null, enabled: boolean, season
         const read = userId ? new Set<string>() : guestAnalystReads();
         const unread = readAnalystItems(result.data).filter((item) => !read.has(analystReceiptKey(item)));
         if (active && request === generation.current) setState({
-          scope, angle: unread.some((item) => item.kind === 'angle'), picks: unread.some((item) => item.kind === 'picks'), error: '',
+          scope, angle: unread.some((item) => item.kind === 'angle'), news: unread.some((item) => item.kind === 'news'), picks: unread.some((item) => item.kind === 'picks'), error: '',
         });
       } catch (cause) {
         if (active && request === generation.current) {
           console.error('Could not load Analyst Desk unread status', cause);
           setState((previous) => ({
-            scope, angle: previous.scope === scope && previous.angle, picks: previous.scope === scope && previous.picks,
+            scope, angle: previous.scope === scope && previous.angle, news: previous.scope === scope && previous.news, picks: previous.scope === scope && previous.picks,
             error: 'Could not sync Analyst Desk read status. Reconnect or reopen the page to retry.',
           }));
         }
@@ -76,6 +76,7 @@ export function useAnalystUnread(userId: string | null, enabled: boolean, season
     } finally { pending.delete(receipt); }
   }, [enabled, userId, scope]);
   const angle = enabled && state.scope === scope && state.angle;
+  const news = enabled && state.scope === scope && state.news;
   const picks = enabled && state.scope === scope && state.picks;
-  return { angle, picks, unread: angle || picks, error: enabled && state.scope === scope ? state.error : '', markRead };
+  return { angle, news, picks, unread: angle || news || picks, error: enabled && state.scope === scope ? state.error : '', markRead };
 }

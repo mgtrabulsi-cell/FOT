@@ -141,3 +141,18 @@ test('Angle sports map game IDs to labels and emoji, defaulting to NFL', () => {
   assert.equal(anglePublishError({ title: 'T', narrative: 'N', subject: '', evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: true, matchup: ' ' }), 'Add the matchup before saving.');
   assert.equal(angleWriteFields({ game_id: 'NBA:0', matchup: ' Lakers @ Celtics ', kind: 'team', subject: '', category: 'Other', title: 'T', narrative: 'N', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true }, 'draft').matchup, 'Lakers @ Celtics');
 });
+
+test('Fantasy News posts require a type and keep tags out of angles', () => {
+  const base = { title: 'T', narrative: 'N', subject: '', evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: true };
+  assert.equal(anglePublishError({ ...base, section: 'news', news_types: [] }), 'Choose Injuries, News, or both before publishing.');
+  assert.equal(anglePublishError({ ...base, section: 'news', news_types: ['injury'] }), '');
+  assert.equal(anglePublishError(base), '');
+  const fields = { game_id: 'NFL:1', matchup: 'A @ B', kind: 'player', subject: '', category: 'Other', title: 'T', narrative: 'N', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true };
+  assert.deepEqual(angleWriteFields({ ...fields, section: 'news', news_types: ['news', 'injury', 'news'] }, 'draft').news_types, ['news', 'injury']);
+  assert.deepEqual(angleWriteFields({ ...fields, news_types: ['news'] }, 'draft').news_types, []);
+  assert.equal('section' in angleWriteFields({ ...fields, section: 'news' }, 'draft'), false);
+  const row = { id: '11111111-1111-4111-8111-111111111111', season: 2026, week: 1, revision: 1, status: 'published', ...fields };
+  assert.equal(readAngles([{ ...row, section: 'news', news_types: ['injury'] }]).length, 1);
+  assert.throws(() => readAngles([{ ...row, section: 'other' }]));
+  assert.throws(() => readAngles([{ ...row, section: 'news', news_types: ['rumor'] }]));
+});

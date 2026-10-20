@@ -36,7 +36,16 @@ export type Angle = {
   status: 'draft' | 'published';
   revision: number;
   image_paths?: string[];
+  section?: AngleSection;
+  news_types?: NewsType[];
 };
+export type AngleSection = 'angle' | 'news';
+export const newsTypes = [
+  { value: 'injury', label: 'Injuries', color: 'snf' },
+  { value: 'news', label: 'News', color: 'tnf' },
+] as const;
+export type NewsType = typeof newsTypes[number]['value'];
+export const angleSection = (angle: Pick<Angle, 'section'>): AngleSection => angle.section ?? 'angle';
 export function publishedAnglePicks(stories: Angle[]) {
   return stories.filter((story) => story.status === 'published')
     .flatMap((story) => anglePicks(story).map((pick) => ({ story, pick })));
@@ -75,6 +84,7 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
     ...(angle.picks ? { picks: angle.picks.filter((pick) => pick.text.trim()).map((pick) => ({ ...pick, text: pick.text.trim() })) } : {}),
     source_url: angle.source_url.trim(),
     source_label: angle.source_label.trim(), reviewed: angle.reviewed, status, image_paths: angle.image_paths ?? [],
+    news_types: angleSection(angle) === 'news' ? [...new Set(angle.news_types ?? [])] : [],
   };
 }
 
@@ -89,6 +99,8 @@ export function readAngles(value: unknown): Angle[] {
       && 'status' in row && (row.status === 'draft' || row.status === 'published')
       && 'category' in row && angleCategories.some((category) => category === row.category)
       && (!('image_paths' in row) || (Array.isArray(row.image_paths) && row.image_paths.length <= 4 && row.image_paths.every((path: unknown) => typeof path === 'string')))
+      && (!('section' in row) || row.section === 'angle' || row.section === 'news')
+      && (!('news_types' in row) || (Array.isArray(row.news_types) && row.news_types.every((type: unknown) => newsTypes.some((item) => item.value === type))))
       && 'reviewed' in row && typeof row.reviewed === 'boolean';
   };
   if (!Array.isArray(value) || !value.every(isAngle)) throw new Error('The server returned invalid angle data. Please reload.');
@@ -185,8 +197,9 @@ export function selectAngleSuggestions(game: Game, articles: DenNewsItem[]): Ang
   });
 }
 
-export function anglePublishError(angle: Pick<Angle, 'title' | 'subject' | 'narrative' | 'evidence' | 'counterpoint' | 'source_url' | 'source_label' | 'reviewed'> & { matchup?: string }) {
+export function anglePublishError(angle: Pick<Angle, 'title' | 'subject' | 'narrative' | 'evidence' | 'counterpoint' | 'source_url' | 'source_label' | 'reviewed'> & { matchup?: string; section?: AngleSection; news_types?: NewsType[] }) {
   if (angle.matchup !== undefined && !angle.matchup.trim()) return 'Add the matchup before saving.';
+  if (angle.section === 'news' && !angle.news_types?.length) return 'Choose Injuries, News, or both before publishing.';
   if (![angle.title, angle.narrative].every((value) => value.trim())) return 'Add a headline and storyline before publishing.';
   if (angle.source_url && !isAngleSource(angle.source_url)) return 'Use a valid HTTP or HTTPS source link.';
   if (!angle.reviewed) return 'Confirm you checked the source, matchup, and factual claims before publishing.';

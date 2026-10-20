@@ -80,7 +80,7 @@ export default function OurResults({ user }: { user: User | null }) {
     <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
       <div className="angle-pick"><div className="angle-pick-heading"><h3><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</h3><PickResult result={pick.result} /></div><p>{pick.text}</p></div>
       <h4>{story.title}</h4><p className="angle-matchup">{angleSport(story.game_id).key === 'NFL' ? '' : `${angleSport(story.game_id).label} · `}{story.matchup} · {story.season} · Week {story.week}</p>
-      <a href={`#analyst-desk/story/${story.id}`}>View storyline in The Angle</a>
+      <a href={`#analyst-desk/story/${story.id}`}>View story</a>
       {admin && <div className="angle-actions" role="group" aria-label={`Result for pick: ${pick.text}`}>
         {(['hit', 'miss', 'pending'] as const).map((result) => <button key={result} className={`grade-${result}`} aria-pressed={pick.result === result} disabled={busy} onClick={() => void grade(story, pick.id, result)}>{result === 'hit' ? <Check size={18} aria-hidden="true" /> : result === 'miss' ? <X size={18} aria-hidden="true" /> : null}{result === 'hit' ? 'Mark hit' : result === 'miss' ? 'Mark missed' : 'Reset to pending'}</button>)}
       </div>}

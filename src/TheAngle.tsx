@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { BookOpen, ExternalLink, Plus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleWriteFields, isAngleSource, readAngles, selectAngleSuggestions } from './services/theAngle';
-import type { Angle, AngleSuggestion } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleWriteFields, isAngleSource, newsTypes, readAngles, selectAngleSuggestions } from './services/theAngle';
+import type { Angle, AngleSection, AngleSuggestion, NewsType } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
 import { fetchMatchupHistorySuggestions } from './services/angleHistory';
@@ -15,7 +15,7 @@ import PostGallery, { postPhotoUrl } from './PostGallery';
 import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
 
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; section?: AngleSection; onOpenSection?: (section: AngleSection) => void };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The Angle request failed. Please retry.';
 
@@ -44,16 +44,17 @@ async function fetchAngleSuggestions(games: Game[], signal: AbortSignal) {
   return { suggestions: suggestions.sort((a, b) => Date.parse(b.article.published) - Date.parse(a.article.published)), errors };
 }
 
-function newAngle(game: Game, season: number, week: number): Angle {
+function newAngle(game: Game, season: number, week: number, section: AngleSection = 'angle'): Angle {
   return {
     id: '', season, week, game_id: game.id, matchup: `${game.away.name} @ ${game.home.name}`,
     kind: 'team', subject: `${game.away.abbr} @ ${game.home.abbr}`, category: 'Other',
     title: '', narrative: '', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '',
-    reviewed: false, status: 'draft', revision: 0,
+    reviewed: false, status: 'draft', revision: 0, section, news_types: [],
   };
 }
 
-export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen }: Props) {
+export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, section = 'angle', onOpenSection }: Props) {
+  const news = section === 'news';
   const [admin, setAdmin] = useState(false);
   const [rows, setRows] = useState<Angle[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -76,6 +77,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<'all' | 'player' | 'team'>('all');
+  const [newsFilter, setNewsFilter] = useState<NewsType[]>([]);
   const [leadGroup, setLeadGroup] = useState<typeof angleLeadGroups[number]>('Birthdays');
   const [suggestions, setSuggestions] = useState<AngleSuggestion[]>([]);
   const [suggestionErrors, setSuggestionErrors] = useState<string[]>([]);
@@ -96,6 +98,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       const result = await supabase.from('angles').select('*').eq('id', storyId).eq('status', 'published').maybeSingle();
       if (result.error) throw result.error;
       const story = result.data ? readAngles([result.data])[0] : null;
+      if (active && story && angleSection(story) !== section) { onOpenSection?.(angleSection(story)); return; }
       if (active) { setLinkedStory(story); setLinkedReady(storyId); setLinkedError(''); }
     }
     void loadStory().catch((cause: unknown) => { if (active) setLinkedError(`Could not load the linked storyline: ${errorMessage(cause)}`); });
@@ -129,7 +132,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       if (!supabase) throw new Error('The Angle is unavailable: account services are not configured.');
       const next: Angle[] = [];
       for (let offset = 0; ; offset += 500) {
-        const result = await supabase.from('angles').select('*').eq('season', season).eq('week', week)
+        const result = await supabase.from('angles').select('*').eq('section', section).eq('season', season).eq('week', week)
           .order('updated_at', { ascending: false }).order('id').range(offset, offset + 499);
         if (result.error) throw result.error;
         next.push(...readAngles(result.data));
@@ -144,7 +147,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }, [season, week, user?.id, refresh]);
 
   useEffect(() => {
-    if (!admin || !scheduleKey) { setScanning(false); setSuggestions([]); return; }
+    if (news || !admin || !scheduleKey) { setScanning(false); setSuggestions([]); return; }
     const controller = new AbortController();
     setScanning(true); setSuggestionErrors([]); setSuggestions([]);
     void fetchAngleSuggestions(weeklyGames, controller.signal).then((result) => {
@@ -207,7 +210,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       if (payload.source_url && !isAngleSource(payload.source_url)) throw new Error('Use a valid HTTP or HTTPS source link.');
       const result = id
         ? await supabase.from('angles').update({ ...payload, revision: revision + 1 }).eq('id', id).eq('revision', revision).select('*').maybeSingle()
-        : await supabase.from('angles').insert({ ...payload, season: boardSeason, week: boardWeek }).select('*').single();
+        : await supabase.from('angles').insert({ ...payload, season: boardSeason, week: boardWeek, section }).select('*').single();
       if (result.error) throw result.error;
       if (!result.data) throw new Error('Another admin changed or removed this angle. Cancel and reopen the current version before saving.');
       persisted = true;
@@ -215,7 +218,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       setRows((previous) => [saved, ...previous.filter((row) => row.id !== saved.id)]);
       if (saved.id === storyId) setLinkedStory(saved.status === 'published' ? saved : null);
       resetPhotos(); setForm(null); setDirty(false); setRefresh((value) => value + 1);
-      setNotice(status === 'published' ? 'Angle published for this NFL week.' : 'Draft saved privately for admin review.');
+      setNotice(status === 'published' ? `${news ? 'Fantasy News' : 'Angle'} published for this NFL week.` : 'Draft saved privately for admin review.');
     } catch (cause) {
       let message = errorMessage(cause);
       if (!persisted && uploaded.length) {
@@ -242,9 +245,11 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const visibleLinked = linkedReady === storyId && linkedStory?.id === storyId ? linkedStory : null;
   const published = [
     ...(visibleLinked ? [visibleLinked] : []),
-    ...rows.filter((row) => row.id !== visibleLinked?.id && row.status === 'published' && (kind === 'all' || row.kind === kind)),
+    ...rows.filter((row) => row.id !== visibleLinked?.id && row.status === 'published' && (news
+      ? !newsFilter.length || (row.news_types ?? []).some((type) => newsFilter.includes(type))
+      : kind === 'all' || row.kind === kind)),
   ];
-  const readObserver = useAnalystReadObserver('angle', onSeen, user?.id, published.map((angle) => angle.id).join('|'));
+  const readObserver = useAnalystReadObserver(news ? 'news' : 'angle', onSeen, user?.id, published.map((angle) => angle.id).join('|'));
   const publishedKey = published.map((angle) => angle.id).join('|');
   useEffect(() => {
     if (!readObserver.root.current || !supabase) return;
@@ -288,13 +293,13 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {multiline ? <textarea maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />
       : <input type="text" maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />}
   </label>;
-  return <section className="angle-panel" aria-label="The Angle">
+  return <section className="angle-panel" aria-label={news ? 'Fantasy News' : 'The Angle'}>
     {admin && <div className="angle-admin-bar">
-      <button className="angle-create-button" disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week)); }}><Plus size={16} aria-hidden="true" />Create an angle</button>
+      <button className="angle-create-button" disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{news ? 'Create news' : 'Create an angle'}</button>
       <span>{drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}</span>
     </div>}
     {admin && form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
-      <h3>{form.id ? 'Edit storyline' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
+      <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
       <fieldset disabled={busy}>
         <label>Matchup<select value={form.game_id} onChange={(event) => {
           const value = event.target.value;
@@ -317,6 +322,13 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         </select></label>
         {angleSport(form.game_id).key !== 'NFL' && <label>{angleSport(form.game_id).label} matchup<input type="text" maxLength={200} placeholder="e.g. Lakers @ Celtics" value={form.matchup} onChange={(event) => change('matchup', event.target.value)} /></label>}
         <p>{form.subject || form.matchup || angleSport(form.game_id).label} · {form.category}</p>
+        {news && <fieldset className="livewire-themes angle-news-types"><legend>Type <span>(choose one or both)</span></legend>
+          <div>{newsTypes.map((type) => <label key={type.value}>
+            <input type="checkbox" checked={(form.news_types ?? []).includes(type.value)} onChange={(event) => change('news_types', event.target.checked
+              ? [...(form.news_types ?? []), type.value] : (form.news_types ?? []).filter((value) => value !== type.value))} />
+            <span className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span>
+          </label>)}</div>
+        </fieldset>}
         {form.source_url && isAngleSource(form.source_url) && <p><a href={form.source_url} target="_blank" rel="noopener noreferrer">{form.source_label || 'Original source'} <ExternalLink size={12} aria-hidden="true" /></a> · Source retained automatically</p>}
         {!form.source_url && <p>Include sources and context in your storyline.</p>}
         {(form.evidence || form.counterpoint) && <details><summary>Retained source context</summary>{form.evidence && <p>{form.evidence}</p>}{form.counterpoint && <p>{form.counterpoint}</p>}</details>}
@@ -346,7 +358,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
         }}>Remove photo {index + 1}</button></div>)}</div>}
         <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
-        <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : 'Publish angle'}</button><button type="button" onClick={() => openEditor(null)}>Cancel</button></div>
+        <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button><button type="button" onClick={() => openEditor(null)}>Cancel</button></div>
       </fieldset>
     </form>}
     <p className="angle-disclaimer">Editorial opinions, not predictions or betting recommendations.</p>
@@ -359,10 +371,15 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {storyId && linkedError && <p className="feed-warning" role="alert">{linkedError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {storyId && !linkedError && linkedReady !== storyId && <p role="status">Loading your linked storyline...</p>}
     {storyId && linkedReady === storyId && !linkedStory && <p role="status">This storyline is no longer published. You can browse the current week's storylines below.</p>}
-    <div className="angle-filters" role="group" aria-label="Filter published angles">{(['all', 'player', 'team'] as const).map((value) => <button key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All angles' : value === 'player' ? 'Players' : 'Team matchups'}</button>)}</div>
-    {!season || !week ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">Loading The Angle...</p> : loaded && !published.length && <p className="angle-empty">{rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
+    {news ? <div className="angle-filters livewire-theme-filters" role="group" aria-label="Filter Fantasy News">
+      <button aria-pressed={!newsFilter.length} onClick={() => setNewsFilter([])}>All news</button>
+      {newsTypes.map((type) => <button key={type.value} aria-pressed={newsFilter.includes(type.value)} onClick={() => setNewsFilter((current) => current.includes(type.value) ? current.filter((value) => value !== type.value) : [...current, type.value])}><span className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span></button>)}
+    </div> : <div className="angle-filters" role="group" aria-label="Filter published angles">{(['all', 'player', 'team'] as const).map((value) => <button key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All angles' : value === 'player' ? 'Players' : 'Team matchups'}</button>)}</div>}
+    {!season || !week ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
-      <div className="angle-card-meta"><span>{angle.category}</span><span>{angle.kind === 'player' ? 'PLAYER ANGLE' : 'MATCHUP ANGLE'}</span></div>
+      <div className="angle-card-meta"><span>{angle.category}</span>{news
+        ? newsTypes.filter((type) => angle.news_types?.includes(type.value)).map((type) => <span key={type.value} className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span>)
+        : <span>{angle.kind === 'player' ? 'PLAYER ANGLE' : 'MATCHUP ANGLE'}</span>}</div>
       <h3>{angle.title}</h3>{angle.subject && <p className="angle-subject">{angle.subject}</p>}<p className="angle-matchup">{angleSport(angle.game_id).key === 'NFL' ? '' : `${angleSport(angle.game_id).emoji} ${angleSport(angle.game_id).label} · `}{angle.matchup} · {angle.season} · Week {angle.week}</p>
       <p className="angle-story">{angle.narrative}</p>
       {angle.evidence && <div className="angle-context"><h4>The supporting context</h4><p>{angle.evidence}</p></div>}
@@ -371,10 +388,10 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       <PostGallery paths={angle.image_paths ?? []} title={angle.title} />
       {admin && <span className="livewire-views">{viewCounts[angle.id] === undefined ? 'Views unavailable' : `${new Intl.NumberFormat().format(viewCounts[angle.id])} ${viewCounts[angle.id] === 1 ? 'view' : 'views'}`}</span>}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}
-      {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>Edit angle</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
+      {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>{news ? 'Edit news' : 'Edit angle'}</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
     </article>)}</div>
-    {admin && <section className="angle-admin" aria-label="The Angle admin desk">
-      <h3>Admin desk <span>Private</span></h3><p>Verify every lead before publishing.</p>
+    {admin && <section className="angle-admin" aria-label={news ? 'Fantasy News admin desk' : 'The Angle admin desk'}>
+      <h3>Admin desk <span>Private</span></h3>{!news && <><p>Verify every lead before publishing.</p>
       <div className="angle-actions"><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
       {!weeklyGames.length && <p>No NFL matchups are available for this week. Manual creation and suggestions need a loaded matchup.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
@@ -394,9 +411,9 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           {!leads.length && <p>{scanning ? 'Checking available sources...' : 'No qualifying leads in the available coverage.'}</p>}
           <div className="angle-suggestions">{leads.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small>{suggestion.history && <><p>{suggestion.article.description}</p><details><summary>Record, window, and game sources</summary><p>{suggestion.history.evidence}</p><ul>{suggestion.history.meetings.map((meeting) => <li key={meeting.url}><a href={meeting.url} target="_blank" rel="noopener noreferrer">{meeting.label}</a></li>)}</ul></details></>}<a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
         </section>;
-      })}
+      })}</>}
       <h4>Saved drafts ({drafts.length})</h4>
-      {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || 'Untitled angle'}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
+      {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || (news ? 'Untitled news' : 'Untitled angle')}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
     </section>}
   </section>;
 }

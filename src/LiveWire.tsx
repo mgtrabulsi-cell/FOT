@@ -349,7 +349,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
           : `${new Intl.NumberFormat().format(Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0))} ${Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0) === 1 ? 'view' : 'views'}`}</span>}
         <PostGallery paths={post.image_paths ?? []} title={post.title ?? 'LIVEWIRE post'} />
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
-        {post.angle_id && <a href={`#analyst-desk/story/${post.angle_id}`}>View in The Angle</a>}
+        {post.angle_id && <a href={`#analyst-desk/story/${post.angle_id}`}>{post.themes?.includes('fantasy') ? 'View in Fantasy News' : 'View in The Angle'}</a>}
         {!post.angle_id && role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
           <button disabled={busy || !draftReady} onClick={() => { if ((draftRestoreFailed || title || body || source || themes.length || photos.length) && !window.confirm('Replace your saved draft with this post?')) return; resetPhotos(); setDraftRestoreFailed(false); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {

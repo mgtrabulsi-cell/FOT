@@ -11,7 +11,7 @@ test('published picks versions and individual players have independent receipt k
 });
 
 test('unread payloads reject malformed keys rather than silently clear the indicator', () => {
-  const valid = [{kind:'angle',key:'11111111-1111-4111-8111-111111111111'},{kind:'picks',key:'2026:6:2:123'},{kind:'picks',key:'2026:6:2:empty'}];
+  const valid = [{kind:'angle',key:'11111111-1111-4111-8111-111111111111'},{kind:'news',key:'22222222-2222-4222-8222-222222222222'},{kind:'picks',key:'2026:6:2:123'},{kind:'picks',key:'2026:6:2:empty'}];
   assert.deepEqual(readAnalystItems(valid),valid);
   assert.deepEqual(readAnalystItems([]),[]);
   for (const invalid of [null,{},[{kind:'draft',key:'x'}],[{kind:'picks',key:'2026:6:0:123'}],[{kind:'angle',key:123}],[{kind:'angle',key:'bad'}]]) {
