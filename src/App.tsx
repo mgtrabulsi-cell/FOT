@@ -707,7 +707,7 @@ function App() {
 
   useEffect(() => {
     if (authLoading) return undefined;
-    if (supabase && !authUser) {
+    if ((supabase && !authUser) || document.querySelector('.angle-editor')) {
       setShowSplash(false);
       return undefined;
     }
@@ -724,7 +724,7 @@ function App() {
   useEffect(() => {
     let hiddenAt: number | null = null;
     const replayAfterAbsence = () => {
-      if (hiddenAt !== null && Date.now() - hiddenAt >= 5000 && signedInRef.current) {
+      if (hiddenAt !== null && Date.now() - hiddenAt >= 5000 && signedInRef.current && !document.querySelector('.angle-editor')) {
         setSplashReplay((count) => count + 1);
       }
       hiddenAt = null;
@@ -1091,11 +1091,12 @@ function App() {
 
   if (deletedAccount) return <main className="page-wrap"><section className="account-profile" role="status"><h2>Account deleted</h2><p>Your account and associated personal data have been deleted.</p>{deletedAccount.length > 0 && <p className="auth-error">Some data on this device could not be cleared: {deletedAccount.join(', ')}. Clear this site's browsing data in your browser settings.</p>}<button onClick={() => window.location.replace(import.meta.env.BASE_URL)}>Back to GameWire</button></section></main>;
   if (recoveringPassword && authUser) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
-  if (online && (showSplash || (supabase && authLoading))) return <SplashScreen />;
+  if (online && supabase && authLoading) return <SplashScreen />;
   if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
 
   return (
     <div className="app-shell">
+      {online && showSplash && <SplashScreen />}
       <header className="topbar">
         <a className="brand" href="#wire" onClick={openWireTab}>
           <OfflineImage className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" />
@@ -1163,6 +1164,25 @@ function App() {
           </div>
         </div>
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
+        {view === 'Analyst' && <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
+          <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={analystMode === 'News'} aria-label={analystUnread.news ? 'Fantasy News, unread posts' : 'Fantasy News'} className={analystMode === 'News' ? 'active' : ''} onClick={() => setAnalystMode('News')}>Fantasy News{analystUnread.news && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={analystMode === 'Matchups'} aria-label={analystUnread.picks ? 'Admins Top Performers, unread updates' : 'Admins Top Performers'} className={analystMode === 'Matchups' ? 'active' : ''} onClick={() => setAnalystMode('Matchups')}>Admins Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={analystMode === 'Results'} className={analystMode === 'Results' ? 'active' : ''} onClick={() => setAnalystMode('Results')}>Our Results</button>
+        </div>}
+        {(['angle', 'news'] as const).map((section) => <TheAngle
+          key={`${section}:${sessionUser?.id ?? 'guest'}`}
+          active={view === 'Analyst' && analystMode === (section === 'news' ? 'News' : 'Angle')}
+          section={section}
+          onOpenSection={(next) => setAnalystMode(next === 'news' ? 'News' : 'Angle')}
+          games={lockerRoomReady ? games : []}
+          season={lockerRoomSeason}
+          week={lockerRoomWeek}
+          user={sessionUser}
+          onSeen={analystUnread.markRead}
+          storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null}
+          storyOpenKey={storyOpenKey}
+        />)}
         {view === 'Profile' ? (
           authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Public saved browsing is available in The Wire, Stat Hub, and LIVEWIRE.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' ? (
@@ -1201,19 +1221,11 @@ function App() {
           <NFLPlayersDirectory games={games} scoreboardStatus={scoreboardStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
         ) : (
           <>
-            <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
-              <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
-              <button role="tab" aria-selected={analystMode === 'News'} aria-label={analystUnread.news ? 'Fantasy News, unread posts' : 'Fantasy News'} className={analystMode === 'News' ? 'active' : ''} onClick={() => setAnalystMode('News')}>Fantasy News{analystUnread.news && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
-              <button role="tab" aria-selected={analystMode === 'Matchups'} aria-label={analystUnread.picks ? 'Admins Top Performers, unread updates' : 'Admins Top Performers'} className={analystMode === 'Matchups' ? 'active' : ''} onClick={() => setAnalystMode('Matchups')}>Admins Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
-              <button role="tab" aria-selected={analystMode === 'Results'} className={analystMode === 'Results' ? 'active' : ''} onClick={() => setAnalystMode('Results')}>Our Results</button>
-            </div>
-            {analystMode === 'Angle' || analystMode === 'News' ? (
-              <TheAngle key={`${analystMode}:${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} section={analystMode === 'News' ? 'news' : 'angle'} onOpenSection={(section) => setAnalystMode(section === 'news' ? 'News' : 'Angle')} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} storyOpenKey={storyOpenKey} />
-            ) : analystMode === 'Results' ? (
+            {analystMode === 'Results' ? (
               <OurResults key={authUser?.id ?? 'guest'} user={authUser} />
-            ) : (
+            ) : analystMode === 'Matchups' ? (
               <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
-            )}
+            ) : null}
           </>
         )}
         <footer className="page-footer"><span>GAMEWIRE <i>·</i> NFL IN FOCUS</span><span>NFL scores, player stats, and matchups from ESPN public feeds.</span></footer>

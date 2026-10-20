@@ -3,6 +3,7 @@ import { nativeApp, NativeOffline } from './nativeOffline';
 import { stopWebOffline } from './webOffline';
 import { stopRenderSnapshots } from './renderSnapshots';
 import { deleteLivewireDraft } from './livewireDrafts';
+import { deleteAngleDrafts } from './angleDrafts';
 
 export async function deleteAccount(password: string, confirmation: string): Promise<string[]> {
   if (!supabase) throw new Error('Account services are not configured.');
@@ -22,6 +23,7 @@ export async function deleteAccount(password: string, confirmation: string): Pro
   if (data?.deleted !== true) throw new Error('The server did not confirm account deletion. Please retry.');
   const tasks: Array<{ name: string; run: () => Promise<void> }> = [
     { name: 'unpublished LIVEWIRE draft', run: async () => { await deleteLivewireDraft(userId); } },
+    { name: 'unpublished storyline drafts', run: async () => { await deleteAngleDrafts(userId); } },
     { name: 'saved browsing', run: async () => {
       stopRenderSnapshots();
       if (nativeApp) await NativeOffline.clear();

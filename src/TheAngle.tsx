@@ -14,8 +14,9 @@ import { observePostViews } from './services/livewireViews';
 import PostGallery, { postPhotoUrl } from './PostGallery';
 import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
+import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
 
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; section?: AngleSection; onOpenSection?: (section: AngleSection) => void };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The Angle request failed. Please retry.';
 
@@ -53,7 +54,7 @@ function newAngle(game: Game, season: number, week: number, section: AngleSectio
   };
 }
 
-export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, section = 'angle', onOpenSection }: Props) {
+export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, section = 'angle', onOpenSection, active: visible = true }: Props) {
   const news = section === 'news';
   const [admin, setAdmin] = useState(false);
   const [rows, setRows] = useState<Angle[]>([]);
@@ -76,6 +77,12 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestoreFailed, setDraftRestoreFailed] = useState(false);
+  const [draftError, setDraftError] = useState('');
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftRetry, setDraftRetry] = useState(0);
+  const [restoreRetry, setRestoreRetry] = useState(0);
   const [kind, setKind] = useState<'all' | 'player' | 'team'>('all');
   const [newsFilter, setNewsFilter] = useState<NewsType[]>([]);
   const [leadGroup, setLeadGroup] = useState<typeof angleLeadGroups[number]>('Birthdays');
@@ -91,7 +98,46 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const scheduleKey = weeklyGames.map((game) => `${game.id}:${game.date}`).sort().join('|');
 
   useEffect(() => {
-    if (!storyId) { setLinkedStory(null); setLinkedReady(null); setLinkedError(''); return; }
+    if (!user) return;
+    let current = true;
+    void loadAngleDraft(user.id, section).then((draft) => {
+      if (!current) return;
+      if (draft) {
+        resetPhotos();
+        setForm(draft.form);
+        setDirty(true);
+        setPhotos(draft.photos.map((photo) => {
+          const preview = photo.file ? URL.createObjectURL(photo.file) : postPhotoUrl(photo.path ?? '');
+          if (photo.file) previews.current.add(preview);
+          return { ...photo, preview };
+        }));
+        setNotice('Your unfinished draft was restored on this device.');
+      }
+      setDraftRestoreFailed(false); setDraftError(''); setDraftReady(true);
+    }).catch((cause: unknown) => {
+      if (!current) return;
+      console.error('Could not restore storyline draft', cause);
+      setDraftRestoreFailed(true); setDraftReady(true);
+      setDraftError('Could not restore your draft. Automatic saving is paused to protect it. Retry restoring it or explicitly discard it.');
+    });
+    return () => { current = false; };
+  }, [user?.id, section, restoreRetry]);
+
+  useEffect(() => {
+    if (!user || !draftReady || draftRestoreFailed || busy) return;
+    let current = true;
+    setDraftSaving(true);
+    void saveAngleDraft(user.id, section, form ? { form, photos: photos.map(({ path, file }) => ({ path, file })) } : undefined)
+      .then(() => { if (current) { setDraftError(''); setDraftSaving(false); } })
+      .catch((cause: unknown) => {
+        console.error('Could not save storyline draft', cause);
+        if (current) { setDraftError('Your latest draft changes could not be saved on this device. Keep this page open and retry saving.'); setDraftSaving(false); }
+      });
+    return () => { current = false; };
+  }, [user?.id, section, draftReady, draftRestoreFailed, busy, form, photos, draftRetry]);
+
+  useEffect(() => {
+    if (!visible || !storyId) { setLinkedStory(null); setLinkedReady(null); setLinkedError(''); return; }
     let active = true;
     async function loadStory() {
       if (!supabase) throw new Error('Account services are not configured.');
@@ -103,7 +149,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     }
     void loadStory().catch((cause: unknown) => { if (active) setLinkedError(`Could not load the linked storyline: ${errorMessage(cause)}`); });
     return () => { active = false; };
-  }, [storyId, refresh]);
+  }, [visible, storyId, refresh]);
 
   useEffect(() => {
     if (storyId && linkedReady === storyId && linkedStory) {
@@ -126,7 +172,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }, [user?.id, refresh]);
 
   useEffect(() => {
-    if (!season || !week) return;
+    if (!visible || !season || !week) return;
     let active = true;
     async function load() {
       if (!supabase) throw new Error('The Angle is unavailable: account services are not configured.');
@@ -144,10 +190,10 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     void load().catch((cause: unknown) => { if (active) setLoadError(`Could not load The Angle: ${errorMessage(cause)}`); });
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [season, week, user?.id, refresh]);
+  }, [visible, section, season, week, user?.id, refresh]);
 
   useEffect(() => {
-    if (news || !admin || !scheduleKey) { setScanning(false); setSuggestions([]); return; }
+    if (!visible || news || !admin || !scheduleKey) { setScanning(false); setSuggestions([]); return; }
     const controller = new AbortController();
     setScanning(true); setSuggestionErrors([]); setSuggestions([]);
     void fetchAngleSuggestions(weeklyGames, controller.signal).then((result) => {
@@ -156,7 +202,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       if (!controller.signal.aborted) setSuggestionErrors([errorMessage(cause)]);
     }).finally(() => { if (!controller.signal.aborted) setScanning(false); });
     return () => controller.abort();
-  }, [admin, scheduleKey, scan]);
+  }, [visible, admin, scheduleKey, scan]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -166,11 +212,28 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }, [dirty]);
 
   function openEditor(next: Angle | null) {
-    if (dirty && !window.confirm('Discard the unsaved changes to this angle?')) return;
+    if (!draftReady || draftRestoreFailed || busy) return;
+    if (form) {
+      setActionError('Publish or discard your current draft before opening another storyline.');
+      editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return;
+    }
     resetPhotos();
     setPhotos((next?.image_paths ?? []).map((path) => ({ path, preview: postPhotoUrl(path) })));
     setForm(next ? { ...next, picks: anglePicks(next) } : null); setDirty(false); setActionError(''); setNotice('');
     if (next) window.setTimeout(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
+  }
+  async function discardDraft() {
+    if (!user || busy || !window.confirm('Discard this draft and its unsaved changes? This cannot be undone.')) return;
+    setBusy(true);
+    try {
+      await saveAngleDraft(user.id, section, undefined);
+      resetPhotos(); setForm(null); setDirty(false); setDraftRestoreFailed(false); setDraftError('');
+      setActionError(''); setNotice('Draft discarded on this device. Any previously saved server version is unchanged.');
+    } catch (cause) {
+      console.error('Could not discard storyline draft', cause);
+      setDraftError('Could not remove the saved draft. It is still open; retry discarding it.');
+    } finally { setBusy(false); }
   }
   function change<K extends keyof Angle>(key: K, value: Angle[K]) {
     setForm((previous) => previous ? { ...previous, [key]: value, reviewed: key === 'reviewed' ? Boolean(value) : false } : previous);
@@ -185,7 +248,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       source_url: suggestion.article.url ?? '', source_label: suggestion.sourceLabel ?? 'ESPN', title: '' });
   }
   async function save(status: Angle['status']) {
-    if (!form || !supabase || busy) return;
+    if (!form || !supabase || !admin || busy) return;
     const validation = status === 'published' ? anglePublishError(form) : !form.matchup.trim() ? 'Add the matchup before saving.' : '';
     if (validation) { setActionError(validation); return; }
     if (status === 'draft' && form.status === 'published' && !window.confirm('Move this published angle back to private drafts?')) return;
@@ -212,13 +275,24 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         ? await supabase.from('angles').update({ ...payload, revision: revision + 1 }).eq('id', id).eq('revision', revision).select('*').maybeSingle()
         : await supabase.from('angles').insert({ ...payload, season: boardSeason, week: boardWeek, section }).select('*').single();
       if (result.error) throw result.error;
-      if (!result.data) throw new Error('Another admin changed or removed this angle. Cancel and reopen the current version before saving.');
+      if (!result.data) throw new Error('Another admin changed or removed this angle. Copy your changes before discarding this local draft and reopening the current version.');
       persisted = true;
       const saved = readAngles([result.data])[0];
       setRows((previous) => [saved, ...previous.filter((row) => row.id !== saved.id)]);
       if (saved.id === storyId) setLinkedStory(saved.status === 'published' ? saved : null);
-      resetPhotos(); setForm(null); setDirty(false); setRefresh((value) => value + 1);
-      setNotice(status === 'published' ? `${news ? 'Fantasy News' : 'Angle'} published for this NFL week.` : 'Draft saved privately for admin review.');
+      resetPhotos();
+      setPhotos((saved.image_paths ?? []).map((path) => ({ path, preview: postPhotoUrl(path) })));
+      setForm(saved); setDirty(false); setRefresh((value) => value + 1);
+      if (status === 'published') {
+        try {
+          await saveAngleDraft(user.id, section, undefined);
+          resetPhotos(); setForm(null);
+        } catch (cause) {
+          console.error('Story published, but the local draft could not be removed', cause);
+          setActionError('Your story was published, but its local draft could not be removed. Discard the local draft; do not publish it again.');
+        }
+      }
+      setNotice(status === 'published' ? `${news ? 'Fantasy News' : 'Angle'} published for this NFL week.` : 'Draft saved privately for admin review. You can keep editing.');
     } catch (cause) {
       let message = errorMessage(cause);
       if (!persisted && uploaded.length) {
@@ -245,7 +319,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const visibleLinked = linkedReady === storyId && linkedStory?.id === storyId ? linkedStory : null;
   const published = [
     ...(visibleLinked ? [visibleLinked] : []),
-    ...rows.filter((row) => row.id !== visibleLinked?.id && row.status === 'published' && (news
+    ...rows.filter((row) => visible && row.id !== visibleLinked?.id && row.status === 'published' && (news
       ? !newsFilter.length || (row.news_types ?? []).some((type) => newsFilter.includes(type))
       : kind === 'all' || row.kind === kind)),
   ];
@@ -293,14 +367,17 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {multiline ? <textarea maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />
       : <input type="text" maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />}
   </label>;
+  if (!visible && !form && !draftError && !notice && !actionError) return null;
   return <section className="angle-panel" aria-label={news ? 'Fantasy News' : 'The Angle'}>
-    {admin && <div className="angle-admin-bar">
-      <button className="angle-create-button" disabled={busy || !weeklyGames.length} onClick={() => { if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{news ? 'Create news' : 'Create an angle'}</button>
+    {visible && admin && <div className="angle-admin-bar">
+      <button className="angle-create-button" disabled={busy || !draftReady || draftRestoreFailed || (!form && !weeklyGames.length)} onClick={() => { if (form) editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{form ? 'Continue draft' : news ? 'Create news' : 'Create an angle'}</button>
       <span>{drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}</span>
     </div>}
-    {admin && form && <form className="angle-editor" ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
+    {form && <form className="angle-editor" aria-label={news ? 'Fantasy News editor' : 'Angle editor'} ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
       <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
-      <fieldset disabled={busy}>
+      <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : draftSaving ? 'Saving draft on this device...' : 'Draft saved on this device. It stays open until you publish or discard it.'}</p>
+      {!admin && <p role="status">Checking editing access. Your draft remains open.</p>}
+      <fieldset disabled={busy || !admin}>
         <label>Matchup<select value={form.game_id} onChange={(event) => {
           const value = event.target.value;
           if (value === form.game_id) return;
@@ -321,7 +398,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           <optgroup label="Other sports">{angleSports.map((sport) => <option key={sport.key} value={angleSportGameId(sport.key)}>{sport.emoji} {sport.label}</option>)}</optgroup>
         </select></label>
         {angleSport(form.game_id).key !== 'NFL' && <label>{angleSport(form.game_id).label} matchup<input type="text" maxLength={200} placeholder="e.g. Lakers @ Celtics" value={form.matchup} onChange={(event) => change('matchup', event.target.value)} /></label>}
-        <p>{form.subject || form.matchup || angleSport(form.game_id).label} · {form.category}</p>
+        <p>{form.subject || form.matchup || angleSport(form.game_id).label} · {form.category} · {form.season} · Week {form.week}</p>
         {news && <fieldset className="livewire-themes angle-news-types"><legend>Type <span>(choose one or both)</span></legend>
           <div>{newsTypes.map((type) => <label key={type.value}>
             <input type="checkbox" checked={(form.news_types ?? []).includes(type.value)} onChange={(event) => change('news_types', event.target.checked
@@ -342,8 +419,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           </div>)}
           <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
         </div>
-        <label htmlFor="angle-photos">Photos (optional, up to four)</label>
-        <input id="angle-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
+        <label htmlFor={`angle-${section}-photos`}>Photos (optional, up to four)</label>
+        <input id={`angle-${section}-photos`} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = '';
           if (photos.length + files.length > 4) { setActionError('Attach at most four photos.'); return; }
           if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024)) {
@@ -358,14 +435,20 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
         }}>Remove photo {index + 1}</button></div>)}</div>}
         <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
-        <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button><button type="button" onClick={() => openEditor(null)}>Cancel</button></div>
+        <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button></div>
       </fieldset>
+      <button type="button" disabled={busy} onClick={() => void discardDraft()}>Discard draft</button>
     </form>}
-    <p className="angle-disclaimer">Editorial opinions, not predictions or betting recommendations.</p>
+    {draftError && <p className="feed-warning" role="alert">{draftError} <button disabled={busy} onClick={() => {
+      if (draftRestoreFailed) { setDraftReady(false); setRestoreRetry((value) => value + 1); }
+      else setDraftRetry((value) => value + 1);
+    }}>{draftRestoreFailed ? 'Retry restoring draft' : 'Retry saving draft'}</button>{draftRestoreFailed && <button disabled={busy} onClick={() => void discardDraft()}>Discard saved draft</button>}</p>}
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
-    {loadError && <p className="feed-warning" role="alert">{loadError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
+    {visible && <>
+    <p className="angle-disclaimer">Editorial opinions, not predictions or betting recommendations.</p>
+    {loadError && <p className="feed-warning" role="alert">{loadError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {readObserver.error && <p className="feed-warning" role="status">{readObserver.error}</p>}
     {viewError && <p className="feed-warning" role="status">{viewError}</p>}
     {storyId && linkedError && <p className="feed-warning" role="alert">{linkedError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
@@ -415,5 +498,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       <h4>Saved drafts ({drafts.length})</h4>
       {drafts.map((draft) => <div className="angle-draft" key={draft.id}><span><b>{draft.title || (news ? 'Untitled news' : 'Untitled angle')}</b><small>{draft.matchup} · {draft.category}</small></span><button disabled={busy} onClick={() => openEditor(draft)}>Review draft</button><button disabled={busy} onClick={() => void remove(draft)}>Delete</button></div>)}
     </section>}
+    </>}
   </section>;
 }

@@ -35,7 +35,7 @@ export default function PullToRefresh() {
       reset();
       if (!window.matchMedia('(max-width: 760px)').matches || window.scrollY > 0
         || refreshingRef.current || event.touches.length !== 1) return;
-      if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
+      if (document.querySelector('[aria-modal="true"], dialog[open], .angle-editor')) return;
       if (!(event.target instanceof Element) || event.target.closest('button, a, input, textarea, select, summary, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [role="slider"], [draggable="true"]')) return;
       for (let element: Element | null = event.target; element && element !== document.body; element = element.parentElement) {
         const style = getComputedStyle(element);
