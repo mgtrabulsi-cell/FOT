@@ -784,7 +784,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                     </span>
                     <span className="wire-board-team-name">
                       <b>
-                        {team.name}
+                        <span className="wire-board-team-label">{team.name}</span>
                         {isTeamFavorite(team.id) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
                         {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
                       </b>
@@ -992,8 +992,8 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                   </button>
                 </div>
                 <div className="wire-matchup-team-details">
-                  <b>{selectedGame.away.abbr}</b>
-                  <h2>{selectedGame.away.name}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.away.id && <span className="possession-football" role="img" aria-label={`${selectedGame.away.name} has possession`}>🏈</span>}</h2>
+                  <b>{selectedGame.away.abbr}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.away.id && <span className="possession-football" role="img" aria-label={`${selectedGame.away.name} has possession`}>🏈</span>}</b>
+                  <h2>{selectedGame.away.name}</h2>
                   <small>{selectedGame.away.record || 'Away'}</small>
                 </div>
                 <div className="wire-matchup-score">
@@ -1055,8 +1055,8 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
                   {selectedGame.status === 'UPCOMING' ? '–' : (homeBoxTeam?.score ?? selectedGame.home.score)}
                 </div>
                 <div className="wire-matchup-team-details text-right">
-                  <b>{selectedGame.home.abbr}</b>
-                  <h2>{selectedGame.home.name}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.home.id && <span className="possession-football" role="img" aria-label={`${selectedGame.home.name} has possession`}>🏈</span>}</h2>
+                  <b>{selectedGame.home.abbr}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.home.id && <span className="possession-football" role="img" aria-label={`${selectedGame.home.name} has possession`}>🏈</span>}</b>
+                  <h2>{selectedGame.home.name}</h2>
                   <small>{selectedGame.home.record || 'Home'}</small>
                 </div>
                 <div className="wire-matchup-mark-wrapper">

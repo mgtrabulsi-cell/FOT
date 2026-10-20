@@ -1118,6 +1118,8 @@ td:first-child { color: #828c84; }
 .wire-board-mark { width: 30px; height: 30px; border-radius: 6px; font-size: 11px; }
 .wire-board-team-name { display: grid; min-width: 0; }
 .wire-board-team-name b { display: flex; align-items: center; gap: 4px; overflow: hidden; font: 600 15px/1.25 var(--display); color: #fff; letter-spacing: .3px; white-space: nowrap; text-overflow: ellipsis; }
+.wire-board-team-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wire-board-team-name b > :not(.wire-board-team-label) { flex: none; margin-left: 0; }
 .wire-board-team-name small { font: 500 10px var(--mono); color: #8fa4c2; }
 .wire-board-favorite { display: inline-flex; color: #fbbf24; }
 .wire-board-score { min-width: 34px; font: 700 22px/1 var(--mono); color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
