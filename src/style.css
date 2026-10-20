@@ -1103,6 +1103,16 @@ td:first-child { color: #828c84; }
 .wire-board-slot-title .wire-flag { height: 12px; }
 .wire-primetime-pill .wire-flag { height: 12px; }
 .wire-board-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.wire-board-loading { display: grid; gap: 10px; }
+.wire-board-loading-note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0; color: #a9b8cd; font-size: 13px; }
+.wire-board-loading-note button { min-height: 36px; padding: 6px 12px; border: 1px solid #52647e; border-radius: 6px; background: #1c293d; color: #edf2f8; font-size: 12px; cursor: pointer; }
+.wire-board-card.wire-board-skeleton { display: grid; grid-template-areas: none; grid-template-columns: 1fr; gap: 10px; min-height: 112px; cursor: default; }
+.wire-board-skeleton i { display: block; height: 14px; border-radius: 4px; background: linear-gradient(90deg, #1c2a3e 0%, #26374f 50%, #1c2a3e 100%); background-size: 200% 100%; animation: wire-skeleton 1.4s ease-in-out infinite; }
+.wire-board-skeleton i:nth-child(1) { width: 55%; }
+.wire-board-skeleton i:nth-child(2) { width: 70%; }
+.wire-board-skeleton i:nth-child(3) { width: 40%; }
+@keyframes wire-skeleton { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .wire-board-skeleton i { animation: none; } }
 .wire-board-card { display: grid; grid-template-columns: 92px minmax(0, 1fr); grid-template-areas: "status teams" "footer footer"; gap: 8px 14px; width: 100%; min-height: 44px; padding: 12px 14px; border: 1px solid #28374d; border-radius: 8px; background: #131d2c; color: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, transform .12s, box-shadow .15s; }
 .wire-board-card:hover { border-color: #445b7c; background: #182537; transform: translateY(-1px); }
 .wire-board-card:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }

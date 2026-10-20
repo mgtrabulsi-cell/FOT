@@ -457,22 +457,39 @@ export function getCurrentNFLWeek(payload: unknown, now = new Date()): number | 
     .sort((first, second) => second.rollover - first.rollover)[0]?.week ?? reportedWeek;
 }
 
+const SCOREBOARD_TIMEOUT_MS = 10_000;
+
+async function fetchScoreboardJSON(url: string, signal: AbortSignal | undefined, label: string): Promise<{ payload: unknown; headers: Headers }> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, SCOREBOARD_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+    if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+    return { payload: await response.json(), headers: response.headers };
+  } catch (error) {
+    if (controller.signal.aborted && !signal?.aborted) throw new Error(`${label} timed out`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
 export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): Promise<ScoreboardResult> {
   const results = await Promise.allSettled(scoreFeeds.map(async (feed) => {
     const weekQuery = feed.league === 'NFL' && nflWeek ? `?week=${nflWeek}&seasontype=2` : '';
-    const response = await fetch(`${apiBase}/${feed.path}/scoreboard${weekQuery}`, { signal, cache: 'no-store' });
-    if (!response.ok) throw new Error(`${feed.league} returned HTTP ${response.status}`);
-    const payload: unknown = await response.json();
+    const { payload, headers } = await fetchScoreboardJSON(`${apiBase}/${feed.path}/scoreboard${weekQuery}`, signal, feed.league);
     let scoreboard = asObject(payload);
     const currentWeek = feed.league === 'NFL'
-      ? response.headers.has('x-gamewire-saved-at') && !response.headers.has('x-gamewire-revalidated')
+      ? headers.has('x-gamewire-saved-at') && !headers.has('x-gamewire-revalidated')
         ? Number(asObject(scoreboard.week).number) || null : getCurrentNFLWeek(payload)
       : null;
     if (!nflWeek && currentWeek !== null && currentWeek !== Number(asObject(scoreboard.week).number)) {
       const season = Number(asObject(scoreboard.season).year);
-      const nextResponse = await fetch(`${apiBase}/${feed.path}/scoreboard?week=${currentWeek}&seasontype=2&dates=${season}`, { signal, cache: 'no-store' });
-      if (!nextResponse.ok) throw new Error(`${feed.league} week ${currentWeek} returned HTTP ${nextResponse.status}`);
-      scoreboard = asObject(await nextResponse.json());
+      scoreboard = asObject((await fetchScoreboardJSON(`${apiBase}/${feed.path}/scoreboard?week=${currentWeek}&seasontype=2&dates=${season}`, signal, `${feed.league} week ${currentWeek}`)).payload);
     }
     const events = asArray(scoreboard.events);
     return {

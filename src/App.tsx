@@ -330,7 +330,7 @@ function formatNFLDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(parsed);
 }
 
-function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initialGameId }: { games: Game[]; query: string; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; initialGameId: string | null }) {
+function NFLPlayersDirectory({ games, scoreboardStatus = 'ready', query, favorites, onToggleFavorite, initialGameId }: { games: Game[]; scoreboardStatus?: 'loading' | 'ready' | 'error'; query: string; favorites: FavoriteTarget[]; onToggleFavorite: (favorite: FavoriteTarget) => void; initialGameId: string | null }) {
   const dataRevision = usePublicDataRevision('sports');
   const detailsGame = useRef<string | null>(null);
   const nflGames = games.filter((game) => game.sport === 'Football');
@@ -452,7 +452,7 @@ function NFLPlayersDirectory({ games, query, favorites, onToggleFavorite, initia
 
   return <div className="nfl-players-directory">
     <div className="nfl-directory-controls">
-      {game ? <NFLGameWheel games={nflGames} selectedGame={game} onSelect={setSelectedGameId} /> : <p className="nfl-empty-note">No NFL games are available.</p>}
+      {game ? <NFLGameWheel games={nflGames} selectedGame={game} onSelect={setSelectedGameId} /> : <p className="nfl-empty-note" role="status">{scoreboardStatus === 'ready' ? 'No NFL games are available.' : scoreboardStatus === 'error' ? 'Can\u2019t reach live scores right now. Retrying automatically\u2026' : 'Loading this week\u2019s games\u2026'}</p>}
     </div>
     {isLiveGame && <p className="nfl-field-position">{nflFieldPosition(game.situation)}</p>}
     {searchStatus && <p className="nfl-player-search-status" role="status">{searchStatus}</p>}
@@ -613,6 +613,8 @@ function App() {
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
   const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
+  const [scoreboardStatus, setScoreboardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [scoreboardRetry, setScoreboardRetry] = useState(0);
   useOfflineSnapshots(games, deletedAccount === null && (!!authUser || guestMode));
   useSiteOpenTracking(deletedAccount === null ? authUser?.id : null);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -652,6 +654,8 @@ function App() {
   playUpdatesRef.current = playUpdates;
   const [loadingNews, setLoadingNews] = useState(false);
   const favoritesRef = useRef(favorites);
+  const gamesRef = useRef(games);
+  gamesRef.current = games;
   const featuredFavoriteTeamId = topNFLFavoriteTeamId(favorites);
   const nflPlayFavorites = favorites.filter((favorite) => favorite.feedPath === 'football/nfl'
     && (favorite.type === 'team' || (favorite.type === 'player'
@@ -905,15 +909,25 @@ function App() {
     if (featured) setSelectedGameId(featured.id);
   }, [featuredFavoriteTeamId]);
 
+  const shownNFLWeekRef = useRef<number | null>(selectedNFLWeek);
   useEffect(() => {
-    if (supabase && !authUser && !guestMode) {
-      setGames([]);
-      setFailedLeagues([]);
-      return;
-    }
+    if (shownNFLWeekRef.current === selectedNFLWeek) return;
+    shownNFLWeekRef.current = selectedNFLWeek;
+    const saved = readRenderSnapshot('scoreboard', String(selectedNFLWeek ?? 'current'));
+    gamesRef.current = saved?.games ?? [];
+    setGames(gamesRef.current);
+    setFailedLeagues([]);
+    setScoreboardStatus('loading');
+  }, [selectedNFLWeek]);
+
+  useEffect(() => {
     let current = true;
     const controller = new AbortController();
+    let hasGames = gamesRef.current.length > 0;
+    let quickRetryId: number | undefined;
+    let quickRetries = 0;
     const refresh = async () => {
+      window.clearTimeout(quickRetryId);
       try {
         const result = await fetchScoreboards(controller.signal, selectedNFLWeek ?? undefined);
         if (!current) return;
@@ -966,8 +980,14 @@ function App() {
         }
         if (!result.games.length && result.failedLeagues.length) {
           setFailedLeagues(result.failedLeagues);
+          if (!hasGames) {
+            setScoreboardStatus('error');
+            if (quickRetries < 6) quickRetryId = window.setTimeout(() => { quickRetries++; void refresh(); }, 5_000);
+          }
           return;
         }
+        hasGames = hasGames || result.games.length > 0;
+        setScoreboardStatus('ready');
         setGames(result.games);
         setLoadedNFLWeek(selectedNFLWeek ?? result.nflWeek);
         setFailedLeagues(result.failedLeagues);
@@ -981,6 +1001,10 @@ function App() {
       } catch {
         if (current && !controller.signal.aborted) {
           setFailedLeagues(['Scoreboards']);
+          if (!hasGames) {
+            setScoreboardStatus('error');
+            if (quickRetries < 6) quickRetryId = window.setTimeout(() => { quickRetries++; void refresh(); }, 5_000);
+          }
         }
       }
     };
@@ -994,8 +1018,9 @@ function App() {
       current = false;
       controller.abort();
       window.clearInterval(refreshId);
+      window.clearTimeout(quickRetryId);
     };
-  }, [authUser?.id, guestMode, selectedNFLWeek, scoreboardRevision]);
+  }, [selectedNFLWeek, scoreboardRevision, scoreboardRetry]);
 
   useEffect(() => {
     if (favorites.length === 0) {
@@ -1147,6 +1172,8 @@ function App() {
           {(!notificationEventId || notificationGame?.eventId === notificationEventId) && <TheWire
             key={wireBoardKey}
             games={notificationGame && !games.some((game) => game.id === notificationGame.id) ? [notificationGame, ...games] : games}
+            scoreboardStatus={scoreboardStatus}
+            onRetryScoreboard={() => { setScoreboardStatus('loading'); setScoreboardRetry((value) => value + 1); }}
             query={wireSearchQuery}
             favorites={favorites}
             featuredFavoriteTeamId={featuredFavoriteTeamId}
@@ -1171,7 +1198,7 @@ function App() {
         ) : view === 'Den' ? (
           <TheDen favorites={favorites} games={lockerRoomReady ? games : []} items={lockerRoomHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={lockerRoomHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={lockerRoomHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={lockerRoomHistory.loading} historyError={lockerRoomHistory.error} signedIn={!!authUser} onRetryHistory={lockerRoomHistory.retry} livePlayerGames={livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
         ) : view === 'Players' ? (
-          <NFLPlayersDirectory games={games} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
+          <NFLPlayersDirectory games={games} scoreboardStatus={scoreboardStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
         ) : (
           <>
             <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">

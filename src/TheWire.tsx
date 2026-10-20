@@ -32,6 +32,9 @@ import type { TeamComparisonRank, TeamComparisonRanks } from './services/teamCom
 
 type TheWireProps = {
   games: Game[];
+  /** Shown only while no games are available: loading placeholders or a retryable error instead of an empty board. */
+  scoreboardStatus?: 'loading' | 'ready' | 'error';
+  onRetryScoreboard?: () => void;
   query: string;
   favorites: FavoriteTarget[];
   featuredFavoriteTeamId: string | null;
@@ -247,7 +250,7 @@ function areColorsSimilar(color1?: string, color2?: string): boolean {
   return false;
 }
 
-export default function TheWire({ games, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer, now }: TheWireProps) {
+export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer, now }: TheWireProps) {
   const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
   const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
@@ -751,6 +754,21 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
     onToggleFavorite(target);
   };
 
+  const emptyBoard = scoreboardStatus === 'ready' ? (
+    <p className="nfl-empty-note">No NFL games available this week.</p>
+  ) : (
+    <div className="wire-board-loading" role="status" aria-live="polite">
+      <p className="wire-board-loading-note">
+        {scoreboardStatus === 'error'
+          ? <>Can’t reach live scores right now. Retrying automatically… {onRetryScoreboard && <button type="button" onClick={onRetryScoreboard}>Retry now</button>}</>
+          : 'Loading this week’s games…'}
+      </p>
+      <ul className="wire-board-list" aria-hidden="true">
+        {[0, 1, 2, 3].map((index) => <li key={index}><span className="wire-board-card wire-board-skeleton"><i /><i /><i /></span></li>)}
+      </ul>
+    </div>
+  );
+
   if (!detailOpen) {
     const liveCount = nflGames.filter((g) => g.status === 'LIVE').length;
     const finalCount = nflGames.filter((g) => g.status === 'FINAL').length;
@@ -826,7 +844,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
             )}
           </header>
           {nflGames.length === 0 ? (
-            <p className="nfl-empty-note">No NFL games available this week.</p>
+            emptyBoard
           ) : boardDays.length === 0 && spotlightGames.length === 0 ? (
             <p className="nfl-empty-note" role="status">No games matched “{query}”.</p>
           ) : <>
@@ -942,7 +960,7 @@ export default function TheWire({ games, query, favorites, featuredFavoriteTeamI
             </div>
           </div>
         ) : (
-          <p className="nfl-empty-note">No NFL games available this week.</p>
+          emptyBoard
         )}
         {searchQuery && !matchingGame && <p className="nfl-empty-note" role="status">No games matched “{query}”. All games remain available in the wheel.</p>}
       </div>
