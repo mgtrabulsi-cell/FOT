@@ -58,3 +58,15 @@ test('Scoreboard mapping carries live situations, updates turnovers, and clears 
     for (state of ['pre', 'post']) assert.equal((await fetchNFLNotificationGame('123')).situation, undefined);
   } finally { globalThis.fetch = original; }
 });
+
+test('Unspotted ball right after a score shows TOUCHDOWN! or FIELD GOAL instead of unavailable', () => {
+  const label = (lastPlay, extra = {}) => nflFieldPosition(readNFLSituation({ lastPlay, ...extra }, ['3', '1']));
+  for (const type of ['Passing Touchdown', 'Rushing Touchdown', 'Interception Return Touchdown', 'Extra Point Good', 'Two-Point Pass'])
+    assert.equal(label({ type: { text: type }, team: { id: '3' } }), 'TOUCHDOWN!');
+  assert.equal(label({ type: { text: 'Field Goal Good' } }), 'FIELD GOAL');
+  assert.equal(label({ type: { text: 'Field Goal Missed' } }), 'Field position unavailable');
+  assert.equal(label({ type: { text: 'Blocked Field Goal' } }), 'Field position unavailable');
+  assert.equal(label({ type: { text: 'Scoring Play' }, scoreValue: 3 }), 'FIELD GOAL');
+  assert.equal(label({ type: { text: 'Rush' } }), 'Field position unavailable');
+  assert.equal(label({ type: { text: 'Passing Touchdown' } }, { possessionText: 'DAL 35', shortDownDistanceText: '1st & 10' }), '1st & 10 · Ball at DAL 35');
+});
