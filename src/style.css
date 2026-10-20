@@ -1545,3 +1545,24 @@ td:first-child { color: #828c84; }
 @media (max-width: 420px) {
   .primary-nav button { font-size: 11px; padding: 0 2px; }
 }
+
+/* Score change: slot-wheel roll + fireworks burst (ScoreTicker) */
+.score-ticker { position: relative; display: inline-block; line-height: 1; animation: score-ticker-glow 1.4s ease-out .9s both; }
+.score-ticker-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.score-ticker-window { display: inline-block; height: 1em; overflow: hidden; vertical-align: bottom; }
+.score-ticker-reel { display: flex; flex-direction: column; align-items: flex-end; animation: score-ticker-roll 1.2s cubic-bezier(.45, .05, .25, 1) both; }
+.score-ticker-reel > span { display: block; height: 1em; line-height: 1; }
+.score-fireworks { position: absolute; top: 50%; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 2; }
+.score-fireworks i { position: absolute; top: 0; left: 0; width: max(2px, .1em); height: max(7px, .38em); margin: calc(max(7px, .38em) / -2) 0 0 calc(max(2px, .1em) / -2); border-radius: 999px; background: linear-gradient(#fff6c8, #ffd34d); box-shadow: 0 0 6px #ffd34d; opacity: 0; transform: rotate(var(--spark-angle)) translateY(0); animation: score-spark 1.1s cubic-bezier(.15, .75, .3, 1) .9s both; }
+.score-fireworks i:nth-child(3n + 1) { background: linear-gradient(#ffd0d7, #ff5d73); box-shadow: 0 0 6px #ff5d73; }
+.score-fireworks i:nth-child(3n + 2) { background: linear-gradient(#d7f2ff, #5cc8ff); box-shadow: 0 0 6px #5cc8ff; }
+.score-fireworks i:nth-child(even) { --spark-reach: 1.5em; animation-delay: 1.15s; }
+@keyframes score-ticker-roll { from { transform: translateY(0); } to { transform: translateY(calc(var(--score-roll-steps) * -1em)); } }
+@keyframes score-spark {
+  0% { opacity: 0; transform: rotate(var(--spark-angle)) translateY(-.3em) scaleY(.4); }
+  8% { opacity: 1; }
+  65% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--spark-angle)) translateY(calc(var(--spark-reach, 2.4em) * -1)) scaleY(.5); }
+}
+@keyframes score-ticker-glow { 0% { text-shadow: 0 0 0 rgba(255, 211, 77, 0); } 25% { text-shadow: 0 0 .35em rgba(255, 211, 77, .9); } 100% { text-shadow: 0 0 0 rgba(255, 211, 77, 0); } }
+@media (prefers-reduced-motion: reduce) { .score-ticker, .score-ticker-reel, .score-fireworks i { animation: none; } .score-fireworks { display: none; } }

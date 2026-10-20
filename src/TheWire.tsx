@@ -27,6 +27,7 @@ import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
 import { nflFieldPosition } from './services/nflSituation.ts';
+import { ScoreTicker } from './ScoreTicker.tsx';
 import { fetchTeamComparisonRanks, teamComparisonMetrics } from './services/teamComparisonRanks.ts';
 import type { TeamComparisonRank, TeamComparisonRanks } from './services/teamComparisonRanks.ts';
 
@@ -813,7 +814,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                       </b>
                       <small>{team.abbr}{team.record ? ` · ${team.record}` : ''}</small>
                     </span>
-                    <strong className="wire-board-score">{upcoming ? '' : team.score}</strong>
+                    <strong className="wire-board-score">{upcoming ? '' : <ScoreTicker value={team.score} gameKey={`${game.id}:${team.id}`} />}</strong>
                   </span>
                 );
               })}
@@ -946,11 +947,11 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     <div className="wire-wheel-teams">
                       <div className="wire-wheel-row">
                         <span className="wire-wheel-team-abbr">{game.away.abbr}{live && game.situation?.possessionTeamId === game.away.id && <span className="possession-football" role="img" aria-label={`${game.away.name} has possession`}>🏈</span>}</span>
-                        <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : game.away.score}</strong>
+                        <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : <ScoreTicker value={game.away.score} gameKey={`${game.id}:away`} />}</strong>
                       </div>
                       <div className="wire-wheel-row">
                         <span className="wire-wheel-team-abbr">{game.home.abbr}{live && game.situation?.possessionTeamId === game.home.id && <span className="possession-football" role="img" aria-label={`${game.home.name} has possession`}>🏈</span>}</span>
-                        <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : game.home.score}</strong>
+                        <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : <ScoreTicker value={game.home.score} gameKey={`${game.id}:home`} />}</strong>
                       </div>
                     </div>
                     {live && <small className="wire-wheel-field-position">{nflFieldPosition(game.situation)}</small>}
@@ -1020,7 +1021,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                   <small>{selectedGame.away.record || 'Away'}</small>
                 </div>
                 <div className="wire-matchup-score">
-                  {selectedGame.status === 'UPCOMING' ? '–' : (awayBoxTeam?.score ?? selectedGame.away.score)}
+                  {selectedGame.status === 'UPCOMING' ? '–' : <ScoreTicker value={awayBoxTeam?.score ?? selectedGame.away.score} gameKey={`${selectedGame.id}:away`} />}
                 </div>
               </div>
 
@@ -1075,7 +1076,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               {/* Home Team */}
               <div className="wire-matchup-team wire-team-right">
                 <div className="wire-matchup-score">
-                  {selectedGame.status === 'UPCOMING' ? '–' : (homeBoxTeam?.score ?? selectedGame.home.score)}
+                  {selectedGame.status === 'UPCOMING' ? '–' : <ScoreTicker value={homeBoxTeam?.score ?? selectedGame.home.score} gameKey={`${selectedGame.id}:home`} />}
                 </div>
                 <div className="wire-matchup-team-details text-right">
                   <b>{selectedGame.home.abbr}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.home.id && <span className="possession-football" role="img" aria-label={`${selectedGame.home.name} has possession`}>🏈</span>}</b>
@@ -1193,7 +1194,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                   </div>
                   <div className="wire-team-half-right">
                     <strong className="wire-team-half-score">
-                      {selectedGame.status === 'UPCOMING' ? '–' : (awayBoxTeam?.score ?? selectedGame.away.score)}
+                      {selectedGame.status === 'UPCOMING' ? '–' : <ScoreTicker value={awayBoxTeam?.score ?? selectedGame.away.score} gameKey={`${selectedGame.id}:away`} />}
                     </strong>
                     {selectedTeamSide === 'away' && <span className="wire-badge-active">Viewing</span>}
                   </div>
@@ -1232,7 +1233,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                   </div>
                   <div className="wire-team-half-right">
                     <strong className="wire-team-half-score">
-                      {selectedGame.status === 'UPCOMING' ? '–' : (homeBoxTeam?.score ?? selectedGame.home.score)}
+                      {selectedGame.status === 'UPCOMING' ? '–' : <ScoreTicker value={homeBoxTeam?.score ?? selectedGame.home.score} gameKey={`${selectedGame.id}:home`} />}
                     </strong>
                     {selectedTeamSide === 'home' && <span className="wire-badge-active">Viewing</span>}
                   </div>

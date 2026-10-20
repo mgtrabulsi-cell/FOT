@@ -22,6 +22,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"].\/services\/nflSituation.ts['"]/g, `from '${new URL('../src/services/nflSituation.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/teamComparisonRanks.ts['"]/g, `from '${new URL('../src/services/teamComparisonRanks.ts', import.meta.url)}'`)
   .replace(/import OfflineImage from ['"].\/OfflineImage['"];/, 'const OfflineImage = () => null;')
+  .replace(/import \{ ScoreTicker \} from ['"].\/ScoreTicker.tsx['"];/, 'const ScoreTicker = ({ value }) => value;')
   .replace(/import \{ getInterfaceScale \} from ['"].\/uiScale['"];/, 'const getInterfaceScale = () => 1;')
   .replace(/import \{ usePublicDataRevision \} from ['"].\/usePublicDataRevision['"];/, 'const usePublicDataRevision = () => 0;');
 const { default: TheWire } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
