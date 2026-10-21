@@ -10,16 +10,21 @@ insert into public.angles(id,season,week,game_id,matchup,kind,subject,category,t
  ('d9541111-1111-4111-8111-111111111124',2200,17,'NFL:123','Test matchup','team','','Other','Other week','Story',true,'published','d9541111-1111-4111-8111-111111111111');
 insert into public.matchup_boards(season,week,picks,revision) values
  (2200,18,'[{"id":"11","name":"Test QB","position":"QB","teamId":"1","gameId":"NFL:123","headshot":""},{"id":"12","name":"Test RB","position":"RB","teamId":"1","gameId":"NFL:123","headshot":""}]',1);
+-- Recent non-NFL production posts can now appear in every week; isolate this fixture.
+create temporary view fixture_unread with (security_invoker = true) as
+select * from public.analyst_unread_items(2200,18)
+where key like 'd9541111-%' or (kind='picks' and key like '2200:18:%');
+grant select on fixture_unread to anon, authenticated;
 set local role authenticated;
 select set_config('request.jwt.claim.sub','d9541111-1111-4111-8111-111111111112',true);
 do $$
 begin
-  assert (select count(*) from public.analyst_unread_items(2200,18)) = 4,'Two published stories and two picks, no drafts or other weeks';
+  assert (select count(*) from fixture_unread) = 4,'Two published stories and two picks, no drafts or other weeks';
   perform public.mark_analyst_read('angle','d9541111-1111-4111-8111-111111111121');
   perform public.mark_analyst_read('angle','d9541111-1111-4111-8111-111111111121');
-  assert (select count(*) from public.analyst_unread_items(2200,18) where kind='angle') = 1,'Idempotent read leaves other story unread';
+  assert (select count(*) from fixture_unread where kind='angle') = 1,'Idempotent read leaves other story unread';
   perform public.mark_analyst_read('picks','2200:18:1:11');
-  assert (select count(*) from public.analyst_unread_items(2200,18) where kind='picks') = 1,'Offscreen second pick remains unread';
+  assert (select count(*) from fixture_unread where kind='picks') = 1,'Offscreen second pick remains unread';
   begin
     perform public.mark_analyst_read('angle','d9541111-1111-4111-8111-111111111123');
     raise exception 'Draft marked read';
@@ -39,14 +44,14 @@ begin
   exception when insufficient_privilege then null; end;
   perform public.mark_analyst_read('angle','d9541111-1111-4111-8111-111111111122');
   perform public.mark_analyst_read('picks','2200:18:1:12');
-  assert not exists(select 1 from public.analyst_unread_items(2200,18)),'Every visible item clears unread';
+  assert not exists(select 1 from fixture_unread),'Every visible item clears unread';
 end;
 $$;
 select set_config('request.jwt.claim.sub','d9541111-1111-4111-8111-111111111111',true);
 do $$
 begin
   assert not exists(select 1 from public.angle_reads),'Other account cannot see receipts';
-  assert (select count(*) from public.analyst_unread_items(2200,18))=4,'Other account stays unread';
+  assert (select count(*) from fixture_unread)=4,'Other account stays unread';
 end;
 $$;
 reset role;
@@ -55,7 +60,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub','d9541111-1111-4111-8111-111111111112',true);
 do $$
 begin
-  assert (select count(*) from public.analyst_unread_items(2200,18))=2,'New published version unread, stories stay read';
+  assert (select count(*) from fixture_unread)=2,'New published version unread, stories stay read';
 end;
 $$;
 reset role;
@@ -65,14 +70,14 @@ do $$
 begin
   assert exists(select 1 from public.analyst_unread_items(2200,18) where key='2200:18:3:empty'),'Published cleared board has readable notice';
   perform public.mark_analyst_read('picks','2200:18:3:empty');
-  assert not exists(select 1 from public.analyst_unread_items(2200,18)),'Viewing empty-board update clears it';
+  assert not exists(select 1 from fixture_unread),'Viewing empty-board update clears it';
 end;
 $$;
 set local role anon;
 do $$
 begin
   assert not exists(select 1 from public.angle_reads),'Guests cannot read account receipts';
-  assert (select count(*) from public.analyst_unread_items(2200,18))=3,'Guests get public targets only';
+  assert (select count(*) from fixture_unread)=3,'Guests get public targets only';
   begin
     perform public.mark_analyst_read('angle','d9541111-1111-4111-8111-111111111121');
     raise exception 'Guest wrote synced receipt';

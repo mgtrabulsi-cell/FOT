@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { BookOpen, ExternalLink, Plus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleThemes, angleWriteFields, isAngleSource, newsTypes, readAngles, selectAngleSuggestions } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleThemes, angleVisibleInWeek, angleWriteFields, isAngleSource, newsTypes, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSection, AngleSuggestion, NewsType } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
@@ -180,7 +180,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       if (!supabase) throw new Error('The Angle is unavailable: account services are not configured.');
       const next: Angle[] = [];
       for (let offset = 0; ; offset += 500) {
-        const result = await supabase.from('angles').select('*').eq('section', section).eq('season', season).eq('week', week)
+        const result = await supabase.rpc('angle_week_feed', { board_season: season, board_week: week, board_section: section })
           .order('updated_at', { ascending: false }).order('id').range(offset, offset + 499);
         if (result.error) throw result.error;
         next.push(...readAngles(result.data));
@@ -322,7 +322,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const visibleLinked = linkedReady === storyId && linkedStory?.id === storyId ? linkedStory : null;
   const published = [
     ...(visibleLinked ? [visibleLinked] : []),
-    ...rows.filter((row) => visible && row.id !== visibleLinked?.id && row.status === 'published' && (news
+    ...rows.filter((row) => visible && angleVisibleInWeek(row, season, week) && row.id !== visibleLinked?.id && row.status === 'published' && (news
       ? !newsFilter.length || (row.news_types ?? []).some((type) => newsFilter.includes(type))
       : kind === 'all' || row.kind === kind)),
   ];
@@ -365,7 +365,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     });
     return () => { active = false; };
   }, [admin, publishedKey, refresh]);
-  const drafts = rows.filter((row) => row.status === 'draft');
+  const drafts = rows.filter((row) => row.status === 'draft' && row.season === season && row.week === week);
   const field = (key: 'title' | 'narrative' | 'pick', label: string, limit: number, multiline = false) => <label>{label}
     {multiline ? <textarea maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />
       : <input type="text" maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />}
@@ -401,6 +401,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           <optgroup label="Other sports">{angleSports.map((sport) => <option key={sport.key} value={angleSportGameId(sport.key)}>{sport.emoji} {sport.label}</option>)}</optgroup>
         </select></label>
         {angleSport(form.game_id).key !== 'NFL' && <label>{angleSport(form.game_id).label} matchup<input type="text" maxLength={200} placeholder="e.g. Lakers @ Celtics" value={form.matchup} onChange={(event) => change('matchup', event.target.value)} /></label>}
+        {!news && angleSport(form.game_id).key !== 'NFL' && <p>Visible across all weeks for 7 days after first publication, then archived in {form.season} Week {form.week}. Edits do not restart the 7 days.</p>}
         <p>{form.subject || form.matchup || angleSport(form.game_id).label} · {form.category} · {form.season} · Week {form.week}</p>
         <fieldset className="livewire-themes"><legend>Theme (choose one or more)</legend>
           <div>{postThemes.map((theme) => <label key={theme.value}>

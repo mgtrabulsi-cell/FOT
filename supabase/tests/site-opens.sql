@@ -6,6 +6,10 @@ insert into auth.users(id, email, created_at, raw_user_meta_data) values
 insert into public.livewire_roles(user_id, role, display_name) values
  ('d9503333-3333-4333-8333-333333333331', 'owner', 'Opens owner'),
  ('d9503333-3333-4333-8333-333333333332', 'admin', 'Opens admin');
+insert into public.user_push_subscriptions(user_id, endpoint, subscription, notify_scores) values
+ ('d9503333-3333-4333-8333-333333333333', 'https://example.invalid/owner-status-1', '{}', true),
+ ('d9503333-3333-4333-8333-333333333333', 'https://example.invalid/owner-status-2', '{}', false),
+ ('d9503333-3333-4333-8333-333333333331', 'https://example.invalid/owner-status-3', '{}', false);
 
 set local role anon;
 do $$
@@ -67,8 +71,21 @@ begin
   assert public.record_site_open() is null, 'Owner opens are excluded';
   select * into member from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333333';
   assert member.open_count = 2 and member.email = 'opens-member@example.test' and member.display_name = 'Member', 'Owner sees member opens';
+  assert member.notification_devices = 2 and member.score_alert_devices = 1, 'Count devices, not opens, and distinguish score preference';
   select * into admin from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333332';
   assert admin.open_count = 0 and admin.last_opened_at is null and admin.display_name is null, 'Users without opens are listed with zero';
+  assert admin.notification_devices = 0 and admin.score_alert_devices = 0, 'No subscriptions means no registered devices';
+  assert exists(select 1 from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333331'
+    and a.notification_devices = 1 and a.score_alert_devices = 0), 'Owner devices still show without counting owner opens';
+end;
+$$;
+reset role;
+delete from public.user_push_subscriptions where endpoint = 'https://example.invalid/owner-status-1';
+set local role authenticated;
+do $$
+begin
+  assert exists(select 1 from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333333'
+    and a.notification_devices = 1 and a.score_alert_devices = 0), 'Removed subscriptions disappear from dashboard';
 end;
 $$;
 reset role;

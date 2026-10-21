@@ -49,6 +49,13 @@ export const newsTypes = [
 ] as const;
 export type NewsType = typeof newsTypes[number]['value'];
 export const angleSection = (angle: Pick<Angle, 'section'>): AngleSection => angle.section ?? 'angle';
+export function angleVisibleInWeek(angle: Pick<Angle, 'season' | 'week' | 'section' | 'status' | 'game_id' | 'published_at'>, season: number | null, week: number | null, now = Date.now()) {
+  if (angle.season === season && angle.week === week) return true;
+  const published = Date.parse(angle.published_at ?? '');
+  return angleSection(angle) === 'angle' && angle.status === 'published'
+    && angleSports.some((sport) => angle.game_id.startsWith(`${sport.key}:`))
+    && published <= now && published > now - 168 * 60 * 60 * 1000;
+}
 export function publishedAnglePicks(stories: Angle[]) {
   return stories.filter((story) => story.status === 'published')
     .flatMap((story) => anglePicks(story).map((pick) => ({ story, pick })));

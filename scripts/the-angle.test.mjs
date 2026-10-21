@@ -1,6 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleThemes, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleThemes, angleVisibleInWeek, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+
+test('Non-NFL Angle stories cross weeks for exactly 168 hours, then stay in their original week', () => {
+  const now = Date.parse('2026-11-04T12:00:00Z');
+  const story = { season: 2026, week: 7, section: 'angle', status: 'published', game_id: 'NBA:0', published_at: new Date(now - 1000).toISOString() };
+  const visible = (changes = {}, season = 2026, week = 8) => angleVisibleInWeek({ ...story, ...changes }, season, week, now);
+  for (const sport of ['NBA', 'NHL', 'UCL', 'SOCCER']) assert.equal(visible({ game_id: `${sport}:0` }), true);
+  assert.equal(visible({}, 2025, 1), true, 'Includes other selected seasons');
+  assert.equal(visible({ published_at: new Date(now).toISOString() }), true);
+  assert.equal(visible({ published_at: new Date(now - 168 * 3600000 + 1).toISOString() }), true);
+  assert.equal(visible({ published_at: new Date(now - 168 * 3600000).toISOString() }), false);
+  assert.equal(visible({ published_at: new Date(now - 169 * 3600000).toISOString() }, 2026, 7), true);
+  for (const changes of [
+    { game_id: 'NFL:123' }, { game_id: 'UNKNOWN:0' }, { section: 'news' }, { status: 'draft' },
+    { published_at: null }, { published_at: 'invalid' }, { published_at: new Date(now + 1).toISOString() },
+  ]) assert.equal(visible(changes), false);
+  assert.equal(visible({ game_id: 'NFL:123' }, 2026, 7), true);
+  assert.equal(visible({ section: 'news' }, 2026, 7), true);
+});
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };

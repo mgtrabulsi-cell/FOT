@@ -15,7 +15,7 @@ begin
   assert exists(select 1 from public.livewire_posts where angle_id='f9541111-1111-4111-8111-111111111121' and themes=array['fantasy']),'Fantasy News mirrors with the Fantasy theme';
   assert exists(select 1 from public.livewire_posts where angle_id='f9541111-1111-4111-8111-111111111123' and themes=array['news']),'Angles keep the News theme';
   assert (select count(*) from public.analyst_unread_items(2200,18) where kind='news')=1,'Fantasy News reports its own unread kind';
-  assert (select count(*) from public.analyst_unread_items(2200,18) where kind='angle')=1,'Angle unread kind unchanged';
+  assert (select count(*) from public.analyst_unread_items(2200,18) where kind='angle' and key like 'f9541111-%')=1,'Angle unread kind unchanged';
   perform public.mark_analyst_read('news','f9541111-1111-4111-8111-111111111121');
   assert not exists(select 1 from public.analyst_unread_items(2200,18) where kind='news'),'News receipts clear unread';
   update public.angles set news_types='{injury,news}',revision=revision+1 where id='f9541111-1111-4111-8111-111111111121';
