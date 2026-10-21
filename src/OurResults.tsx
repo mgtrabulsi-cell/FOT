@@ -96,7 +96,7 @@ export default function OurResults({ user }: { user: User | null }) {
     </details>}
     {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
     <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
-      <div className="angle-pick">
+      <div className={`angle-pick results-pick-${pick.result}`}>
         <div className="angle-pick-heading"><span className="results-pick-label"><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</span><PickResult result={pick.result} /></div>
         <h3 className="results-pick-text">{pick.text}</h3>
       </div>
