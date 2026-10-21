@@ -13,11 +13,12 @@ import { useAnalystReadObserver } from './useAnalystReadObserver';
 import type { AnalystSeen } from './useAnalystReadObserver';
 
 type Board = { picks: MatchupPick[]; revision: number };
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; onSeen?: AnalystSeen };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; onSeen?: AnalystSeen; boardType?: 'top' | 'hate' };
 const message = (cause: unknown) => cause !== null && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The matchup request failed. Please retry.';
 
-export default function FavorableMatchups({ games, season, week, user, onSeen }: Props) {
+export default function FavorableMatchups({ games, season, week, user, onSeen, boardType = 'top' }: Props) {
+  const title = boardType === 'hate' ? 'Hate Watch' : 'Admins Top Performers';
   const publicRevision = usePublicDataRevision('matchups');
   const [published, setPublished] = useState<Board>({ picks: [], revision: 0 });
   const [draft, setDraft] = useState<Board | null>(null);
@@ -48,7 +49,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
   const pickGameKey = [...new Set(picks.map((pick) => pick.gameId))].sort().join('|');
   const pickPlayerKey = picks.map((pick) => pick.id).sort().join('|');
   const publishedVisible = loaded && published.revision > 0 && !(admin && draft);
-  const readObserver = useAnalystReadObserver('picks', onSeen, user?.id, `${season}:${week}:${published.revision}:${publishedVisible}`);
+  const readObserver = useAnalystReadObserver(boardType === 'hate' ? 'hate' : 'picks', onSeen, user?.id, `${boardType}:${season}:${week}:${published.revision}:${publishedVisible}`);
   const readKey = (playerId: string) => publishedVisible && season && week ? picksReadKey(season, week, published.revision, playerId) : undefined;
 
   useEffect(() => { setProjections(new Map()); setActuals(new Map()); }, [season, week, pickPlayerKey]);
@@ -77,7 +78,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
     async function load() {
       if (!supabase) throw new Error('Matchup publishing is unavailable: account services are not configured.');
       if (!season || !week) return;
-      const board = await supabase.from('matchup_boards').select('picks,revision').eq('season', season).eq('week', week).maybeSingle();
+      const board = await supabase.from('matchup_boards').select('picks,revision').eq('board_type', boardType).eq('season', season).eq('week', week).maybeSingle();
       if (!active) return;
       if (board.error) throw new Error(`Could not load published matchups: ${board.error.message}`);
       const next = { picks: readMatchupPicks(board.data?.picks ?? []), revision: board.data?.revision ?? 0 };
@@ -90,7 +91,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
     }
     void load().catch((cause: unknown) => { if (active) setLoadError(message(cause)); });
     return () => { active = false; };
-  }, [season, week, user?.id, refresh, publicRevision]);
+  }, [boardType, season, week, user?.id, refresh, publicRevision]);
 
   useEffect(() => {
     if (!admin || !season || !scheduleKey) { setCandidates([]); return; }
@@ -198,14 +199,14 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
     if (!supabase || !draft || !season || !week || busy) return;
     setBusy(true); setActionError(''); setNotice('');
     try {
-      const result = await supabase.rpc('publish_matchup_board', {
-        board_season: season, board_week: week, board_picks: draft.picks, expected_revision: draft.revision,
+      const result = await supabase.rpc('publish_fantasy_board', {
+        board_season: season, board_week: week, board_picks: draft.picks, expected_revision: draft.revision, board_kind: boardType,
       });
       if (result.error) throw result.error;
       boardRevision.current = result.data;
       setPublished({ picks: draft.picks, revision: result.data });
       setDraft(null);
-      setNotice(`Published matchups for ${season}, Week ${week}.`);
+      setNotice(`Published ${title} for ${season}, Week ${week}.`);
       setRefresh((value) => value + 1);
     } catch (cause) { setActionError(message(cause)); }
     finally { setBusy(false); }
@@ -218,7 +219,9 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
     return `${pick.name} ${pick.position} ${team?.name ?? ''} ${team?.abbr ?? ''}`.toLowerCase().includes(normalizedQuery);
   });
 
-  return <section className="favorable-matchups">
+  return <section className="favorable-matchups" aria-label={title}>
+    <h2>{title}</h2>
+    <p className="angle-disclaimer">{boardType === 'hate' ? 'Admin opinions: players we think may underperform this week. Not guaranteed outcomes or betting recommendations.' : 'Admin opinions: players we think may perform well this week. Not guaranteed outcomes or betting recommendations.'}</p>
     <header className="favorable-matchups-heading">
       <div className="matchup-title-row"><span className="favorable-matchups-count">{season && week ? `WEEK ${week} · ` : ''}{picks.length} PLAYERS{draft && admin ? ' · DRAFT' : ''}</span>
         {admin && loaded && <label className="search-field matchup-admin-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search players to publish" placeholder="Search players or teams..." value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} /></label>}
@@ -243,7 +246,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
         {!matches.length && !rosterLoading && <p>No players match this search.</p>}
         {matches.length > 30 && <p>Showing 30 results. Refine your search to see more.</p>}
       </div>}
-      <div className="matchup-publish-actions"><button disabled={busy || !draft || !!loadError} onClick={() => void publish()}>{busy ? 'Publishing...' : 'Publish matchups'}</button>
+      <div className="matchup-publish-actions"><button disabled={busy || !draft || !!loadError} onClick={() => void publish()}>{busy ? 'Publishing...' : `Publish ${title}`}</button>
         {draft && <button disabled={busy} onClick={() => { setDraft(null); setActionError(''); setNotice('Draft discarded.'); setRefresh((value) => value + 1); }}>Discard changes / reload</button>}
       </div>
     </div>}
@@ -254,7 +257,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen }:
     {projectionError && <p className="feed-warning" role="alert">{projectionError}</p>}
     {averageError && <p className="feed-warning" role="alert">{averageError}</p>}
     <div ref={readObserver.root}>
-    {publishedVisible && !picks.length && <p className="nfl-empty-note" data-post-id={readKey('empty')}>No Admins Top Performers are published on this version of the weekly board.</p>}
+    {publishedVisible && !picks.length && <p className="nfl-empty-note" data-post-id={readKey('empty')}>No {title} players are published on this version of the weekly board.</p>}
     {loaded && <div className="favorable-matchup-groups">{matchupPositions.map((position) => {
       const group = picks.filter((pick) => pick.position === position);
       const stat = matchupStats[position];

@@ -602,7 +602,8 @@ function App() {
     };
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
-  const [analystMode, setAnalystMode] = useState<'Matchups' | 'Angle' | 'News' | 'Results'>('Angle');
+  const [analystMode, setAnalystMode] = useState<'Fantasy' | 'Angle' | 'Results'>('Angle');
+  const [fantasyMode, setFantasyMode] = useState<'Matchups' | 'News' | 'Hate'>('Matchups');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
@@ -1167,15 +1168,19 @@ function App() {
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
         {view === 'Analyst' && <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
           <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
-          <button role="tab" aria-selected={analystMode === 'News'} aria-label={analystUnread.news ? 'Fantasy News, unread posts' : 'Fantasy News'} className={analystMode === 'News' ? 'active' : ''} onClick={() => setAnalystMode('News')}>Fantasy News{analystUnread.news && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
-          <button role="tab" aria-selected={analystMode === 'Matchups'} aria-label={analystUnread.picks ? 'Admins Top Performers, unread updates' : 'Admins Top Performers'} className={analystMode === 'Matchups' ? 'active' : ''} onClick={() => setAnalystMode('Matchups')}>Admins Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={analystMode === 'Fantasy'} aria-label={analystUnread.news || analystUnread.picks || analystUnread.hate ? 'Fantasy, unread updates' : 'Fantasy'} className={analystMode === 'Fantasy' ? 'active' : ''} onClick={() => setAnalystMode('Fantasy')}>Fantasy{(analystUnread.news || analystUnread.picks || analystUnread.hate) && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={analystMode === 'Results'} className={analystMode === 'Results' ? 'active' : ''} onClick={() => setAnalystMode('Results')}>Our Results</button>
+        </div>}
+        {view === 'Analyst' && analystMode === 'Fantasy' && <div className="player-mode-tabs fantasy-mode-tabs" role="tablist" aria-label="Fantasy view">
+          <button role="tab" aria-selected={fantasyMode === 'Matchups'} aria-label={analystUnread.picks ? 'Admins Top Performers, unread updates' : 'Admins Top Performers'} className={fantasyMode === 'Matchups' ? 'active' : ''} onClick={() => setFantasyMode('Matchups')}>Admins Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={fantasyMode === 'News'} aria-label={analystUnread.news ? 'Fantasy News, unread posts' : 'Fantasy News'} className={fantasyMode === 'News' ? 'active' : ''} onClick={() => setFantasyMode('News')}>Fantasy News{analystUnread.news && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={fantasyMode === 'Hate'} aria-label={analystUnread.hate ? 'Hate Watch, unread updates' : 'Hate Watch'} className={fantasyMode === 'Hate' ? 'active' : ''} onClick={() => setFantasyMode('Hate')}>Hate Watch{analystUnread.hate && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
         </div>}
         {(['angle', 'news'] as const).map((section) => <TheAngle
           key={`${section}:${sessionUser?.id ?? 'guest'}`}
-          active={view === 'Analyst' && analystMode === (section === 'news' ? 'News' : 'Angle')}
+          active={view === 'Analyst' && (section === 'news' ? analystMode === 'Fantasy' && fantasyMode === 'News' : analystMode === 'Angle')}
           section={section}
-          onOpenSection={(next) => setAnalystMode(next === 'news' ? 'News' : 'Angle')}
+          onOpenSection={(next) => { setAnalystMode(next === 'news' ? 'Fantasy' : 'Angle'); if (next === 'news') setFantasyMode('News'); }}
           games={lockerRoomReady ? games : []}
           season={lockerRoomSeason}
           week={lockerRoomWeek}
@@ -1224,8 +1229,8 @@ function App() {
           <>
             {analystMode === 'Results' ? (
               <OurResults key={authUser?.id ?? 'guest'} user={authUser} />
-            ) : analystMode === 'Matchups' ? (
-              <FavorableMatchups key={`${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
+            ) : analystMode === 'Fantasy' && fantasyMode !== 'News' ? (
+              <FavorableMatchups key={`${fantasyMode}:${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} boardType={fantasyMode === 'Hate' ? 'hate' : 'top'} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
             ) : null}
           </>
         )}

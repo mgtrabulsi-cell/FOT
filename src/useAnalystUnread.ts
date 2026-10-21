@@ -5,7 +5,7 @@ import type { AnalystKind } from './services/analystReads';
 
 export function useAnalystUnread(userId: string | null, enabled: boolean, season: number, week: number) {
   const scope = `${userId ?? 'guest'}:${season}:${week}`;
-  const [state, setState] = useState({ scope, angle: false, news: false, picks: false, error: '' });
+  const [state, setState] = useState({ scope, angle: false, news: false, picks: false, hate: false, error: '' });
   const [refresh, setRefresh] = useState(0);
   const generation = useRef(0);
   const seen = useRef(new Set<string>());
@@ -22,18 +22,18 @@ export function useAnalystUnread(userId: string | null, enabled: boolean, season
       const request = ++generation.current;
       if (!navigator.onLine) return;
       try {
-        const result = await client.rpc('analyst_unread_items', { board_season: season, board_week: week });
+        const result = await client.rpc('fantasy_unread_items', { board_season: season, board_week: week });
         if (result.error) throw result.error;
         const read = userId ? new Set<string>() : guestAnalystReads();
         const unread = readAnalystItems(result.data).filter((item) => !read.has(analystReceiptKey(item)));
         if (active && request === generation.current) setState({
-          scope, angle: unread.some((item) => item.kind === 'angle'), news: unread.some((item) => item.kind === 'news'), picks: unread.some((item) => item.kind === 'picks'), error: '',
+          scope, angle: unread.some((item) => item.kind === 'angle'), news: unread.some((item) => item.kind === 'news'), picks: unread.some((item) => item.kind === 'picks'), hate: unread.some((item) => item.kind === 'hate'), error: '',
         });
       } catch (cause) {
         if (active && request === generation.current) {
           console.error('Could not load Analyst Desk unread status', cause);
           setState((previous) => ({
-            scope, angle: previous.scope === scope && previous.angle, news: previous.scope === scope && previous.news, picks: previous.scope === scope && previous.picks,
+            scope, angle: previous.scope === scope && previous.angle, news: previous.scope === scope && previous.news, picks: previous.scope === scope && previous.picks, hate: previous.scope === scope && previous.hate,
             error: 'Could not sync Analyst Desk read status. Reconnect or reopen the page to retry.',
           }));
         }
@@ -62,7 +62,7 @@ export function useAnalystUnread(userId: string | null, enabled: boolean, season
     try {
       if (userId) {
         if (!supabase) throw new Error('Account services are not configured.');
-        const result = await supabase.rpc('mark_analyst_read', { item_kind: kind, item_key: key });
+        const result = await supabase.rpc('mark_fantasy_read', { item_kind: kind, item_key: key });
         if (result.error) throw result.error;
       } else {
         const read = guestAnalystReads();
@@ -78,5 +78,6 @@ export function useAnalystUnread(userId: string | null, enabled: boolean, season
   const angle = enabled && state.scope === scope && state.angle;
   const news = enabled && state.scope === scope && state.news;
   const picks = enabled && state.scope === scope && state.picks;
-  return { angle, news, picks, unread: angle || news || picks, error: enabled && state.scope === scope ? state.error : '', markRead };
+  const hate = enabled && state.scope === scope && state.hate;
+  return { angle, news, picks, hate, unread: angle || news || picks || hate, error: enabled && state.scope === scope ? state.error : '', markRead };
 }
