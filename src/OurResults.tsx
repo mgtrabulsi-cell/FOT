@@ -96,7 +96,10 @@ export default function OurResults({ user }: { user: User | null }) {
     </details>}
     {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
     <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
-      <div className="angle-pick"><div className="angle-pick-heading"><h3><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</h3><PickResult result={pick.result} /></div><p>{pick.text}</p></div>
+      <div className="angle-pick">
+        <div className="angle-pick-heading"><span className="results-pick-label"><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</span><PickResult result={pick.result} /></div>
+        <h3 className="results-pick-text">{pick.text}</h3>
+      </div>
       <h4>{story.title}</h4><p className="angle-matchup">{angleSport(story.game_id).key === 'NFL' ? '' : `${angleSport(story.game_id).label} · `}{story.matchup} · {story.season} · Week {story.week}</p>
       <a href={`#analyst-desk/story/${story.id}`}>View story</a>
       {admin && <div className="angle-actions" role="group" aria-label={`Result for pick: ${pick.text}`}>
