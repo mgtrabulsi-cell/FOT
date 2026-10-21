@@ -2,6 +2,8 @@ import type { Game, NFLBoxScoreData, NFLGameDetails, NFLPlayerSeasonBoxScore, NF
 import { readLivewirePosts } from './livewirePosts.ts';
 import type { LivewireSnapshot } from './livewirePosts.ts';
 import type { TeamComparisonRanks } from './teamComparisonRanks.ts';
+import { readMatchupPicks } from './matchupBoard.ts';
+import type { MatchupPick } from './matchupBoard.ts';
 
 type Snapshots = {
   scoreboard: { games: Game[]; failedLeagues: string[]; nflWeek: number | null };
@@ -11,6 +13,9 @@ type Snapshots = {
   team: NFLTeamSeasonAverages;
   posts: LivewireSnapshot;
   teamRanks: TeamComparisonRanks;
+  fantasyBoard: { picks: MatchupPick[]; revision: number };
+  fantasyAverages: Record<string, { average: number | null; games: number }>;
+  fantasyPPR: { projections: Record<string, number>; actuals: Record<string, number> };
 };
 
 const prefix = `gamewire-render-v1:${import.meta.env?.BASE_URL ?? '/'}:`;
@@ -27,6 +32,14 @@ function object(value: unknown): value is Record<string, unknown> {
 function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snapshots[K] {
   if (!object(data)) return false;
   switch (kind) {
+    case 'fantasyBoard':
+      return Number.isInteger(data.revision) && Number(data.revision) >= 0 && readMatchupPicks(data.picks).length <= 16;
+    case 'fantasyAverages':
+      return Object.values(data).every((value) => object(value) && Number.isInteger(value.games) && Number(value.games) >= 0
+        && (value.average === null || (typeof value.average === 'number' && Number.isFinite(value.average))));
+    case 'fantasyPPR':
+      return object(data.projections) && object(data.actuals)
+        && [...Object.values(data.projections), ...Object.values(data.actuals)].every((value) => typeof value === 'number' && Number.isFinite(value));
     case 'scoreboard':
       return Array.isArray(data.games) && data.games.every((game: unknown) =>
         object(game) && typeof game.id === 'string' && object(game.away) && object(game.home))

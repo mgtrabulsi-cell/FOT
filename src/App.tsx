@@ -1176,6 +1176,12 @@ function App() {
           <button role="tab" aria-selected={fantasyMode === 'News'} aria-label={analystUnread.news ? 'Fantasy News, unread posts' : 'Fantasy News'} className={fantasyMode === 'News' ? 'active' : ''} onClick={() => setFantasyMode('News')}>Fantasy News{analystUnread.news && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={fantasyMode === 'Hate'} aria-label={analystUnread.hate ? 'Hate Watch, unread updates' : 'Hate Watch'} className={fantasyMode === 'Hate' ? 'active' : ''} onClick={() => setFantasyMode('Hate')}>Hate Watch{analystUnread.hate && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
         </div>}
+        {view === 'Analyst' && (['top', 'hate'] as const).map((boardType) => {
+          const active = analystMode === 'Fantasy' && fantasyMode === (boardType === 'hate' ? 'Hate' : 'Matchups');
+          return <div key={`${boardType}:${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} hidden={!active}>
+            <FavorableMatchups active={active} boardType={boardType} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
+          </div>;
+        })}
         {(['angle', 'news'] as const).map((section) => <TheAngle
           key={`${section}:${sessionUser?.id ?? 'guest'}`}
           active={view === 'Analyst' && (section === 'news' ? analystMode === 'Fantasy' && fantasyMode === 'News' : analystMode === 'Angle')}
@@ -1229,8 +1235,6 @@ function App() {
           <>
             {analystMode === 'Results' ? (
               <OurResults key={authUser?.id ?? 'guest'} user={authUser} />
-            ) : analystMode === 'Fantasy' && fantasyMode !== 'News' ? (
-              <FavorableMatchups key={`${fantasyMode}:${authUser?.id ?? 'guest'}:${lockerRoomSeason}:${lockerRoomWeek}`} boardType={fantasyMode === 'Hate' ? 'hate' : 'top'} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
             ) : null}
           </>
         )}

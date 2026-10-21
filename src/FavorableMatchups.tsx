@@ -11,19 +11,23 @@ import type { MatchupPick } from './services/matchupBoard';
 import { picksReadKey } from './services/analystReads';
 import { useAnalystReadObserver } from './useAnalystReadObserver';
 import type { AnalystSeen } from './useAnalystReadObserver';
+import { readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 
 type Board = { picks: MatchupPick[]; revision: number };
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; onSeen?: AnalystSeen; boardType?: 'top' | 'hate' };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; onSeen?: AnalystSeen; boardType?: 'top' | 'hate'; active?: boolean };
 const message = (cause: unknown) => cause !== null && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The matchup request failed. Please retry.';
 
-export default function FavorableMatchups({ games, season, week, user, onSeen, boardType = 'top' }: Props) {
+export default function FavorableMatchups({ games, season, week, user, onSeen, boardType = 'top', active = true }: Props) {
   const title = boardType === 'hate' ? 'Hate Watch' : 'Admins Top Performers';
+  const snapshotKey = `${season}:${week}:${boardType}`;
+  const [saved] = useState(() => readRenderSnapshot('fantasyBoard', snapshotKey));
+  const [savedPPR] = useState(() => readRenderSnapshot('fantasyPPR', snapshotKey));
   const publicRevision = usePublicDataRevision('matchups');
-  const [published, setPublished] = useState<Board>({ picks: [], revision: 0 });
+  const [published, setPublished] = useState<Board>(saved ?? { picks: [], revision: 0 });
   const [draft, setDraft] = useState<Board | null>(null);
   const [admin, setAdmin] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(!!saved);
   const [loadError, setLoadError] = useState('');
   const [accessError, setAccessError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -34,31 +38,35 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
   const [candidates, setCandidates] = useState<MatchupPick[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState('');
-  const [details, setDetails] = useState<Map<string, NFLGameDetails>>(new Map());
-  const [projections, setProjections] = useState<Map<string, number>>(new Map());
-  const [actuals, setActuals] = useState<Map<string, number>>(new Map());
+  const [details, setDetails] = useState<Map<string, NFLGameDetails>>(() => new Map(games.flatMap((game) => {
+    const value = readGameDetailsSnapshot(game.feedPath, game.eventId, game.seasonYear, [game.away.id, game.home.id]);
+    return value ? [[game.id, value] as const] : [];
+  })));
+  const [projections, setProjections] = useState<Map<string, number>>(() => new Map(Object.entries(savedPPR?.projections ?? {})));
+  const [actuals, setActuals] = useState<Map<string, number>>(() => new Map(Object.entries(savedPPR?.actuals ?? {})));
   const [statsError, setStatsError] = useState('');
   const [projectionError, setProjectionError] = useState('');
-  const [averages, setAverages] = useState<Map<string, { average: number | null; games: number }>>(new Map());
+  const [averages, setAverages] = useState<Map<string, { average: number | null; games: number }>>(() =>
+    new Map(Object.entries(readRenderSnapshot('fantasyAverages', snapshotKey) ?? {})));
   const [averageLoading, setAverageLoading] = useState(false);
   const [averageError, setAverageError] = useState('');
-  const boardRevision = useRef(0);
+  const boardRevision = useRef(saved?.revision ?? 0);
   const picks = (admin ? draft : null)?.picks ?? published.picks;
   const weeklyGames = games.filter((game) => game.league === 'NFL' && game.seasonYear === season);
   const scheduleKey = weeklyGames.map((game) => `${game.id}:${game.status}`).sort().join('|');
   const pickGameKey = [...new Set(picks.map((pick) => pick.gameId))].sort().join('|');
   const pickPlayerKey = picks.map((pick) => pick.id).sort().join('|');
-  const publishedVisible = loaded && published.revision > 0 && !(admin && draft);
+  const publishedVisible = active && loaded && published.revision > 0 && !(admin && draft);
   const readObserver = useAnalystReadObserver(boardType === 'hate' ? 'hate' : 'picks', onSeen, user?.id, `${boardType}:${season}:${week}:${published.revision}:${publishedVisible}`);
   const readKey = (playerId: string) => publishedVisible && season && week ? picksReadKey(season, week, published.revision, playerId) : undefined;
 
-  useEffect(() => { setProjections(new Map()); setActuals(new Map()); }, [season, week, pickPlayerKey]);
   useEffect(() => { setAdmin(false); }, [user?.id]);
 
   useEffect(() => {
+    if (!active) return;
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     let active = true;
@@ -75,26 +83,30 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     async function load() {
       if (!supabase) throw new Error('Matchup publishing is unavailable: account services are not configured.');
       if (!season || !week) return;
-      const board = await supabase.from('matchup_boards').select('picks,revision').eq('board_type', boardType).eq('season', season).eq('week', week).maybeSingle();
+      const board = await supabase.from('matchup_boards').select('picks,revision').eq('board_type', boardType).eq('season', season).eq('week', week).abortSignal(controller.signal).maybeSingle();
       if (!active) return;
       if (board.error) throw new Error(`Could not load published matchups: ${board.error.message}`);
       const next = { picks: readMatchupPicks(board.data?.picks ?? []), revision: board.data?.revision ?? 0 };
       if (next.revision >= boardRevision.current) {
         boardRevision.current = next.revision;
         setPublished(next);
+        saveRenderSnapshot('fantasyBoard', snapshotKey, next);
       }
       setLoaded(true);
       setLoadError('');
     }
     void load().catch((cause: unknown) => { if (active) setLoadError(message(cause)); });
-    return () => { active = false; };
+    return () => { active = false; window.clearTimeout(timeout); controller.abort(); };
   }, [boardType, season, week, user?.id, refresh, publicRevision]);
 
+  const searching = active && query.trim().length > 0;
   useEffect(() => {
-    if (!admin || !season || !scheduleKey) { setCandidates([]); return; }
+    if (!admin || !searching || !season || !scheduleKey) return;
     let active = true;
     async function load() {
       setRosterLoading(true); setRosterError('');
@@ -113,6 +125,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
           } catch (cause) { failures.push(`${team.abbr}: ${message(cause)}`); }
         }));
         if (!active) return;
+        setCandidates([...next].sort((first, second) => first.name.localeCompare(second.name)));
       }
       setCandidates(next.sort((first, second) => first.name.localeCompare(second.name)));
       setRosterError(failures.length ? `Some rosters could not load. ${failures.join(' ')}` : '');
@@ -120,7 +133,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
     }
     void load();
     return () => { active = false; };
-  }, [admin, season, scheduleKey, refresh, publicRevision]);
+  }, [admin, searching, season, scheduleKey, publicRevision]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -128,6 +141,10 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
     async function loadStats() {
       setStatsError('');
       const selected = weeklyGames.filter((game) => pickGameKey.split('|').includes(game.id));
+      setDetails((previous) => new Map(selected.flatMap((game) => {
+        const value = previous.get(game.id) ?? readGameDetailsSnapshot(game.feedPath, game.eventId, game.seasonYear, [game.away.id, game.home.id]);
+        return value ? [[game.id, value] as const] : [];
+      })));
       const results = await Promise.allSettled(selected.map(async (game) => ({
         id: game.id,
         details: await fetchNFLGameDetails(game.feedPath, game.eventId, game.seasonYear, [game.away, game.home], controller.signal),
@@ -153,7 +170,8 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
 
   useEffect(() => {
     const controller = new AbortController();
-    if (!pickPlayerKey || !scheduleKey) { setAverages(new Map()); setAverageLoading(false); setAverageError(''); return; }
+    if (!pickPlayerKey) { setAverages(new Map()); setAverageLoading(false); setAverageError(''); return; }
+    if (!scheduleKey) return;
     async function load() {
       setAverageLoading(true); setAverageError('');
       const next = new Map<string, { average: number | null; games: number }>();
@@ -166,11 +184,15 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
           catch (cause) { errors.push(`${pick.name}: ${message(cause)}`); }
         }));
         if (controller.signal.aborted) return;
+        setAverages((previous) => new Map([...previous, ...next]));
       }
       setAverages((previous) => new Map(picks.flatMap((pick) => {
         const value = next.get(pick.id) ?? previous.get(pick.id);
         return value ? [[pick.id, value] as const] : [];
       })));
+      if (!draft && next.size) saveRenderSnapshot('fantasyAverages', snapshotKey, {
+        ...readRenderSnapshot('fantasyAverages', snapshotKey), ...Object.fromEntries(next),
+      });
       setAverageError(errors.length ? `Player game logs could not refresh. ${errors.join(' ')}` : '');
       setAverageLoading(false);
     }
@@ -183,7 +205,10 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
     setProjectionError('');
     if (!season || !week || !pickPlayerKey) return;
     void fetchPPRWeek(season, week, pickPlayerKey.split('|'), controller.signal).then((data) => {
-      if (!controller.signal.aborted) { setProjections(data.projections); setActuals(data.actuals); }
+      if (!controller.signal.aborted) {
+        setProjections(data.projections); setActuals(data.actuals);
+        if (!draft) saveRenderSnapshot('fantasyPPR', snapshotKey, { projections: Object.fromEntries(data.projections), actuals: Object.fromEntries(data.actuals) });
+      }
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setProjectionError(`ESPN weekly PPR projections are unavailable. ${message(cause)}`);
     });
@@ -205,6 +230,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
       if (result.error) throw result.error;
       boardRevision.current = result.data;
       setPublished({ picks: draft.picks, revision: result.data });
+      saveRenderSnapshot('fantasyBoard', snapshotKey, { picks: draft.picks, revision: result.data });
       setDraft(null);
       setNotice(`Published ${title} for ${season}, Week ${week}.`);
       setRefresh((value) => value + 1);
@@ -222,6 +248,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
   return <section className="favorable-matchups" aria-label={title}>
     <h2>{title}</h2>
     <p className="angle-disclaimer">{boardType === 'hate' ? 'Admin opinions: players we think may underperform this week. Not guaranteed outcomes or betting recommendations.' : 'Admin opinions: players we think may perform well this week. Not guaranteed outcomes or betting recommendations.'}</p>
+    <p className="angle-disclaimer">Saved players and statistics appear immediately when available and refresh in the background.</p>
     <header className="favorable-matchups-heading">
       <div className="matchup-title-row"><span className="favorable-matchups-count">{season && week ? `WEEK ${week} · ` : ''}{picks.length} PLAYERS{draft && admin ? ' · DRAFT' : ''}</span>
         {admin && loaded && <label className="search-field matchup-admin-search"><Search size={16} aria-hidden="true" /><input type="search" aria-label="Search players to publish" placeholder="Search players or teams..." value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} /></label>}

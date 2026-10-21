@@ -1,8 +1,70 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ts from 'typescript';
+import { readRenderSnapshot, saveRenderSnapshot } from '../src/services/renderSnapshots.ts';
 import { fetchPPRProjections, lastFiveAverage, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPPRActuals, readPPRProjections } from '../src/services/matchupBoard.ts';
 
 const pick = (id, position) => ({ id, position, name: `Player ${id}`, teamId: '1', gameId: 'NFL:123', headshot: '' });
+
+const compiled = ts.transpileModule(readFileSync(new URL('../src/FavorableMatchups.tsx', import.meta.url), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX },
+}).outputText
+  .replace(/from ['"]react['"]/g, `from '${import.meta.resolve('react')}'`)
+  .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
+  .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
+  .replace(/from ['"]\.\/services\/(sportsData|matchupBoard|analystReads|renderSnapshots)['"]/g,
+    (_, name) => `from '${new URL(`../src/services/${name}.ts`, import.meta.url)}'`)
+  .replace(/import OfflineImage from [^;]+;/, 'const OfflineImage = () => null;')
+  .replace(/import \{ usePublicDataRevision \} from [^;]+;/, 'const usePublicDataRevision = () => 0;')
+  .replace(/import \{ supabase \} from [^;]+;/, 'const supabase = null;')
+  .replace(/import \{ useAnalystReadObserver \} from [^;]+;/, 'const useAnalystReadObserver = () => ({root:{current:null},error:""});');
+const { default: FantasyBoard } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+
+test('Both Fantasy boards render saved players and metrics synchronously without requests or effects', () => {
+  const storage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const originalFetch = globalThis.fetch;
+  const entries = new Map();
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    get length() { return entries.size; }, key: index => [...entries.keys()][index] ?? null,
+    getItem: key => entries.get(key) ?? null, setItem: (key, value) => entries.set(key, value), removeItem: key => entries.delete(key),
+  } });
+  globalThis.fetch = () => { throw new Error('First render must not fetch'); };
+  try {
+    for (const boardType of ['top', 'hate']) {
+      const key = `2026:7:${boardType}`;
+      saveRenderSnapshot('fantasyBoard', key, { picks: [pick(boardType === 'top' ? '111' : '222', 'QB')], revision: 5 });
+      const id = boardType === 'top' ? '111' : '222';
+      saveRenderSnapshot('fantasyAverages', key, { [id]: { average: 281.5, games: 5 } });
+      saveRenderSnapshot('fantasyPPR', key, { projections: { [id]: 20.3 }, actuals: { [id]: 22.4 } });
+      const html = renderToStaticMarkup(createElement(FantasyBoard, { games: [], season: 2026, week: 7, user: null, boardType }));
+      assert.match(html, new RegExp(`Player ${id}`));
+      assert.match(html, /281\.5/);
+      assert.match(html, /20\.3/);
+      assert.doesNotMatch(html, /Loading this week/);
+      assert.doesNotMatch(html, new RegExp(`Player ${boardType === 'top' ? '222' : '111'}`));
+    }
+    for (const [season, week] of [[2026, 8], [2025, 7]]) {
+      const html = renderToStaticMarkup(createElement(FantasyBoard, { games: [], season, week, user: null, boardType: 'top' }));
+      assert.doesNotMatch(html, /Player 111|281\.5|20\.3/);
+      assert.match(html, /Loading this week/);
+    }
+    const originalError = console.error;
+    const errors = [];
+    console.error = (...args) => errors.push(args);
+    try {
+      entries.set('gamewire-render-v1:/:fantasyBoard:2026:1:top', JSON.stringify({ version: 1, data: { picks: [{}], revision: 1 } }));
+      assert.equal(readRenderSnapshot('fantasyBoard', '2026:1:top'), null);
+      assert.equal(errors.length, 1);
+    } finally { console.error = originalError; }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (storage) Object.defineProperty(globalThis, 'localStorage', storage);
+    else delete globalThis.localStorage;
+  }
+});
 
 test('Moves players only within their position without changing other groups', () => {
   const original = [pick('1', 'QB'), pick('2', 'RB'), pick('3', 'QB'), pick('4', 'QB')];
