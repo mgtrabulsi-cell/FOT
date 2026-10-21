@@ -37,9 +37,11 @@ export function livewireSnapshot(posts: LivewirePost[], limit: number): Livewire
 
 export async function fetchLivewirePosts(
   config: { url: string; key: string },
-  options: { limit: number; themes: PostTheme[]; postId?: string },
+  options: { limit: number; themes: PostTheme[]; postId?: string; fresh?: boolean },
   signal?: AbortSignal,
 ): Promise<LivewirePost[]> {
+  const timeout = AbortSignal.timeout(15_000);
+  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const posts: LivewirePost[] = [];
   for (let offset = 0; offset <= options.limit; offset += 500) {
     const count = Math.min(500, options.limit + 1 - offset);
@@ -52,8 +54,8 @@ export async function fetchLivewirePosts(
     if (options.postId) url.searchParams.set('id', `eq.${options.postId}`);
     const response = await fetch(url, {
       headers: { apikey: config.key, Accept: 'application/json' },
-      cache: 'reload',
-      signal: signal ?? AbortSignal.timeout(15_000),
+      cache: options.fresh ? 'reload' : 'default',
+      signal: requestSignal,
     });
     if (!response.ok) throw new Error(`Could not refresh LIVEWIRE (HTTP ${response.status}). Please retry.`);
     const page = readLivewirePosts(await response.json());

@@ -37,6 +37,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [loaded, setLoaded] = useState(!!savedFeed);
   const [error, setError] = useState('');
+  const [linkedError, setLinkedError] = useState('');
   const [accessError, setAccessError] = useState('');
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
@@ -84,7 +85,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       if (result.error) throw result.error;
       try {
         if (!publicSupabaseConfig) throw new Error('Account services are not configured.');
-        const latest = await fetchLivewirePosts(publicSupabaseConfig, { limit: 20, themes: [] });
+        const latest = await fetchLivewirePosts(publicSupabaseConfig, { limit: 20, themes: [], fresh: true });
         saveRenderSnapshot('posts', 'livewire', livewireSnapshot(latest, 20));
         if (!themeFilters.length && limit === 20) {
           setPosts(latest.slice(0, 20)); setHasMore(latest.length > 20); setLoaded(true);
@@ -176,18 +177,8 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
     const controller = new AbortController();
     async function load() {
       if (!publicSupabaseConfig) { setError('LIVEWIRE is unavailable: account services are not configured.'); return; }
-      const [feed, linked] = await Promise.all([
-        fetchLivewirePosts(publicSupabaseConfig, { limit, themes: themeFilters }, controller.signal),
-        postId ? fetchLivewirePosts(publicSupabaseConfig, { limit: 1, themes: [], postId }, controller.signal) : Promise.resolve([]),
-      ]);
+      const feed = await fetchLivewirePosts(publicSupabaseConfig, { limit, themes: themeFilters, fresh: refresh > 0 }, controller.signal);
       if (!active) return;
-      if (postId) {
-        setLinkedPost(linked[0] ?? null);
-        setLinkedMissing(!linked.length);
-        setLinkedReady(postId);
-      } else {
-        setLinkedPost(null); setLinkedMissing(false); setLinkedReady(null);
-      }
       if (!themeFilters.length) saveRenderSnapshot('posts', 'livewire', livewireSnapshot(feed, 20));
       setPosts(feed.slice(0, limit));
       setHasMore(feed.length > limit);
@@ -199,7 +190,25 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
     });
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
     return () => { active = false; controller.abort(); window.clearInterval(timer); };
-  }, [user?.id, refresh, limit, postId, themeFilters, publicRevision]);
+  }, [user?.id, refresh, limit, themeFilters, publicRevision]);
+
+  useEffect(() => {
+    setLinkedPost(null); setLinkedMissing(false); setLinkedReady(null); setLinkedError('');
+    if (!postId || !publicSupabaseConfig) return;
+    let active = true;
+    const controller = new AbortController();
+    void fetchLivewirePosts(publicSupabaseConfig, { limit: 1, themes: [], postId, fresh: refresh > 0 }, controller.signal)
+      .then((linked) => {
+        if (!active) return;
+        setLinkedPost(linked[0] ?? null);
+        setLinkedMissing(!linked.length);
+        setLinkedReady(postId);
+      })
+      .catch((cause: unknown) => {
+        if (active) setLinkedError(cause instanceof Error ? cause.message : 'Could not load the linked LIVEWIRE post. Please retry.');
+      });
+    return () => { active = false; controller.abort(); };
+  }, [postId, refresh, publicRevision]);
 
   useEffect(() => {
     if (!postId) { scrolledPost.current = null; return; }
@@ -266,7 +275,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       <button type="button" className="angle-create-button" aria-expanded={composerOpen} aria-controls="livewire-composer" disabled={busy || !draftReady} onClick={() => setComposerOpen(true)}><Plus size={16} aria-hidden="true" />{editing ? 'Continue editing' : hasDraft ? 'Continue draft' : 'Create post'}</button>
       <span>{role === 'owner' ? 'Owner' : 'Admin'}{hasDraft ? ' ? Draft saved' : ''}</span>
     </div>}
-    {(error || accessError) && <p className="livewire-error" role="alert">{error || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
+    {(error || linkedError || accessError) && <p className="livewire-error" role="alert">{error || linkedError || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {draftError && <div className="livewire-error" role="alert"><p>{draftError}</p><button type="button" disabled={busy} onClick={() => {
       if (draftRestoreFailed) {
         if ((title || body || photos.length || source || themes.length || editing) && !window.confirm('Retry restoring the saved draft? This replaces the text currently in the editor if restoration succeeds.')) return;

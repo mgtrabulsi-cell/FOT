@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ImgHTMLAttributes } from 'react';
 import { isOfflineImageSource, nativeApp, nativeImageSource } from './services/nativeOffline';
 import { webOfflineStore } from './services/webOffline';
@@ -6,11 +6,22 @@ import { webOfflineStore } from './services/webOffline';
 // An active service worker already serves and saves these images, so the browser can load them directly (and lazily).
 const workerServesImages = () => !nativeApp && typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller;
 
-export default function OfflineImage({ src, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
+export default function OfflineImage({ src, loading, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
   const [direct] = useState(workerServesImages);
+  const image = useRef<HTMLImageElement>(null);
+  const [requested, setRequested] = useState(loading !== 'lazy');
   const [saved, setSaved] = useState<{ original: string; local: string } | null>(null);
   useEffect(() => {
-    if (!src || direct) return;
+    if (direct || requested) return;
+    if (loading !== 'lazy' || typeof IntersectionObserver === 'undefined') { setRequested(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) { setRequested(true); observer.disconnect(); }
+    }, { rootMargin: '400px' });
+    if (image.current) observer.observe(image.current);
+    return () => observer.disconnect();
+  }, [direct, requested, loading]);
+  useEffect(() => {
+    if (!src || direct || !requested) return;
     let current = true;
     let objectUrl: string | undefined;
     const resolve = async () => {
@@ -28,7 +39,7 @@ export default function OfflineImage({ src, ...props }: ImgHTMLAttributes<HTMLIm
       if (current) setSaved({ original: src, local: src });
     });
     return () => { current = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [src, direct]);
-  if (direct) return <img {...props} src={src} />;
-  return <img {...props} src={saved && saved.original === src ? saved.local : src && isOfflineImageSource(src) ? undefined : src} />;
+  }, [src, direct, requested]);
+  if (direct) return <img {...props} loading={loading} src={src} />;
+  return <img {...props} ref={image} loading={loading} src={saved && saved.original === src ? saved.local : src && isOfflineImageSource(src) ? undefined : src} />;
 }

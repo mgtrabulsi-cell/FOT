@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import { fetchLivewirePosts, livewireSnapshot, readLivewirePosts } from '../src/services/livewirePosts.ts';
 import { readRenderSnapshot, saveRenderSnapshot } from '../src/services/renderSnapshots.ts';
+import { createWebOfflineStore } from '../src/services/webOffline.ts';
 
 const post = {
   id: 'post-1', author_id: null, author_name: "From The Analyst's Desk", title: 'Saved headline',
@@ -81,7 +82,7 @@ test('Malformed published posts and pick data are rejected rather than cached', 
   }
 });
 
-test('Public post refresh bypasses stale reads, keeps ordering, filters and pagination, without account tokens', async () => {
+test('Public post entry permits saved-first reads and keeps ordering, filters and pagination without account tokens', async () => {
   const original = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url, options) => {
@@ -92,7 +93,7 @@ test('Public post refresh bypasses stale reads, keeps ordering, filters and pagi
     const posts = await fetchLivewirePosts({ url: 'https://test.supabase.co', key: 'public-key' }, { limit: 501, themes: ['news', 'fantasy'] });
     assert.equal(posts.length, 502);
     assert.equal(requests.length, 2);
-    assert.equal(requests[0].options.cache, 'reload');
+    assert.equal(requests[0].options.cache, 'default');
     assert.equal(requests[0].options.headers.Authorization, undefined);
     assert.equal(requests[0].options.headers.apikey, 'public-key');
     assert.equal(requests[0].url.searchParams.get('themes'), 'ov.{news,fantasy}');
@@ -114,4 +115,79 @@ test('Linked posts use an independent ID query and refresh failures are explicit
     globalThis.fetch = async () => new Response('', { status: 503 });
     await assert.rejects(fetchLivewirePosts({ url: 'https://test.supabase.co', key: 'key' }, { limit: 20, themes: [] }), /HTTP 503/);
   } finally { globalThis.fetch = original; }
+});
+
+test('Explicit refresh after a mutation bypasses saved reads', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.cache, 'reload');
+    return Response.json([post]);
+  };
+  try {
+    await fetchLivewirePosts({ url: 'https://test.supabase.co', key: 'key' }, { limit: 20, themes: [], fresh: true });
+  } finally { globalThis.fetch = original; }
+});
+
+test('Feed timeout and caller cancellation both reach requests', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTimeout = AbortSignal.timeout;
+  const timeout = new AbortController();
+  const caller = new AbortController();
+  AbortSignal.timeout = (ms) => { assert.equal(ms, 15_000); return timeout.signal; };
+  globalThis.fetch = async (_url, options) => {
+    options.signal.throwIfAborted();
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+  };
+  try {
+    const pending = fetchLivewirePosts({ url: 'https://test.supabase.co', key: 'key' }, { limit: 20, themes: [] }, caller.signal);
+    timeout.abort(new DOMException('Timed out', 'TimeoutError'));
+    await assert.rejects(pending, { name: 'TimeoutError' });
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await assert.rejects(fetchLivewirePosts({ url: 'https://test.supabase.co', key: 'key' }, { limit: 20, themes: [] }, cancelled.signal), { name: 'AbortError' });
+  } finally {
+    globalThis.fetch = originalFetch;
+    AbortSignal.timeout = originalTimeout;
+  }
+});
+
+test('LIVEWIRE uses its response cache immediately while a fresh feed request is blocked', { timeout: 2000 }, async () => {
+  const original = globalThis.fetch;
+  const records = new Map();
+  const cache = {
+    async match(key) { return records.get(String(key))?.clone(); },
+    async put(key, response) { records.set(String(key), response.clone()); },
+    async keys() { return [...records.keys()]; },
+    async delete(key) { return records.delete(String(key)); },
+  };
+  let finish;
+  let slow = false;
+  let downloads = 0;
+  const options = {
+    scope: 'https://gamewire.us/', publicOrigin: 'https://test.supabase.co',
+    caches: { open: async () => cache }, online: () => true,
+    onSavedResponse() {}, onSaveError(error) { throw error; },
+    fetch: async () => {
+      downloads++;
+      return slow ? new Promise((resolve) => { finish = resolve; }) : Response.json([post]);
+    },
+  };
+  const config = { url: 'https://test.supabase.co', key: 'public-key' };
+  try {
+    globalThis.fetch = createWebOfflineStore(options).fetch;
+    await fetchLivewirePosts(config, { limit: 20, themes: [] });
+    slow = true;
+    const store = createWebOfflineStore(options);
+    globalThis.fetch = store.fetch;
+    assert.deepEqual(await fetchLivewirePosts(config, { limit: 20, themes: [] }), [post]);
+    assert.equal(downloads, 2);
+    assert.ok(finish, 'Refresh should run without holding up the cached feed');
+    finish(Response.json([{ ...post, title: 'Fresh headline' }]));
+    await store.settle();
+    assert.equal((await fetchLivewirePosts(config, { limit: 20, themes: [] }))[0].title, 'Fresh headline');
+    assert.equal(downloads, 2, 'Reading refreshed content must not start a revalidation loop');
+  } finally {
+    finish?.(Response.json([post]));
+    globalThis.fetch = original;
+  }
 });

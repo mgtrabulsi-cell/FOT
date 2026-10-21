@@ -15,7 +15,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
-import { readGameDetailsSnapshot, readRenderSnapshot } from './services/renderSnapshots';
+import { readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
+import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
 import { useSiteOpenTracking } from './useSiteOpenTracking';
@@ -38,7 +39,7 @@ import { useOnlineStatus } from './OfflineStatus';
 import { useOfflineSnapshots } from './useOfflineSnapshots';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { completedScoreUpdates } from './services/lockerRoomScores';
-import { supabase } from './services/supabaseClient';
+import { publicSupabaseConfig, supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
 import { nflFieldPosition } from './services/nflSituation.ts';
 import { connectMedianNavigation, hashForView, viewFromHash } from './services/medianNavigation';
@@ -550,6 +551,18 @@ function App() {
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [storyOpenKey, setStoryOpenKey] = useState(0);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
+  useEffect(() => {
+    if (!publicSupabaseConfig || authLoading || deletedAccount !== null || (!authUser && !guestMode)) return;
+    const controller = new AbortController();
+    void fetchLivewirePosts(publicSupabaseConfig, { limit: 20, themes: [] }, controller.signal)
+      .then((posts) => {
+        if (!controller.signal.aborted) saveRenderSnapshot('posts', 'livewire', livewireSnapshot(posts, 20));
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) console.error('Could not preload LIVEWIRE; opening the feed will retry', error);
+      });
+    return () => controller.abort();
+  }, [authLoading, authUser?.id, guestMode, deletedAccount]);
   const previousView = useRef(view);
   useEffect(() => connectMedianNavigation(), []);
   useEffect(() => {
@@ -617,7 +630,7 @@ function App() {
   const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
   const [scoreboardStatus, setScoreboardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [scoreboardRetry, setScoreboardRetry] = useState(0);
-  useOfflineSnapshots(games, deletedAccount === null && (!!authUser || guestMode));
+  useOfflineSnapshots(games, view !== 'LiveWire' && deletedAccount === null && (!!authUser || guestMode));
   useSiteOpenTracking(deletedAccount === null ? authUser?.id : null);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;
