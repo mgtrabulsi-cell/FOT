@@ -1,4 +1,6 @@
 import type { DenNewsItem, Game } from './sportsData';
+import { postThemes } from './postThemes.ts';
+import type { PostTheme } from './postThemes.ts';
 
 export const angleCategories = ['Former team', 'Head-to-head history', 'Rivalry / rematch', 'Milestone / comeback', 'Birthday', 'Public life event', 'Other'] as const;
 export type AngleCategory = typeof angleCategories[number];
@@ -38,6 +40,7 @@ export type Angle = {
   image_paths?: string[];
   section?: AngleSection;
   news_types?: NewsType[];
+  themes?: PostTheme[];
 };
 export type AngleSection = 'angle' | 'news';
 export const newsTypes = [
@@ -95,7 +98,12 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
     source_url: angle.source_url.trim(),
     source_label: angle.source_label.trim(), reviewed: angle.reviewed, status, image_paths: angle.image_paths ?? [],
     news_types: angleSection(angle) === 'news' ? [...new Set(angle.news_types ?? [])] : [],
+    themes: angleThemes(angle),
   };
+}
+
+export function angleThemes(angle: Pick<Angle, 'section' | 'themes'>): PostTheme[] {
+  return angle.themes ?? [angleSection(angle) === 'news' ? 'fantasy' : 'news'];
 }
 
 export function readAngles(value: unknown): Angle[] {
@@ -111,6 +119,9 @@ export function readAngles(value: unknown): Angle[] {
       && (!('image_paths' in row) || (Array.isArray(row.image_paths) && row.image_paths.length <= 4 && row.image_paths.every((path: unknown) => typeof path === 'string')))
       && (!('section' in row) || row.section === 'angle' || row.section === 'news')
       && (!('news_types' in row) || (Array.isArray(row.news_types) && row.news_types.every((type: unknown) => newsTypes.some((item) => item.value === type))))
+      && (!('themes' in row) || (Array.isArray(row.themes) && row.themes.length <= 3
+        && row.themes.every((theme: unknown) => postThemes.some((item) => item.value === theme))
+        && new Set(row.themes).size === row.themes.length))
       && 'reviewed' in row && typeof row.reviewed === 'boolean';
   };
   if (!Array.isArray(value) || !value.every(isAngle)) throw new Error('The server returned invalid angle data. Please reload.');

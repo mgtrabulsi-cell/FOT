@@ -90,11 +90,11 @@ export default function OwnerUserActivity({ user }: { user: User }) {
       <li className="owner-users-head" aria-hidden="true"><span>USER</span><span>OPENS</span><span>LAST OPENED</span><span>JOINED</span></li>
       {filtered.map((row) => <li key={row.user_id}>
         <span className="owner-users-identity"><b>{row.display_name || row.email || 'Unknown user'}</b>{row.display_name && row.email && <small>{row.email}</small>}</span>
-        <span className="owner-users-opens" aria-label={`${row.open_count} opens`}>{Number(row.open_count).toLocaleString()}</span>
-        <span className="owner-users-last"><small>Last opened </small>{formatLastOpened(row.last_opened_at, now)}</span>
+        <span className="owner-users-opens" aria-label={row.user_id === user.id ? 'Your opens are excluded' : `${row.open_count} opens`}>{row.user_id === user.id ? 'Excluded' : Number(row.open_count).toLocaleString()}</span>
+        <span className="owner-users-last"><small>Last opened </small>{row.user_id === user.id ? 'Not tracked' : formatLastOpened(row.last_opened_at, now)}</span>
         <span className="owner-users-joined"><small>Joined </small>{formatDate(row.joined_at)}</span>
       </li>)}
     </ol>}
-    <p className="owner-users-note">Opens are counted for signed-in visits starting Oct 19, 2026. Guests are not included.</p>
+    <p className="owner-users-note">Opens are counted for signed-in visits starting Oct 19, 2026. Guests and your owner account are not included in opens or activity totals.</p>
   </section>;
 }

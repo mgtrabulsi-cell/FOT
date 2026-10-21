@@ -1,7 +1,8 @@
 import { readAnglePicks } from './theAngle.ts';
 import type { AnglePick } from './theAngle.ts';
 
-export type PostTheme = 'news' | 'fantasy' | 'betting';
+import type { PostTheme } from './postThemes';
+export type { PostTheme } from './postThemes';
 export type LivewirePost = {
   id: string; author_id: string | null; author_name: string; angle_id?: string | null;
   admin_pick?: string; admin_picks?: AnglePick[]; title: string | null; body: string;

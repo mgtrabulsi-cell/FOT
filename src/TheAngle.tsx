@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { BookOpen, ExternalLink, Plus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleWriteFields, isAngleSource, newsTypes, readAngles, selectAngleSuggestions } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleThemes, angleWriteFields, isAngleSource, newsTypes, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSection, AngleSuggestion, NewsType } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
@@ -15,6 +15,7 @@ import PostGallery, { postPhotoUrl } from './PostGallery';
 import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
 import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
+import { postThemes } from './services/postThemes';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -51,6 +52,7 @@ function newAngle(game: Game, season: number, week: number, section: AngleSectio
     kind: 'team', subject: `${game.away.abbr} @ ${game.home.abbr}`, category: 'Other',
     title: '', narrative: '', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '',
     reviewed: false, status: 'draft', revision: 0, section, news_types: [],
+    themes: [],
   };
 }
 
@@ -249,6 +251,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }
   async function save(status: Angle['status']) {
     if (!form || !supabase || !admin || busy) return;
+    if (!angleThemes(form).length) { setActionError('Choose at least one theme. The first selected theme labels the notification.'); return; }
     const validation = status === 'published' ? anglePublishError(form) : !form.matchup.trim() ? 'Add the matchup before saving.' : '';
     if (validation) { setActionError(validation); return; }
     if (status === 'draft' && form.status === 'published' && !window.confirm('Move this published angle back to private drafts?')) return;
@@ -399,6 +402,14 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         </select></label>
         {angleSport(form.game_id).key !== 'NFL' && <label>{angleSport(form.game_id).label} matchup<input type="text" maxLength={200} placeholder="e.g. Lakers @ Celtics" value={form.matchup} onChange={(event) => change('matchup', event.target.value)} /></label>}
         <p>{form.subject || form.matchup || angleSport(form.game_id).label} · {form.category} · {form.season} · Week {form.week}</p>
+        <fieldset className="livewire-themes"><legend>Theme (choose one or more)</legend>
+          <div>{postThemes.map((theme) => <label key={theme.value}>
+            <input type="checkbox" checked={angleThemes(form).includes(theme.value)} onChange={(event) => change('themes', event.target.checked
+              ? [...angleThemes(form), theme.value] : angleThemes(form).filter((value) => value !== theme.value))} />
+            <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
+          </label>)}</div>
+          <small>{angleThemes(form)[0] ? `Notification prefix: ${postThemes.find((theme) => theme.value === angleThemes(form)[0])?.label}: (first selected theme)` : 'Select a theme first to set the notification prefix.'}</small>
+        </fieldset>
         {news && <fieldset className="livewire-themes angle-news-types"><legend>Type <span>(choose one or both)</span></legend>
           <div>{newsTypes.map((type) => <label key={type.value}>
             <input type="checkbox" checked={(form.news_types ?? []).includes(type.value)} onChange={(event) => change('news_types', event.target.checked

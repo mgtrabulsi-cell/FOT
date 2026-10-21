@@ -36,16 +36,16 @@ $$;
 select set_config('request.jwt.claim.sub','c9541111-1111-4111-8111-111111111111',true);
 do $$
 begin
-  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=3,'Owner counts once';
-  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=3,'Owner repeat does not inflate counts';
-  assert (select view_count from public.angle_view_counts where angle_id='c9541111-1111-4111-8111-111111111121')=3,'Owner reads counts';
+  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=2,'Owner first view excluded';
+  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=2,'Owner repeat excluded';
+  assert (select view_count from public.angle_view_counts where angle_id='c9541111-1111-4111-8111-111111111121')=2,'Owner reads audience counts';
 end;
 $$;
 select set_config('request.jwt.claim.sub','c9541111-1111-4111-8111-111111111112',true);
 do $$
 begin
-  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=4,'Admin records view';
-  assert (select view_count from public.angle_view_counts where angle_id='c9541111-1111-4111-8111-111111111121')=4,'Admin reads counts';
+  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=3,'Admin records view';
+  assert (select view_count from public.angle_view_counts where angle_id='c9541111-1111-4111-8111-111111111121')=3,'Admin reads counts';
   begin
     update public.angle_view_counts set view_count=999;
     raise exception 'Admin changed total directly';
@@ -60,5 +60,5 @@ begin
   assert not exists(select 1 from public.angle_owner_views where angle_id='c9541111-1111-4111-8111-111111111121'),'Owner receipt cascades';
 end;
 $$;
-select 'Angle views: guest/member privacy, admin/owner access, owner deduplication, draft exclusion, and cascades passed' as result;
+select 'Angle views: guest/member privacy, admin/owner access, owner exclusion, draft exclusion, and cascades passed' as result;
 rollback;

@@ -22,6 +22,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"]\.\/services\/renderSnapshots['"]/g, `from '${new URL('../src/services/renderSnapshots.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/livewirePosts['"]/g, `from '${new URL('../src/services/livewirePosts.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/theAngle['"]/g, `from '${new URL('../src/services/theAngle.ts', import.meta.url)}'`)
+  .replace(/from ['"]\.\/services\/postThemes['"]/g, `from '${new URL('../src/services/postThemes.ts', import.meta.url)}'`)
   .replace(/import OfflineImage from [^;]+;/, 'const OfflineImage = () => null;')
   .replace(/import PostGallery from [^;]+;/, 'const PostGallery = () => null;')
   .replace(/import AnglePicks from [^;]+;/, 'const AnglePicks = () => null;')

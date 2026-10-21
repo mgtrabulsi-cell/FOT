@@ -64,6 +64,7 @@ select set_config('request.jwt.claim.sub', 'd9503333-3333-4333-8333-333333333331
 do $$
 declare member record; admin record;
 begin
+  assert public.record_site_open() is null, 'Owner opens are excluded';
   select * into member from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333333';
   assert member.open_count = 2 and member.email = 'opens-member@example.test' and member.display_name = 'Member', 'Owner sees member opens';
   select * into admin from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333332';
@@ -74,6 +75,7 @@ reset role;
 
 do $$
 begin
+  assert not exists(select 1 from public.site_opens where user_id = 'd9503333-3333-4333-8333-333333333331'), 'No owner analytics row created';
   delete from auth.users where id = 'd9503333-3333-4333-8333-333333333333';
   assert not exists(select 1 from public.site_opens where user_id = 'd9503333-3333-4333-8333-333333333333'), 'Account deletion removes open counts';
 end;

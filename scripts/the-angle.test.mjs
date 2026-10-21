@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { anglePicks, angleSport, angleSportGameId, angleSportRecords, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleThemes, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
@@ -206,4 +206,21 @@ test('Regrading, resetting, removing and unpublishing picks recompute records wi
   assert.deepEqual(record(row), { wins: 0, losses: 1 });
   assert.deepEqual(record({ ...row, picks: [] }), { wins: 0, losses: 0 });
   assert.deepEqual(record({ ...row, status: 'draft' }), { wins: 0, losses: 0 });
+});
+
+test('Angle themes preserve selection order through saves and reads, with section defaults for legacy drafts', () => {
+  const row = { id: 'story', season: 2026, week: 7, revision: 1, game_id: 'NFL:123', matchup: 'Away @ Home',
+    kind: 'team', subject: '', category: 'Other', title: 'Title', narrative: 'Story', evidence: '', counterpoint: '',
+    pick: '', source_url: '', source_label: '', reviewed: true, status: 'published' };
+  for (const themes of [['betting', 'fantasy', 'news'], ['fantasy', 'news'], ['news', 'betting']]) {
+    const saved = angleWriteFields({ ...row, themes }, 'published');
+    assert.deepEqual(saved.themes, themes);
+    assert.deepEqual(angleThemes(readAngles([{ ...row, ...saved }])[0]), themes);
+  }
+  assert.deepEqual(angleThemes(row), ['news']);
+  assert.deepEqual(angleThemes({ ...row, section: 'news' }), ['fantasy']);
+  assert.deepEqual(angleThemes({ themes: [] }), []);
+  for (const themes of [null, ['other'], ['news', 'news'], ['news', 'fantasy', 'betting', 'news']]) {
+    assert.throws(() => readAngles([{ ...row, themes }]), /invalid/);
+  }
 });

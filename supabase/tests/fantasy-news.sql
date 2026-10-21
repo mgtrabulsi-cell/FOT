@@ -52,7 +52,7 @@ do $$
 begin
   assert exists(select 1 from public.livewire_push_deliveries where angle_id='f9541111-1111-4111-8111-111111111121' and primary_theme='fantasy')
     or not exists(select 1 from public.user_push_subscriptions),'Fantasy News pushes carry the fantasy theme';
-  assert not exists(select 1 from public.livewire_push_deliveries where angle_id='f9541111-1111-4111-8111-111111111123' and primary_theme is not null),'Angle pushes stay untagged';
+  assert not exists(select 1 from public.livewire_push_deliveries where angle_id='f9541111-1111-4111-8111-111111111123' and primary_theme is distinct from 'news'),'Legacy Angle pushes default to News';
 end;
 $$;
 select 'Fantasy News: sections, tags, publish rule, LIVEWIRE theme, unread kind, receipts, and push theme passed' as result;

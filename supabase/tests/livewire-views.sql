@@ -50,14 +50,14 @@ $$;
 select set_config('request.jwt.claim.sub', 'd9502222-2222-4222-8222-222222222231', true);
 do $$
 begin
-  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 7, 'Owner first view counts';
-  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 7, 'Owner repeat does not count';
+  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 6, 'Owner first view excluded';
+  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 6, 'Owner repeat excluded';
   begin
     delete from public.livewire_owner_views;
     raise exception 'Owner deleted view receipts directly';
   exception when insufficient_privilege then null;
   end;
-  assert (select view_count from public.livewire_posts where id = 'd9502222-2222-4222-8222-222222222221') = 7, 'Totals are publicly readable';
+  assert (select view_count from public.livewire_posts where id = 'd9502222-2222-4222-8222-222222222221') = 6, 'Totals are publicly readable';
 end;
 $$;
 reset role;
@@ -65,8 +65,8 @@ set local role anon;
 select set_config('request.jwt.claim.sub', '', true);
 do $$
 begin
-  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 8, 'Guests still count after owner view';
-  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 9, 'Guest repeats still count';
+  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 7, 'Guests still count after owner view';
+  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 8, 'Guest repeats still count';
   begin
     perform 1 from public.livewire_owner_views;
     raise exception 'Guest read owner receipts';
@@ -79,13 +79,13 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', 'd9502222-2222-4222-8222-222222222231', true);
 do $$
 begin
-  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 9, 'Owner repeat returns latest total without incrementing';
+  assert public.record_livewire_view('d9502222-2222-4222-8222-222222222221') = 8, 'Owner repeat returns latest total without incrementing';
 end;
 $$;
 reset role;
 do $$
 begin
-  assert (select count(*) from public.livewire_owner_views where user_id = 'd9502222-2222-4222-8222-222222222231') = 1, 'One receipt per owner/post';
+  assert (select count(*) from public.livewire_owner_views where user_id = 'd9502222-2222-4222-8222-222222222231') = 0, 'Excluded owner views create no receipts';
   delete from auth.users where id = 'd9502222-2222-4222-8222-222222222231';
   assert not exists(select 1 from public.livewire_owner_views where user_id = 'd9502222-2222-4222-8222-222222222231'), 'Account deletion removes owner receipt';
 end;

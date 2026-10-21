@@ -65,17 +65,21 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
       primaryTheme = theme;
       assert((await invoke()).status === 200, 'Themed delivery should succeed');
       const latest = payloads[payloads.length - 1];
-      assert(latest.title === `${theme.toUpperCase()}: Player news` && latest.body === '', 'First theme replaces LIVEWIRE, with no body');
+      assert(latest.title === `${theme[0].toUpperCase() + theme.slice(1)}: Player news` && latest.body === '', 'First theme replaces LIVEWIRE, with no body');
       assert(latest.tag === 'gamewire-livewire-post-123', 'Themed alerts retain their post tag');
     }
     storyline = true;
     assert((await invoke()).status === 200, 'Storyline delivery succeeds');
     const story = payloads[payloads.length - 1];
-    assert(story.title === 'SUNDAY SCRIPT: Player news' && story.body === '', 'Storyline alert uses exact requested title and no body');
+    assert(story.title === 'Betting: Player news' && story.body === '', 'Storyline alert uses the first theme and no body');
     assert(story.url === 'https://mgtrabulsi-cell.github.io/FOT/#analyst-desk/story/story-123' && story.tag === 'gamewire-storyline-story-123', 'Storyline opens its own post and uses a stable tag');
-        primaryTheme = 'fantasy';
-        assert((await invoke()).status === 200 && payloads[payloads.length - 1].title === 'FANTASY NEWS: Player news', 'Fantasy News stories use their own alert title');
-        primaryTheme = 'betting';    published = false;
+    for (const theme of ['fantasy', 'news', 'betting', null]) {
+      primaryTheme = theme;
+      assert((await invoke()).status === 200, 'Every storyline theme dispatches');
+      const prefix = theme ? theme[0].toUpperCase() + theme.slice(1) : 'News';
+      assert(payloads[payloads.length - 1].title === `${prefix}: Player news`, 'Storylines use the selected theme, with News for legacy untagged deliveries');
+    }
+    published = false;
     const beforeUnpublished = payloads.length;
     assert((await invoke()).status === 200 && payloads.length === beforeUnpublished, 'Unpublished or deleted stories do not send');
     published = true;

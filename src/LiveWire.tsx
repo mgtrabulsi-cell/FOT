@@ -12,12 +12,8 @@ import { anglePicks } from './services/theAngle';
 import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { LivewirePost as Post, PostTheme } from './services/livewirePosts';
 import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
+import { postThemes } from './services/postThemes';
 
-const postThemes = [
-  { value: 'news', label: 'News', color: 'tnf' },
-  { value: 'fantasy', label: 'Fantasy', color: 'snf' },
-  { value: 'betting', label: 'Betting', color: 'mnf' },
-] as const;
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
 
