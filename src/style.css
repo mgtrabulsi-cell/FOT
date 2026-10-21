@@ -484,7 +484,9 @@ button { color: inherit; }
 .results-records table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .results-records th, .results-records td { padding: 10px 8px; border-bottom: 1px solid #35445b; text-align: center; }
 .results-records th:first-child { text-align: left; }
+.results-records thead { background: #1a2638; }
 .results-records thead th { color: #a9b8ce; font-size: 12px; }
+.results-records tbody th { color: #e5eaf3; }
 .results-records tbody tr:last-child > * { border-bottom: 0; }
 .results-records td { font-weight: 700; font-variant-numeric: tabular-nums; }
 .results-record-wins { color: #75dfa6; }
