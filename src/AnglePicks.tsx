@@ -7,5 +7,5 @@ export function PickResult({ result }: { result: AnglePick['result'] }) {
 }
 
 export default function AnglePicks({ picks, emoji }: { picks: AnglePick[]; emoji?: string }) {
-  return <>{picks.map((pick) => <div className="angle-pick" key={pick.id}><div className="angle-pick-heading"><h4>{emoji && <span className="angle-sport-emoji" aria-hidden="true">{emoji}</span>}Admin pick · Opinion</h4><PickResult result={pick.result} /></div><p>{pick.text}</p></div>)}</>;
+  return <>{picks.map((pick) => <div className={`angle-pick angle-pick-${pick.result}`} key={pick.id}><div className="angle-pick-heading"><h4>{emoji && <span className="angle-sport-emoji" aria-hidden="true">{emoji}</span>}Admin pick · Opinion</h4><PickResult result={pick.result} /></div><p>{pick.text}</p></div>)}</>;
 }

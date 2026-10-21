@@ -470,8 +470,8 @@ button { color: inherit; }
 .angle-pick-editor, .angle-pick-editor > div, .results-stories { display: grid; gap: 12px; min-width: 0; }
 .results-pick-label { color: #a9b8ce; font: 600 11px var(--mono); }
 .results-stories .angle-pick { border-left-width: 4px; }
-.results-stories .results-pick-hit { border-left-color: #75dfa6; }
-.results-stories .results-pick-miss { border-left-color: #ff8f98; }
+.angle-pick-hit, .results-stories .results-pick-hit { border-left-color: #75dfa6; }
+.angle-pick-miss, .results-stories .results-pick-miss { border-left-color: #ff8f98; }
 .results-stories .pick-result { justify-content: center; width: 36px; height: 36px; border: 1px solid currentColor; border-radius: 50%; }
 .results-stories .pick-result-hit { background: #163c2b; }
 .results-stories .pick-result-miss { background: #48212b; }
