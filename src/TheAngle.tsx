@@ -372,8 +372,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {multiline ? <textarea maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />
       : <input type="text" maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />}
   </label>;
-  if (!visible && !form && !draftError && !notice && !actionError) return null;
-  return <section className="angle-panel" aria-label={news ? 'Fantasy News' : 'The Angle'}>
+  return <section className="angle-panel" hidden={!visible} aria-label={news ? 'Fantasy News' : 'The Angle'}>
     {visible && admin && <div className="angle-admin-bar">
       <button className="angle-create-button" disabled={busy || !draftReady || draftRestoreFailed || (!form && !weeklyGames.length)} onClick={() => { if (form) editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{form ? 'Continue draft' : news ? 'Create news' : 'Create an angle'}</button>
       {form && <button type="button" className="angle-create-button" disabled={busy} onClick={() => void discardDraft()}>Discard draft</button>}
