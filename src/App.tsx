@@ -616,7 +616,7 @@ function App() {
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
   const [analystMode, setAnalystMode] = useState<'Fantasy' | 'Angle' | 'Results'>('Angle');
-  const [fantasyMode, setFantasyMode] = useState<'Matchups' | 'News' | 'Hate'>('Matchups');
+  const [fantasyMode, setFantasyMode] = useState<'Matchups' | 'News' | 'Hate'>('News');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
@@ -1185,8 +1185,8 @@ function App() {
           <button role="tab" aria-selected={analystMode === 'Results'} className={analystMode === 'Results' ? 'active' : ''} onClick={() => setAnalystMode('Results')}>Our Results</button>
         </div>}
         {view === 'Analyst' && analystMode === 'Fantasy' && <div className="player-mode-tabs fantasy-mode-tabs" role="tablist" aria-label="Fantasy view">
-          <button role="tab" aria-selected={fantasyMode === 'Matchups'} aria-label={analystUnread.picks ? 'Admins Top Performers, unread updates' : 'Admins Top Performers'} className={fantasyMode === 'Matchups' ? 'active' : ''} onClick={() => setFantasyMode('Matchups')}>Admins Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={fantasyMode === 'News'} aria-label={analystUnread.news ? 'Fantasy News, unread posts' : 'Fantasy News'} className={fantasyMode === 'News' ? 'active' : ''} onClick={() => setFantasyMode('News')}>Fantasy News{analystUnread.news && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={fantasyMode === 'Matchups'} aria-label={analystUnread.picks ? 'Top Performers, unread updates' : 'Top Performers'} className={fantasyMode === 'Matchups' ? 'active' : ''} onClick={() => setFantasyMode('Matchups')}>Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={fantasyMode === 'Hate'} aria-label={analystUnread.hate ? 'Hate Watch, unread updates' : 'Hate Watch'} className={fantasyMode === 'Hate' ? 'active' : ''} onClick={() => setFantasyMode('Hate')}>Hate Watch{analystUnread.hate && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
         </div>}
         {view === 'Analyst' && (['top', 'hate'] as const).map((boardType) => {

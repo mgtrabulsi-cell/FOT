@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import { readRenderSnapshot, saveRenderSnapshot } from '../src/services/renderSnapshots.ts';
-import { fetchPPRProjections, lastFiveAverage, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPPRActuals, readPPRProjections } from '../src/services/matchupBoard.ts';
+import { fetchPPRProjections, lastFiveAverage, matchupBreakdownWords, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPPRActuals, readPPRProjections } from '../src/services/matchupBoard.ts';
 
 const pick = (id, position) => ({ id, position, name: `Player ${id}`, teamId: '1', gameId: 'NFL:123', headshot: '' });
 
@@ -35,7 +35,7 @@ test('Both Fantasy boards render saved players and metrics synchronously without
   try {
     for (const boardType of ['top', 'hate']) {
       const key = `2026:7:${boardType}`;
-      saveRenderSnapshot('fantasyBoard', key, { picks: [pick(boardType === 'top' ? '111' : '222', 'QB')], revision: 5 });
+      saveRenderSnapshot('fantasyBoard', key, { picks: [{ ...pick(boardType === 'top' ? '111' : '222', 'QB'), breakdown: `${boardType} published analysis\nSecond paragraph` }], revision: 5 });
       const id = boardType === 'top' ? '111' : '222';
       saveRenderSnapshot('fantasyAverages', key, { [id]: { average: 281.5, games: 5 } });
       saveRenderSnapshot('fantasyPPR', key, { projections: { [id]: 20.3 }, actuals: { [id]: 22.4 } });
@@ -43,6 +43,10 @@ test('Both Fantasy boards render saved players and metrics synchronously without
       assert.match(html, new RegExp(`Player ${id}`));
       assert.match(html, /281\.5/);
       assert.match(html, /20\.3/);
+      assert.match(html, new RegExp(`${boardType} published analysis\\nSecond paragraph`));
+      assert.match(html, new RegExp(`aria-controls="breakdown-${boardType}-2026-7-${id}"`));
+      assert.match(html, /aria-expanded="false"/);
+      assert.doesNotMatch(html, /<textarea/);
       assert.doesNotMatch(html, /Loading this week/);
       assert.doesNotMatch(html, new RegExp(`Player ${boardType === 'top' ? '222' : '111'}`));
     }
@@ -81,6 +85,20 @@ test('Published selection parser preserves ordering and rejects malformed player
   assert.deepEqual(readMatchupPicks(picks), picks);
   assert.throws(() => readMatchupPicks({}));
   assert.throws(() => readMatchupPicks([{ ...pick('1', 'QB'), position: 'K' }]));
+});
+
+test('Breakdowns retain text through parsing, reordering and public snapshots with a 300-word limit', () => {
+  const breakdown = 'word '.repeat(300);
+  const picks = [{ ...pick('1', 'QB'), breakdown }, { ...pick('2', 'QB'), breakdown: 'Different reasoning\n\nSecond paragraph.' }];
+  assert.deepEqual(readMatchupPicks(picks), picks);
+  assert.equal(moveMatchupPick(readMatchupPicks(picks), '1', 1)[1].breakdown, breakdown);
+  assert.equal(matchupBreakdownWords(' \n\t '), 0);
+  assert.equal(matchupBreakdownWords('one\n\ntwo\tthree\u00a0four\u2003five'), 5);
+  assert.equal(matchupBreakdownWords(breakdown), 300);
+  assert.deepEqual(readMatchupPicks([{ ...pick('1', 'QB'), breakdown: '' }])[0].breakdown, '');
+  for (const invalid of [null, 42, [], {}, 'word '.repeat(301), 'word\u00a0'.repeat(301)]) {
+    assert.throws(() => readMatchupPicks([{ ...pick('1', 'QB'), breakdown: invalid }]), /invalid player/);
+  }
 });
 
 test('Average uses the five most recent games before kickoff, with zero preserved', () => {

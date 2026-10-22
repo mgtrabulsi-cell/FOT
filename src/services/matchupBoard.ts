@@ -9,7 +9,13 @@ export type MatchupPick = {
   teamId: string;
   gameId: string;
   headshot: string;
+  breakdown?: string;
 };
+
+export const matchupBreakdownWordLimit = 300;
+export function matchupBreakdownWords(value: string): number {
+  return value.match(/\S+/gu)?.length ?? 0;
+}
 
 export const matchupStats: Record<MatchupPosition, { key: NFLPlayerStatKey; defense: 'passing' | 'rushing' | 'receiving'; label: string; title: string }> = {
   QB: { key: 'passingYards', defense: 'passing', label: 'Pass yards', title: 'Quarterbacks' },
@@ -91,10 +97,13 @@ export function readMatchupPicks(value: unknown): MatchupPick[] {
     const pick = object(entry);
     if (typeof pick.id !== 'string' || typeof pick.name !== 'string' || typeof pick.position !== 'string'
       || !isMatchupPosition(pick.position) || typeof pick.teamId !== 'string'
-      || typeof pick.gameId !== 'string' || typeof pick.headshot !== 'string') {
+      || typeof pick.gameId !== 'string' || typeof pick.headshot !== 'string'
+      || (pick.breakdown !== undefined && (typeof pick.breakdown !== 'string'
+        || matchupBreakdownWords(pick.breakdown) > matchupBreakdownWordLimit))) {
       throw new Error('The published board contains an invalid player.');
     }
-    return { id: pick.id, name: pick.name, position: pick.position, teamId: pick.teamId, gameId: pick.gameId, headshot: pick.headshot };
+    return { id: pick.id, name: pick.name, position: pick.position, teamId: pick.teamId, gameId: pick.gameId, headshot: pick.headshot,
+      ...(typeof pick.breakdown === 'string' ? { breakdown: pick.breakdown } : {}) };
   });
 }
 

@@ -6,7 +6,7 @@ import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { fetchNFLActiveSkillRoster, fetchNFLGameDetails } from './services/sportsData';
 import type { Game, NFLGameDetails } from './services/sportsData';
-import { fetchPlayerAverage, fetchPPRWeek, isMatchupPosition, matchupPositions, matchupStats, moveMatchupPick, readMatchupPicks } from './services/matchupBoard';
+import { fetchPlayerAverage, fetchPPRWeek, isMatchupPosition, matchupBreakdownWordLimit, matchupBreakdownWords, matchupPositions, matchupStats, moveMatchupPick, readMatchupPicks } from './services/matchupBoard';
 import type { MatchupPick } from './services/matchupBoard';
 import { picksReadKey } from './services/analystReads';
 import { useAnalystReadObserver } from './useAnalystReadObserver';
@@ -35,6 +35,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [query, setQuery] = useState('');
+  const [expandedPlayers, setExpandedPlayers] = useState<Set<string>>(() => new Set());
   const [candidates, setCandidates] = useState<MatchupPick[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState('');
@@ -52,6 +53,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
   const [averageError, setAverageError] = useState('');
   const boardRevision = useRef(saved?.revision ?? 0);
   const picks = (admin ? draft : null)?.picks ?? published.picks;
+  const overWordLimit = picks.some((pick) => matchupBreakdownWords(pick.breakdown ?? '') > matchupBreakdownWordLimit);
   const weeklyGames = games.filter((game) => game.league === 'NFL' && game.seasonYear === season);
   const scheduleKey = weeklyGames.map((game) => `${game.id}:${game.status}`).sort().join('|');
   const pickGameKey = [...new Set(picks.map((pick) => pick.gameId))].sort().join('|');
@@ -222,6 +224,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
 
   async function publish() {
     if (!supabase || !draft || !season || !week || busy) return;
+    if (overWordLimit) { setActionError('Each player breakdown must be 300 words or fewer.'); return; }
     setBusy(true); setActionError(''); setNotice('');
     try {
       const result = await supabase.rpc('publish_fantasy_board', {
@@ -257,7 +260,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
     {(loadError || accessError) && <p className="feed-warning" role="alert">{loadError || accessError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {!loaded && !loadError && <p role="status">Loading this week's published matchups...</p>}
     {admin && loaded && <div className="matchup-editor">
-      <p>Up to four players per position. Private until published.</p>
+      <p>Up to four players per position. Click a player to write a breakdown of up to 300 words. Changes stay private until you publish this board.</p>
       {rosterLoading && <p role="status">Loading player search...</p>}
       {rosterError && <p className="feed-warning" role="alert">{rosterError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
       {normalizedQuery && <div className="matchup-search-results" aria-label="Player search results">
@@ -273,7 +276,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
         {!matches.length && !rosterLoading && <p>No players match this search.</p>}
         {matches.length > 30 && <p>Showing 30 results. Refine your search to see more.</p>}
       </div>}
-      <div className="matchup-publish-actions"><button disabled={busy || !draft || !!loadError} onClick={() => void publish()}>{busy ? 'Publishing...' : `Publish ${title}`}</button>
+      <div className="matchup-publish-actions"><button disabled={busy || !draft || !!loadError || overWordLimit} onClick={() => void publish()}>{busy ? 'Publishing...' : `Publish ${title}`}</button>
         {draft && <button disabled={busy} onClick={() => { setDraft(null); setActionError(''); setNotice('Draft discarded.'); setRefresh((value) => value + 1); }}>Discard changes / reload</button>}
       </div>
     </div>}
@@ -302,8 +305,15 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
           const actual = game?.status === 'UPCOMING' ? undefined : actuals.get(pick.id);
           const final = game?.status === 'FINAL';
           const actualTone = !final || actual === undefined || projection === undefined || actual === projection ? '' : actual > projection ? ' is-over' : ' is-under';
+          const expanded = expandedPlayers.has(pick.id);
+          const breakdownId = `breakdown-${boardType}-${season}-${week}-${pick.id}`;
+          const words = matchupBreakdownWords(pick.breakdown ?? '');
           return <article className="favorable-matchup-item" data-post-id={readKey(pick.id)} key={`${published.revision}:${pick.id}`}>
-            <div className="favorable-matchup-player"><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{pick.headshot ? <OfflineImage src={pick.headshot} alt="" /> : pick.name.slice(0, 1)}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small></span></div>
+            <button type="button" className="favorable-matchup-player" aria-expanded={expanded} aria-controls={breakdownId} aria-label={`${admin ? 'Edit' : 'Read'} ${pick.name} breakdown`} onClick={() => setExpandedPlayers((current) => {
+              const next = new Set(current);
+              if (next.has(pick.id)) next.delete(pick.id); else next.add(pick.id);
+              return next;
+            })}><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{pick.headshot ? <OfflineImage src={pick.headshot} alt="" /> : pick.name.slice(0, 1)}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small><small className="matchup-breakdown-toggle">{expanded ? 'Hide breakdown' : admin ? 'Write / edit breakdown' : 'Read breakdown'} {expanded ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}</small></span></button>
             <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? averageLoading ? 'Loading...' : averageError ? 'Retrying game log' : 'No recorded games' : `last ${average.games} games`}</small></div>
               <div><b>{rank === null || rank === undefined ? '—' : `#${rank}`}</b><span>{position === 'QB' ? 'Pass' : position === 'RB' ? 'Rush' : 'Receiving'} defense rank</span><small>{opponent?.abbr ?? 'Unavailable'} · yards</small></div>
               <div><b>{projection?.toFixed(1) ?? '—'}</b><span>Projected PPR</span><small>{projection === undefined ? 'Unavailable' : `ESPN · Week ${week}`}</small></div>
@@ -313,6 +323,16 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
               <button aria-label={`Move ${pick.name} down`} disabled={busy || index === group.length - 1} onClick={() => edit(moveMatchupPick(picks, pick.id, 1))}><ChevronDown size={16} /></button>
               <button aria-label={`Remove ${pick.name}`} disabled={busy} onClick={() => edit(picks.filter((item) => item.id !== pick.id))}><X size={16} /></button>
             </div>}
+            <div id={breakdownId} className="matchup-breakdown" hidden={!expanded}>
+              {admin ? <>
+                <label htmlFor={`${breakdownId}-editor`}>{pick.name}: why {boardType === 'hate' ? 'Hate Watch' : 'Top Performers'}?</label>
+                <textarea id={`${breakdownId}-editor`} rows={6} value={pick.breakdown ?? ''} disabled={busy}
+                  aria-describedby={`${breakdownId}-count`} aria-invalid={words > matchupBreakdownWordLimit}
+                  onChange={(event) => edit(picks.map((item) => item.id === pick.id ? { ...item, breakdown: event.target.value } : item))}
+                  placeholder="Explain the matchup, usage, or concerns behind this selection..." />
+                <p id={`${breakdownId}-count`} className={words > matchupBreakdownWordLimit ? 'matchup-breakdown-limit' : ''} role={words > matchupBreakdownWordLimit ? 'alert' : undefined}>{words} / {matchupBreakdownWordLimit} words{words > matchupBreakdownWordLimit ? ' - shorten this breakdown before publishing.' : ' - publish the board to share changes.'}</p>
+              </> : <><h4>Why {boardType === 'hate' ? 'Hate Watch' : 'Top Performers'}?</h4><p>{pick.breakdown?.trim() ? pick.breakdown : 'No breakdown has been published for this player yet.'}</p></>}
+            </div>
           </article>;
         })}</div>
       </section>;
