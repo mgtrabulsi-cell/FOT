@@ -33,3 +33,13 @@ Deno.test('Analysis PNG pages are real bounded PNGs, support emoji, and never cu
   }
   console.log(`PNG rendering validation took ${Math.round(performance.now() - start)} ms including cold initialization and five rendered pages.`);
 });
+
+Deno.test('Analysis branding bundles the actual site logo and Oswald wordmark at high resolution', async () => {
+  const brand = await Deno.readFile(new URL('./assets/gamewire-site-brand.png', import.meta.url));
+  assert([...brand.slice(0, 8)].join(',') === '137,80,78,71,13,10,26,10', 'Site brand is a real PNG');
+  const dimensions = new DataView(brand.buffer, brand.byteOffset);
+  assert(dimensions.getUint32(16) === 640 && dimensions.getUint32(20) === 196, 'Brand exported at 4x actual desktop lockup dimensions (160×49 CSS pixels)');
+  const renderer = await Deno.readTextFile(new URL('./analysisImages.ts', import.meta.url));
+  assert(renderer.includes('href="${brandUri}"') && renderer.includes('x="${1136 - brandWidth}"'), 'Canonical branding placed at upper right');
+  assert(!renderer.includes('>GAME<tspan'), 'Approximate text wordmark removed');
+});

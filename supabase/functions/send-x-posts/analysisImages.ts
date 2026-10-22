@@ -3,7 +3,7 @@ import { parse } from 'npm:opentype.js@1.3.4';
 import type { XPostSource } from '../_shared/xPosting.ts';
 
 type Font = { charToGlyphIndex(character: string): number; getAdvanceWidth(text: string, size: number): number };
-type Assets = { buffers: Uint8Array[]; fonts: Font[] };
+type Assets = { buffers: Uint8Array[]; fonts: Font[]; brandUri: string; brandWidth: number };
 let assets: Promise<Assets> | undefined;
 function loadAssets(): Promise<Assets> {
   return assets ??= (async () => {
@@ -14,7 +14,12 @@ function loadAssets(): Promise<Assets> {
         return new Uint8Array(await new Response(stream).arrayBuffer());
       }));
     await initWasm(wasm);
-    return { buffers: [normal, emoji], fonts: [parse(normal.buffer), parse(emoji.buffer)] };
+    const brand = await Deno.readFile(new URL('./assets/gamewire-site-brand.png', import.meta.url));
+    const dimensions = new DataView(brand.buffer, brand.byteOffset, brand.byteLength);
+    const brandWidth = dimensions.getUint32(16) / dimensions.getUint32(20) * 64;
+    if (!Number.isFinite(brandWidth) || brandWidth < 100 || brandWidth > 400) throw new Error('Site brand image has invalid dimensions.');
+    const brandUri = `data:image/png;base64,${btoa(Array.from(brand, byte => String.fromCharCode(byte)).join(''))}`;
+    return { buffers: [normal, emoji], fonts: [parse(normal.buffer), parse(emoji.buffer)], brandUri, brandWidth };
   })();
 }
 const xml = (text: string) => text.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!);
@@ -67,7 +72,7 @@ function svgText(text: string, y: number, size: number, fonts: Font[], color: st
 }
 export async function analysisImages(source: XPostSource): Promise<Array<{ png: Uint8Array; alt: string }>> {
   if (!source.analysis.trim()) throw new Error('Cannot attach an empty analysis image.');
-  const { buffers, fonts } = await loadAssets();
+  const { buffers, fonts, brandUri, brandWidth } = await loadAssets();
   const heading = wrapAnalysis(source.title, 42, 1072, fonts);
   if (heading.length > 3) throw new Error('Headline is too long for a readable analysis image.');
   const start = 180 + heading.length * 56;
@@ -81,8 +86,8 @@ export async function analysisImages(source: XPostSource): Promise<Array<{ png: 
     const height = Math.max(680, start + (pageLines.length - 1) * 44 + 150);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}">
       <rect width="1200" height="${height}" fill="#101b2b"/><rect x="0" width="8" height="${height}" fill="#f43f54"/>
-      <text x="64" y="78" font-family="Noto Sans" font-size="35" fill="#f1f5f9">GAME<tspan fill="#f43f54">WIRE</tspan></text>
-      <text x="1136" y="76" text-anchor="end" font-family="Noto Sans" font-size="20" fill="#a7b7cd">ANALYSIS · ${page + 1}/${count}</text>
+      <image x="${1136 - brandWidth}" y="28" width="${brandWidth}" height="64" href="${brandUri}"/>
+      <text x="64" y="76" font-family="Noto Sans" font-size="20" fill="#a7b7cd">ANALYSIS · ${page + 1}/${count}</text>
       <path d="M64 110H1136" stroke="#314159"/>
       ${heading.map((line, index) => svgText(line, 177 + index * 56, 42, fonts, '#f1f5f9')).join('')}
       ${pageLines.map((line, index) => svgText(line, start + index * 44, 30, fonts, '#d7e2ef')).join('')}
