@@ -22,6 +22,26 @@ test('Non-NFL Angle stories cross weeks for exactly 168 hours, then stay in thei
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
+test('General NFL and Fantasy posts retain their labels, independent themes, and selected week', () => {
+  for (const section of ['angle', 'news']) {
+    for (const [game_id, matchup] of [['NFL:0', 'NFL'], ['FANTASY:0', 'Fantasy']]) {
+      const draft = { id: 'general', season: 2026, week: 7, revision: 1, section,
+        game_id, matchup, kind: 'team', subject: '', category: 'Other', title: 'General update',
+        narrative: 'Editorial context', evidence: '', counterpoint: '', pick: '', source_url: '',
+        source_label: '', reviewed: true, themes: ['news'], news_types: ['news'] };
+      assert.equal(anglePublishError(draft), '');
+      const fields = angleWriteFields(draft, 'published');
+      assert.equal(fields.game_id, game_id);
+      assert.equal(fields.matchup, matchup);
+      assert.deepEqual(fields.themes, ['news']);
+      assert.equal(fields.post_to_x, false);
+      const [restored] = readAngles([{ ...draft, ...fields }]);
+      assert.equal(restored.matchup, matchup);
+      assert.equal(angleVisibleInWeek(restored, 2026, 7), true);
+      assert.equal(angleVisibleInWeek({ ...restored, published_at: new Date().toISOString() }, 2026, 8), false);
+    }
+  }
+});
 test('Story publishing defaults X off for new drafts and preserves explicit choices', () => {
   const fields = { game_id: 'NFL:123', matchup: 'Test', kind: 'team', subject: 'Test', category: 'Other',
     title: 'Headline', narrative: 'Text', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true };

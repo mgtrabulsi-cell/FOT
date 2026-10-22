@@ -47,10 +47,12 @@ async function fetchAngleSuggestions(games: Game[], signal: AbortSignal) {
   return { suggestions: suggestions.sort((a, b) => Date.parse(b.article.published) - Date.parse(a.article.published)), errors };
 }
 
-function newAngle(game: Game, season: number, week: number, section: AngleSection = 'angle'): Angle {
+const generalMatchups = [{ id: 'NFL:0', label: 'NFL' }, { id: 'FANTASY:0', label: 'Fantasy' }] as const;
+
+function newAngle(game: Game | undefined, season: number, week: number, section: AngleSection = 'angle'): Angle {
   return {
-    id: '', season, week, game_id: game.id, matchup: `${game.away.name} @ ${game.home.name}`,
-    kind: 'team', subject: `${game.away.abbr} @ ${game.home.abbr}`, category: 'Other',
+    id: '', season, week, game_id: game?.id ?? 'NFL:0', matchup: game ? `${game.away.name} @ ${game.home.name}` : 'NFL',
+    kind: 'team', subject: game ? `${game.away.abbr} @ ${game.home.abbr}` : '', category: 'Other',
     title: '', narrative: '', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '',
     reviewed: false, status: 'draft', revision: 0, section, news_types: [],
     themes: [],
@@ -374,7 +376,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   </label>;
   return <section className="angle-panel" hidden={!visible} aria-label={news ? 'Fantasy News' : 'The Angle'}>
     {visible && admin && <div className="angle-admin-bar">
-      <button className="angle-create-button" disabled={busy || !draftReady || draftRestoreFailed || (!form && !weeklyGames.length)} onClick={() => { if (form) editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{form ? 'Continue draft' : news ? 'Create news' : 'Create an angle'}</button>
+      <button className="angle-create-button" disabled={busy || !draftReady || draftRestoreFailed || (!form && (!season || !week))} onClick={() => { if (form) editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else if (season && week) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{form ? 'Continue draft' : news ? 'Create news' : 'Create an angle'}</button>
       {form && <button type="button" className="angle-create-button" disabled={busy} onClick={() => void discardDraft()}>Discard draft</button>}
       <span>{drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}</span>
     </div>}
@@ -388,9 +390,14 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           if (value === form.game_id) return;
           const game = weeklyGames.find((item) => item.id === value);
           const sport = angleSports.find((item) => angleSportGameId(item.key) === value);
+          const general = generalMatchups.find((item) => item.id === value);
           if (game) {
             setForm({ ...form, game_id: game.id, matchup: `${game.away.name} @ ${game.home.name}`,
               kind: 'team', subject: `${game.away.abbr} @ ${game.home.abbr}`, category: 'Other',
+              evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: false });
+            setDirty(true);
+          } else if (general) {
+            setForm({ ...form, game_id: general.id, matchup: general.label, kind: 'team', subject: '', category: 'Other',
               evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: false });
             setDirty(true);
           } else if (sport) {
@@ -398,7 +405,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
               evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: false });
             setDirty(true);
           }
-        }}>{!weeklyGames.some((game) => game.id === form.game_id) && angleSport(form.game_id).key === 'NFL' && <option value={form.game_id}>{form.matchup}</option>}
+        }}>{!generalMatchups.some((item) => item.id === form.game_id) && !weeklyGames.some((game) => game.id === form.game_id) && angleSport(form.game_id).key === 'NFL' && <option value={form.game_id}>{form.matchup}</option>}
+          <optgroup label="General">{generalMatchups.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</optgroup>
           <optgroup label="NFL">{weeklyGames.map((game) => <option key={game.id} value={game.id}>{game.away.name} @ {game.home.name}</option>)}</optgroup>
           <optgroup label="Other sports">{angleSports.map((sport) => <option key={sport.key} value={angleSportGameId(sport.key)}>{sport.emoji} {sport.label}</option>)}</optgroup>
         </select></label>
@@ -493,7 +501,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {admin && <section className="angle-admin" aria-label={news ? 'Fantasy News admin desk' : 'The Angle admin desk'}>
       <h3>Admin desk <span>Private</span></h3>{!news && <><p>Verify every lead before publishing.</p>
       <div className="angle-actions"><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
-      {!weeklyGames.length && <p>No NFL matchups are available for this week. Manual creation and suggestions need a loaded matchup.</p>}
+      {!weeklyGames.length && <p>No NFL matchups are available for this week. You can create a general NFL or Fantasy post; matchup suggestions need a loaded game.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
       {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news, birthday, or matchup-history leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
       <div className="angle-filters" role="group" aria-label="Select lead category">

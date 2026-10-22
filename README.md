@@ -123,6 +123,8 @@ The Angle and Fantasy News editors use a compact two-column field layout on desk
 
 The unchecked-by-default Post to X choice sits beside Publish angle/Publish news in the editor action row, wrapping on narrow screens without changing draft preferences or first-publication restrictions.
 
+Both editors offer general **NFL** and **Fantasy** Matchup selections alongside specific games and other sports. These general posts belong to the selected NFL season/week and do not require a loaded game; theme choices remain independent. Apply [`supabase/angle-sports.sql`](supabase/angle-sports.sql) to allow the `FANTASY:0` general identifier (`NFL:0` identifies general NFL posts).
+
 Angle and Fantasy News editors remain mounted to preserve unfinished drafts, but their entire panels are hidden whenever their section is inactive. Draft editors, restoration notices, and errors never appear on unrelated pages.
 
 Published photos open in an in-page modal with a larger, contained image instead of a new browser tab. Close with the Close button, Escape, or the backdrop; focus returns to the photo button and background scrolling is locked while open.

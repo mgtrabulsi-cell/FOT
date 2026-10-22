@@ -6,6 +6,8 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub','f8541111-1111-4111-8111-111111111111',true);
 insert into public.angles(season,week,game_id,matchup,kind,subject,category,title)
 values (2200,18,'NFL:123','Test','team','','Other','NFL'),
+ (2200,18,'NFL:0','NFL','team','','Other','General NFL'),
+ (2200,18,'FANTASY:0','Fantasy','team','','Other','General Fantasy'),
  (2200,18,'NBA:0','Lakers @ Celtics','team','','Other','NBA'),
  (2200,18,'NHL:0','Rangers @ Bruins','team','','Other','NHL'),
  (2200,18,'UCL:0','Arsenal vs Inter','team','','Other','UCL'),
@@ -25,5 +27,5 @@ begin
 end;
 $$;
 reset role;
-select 'Angle sports: NFL games plus NBA, NHL, UCL, and Soccer picks accepted; other leagues rejected' as result;
+select 'Angle sports: general NFL/Fantasy, NFL games, NBA, NHL, UCL, and Soccer picks accepted; other leagues rejected' as result;
 rollback;
