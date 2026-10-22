@@ -1,4 +1,41 @@
+import { anglePicks, angleSport, readAnglePicks } from '../../../src/services/anglePicks.ts';
+
 export type XCredentials = { apiKey: string; apiSecret: string; accessToken: string; accessSecret: string };
+export type XPostSource = {
+  title: string; subject: string; analysis: string; gameId: string;
+  picks: ReturnType<typeof readAnglePicks>;
+};
+
+export function xSource(row: Record<string, unknown>, angle: boolean, id: string): XPostSource {
+  const text = (key: string) => {
+    const value = row[key];
+    if (typeof value !== 'string') throw new Error(`Published source has invalid ${key}`);
+    return value;
+  };
+  const title = row.title === null && !angle ? 'GameWire update' : text('title');
+  if (!angle) return { title, subject: '', analysis: text('body'), gameId: '', picks: [] };
+  const picks = row.picks === undefined ? undefined : readAnglePicks(row.picks);
+  const narrative = text('narrative');
+  const evidence = text('evidence');
+  const counterpoint = text('counterpoint');
+  return {
+    title, subject: text('subject'), gameId: text('game_id'),
+    picks: anglePicks({ id, pick: text('pick'), picks }),
+    analysis: [narrative, evidence.trim() ? `Evidence\n${evidence}` : '', counterpoint.trim() ? `Counterpoint\n${counterpoint}` : ''].filter(Boolean).join('\n\n'),
+  };
+}
+
+export function xImagePostText(source: XPostSource, link: string): string {
+  const clean = (value: string) => value.replace(/\s+/gu, ' ').trim();
+  const heading = clean(source.title);
+  const subject = clean(source.subject);
+  const picks = source.picks.map(pick => `${angleSport(source.gameId).emoji} ${pick.result === 'hit' ? '✅ ' : pick.result === 'miss' ? '❌ ' : ''}${clean(pick.text)}`);
+  const content = [heading, ...(subject && subject !== heading ? [subject] : []), ...(picks.length ? [`Admin picks · Opinion\n${picks.join('\n')}`] : [])].join('\n\n');
+  // Preserve every pick and the link. Never silently shorten an admin's selection.
+  const weight = [...content.replace(/https?:\/\/\S+/g, 'x'.repeat(23))].reduce((total, character) => total + (character.codePointAt(0)! <= 0x7f ? 1 : 2), 0);
+  if (weight + 2 + 23 > 280) throw new Error('Headline, subject and admin picks exceed X’s 280-character limit. Shorten them or post manually; no tweet was sent.');
+  return `${content}\n\n${link}`;
+}
 
 const encode = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g,
   (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -22,20 +59,4 @@ export async function xAuthorization(
   const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(base)));
   oauth.oauth_signature = btoa(String.fromCharCode(...signature));
   return `OAuth ${Object.entries(oauth).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${encode(key)}="${encode(value)}"`).join(', ')}`;
-}
-
-// Count non-ASCII code points conservatively as two; the sole URL uses X's 23-character URL weight.
-export function xPostText(theme: string, title: string, body: string, link: string): string {
-  const clean = (value: string) => value.replace(/https?:\/\/\S+/gi, '').replace(/\s+/gu, ' ').trim();
-  const content = `${theme}: ${clean(title)}${clean(body) ? `\n\n${clean(body)}` : ''}`;
-  let used = 0;
-  let excerpt = '';
-  const budget = 280 - 23 - 2 - 2;
-  for (const character of content) {
-    const weight = character.codePointAt(0)! <= 0x7f ? 1 : 2;
-    if (used + weight > budget) return `${excerpt.trimEnd()}…\n\n${link}`;
-    used += weight;
-    excerpt += character;
-  }
-  return `${excerpt}\n\n${link}`;
 }

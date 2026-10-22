@@ -1,21 +1,13 @@
 import type { DenNewsItem, Game } from './sportsData';
 import { postThemes } from './postThemes.ts';
 import type { PostTheme } from './postThemes.ts';
+import { anglePicks, angleSport, angleSports, nflSport, readAnglePicks } from './anglePicks.ts';
+import type { AnglePick } from './anglePicks.ts';
+export { anglePicks, angleSport, angleSports, readAnglePicks } from './anglePicks.ts';
+export type { AnglePick, AngleSportKey } from './anglePicks.ts';
 
 export const angleCategories = ['Former team', 'Head-to-head history', 'Rivalry / rematch', 'Milestone / comeback', 'Birthday', 'Public life event', 'Other'] as const;
 export type AngleCategory = typeof angleCategories[number];
-export type AnglePick = { id: string; text: string; result: 'pending' | 'hit' | 'miss' };
-export function readAnglePicks(value: unknown): AnglePick[] {
-  if (!Array.isArray(value) || !value.every((pick) => pick && typeof pick === 'object'
-    && typeof pick.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pick.id)
-    && typeof pick.text === 'string' && pick.text.trim().length > 0 && pick.text.length <= 500
-    && ['pending', 'hit', 'miss'].includes(pick.result))
-    || new Set(value.map((pick) => pick.id.toLowerCase())).size !== value.length) throw new Error('The server returned invalid admin picks. Please reload.');
-  return value;
-}
-export function anglePicks(angle: { id: string; pick: string; picks?: AnglePick[] }): AnglePick[] {
-  return angle.picks ?? (angle.pick.trim() ? [{ id: angle.id, text: angle.pick, result: 'pending' }] : []);
-}
 export type Angle = {
   id: string;
   season: number;
@@ -73,18 +65,6 @@ export function angleLeadGroup(category: AngleCategory): typeof angleLeadGroups[
   return 'Game trends';
 }
 
-export const angleSports = [
-  { key: 'NBA', label: 'NBA', emoji: '🏀' },
-  { key: 'NHL', label: 'NHL', emoji: '🏒' },
-  { key: 'UCL', label: 'UCL', emoji: '⚽' },
-  { key: 'SOCCER', label: 'Soccer', emoji: '⚽' },
-] as const;
-export type AngleSportKey = 'NFL' | typeof angleSports[number]['key'];
-const nflSport = { key: 'NFL', label: 'NFL', emoji: '🏈' } as const;
-export function angleSport(gameId: string): { key: AngleSportKey; label: string; emoji: string } {
-  const prefix = gameId.split(':')[0];
-  return angleSports.find((sport) => sport.key === prefix) ?? nflSport;
-}
 export const angleSportGameId = (key: typeof angleSports[number]['key']) => `${key}:0`;
 
 export function angleSportRecords(stories: Angle[]) {

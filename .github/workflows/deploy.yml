@@ -32,7 +32,7 @@ jobs:
       - name: Test X publishing
         run: node --test scripts/x-posting.test.mjs
       - name: Test X dispatcher
-        run: npx --yes deno test --allow-env supabase/functions/send-x-posts/index.test.ts
+        run: npx --yes deno test --config supabase/functions/send-x-posts/deno.json --allow-env --allow-read supabase/functions/send-x-posts/index.test.ts supabase/functions/send-x-posts/analysisImages.test.ts
       - name: Build site
         run: npm run build
         env:

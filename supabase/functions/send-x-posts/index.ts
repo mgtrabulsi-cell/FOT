@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { xAuthorization, xPostText } from '../_shared/xPosting.ts';
+import { xAuthorization, xImagePostText, xSource } from '../_shared/xPosting.ts';
+import { analysisImages } from './analysisImages.ts';
+import { uploadAnalysisImage } from './xMedia.ts';
 
 Deno.serve(async (request: Request) => {
   const secret = Deno.env.get('GAMEWIRE_CRON_SECRET');
@@ -51,13 +53,13 @@ Deno.serve(async (request: Request) => {
         const angle = delivery.source_type === 'angle';
         const loadSource = async () => {
           if (angle) {
-            const { data, error } = await admin.from('angles').select('title,narrative,status,themes').eq('id', delivery.source_id).maybeSingle();
+            const { data, error } = await admin.from('angles').select('title,subject,narrative,evidence,counterpoint,pick,picks,game_id,status').eq('id', delivery.source_id).maybeSingle();
             if (error) throw error;
-            return data && data.status === 'published' ? { title: data.title, body: data.narrative, themes: data.themes } : null;
+            return data && data.status === 'published' ? xSource(data, true, delivery.source_id) : null;
           }
-          const { data, error } = await admin.from('livewire_posts').select('title,body,angle_id,themes').eq('id', delivery.source_id).maybeSingle();
+          const { data, error } = await admin.from('livewire_posts').select('title,body,angle_id').eq('id', delivery.source_id).maybeSingle();
           if (error) throw error;
-          return data && data.angle_id === null ? { title: data.title, body: data.body, themes: data.themes } : null;
+          return data && data.angle_id === null ? xSource(data, false, delivery.source_id) : null;
         };
         const source = await loadSource();
         if (!source) {
@@ -67,16 +69,26 @@ Deno.serve(async (request: Request) => {
           if (cancelError) throw cancelError;
           continue;
         }
-        const theme = source.themes?.[0];
-        const prefix = theme === 'fantasy' ? 'Fantasy' : theme === 'betting' ? 'Betting' : 'News';
         const link = `https://gamewire.us/${angle ? '#analyst-desk/story/' : '#livewire/post/'}${delivery.source_id}`;
-        const text = xPostText(prefix, source.title ?? 'GameWire update', source.body, link);
+        const text = xImagePostText(source, link);
+        const images = await analysisImages(source);
+        const mediaIds: string[] = [];
+        for (const image of images) mediaIds.push(await uploadAnalysisImage(credentials, image));
+        const latest = await loadSource();
+        if (!latest) {
+          const { error } = await admin.from('x_publications').update({
+            status: 'cancelled', updated_at: new Date().toISOString(), last_error: 'Source removed or unpublished during image preparation',
+          }).eq('id', delivery.id);
+          if (error) throw error;
+          continue;
+        }
+        if (JSON.stringify(latest) !== JSON.stringify(source)) throw new Error('Source changed during image preparation. No tweet was sent; review the updated post before sharing manually.');
         const endpoint = 'https://api.x.com/2/tweets';
         const authorization = await xAuthorization(credentials, 'POST', endpoint);
         attempted = true;
         const response = await fetch(endpoint, {
           method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }), signal: AbortSignal.timeout(20_000),
+          body: JSON.stringify({ text, media: { media_ids: mediaIds } }), signal: AbortSignal.timeout(20_000),
         });
         if (!response.ok) {
           // 5xx and network errors are ambiguous; even a received error must not trigger a duplicate.

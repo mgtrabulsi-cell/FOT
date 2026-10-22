@@ -106,7 +106,7 @@ begin
     where status='sending' and updated_at < now()-interval '5 minutes';
   return query update public.x_publications p set status='sending',updated_at=now()
     where p.id in (select id from public.x_publications where status='pending'
-      order by id for update skip locked limit 5)
+      order by id for update skip locked limit 1)
     returning p.*;
 end;
 $$;

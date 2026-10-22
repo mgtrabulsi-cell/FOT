@@ -88,7 +88,9 @@ do $$
 declare first_count integer; second_count integer;
 begin
   select count(*) into first_count from public.claim_x_publications();
-  assert first_count=2,'Claims exactly two eligible fixture publications';
+  assert first_count=1,'Claims one publication per invocation to bound image rendering work';
+  select count(*) into second_count from public.claim_x_publications();
+  assert second_count=1,'Next claim takes the other eligible publication';
   select count(*) into second_count from public.claim_x_publications();
   assert second_count=0,'Already claimed posts never resend';
   update public.x_publications set updated_at=now()-interval '6 minutes' where status='sending';
