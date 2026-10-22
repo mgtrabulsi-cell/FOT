@@ -107,7 +107,7 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
     source_label: angle.source_label.trim(), reviewed: angle.reviewed, status, image_paths: angle.image_paths ?? [],
     news_types: angleSection(angle) === 'news' ? [...new Set(angle.news_types ?? [])] : [],
     themes: angleThemes(angle),
-    post_to_x: angle.post_to_x ?? true,
+    post_to_x: angle.post_to_x ?? false,
   };
 }
 

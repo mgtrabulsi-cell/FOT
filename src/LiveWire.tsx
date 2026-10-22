@@ -53,7 +53,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
   const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
   const [themes, setThemes] = useState<PostTheme[]>([]);
-  const [postToX, setPostToX] = useState(true);
+  const [postToX, setPostToX] = useState(false);
   const [themeFilters, setThemeFilters] = useState<PostTheme[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [draftReady, setDraftReady] = useState(false);
@@ -126,7 +126,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       if (draft) {
         resetPhotos();
         setTitle(draft.title); setBody(draft.body); setSource(draft.source); setThemes(draft.themes); setEditing(draft.editing);
-        setPostToX(draft.postToX ?? true);
+        setPostToX(draft.postToX ?? false);
         setPhotos(draft.photos.map((photo) => {
           const preview = photo.file ? URL.createObjectURL(photo.file) : photoUrl(photo.path ?? '');
           if (photo.file) previews.current.add(preview);
@@ -294,7 +294,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       if (!supabase || busy) return;
       if (source.trim() && !safeNewsLink(source.trim())) { setActionError('Use a valid http or https news link.'); return; }
       void act(savePost, () => {
-        resetPhotos(); setPostToX(true); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setDraftRestoreFailed(false); setComposerOpen(false); setNotice(editing ? 'Post updated.' : 'Post published.');
+        resetPhotos(); setPostToX(false); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setDraftRestoreFailed(false); setComposerOpen(false); setNotice(editing ? 'Post updated.' : 'Post published.');
       });
     }}>
       <h3>{editing ? 'Edit post' : 'New post'}</h3>
@@ -331,7 +331,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
         setPhotos((current) => current.filter((_, item) => item !== index));
       }}>Remove photo {index + 1}</button></div>)}</div>}
-      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => setComposerOpen(false)}>Close</button><button type="button" disabled={busy} onClick={() => { if (!hasDraft || window.confirm(editing ? 'Discard your changes to this post?' : 'Discard this saved draft?')) { resetPhotos(); setPostToX(true); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setDraftRestoreFailed(false); setComposerOpen(false); } }}>{editing ? 'Cancel edit' : 'Discard'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
+      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => setComposerOpen(false)}>Close</button><button type="button" disabled={busy} onClick={() => { if (!hasDraft || window.confirm(editing ? 'Discard your changes to this post?' : 'Discard this saved draft?')) { resetPhotos(); setPostToX(false); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setDraftRestoreFailed(false); setComposerOpen(false); } }}>{editing ? 'Cancel edit' : 'Discard'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}

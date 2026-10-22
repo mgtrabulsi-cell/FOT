@@ -1,7 +1,7 @@
 begin;
 
 alter table public.angles add column if not exists post_to_x boolean not null default false;
-alter table public.angles alter column post_to_x set default true;
+alter table public.angles alter column post_to_x set default false;
 
 create table if not exists public.x_publishing_settings (
   id boolean primary key default true check(id),
@@ -61,7 +61,7 @@ begin
   else
     if new.angle_id is not null then return new; end if;
     kind := 'livewire';
-    selected := coalesce(nullif(current_setting('gamewire.post_to_x',true),''),'true')::boolean;
+    selected := coalesce(nullif(current_setting('gamewire.post_to_x',true),''),'false')::boolean;
   end if;
   select enabled into connected from public.x_publishing_settings where id;
   insert into public.x_publications(source_type,source_id,status,last_error)

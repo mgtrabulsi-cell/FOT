@@ -28,6 +28,7 @@ if (!approved) {
 }
 if (approved.toLowerCase() !== account.username.toLowerCase()) throw new Error('The confirmed account does not match these tokens. Nothing was enabled.');
 const temporary = '.env.x-upload.local';
+const temporarySql = '.env.x-enable.local';
 writeFileSync(temporary, [...names.map(name => `${name}=${env[name]}`), `X_ACCOUNT_ID=${account.id}`].join('\n'), { mode: 0o600 });
 function cli(args) {
   const result = process.platform === 'win32'
@@ -37,6 +38,10 @@ function cli(args) {
 }
 try {
   cli(`secrets set --env-file ${temporary}`);
-  cli(`db query --linked "update public.x_publishing_settings set enabled=true where id"`);
+  writeFileSync(temporarySql, 'update public.x_publishing_settings set enabled=true where id;');
+  cli(`db query --linked --file ${temporarySql}`);
   console.log(`X publishing enabled for @${account.username}. Only future first publications with Post to X checked will be queued.`);
-} finally { unlinkSync(temporary); }
+} finally {
+  unlinkSync(temporary);
+  if (existsSync(temporarySql)) unlinkSync(temporarySql);
+}

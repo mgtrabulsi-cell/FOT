@@ -46,6 +46,11 @@ begin
   assert (select count(*) from public.x_publications where source_id=post)=1,'LIVEWIRE edit never duplicates';
   skipped := public.save_livewire_post_to_x('Body',null,null,'Skipped','{}','{news}',false);
   assert exists(select 1 from public.x_publications where source_id=skipped and status='skipped'),'Unchecked LIVEWIRE skips';
+  skipped := public.save_livewire_post('Body',null,null,'Default off','{}','{news}');
+  assert exists(select 1 from public.x_publications where source_id=skipped and status='skipped'),'Legacy LIVEWIRE without preference defaults off';
+  insert into public.angles(id,season,week,game_id,matchup,kind,subject,category,title,narrative,reviewed,status)
+    values('c9581111-1111-4111-8111-111111111124',2196,6,'NFL:123','Test','team','Test','Other','Default off','Original text',true,'published');
+  assert exists(select 1 from public.x_publications where source_id='c9581111-1111-4111-8111-111111111124' and status='skipped'),'Story without preference defaults off';
   begin
     update public.x_publishing_settings set enabled=false where id;
     raise exception 'Admin changed system connection setting';

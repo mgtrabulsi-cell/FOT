@@ -22,10 +22,11 @@ test('Non-NFL Angle stories cross weeks for exactly 168 hours, then stay in thei
 
 const game = { id: 'NFL:123', date: '2026-10-18T17:00:00Z' };
 const article = { headline: 'A former team reunion', description: 'A story to review', published: '2026-10-16T12:00:00Z', url: 'https://www.espn.com/nfl/story/123' };
-test('Story publishing defaults X on for new drafts and preserves an explicit opt-out', () => {
+test('Story publishing defaults X off for new drafts and preserves explicit choices', () => {
   const fields = { game_id: 'NFL:123', matchup: 'Test', kind: 'team', subject: 'Test', category: 'Other',
     title: 'Headline', narrative: 'Text', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true };
-  assert.equal(angleWriteFields(fields, 'draft').post_to_x, true);
+  assert.equal(angleWriteFields(fields, 'draft').post_to_x, false);
+  assert.equal(angleWriteFields({ ...fields, post_to_x: true }, 'published').post_to_x, true);
   assert.equal(angleWriteFields({ ...fields, post_to_x: false }, 'published').post_to_x, false);
 });
 test('News suggests unverified categories, never inventing a historical trend', () => {

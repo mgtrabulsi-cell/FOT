@@ -54,7 +54,7 @@ function newAngle(game: Game, season: number, week: number, section: AngleSectio
     title: '', narrative: '', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '',
     reviewed: false, status: 'draft', revision: 0, section, news_types: [],
     themes: [],
-    post_to_x: true,
+    post_to_x: false,
   };
 }
 
@@ -380,7 +380,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     </div>}
     {form && <form className="angle-editor" aria-label={news ? 'Fantasy News editor' : 'Angle editor'} ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
       <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
-      <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? true} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
+      <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? false} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
       <p>Requires a connected X account. Edits and republishing do not create another tweet.</p>
       <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : draftSaving ? 'Saving draft on this device...' : 'Draft saved on this device. It stays open until you publish or discard it.'}</p>
       {!admin && <p role="status">Checking editing access. Your draft remains open.</p>}
