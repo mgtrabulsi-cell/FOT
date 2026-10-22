@@ -41,6 +41,7 @@ export type Angle = {
   section?: AngleSection;
   news_types?: NewsType[];
   themes?: PostTheme[];
+  post_to_x?: boolean;
 };
 export type AngleSection = 'angle' | 'news';
 export const newsTypes = [
@@ -106,6 +107,7 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
     source_label: angle.source_label.trim(), reviewed: angle.reviewed, status, image_paths: angle.image_paths ?? [],
     news_types: angleSection(angle) === 'news' ? [...new Set(angle.news_types ?? [])] : [],
     themes: angleThemes(angle),
+    post_to_x: angle.post_to_x ?? true,
   };
 }
 
@@ -125,6 +127,7 @@ export function readAngles(value: unknown): Angle[] {
       && 'category' in row && angleCategories.some((category) => category === row.category)
       && (!('image_paths' in row) || (Array.isArray(row.image_paths) && row.image_paths.length <= 4 && row.image_paths.every((path: unknown) => typeof path === 'string')))
       && (!('section' in row) || row.section === 'angle' || row.section === 'news')
+      && (!('post_to_x' in row) || typeof row.post_to_x === 'boolean')
       && (!('news_types' in row) || (Array.isArray(row.news_types) && row.news_types.every((type: unknown) => newsTypes.some((item) => item.value === type))))
       && (!('themes' in row) || (Array.isArray(row.themes) && row.themes.length <= 3
         && row.themes.every((theme: unknown) => postThemes.some((item) => item.value === theme))

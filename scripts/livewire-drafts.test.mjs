@@ -56,6 +56,11 @@ test('Draft text, edit target, themes, attachments and original file bytes survi
   assert.equal(await loadLivewireDraft('author-two'), undefined);
 });
 
+test('LIVEWIRE X opt-out survives draft restoration', async () => {
+  await saveLivewireDraft('x-opt-out', { ...draft, postToX: false });
+  assert.equal((await loadLivewireDraft('x-opt-out')).postToX, false);
+});
+
 test('Rapid saves remain ordered; publishing/discarding empty state removes the saved draft', async () => {
   await Promise.all([
     saveLivewireDraft('rapid', { ...draft, title: 'First' }),

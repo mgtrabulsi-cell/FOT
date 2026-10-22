@@ -14,6 +14,7 @@ import { observePostViews } from './services/livewireViews';
 import PostGallery, { postPhotoUrl } from './PostGallery';
 import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
+import XPublishingStatus from './XPublishingStatus';
 import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
 import { postThemes } from './services/postThemes';
 
@@ -53,6 +54,7 @@ function newAngle(game: Game, season: number, week: number, section: AngleSectio
     title: '', narrative: '', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '',
     reviewed: false, status: 'draft', revision: 0, section, news_types: [],
     themes: [],
+    post_to_x: true,
   };
 }
 
@@ -378,6 +380,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     </div>}
     {form && <form className="angle-editor" aria-label={news ? 'Fantasy News editor' : 'Angle editor'} ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
       <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
+      <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? true} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
+      <p>Requires a connected X account. Edits and republishing do not create another tweet.</p>
       <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : draftSaving ? 'Saving draft on this device...' : 'Draft saved on this device. It stays open until you publish or discard it.'}</p>
       {!admin && <p role="status">Checking editing access. Your draft remains open.</p>}
       <fieldset disabled={busy || !admin}>
@@ -471,6 +475,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       {newsTypes.map((type) => <button key={type.value} aria-pressed={newsFilter.includes(type.value)} onClick={() => setNewsFilter((current) => current.includes(type.value) ? current.filter((value) => value !== type.value) : [...current, type.value])}><span className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span></button>)}
     </div> : <div className="angle-filters" role="group" aria-label="Filter published angles">{(['all', 'player', 'team'] as const).map((value) => <button key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All angles' : value === 'player' ? 'Players' : 'Team matchups'}</button>)}</div>}
     {!season || !week ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
+    {admin && visible && <XPublishingStatus />}
     <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
       <div className="angle-card-meta"><span>{angle.category}</span>{news
         ? newsTypes.filter((type) => angle.news_types?.includes(type.value)).map((type) => <span key={type.value} className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span>)

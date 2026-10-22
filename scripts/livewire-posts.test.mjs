@@ -27,6 +27,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/import OfflineImage from [^;]+;/, 'const OfflineImage = () => null;')
   .replace(/import PostGallery from [^;]+;/, 'const PostGallery = () => null;')
   .replace(/import AnglePicks from [^;]+;/, 'const AnglePicks = () => null;')
+  .replace(/import XPublishingStatus from [^;]+;/, 'const XPublishingStatus = () => null;')
   .replace(/import \{ usePublicDataRevision \} from [^;]+;/, 'const usePublicDataRevision = () => 0;')
   .replace(/import \{ publicSupabaseConfig, supabase \} from [^;]+;/, 'const publicSupabaseConfig = null; const supabase = null;')
   .replace(/import \{ observePostViews \} from [^;]+;/, 'const observePostViews = () => () => {};')

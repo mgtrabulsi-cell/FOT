@@ -6,6 +6,7 @@ export type LivewireDraft = {
   source: string;
   themes: Array<'news' | 'fantasy' | 'betting'>;
   editing: string | null;
+  postToX?: boolean;
   photos: Array<{ path?: string; file?: File }>;
 };
 
@@ -16,6 +17,7 @@ export async function loadLivewireDraft(userId: string): Promise<LivewireDraft |
   if (value === undefined) return value;
   if (!value || typeof value.title !== 'string' || typeof value.body !== 'string' || typeof value.source !== 'string'
     || (value.editing !== null && typeof value.editing !== 'string')
+    || (value.postToX !== undefined && typeof value.postToX !== 'boolean')
     || !Array.isArray(value.themes) || !value.themes.every((theme) => ['news', 'fantasy', 'betting'].includes(theme))
     || !Array.isArray(value.photos) || value.photos.length > 4
     || !value.photos.every((photo) => photo && (typeof photo.path === 'string' || photo.file instanceof Blob))) {

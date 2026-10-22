@@ -8,6 +8,7 @@ import { observePostViews } from './services/livewireViews';
 import { loadLivewireDraft, saveLivewireDraft } from './services/livewireDrafts';
 import PostGallery from './PostGallery';
 import AnglePicks from './AnglePicks';
+import XPublishingStatus from './XPublishingStatus';
 import { anglePicks } from './services/theAngle';
 import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { LivewirePost as Post, PostTheme } from './services/livewirePosts';
@@ -52,6 +53,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
   const [title, setTitle] = useState('');
   const [source, setSource] = useState('');
   const [themes, setThemes] = useState<PostTheme[]>([]);
+  const [postToX, setPostToX] = useState(true);
   const [themeFilters, setThemeFilters] = useState<PostTheme[]>([]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [draftReady, setDraftReady] = useState(false);
@@ -81,7 +83,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         if (result.error) throw result.error;
         uploaded.push(path); paths.push(path);
       }
-      const result = await supabase.rpc('save_livewire_post', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing, post_images: paths, post_themes: themes });
+      const result = await supabase.rpc('save_livewire_post_to_x', { post_body: body, post_title: title.trim(), post_source: source.trim() || null, post_id: editing, post_images: paths, post_themes: themes, post_to_x: postToX });
       if (result.error) throw result.error;
       try {
         if (!publicSupabaseConfig) throw new Error('Account services are not configured.');
@@ -124,6 +126,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       if (draft) {
         resetPhotos();
         setTitle(draft.title); setBody(draft.body); setSource(draft.source); setThemes(draft.themes); setEditing(draft.editing);
+        setPostToX(draft.postToX ?? true);
         setPhotos(draft.photos.map((photo) => {
           const preview = photo.file ? URL.createObjectURL(photo.file) : photoUrl(photo.path ?? '');
           if (photo.file) previews.current.add(preview);
@@ -148,13 +151,13 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
     if (!user || !draftReady || draftRestoreFailed) return;
     let active = true;
     void saveLivewireDraft(user.id, {
-      title, body, source, themes, editing, photos: photos.map(({ path, file }) => ({ path, file })),
+      title, body, source, themes, editing, postToX, photos: photos.map(({ path, file }) => ({ path, file })),
     }).then(() => { if (active) setDraftError(''); }).catch((cause: unknown) => {
       console.error('Could not save LIVEWIRE draft', cause);
       if (active) setDraftError('Your latest draft changes could not be saved on this device. Keep this page open and try again.');
     });
     return () => { active = false; };
-  }, [user?.id, draftReady, draftRestoreFailed, title, body, source, themes, editing, photos]);
+  }, [user?.id, draftReady, draftRestoreFailed, title, body, source, themes, editing, postToX, photos]);
 
   useEffect(() => {
     let active = true;
@@ -281,7 +284,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         if ((title || body || photos.length || source || themes.length || editing) && !window.confirm('Retry restoring the saved draft? This replaces the text currently in the editor if restoration succeeds.')) return;
         setDraftRetry((value) => value + 1);
       } else if (user) {
-        void saveLivewireDraft(user.id, { title, body, source, themes, editing, photos: photos.map(({ path, file }) => ({ path, file })) })
+        void saveLivewireDraft(user.id, { title, body, source, themes, editing, postToX, photos: photos.map(({ path, file }) => ({ path, file })) })
           .then(() => setDraftError('')).catch((cause: unknown) => { console.error('Could not retry draft saving', cause); setDraftError('Draft saving still failed. Your text remains editable; keep this page open or copy your text before leaving.'); });
       }
     }}>{draftRestoreFailed ? 'Retry restoring draft' : 'Retry saving draft'}</button></div>}
@@ -291,10 +294,12 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       if (!supabase || busy) return;
       if (source.trim() && !safeNewsLink(source.trim())) { setActionError('Use a valid http or https news link.'); return; }
       void act(savePost, () => {
-        resetPhotos(); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setDraftRestoreFailed(false); setComposerOpen(false); setNotice(editing ? 'Post updated.' : 'Post published.');
+        resetPhotos(); setPostToX(true); setThemes([]); setTitle(''); setBody(''); setSource(''); setEditing(null); setDraftRestoreFailed(false); setComposerOpen(false); setNotice(editing ? 'Post updated.' : 'Post published.');
       });
     }}>
       <h3>{editing ? 'Edit post' : 'New post'}</h3>
+      {!editing && <label className="x-publishing-choice"><input type="checkbox" checked={postToX} disabled={busy} onChange={(event) => setPostToX(event.target.checked)} />Post to X on first publication</label>}
+      <p>Requires a connected X account. Editing a post does not create another tweet.</p>
       <label htmlFor="livewire-title">Subject / title</label>
       <input id="livewire-title" maxLength={120} required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Headline" disabled={busy} />
       <fieldset className="livewire-themes" disabled={busy}>
@@ -326,10 +331,11 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
         setPhotos((current) => current.filter((_, item) => item !== index));
       }}>Remove photo {index + 1}</button></div>)}</div>}
-      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => setComposerOpen(false)}>Close</button><button type="button" disabled={busy} onClick={() => { if (!hasDraft || window.confirm(editing ? 'Discard your changes to this post?' : 'Discard this saved draft?')) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setDraftRestoreFailed(false); setComposerOpen(false); } }}>{editing ? 'Cancel edit' : 'Discard'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
+      <div className="livewire-actions"><small>Title {title.length}/120 · Post {body.length}/500</small><button type="button" disabled={busy} onClick={() => setComposerOpen(false)}>Close</button><button type="button" disabled={busy} onClick={() => { if (!hasDraft || window.confirm(editing ? 'Discard your changes to this post?' : 'Discard this saved draft?')) { resetPhotos(); setPostToX(true); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setDraftRestoreFailed(false); setComposerOpen(false); } }}>{editing ? 'Cancel edit' : 'Discard'}</button><button className="livewire-publish" disabled={busy || !title.trim() || !body.trim()}>{busy ? 'Saving...' : editing ? 'Save changes' : 'Publish post'}</button></div>
     </form>}
     {actionError && <p className="livewire-error" role="alert">{actionError}</p>}
     {notice && <p className="livewire-notice" role="status">{notice}</p>}
+    {role && <XPublishingStatus />}
     {postId && linkedReady === postId && linkedMissing && <p className="livewire-notice" role="status">This post is no longer available. You can read the latest LIVEWIRE posts below.</p>}
     <div className="livewire-theme-filters" role="group" aria-label="Filter LIVEWIRE by theme">
       <button type="button" aria-pressed={!themeFilters.length} onClick={() => filterThemes([])}>All posts</button>
