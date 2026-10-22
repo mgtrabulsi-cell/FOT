@@ -43,3 +43,22 @@ Deno.test('Analysis branding bundles the actual site logo and Oswald wordmark at
   assert(renderer.includes('href="${brandUri}"') && renderer.includes('<image x="32" y="0"') && renderer.includes('height="104"'), 'Canonical branding offsets its internal padding to align the visible stadium with the 64px text margin');
   assert(!renderer.includes('>GAME<tspan'), 'Approximate text wordmark removed');
 });
+
+Deno.test('Every admin pick appears in image content with emoji and grading, before the full analysis', async () => {
+  const picks = [
+    { id: 'first', text: 'Shai Gilgeous-Alexander 6+ Assists', result: 'pending' as const },
+    { id: 'second', text: 'Shai Gilgeous-Alexander 8+ Assists', result: 'hit' as const },
+    { id: 'third', text: 'Opponent 20+ Points', result: 'miss' as const },
+  ];
+  const images = await analysisImages({ ...source, picks });
+  assert(images.length === 1, 'Three short picks and analysis fit together');
+  const text = images[0].alt;
+  for (const pick of picks) assert(text.includes(pick.text), `Image includes ${pick.text}`);
+  assert(text.includes('🏀 Shai') && text.includes('🏀 ✅ Shai') && text.includes('🏀 ❌ Opponent'), 'Sport and grade marks included');
+  assert(text.indexOf(picks[2].text) < text.indexOf('Full analysis'), 'All picks precede analysis');
+  const many = await analysisImages({ ...source, picks: Array.from({ length: 35 }, (_, index) => ({ id: String(index), text: `Selection ${index + 1}`, result: 'pending' as const })) });
+  assert(many.length > 1, 'Picks participate in pagination rather than being clipped');
+  assert(many.map(image => image.alt).join('\n').includes('Selection 35'), 'Last selection survives pagination');
+  const renderer = await Deno.readTextFile(new URL('./analysisImages.ts', import.meta.url));
+  assert(renderer.includes('width="12" height="${height}" fill="#ff182b"'), 'Wider saturated logo-red accent');
+});

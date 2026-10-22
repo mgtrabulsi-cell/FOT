@@ -25,11 +25,15 @@ export function xSource(row: Record<string, unknown>, angle: boolean, id: string
   };
 }
 
+export function xPickLines(source: XPostSource): string[] {
+  return source.picks.map(pick => `${angleSport(source.gameId).emoji} ${pick.result === 'hit' ? '✅ ' : pick.result === 'miss' ? '❌ ' : ''}${pick.text.replace(/\s+/gu, ' ').trim()}`);
+}
+
 export function xImagePostText(source: XPostSource, link: string): string {
   const clean = (value: string) => value.replace(/\s+/gu, ' ').trim();
   const heading = clean(source.title);
   const subject = clean(source.subject);
-  const picks = source.picks.map(pick => `${angleSport(source.gameId).emoji} ${pick.result === 'hit' ? '✅ ' : pick.result === 'miss' ? '❌ ' : ''}${clean(pick.text)}`);
+  const picks = xPickLines(source);
   const content = [heading, ...(subject && subject !== heading ? [subject] : []), ...(picks.length ? [`Admin picks · Opinion\n${picks.join('\n')}`] : [])].join('\n\n');
   // Preserve every pick and the link. Never silently shorten an admin's selection.
   const weight = [...content.replace(/https?:\/\/\S+/g, 'x'.repeat(23))].reduce((total, character) => total + (character.codePointAt(0)! <= 0x7f ? 1 : 2), 0);

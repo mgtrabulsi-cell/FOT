@@ -1,6 +1,6 @@
 import { initWasm, Resvg } from 'npm:@resvg/resvg-wasm@2.6.2';
 import { parse } from 'npm:opentype.js@1.3.4';
-import type { XPostSource } from '../_shared/xPosting.ts';
+import { xPickLines, type XPostSource } from '../_shared/xPosting.ts';
 
 type Font = { charToGlyphIndex(character: string): number; getAdvanceWidth(text: string, size: number): number };
 type Assets = { buffers: Uint8Array[]; fonts: Font[]; brandUri: string; brandWidth: number };
@@ -77,7 +77,9 @@ export async function analysisImages(source: XPostSource): Promise<Array<{ png: 
   if (heading.length > 3) throw new Error('Headline is too long for a readable analysis image.');
   const start = 180 + heading.length * 56;
   const perPage = Math.floor((1390 - start) / 44);
-  const lines = wrapAnalysis(source.analysis, 30, 1072, fonts, perPage * 4);
+  const picks = xPickLines(source);
+  const content = picks.length ? `Admin picks · Opinion\n${picks.join('\n')}\n\nAnalysis\n${source.analysis}` : source.analysis;
+  const lines = wrapAnalysis(content, 30, 1072, fonts, perPage * 4);
   const count = Math.ceil(lines.length / perPage);
   if (count > 4) throw new Error('Full analysis exceeds X’s four-image limit. Shorten the analysis or post manually; no tweet was sent.');
   const images = [];
@@ -85,7 +87,7 @@ export async function analysisImages(source: XPostSource): Promise<Array<{ png: 
     const pageLines = lines.slice(page * perPage, (page + 1) * perPage);
     const height = Math.max(680, start + (pageLines.length - 1) * 44 + 150);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}">
-      <rect width="1200" height="${height}" fill="#101b2b"/><rect x="0" width="8" height="${height}" fill="#f43f54"/>
+      <rect width="1200" height="${height}" fill="#101b2b"/><rect x="0" width="12" height="${height}" fill="#ff182b"/>
       <image x="32" y="0" width="${brandWidth}" height="104" href="${brandUri}"/>
       <text x="1136" y="76" text-anchor="end" font-family="Noto Sans" font-size="20" fill="#a7b7cd">ANALYSIS · ${page + 1}/${count}</text>
       <path d="M64 110H1136" stroke="#314159"/>
