@@ -624,6 +624,7 @@ button { color: inherit; }
 .matchup-breakdown textarea + p { margin-top: 6px; color: #bcc8da; font-size: 11px; }
 .matchup-breakdown .matchup-breakdown-limit { color: #ff8f98; }
 .x-publishing-choice { display: flex !important; align-items: center; gap: 8px; }
+.angle-actions .x-publishing-choice { min-height: 44px; margin: 0; }
 .x-publishing-choice input { width: 18px !important; min-height: 18px !important; accent-color: #8198bd; }
 .x-publishing-status { margin: 12px 0; padding: 12px; border: 1px solid #303d52; border-radius: 4px; background: #101a29; color: #bcc8da; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .x-publishing-status summary { cursor: pointer; color: #e5eaf3; }

@@ -381,8 +381,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     </div>}
     {form && <form className="angle-editor" aria-label={news ? 'Fantasy News editor' : 'Angle editor'} ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
       <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
-      <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? false} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
-      <p>Requires a connected X account. Edits and republishing do not create another tweet.</p>
       <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : draftSaving ? 'Saving draft on this device...' : 'Draft saved on this device. It stays open until you publish or discard it.'}</p>
       {!admin && <p role="status">Checking editing access. Your draft remains open.</p>}
       <fieldset className="angle-editor-fields" disabled={busy || !admin}>
@@ -452,7 +450,10 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
         }}>Remove photo {index + 1}</button></div>)}</div>}
         <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
-        <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button></div>
+        <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button>
+          <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? false} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
+        </div>
+        <p>Requires a connected X account. Edits and republishing do not create another tweet.</p>
       </fieldset>
     </form>}
     {draftError && <p className="feed-warning" role="alert">{draftError} <button disabled={busy} onClick={() => {
