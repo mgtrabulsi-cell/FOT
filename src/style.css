@@ -533,6 +533,21 @@ button { color: inherit; }
 .angle-editor textarea { min-height: 100px; resize: vertical; }
 .angle-editor .angle-review-check { display: flex; align-items: flex-start; gap: 10px; }
 .angle-review-check input { flex: 0 0 20px; width: 20px; height: 20px; min-height: 20px; margin: 0; accent-color: #8198bd; }
+@media (min-width: 761px) {
+  .angle-editor { gap: 7px; padding-top: 12px; }
+  .angle-editor > p { color: var(--muted); font-size: 12px; line-height: 1.4; }
+  .angle-editor .angle-editor-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+  .angle-editor-fields > :not(label), .angle-editor-fields > .angle-review-check { grid-column: 1 / -1; }
+  .angle-editor-fields > label:has(textarea) { grid-column: 1 / -1; }
+  .angle-editor-fields > p { margin: 0; font-size: 12px; }
+  .angle-editor :is(input:not([type="checkbox"]):not([type="file"]), select, textarea) { padding: 7px 9px; font-size: 14px; }
+  .angle-editor :is(input:not([type="checkbox"]):not([type="file"]), select) { min-height: 36px; }
+  .angle-editor .angle-editor-fields textarea { min-height: 76px; }
+  .angle-editor .angle-pick-editor { gap: 8px; }
+  .angle-editor .angle-pick-editor > div { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+  .angle-editor .angle-pick-editor textarea { min-height: 52px; }
+  .angle-editor .angle-pick-editor > button { justify-self: start; }
+}
 @media (max-width: 760px) {
   .angle-heading { flex-direction: column; gap: 8px; }
   .angle-cards, .angle-suggestions { grid-template-columns: minmax(0, 1fr); }
@@ -1402,11 +1417,12 @@ td:first-child { color: #828c84; }
 .angle-news-types .wire-primetime-tag { font-size: 11px; padding: 3px 8px; }
 .livewire-themes legend span { color: #bbc7d9; }
 .livewire-themes > div { display: flex; flex-wrap: wrap; gap: 10px; }
-.livewire-composer .livewire-themes label, .angle-news-types label { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; cursor: pointer; }
-.livewire-composer .livewire-themes input, .angle-news-types input { appearance: none; display: grid; place-content: center; flex: 0 0 18px; width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; border: 1px solid #8198bd; border-radius: 4px; background: #303d52; cursor: pointer; }
-.livewire-composer .livewire-themes input:checked, .angle-news-types input:checked { background: #8198bd; border-color: #bcc8da; }
-.livewire-composer .livewire-themes input:checked::before, .angle-news-types input:checked::before { content: ''; width: 10px; height: 6px; border: solid #0b111c; border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
-.livewire-composer .livewire-themes input:disabled, .angle-news-types input:disabled { opacity: .5; cursor: not-allowed; }
+.livewire-composer .livewire-themes label, .angle-editor .livewire-themes label, .angle-news-types label { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; cursor: pointer; }
+.livewire-composer .livewire-themes input, .angle-editor .livewire-themes input, .angle-news-types input { appearance: none; display: grid; place-content: center; flex: 0 0 16px; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0; border: 1px solid #8198bd; border-radius: 4px; background: #303d52; cursor: pointer; }
+.livewire-composer .livewire-themes input:checked, .angle-editor .livewire-themes input:checked, .angle-news-types input:checked { background: #8198bd; border-color: #bcc8da; }
+.livewire-composer .livewire-themes input:checked::before, .angle-editor .livewire-themes input:checked::before, .angle-news-types input:checked::before { content: ''; width: 8px; height: 5px; border: solid #0b111c; border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
+.livewire-composer .livewire-themes input:disabled, .angle-editor .livewire-themes input:disabled, .angle-news-types input:disabled { opacity: .5; cursor: not-allowed; }
+.livewire-themes input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .wire-wheel-card.is-primetime:not(.selected):not(.is-live) { border-color: #314560; }
 .wire-wheel-card.is-primetime.is-live { border-color: #cc2633; box-shadow: 0 0 16px #cc263345; }

@@ -376,6 +376,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   return <section className="angle-panel" aria-label={news ? 'Fantasy News' : 'The Angle'}>
     {visible && admin && <div className="angle-admin-bar">
       <button className="angle-create-button" disabled={busy || !draftReady || draftRestoreFailed || (!form && !weeklyGames.length)} onClick={() => { if (form) editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else if (season && week && weeklyGames[0]) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{form ? 'Continue draft' : news ? 'Create news' : 'Create an angle'}</button>
+      {form && <button type="button" className="angle-create-button" disabled={busy} onClick={() => void discardDraft()}>Discard draft</button>}
       <span>{drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}</span>
     </div>}
     {form && <form className="angle-editor" aria-label={news ? 'Fantasy News editor' : 'Angle editor'} ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
@@ -384,7 +385,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       <p>Requires a connected X account. Edits and republishing do not create another tweet.</p>
       <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : draftSaving ? 'Saving draft on this device...' : 'Draft saved on this device. It stays open until you publish or discard it.'}</p>
       {!admin && <p role="status">Checking editing access. Your draft remains open.</p>}
-      <fieldset disabled={busy || !admin}>
+      <fieldset className="angle-editor-fields" disabled={busy || !admin}>
         <label>Matchup<select value={form.game_id} onChange={(event) => {
           const value = event.target.value;
           if (value === form.game_id) return;
@@ -453,7 +454,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
         <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button></div>
       </fieldset>
-      <button type="button" disabled={busy} onClick={() => void discardDraft()}>Discard draft</button>
     </form>}
     {draftError && <p className="feed-warning" role="alert">{draftError} <button disabled={busy} onClick={() => {
       if (draftRestoreFailed) { setDraftReady(false); setRestoreRetry((value) => value + 1); }
