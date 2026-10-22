@@ -1,0 +1,52 @@
+.fantasy-start-sit[hidden] { display: none; }
+.fantasy-start-sit { padding: 24px 0; }
+.fantasy-start-sit h2, .fantasy-start-sit h3, .fantasy-start-sit h4 { font-family: var(--display); }
+.fantasy-start-sit p { color: var(--muted); line-height: 1.5; }
+.fantasy-start-sit button, .fantasy-graphic-preview a { min-height: 44px; border: 1px solid var(--line); border-radius: 5px; padding: 9px 14px; background: #101a29; cursor: pointer; color: var(--ink); }
+.fantasy-start-sit button:disabled { opacity: .5; cursor: not-allowed; }
+.fantasy-start-sit :is(button, input, select, textarea, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.fantasy-graphic-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.fantasy-graphic-heading h2 { margin: 0; }
+.fantasy-graphic-editor { padding: 20px; margin: 20px 0; background: #0b111c; border: 1px solid var(--line); border-left: 5px solid #cc2633; border-radius: 8px; }
+.fantasy-start-sit fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.fantasy-graphic-controls { display: flex; gap: 16px; flex-wrap: wrap; }
+.fantasy-start-sit label { display: flex; flex-direction: column; gap: 7px; color: var(--muted); font-size: 13px; min-width: 0; }
+.fantasy-start-sit input, .fantasy-start-sit select, .fantasy-start-sit textarea { background: #0b111c; color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 10px; min-height: 44px; width: 100%; font: inherit; }
+.fantasy-start-sit textarea { resize: vertical; line-height: 1.5; }
+.fantasy-graphic-slots { display: grid; gap: 16px; }
+.fantasy-graphic-slot { display: grid; grid-template-columns: minmax(190px, 24%) minmax(0, 1fr); background: #151f2e; border: 1px solid var(--line); border-radius: 9px; }
+.fantasy-graphic-identity { display: flex; flex-direction: column; align-items: center; padding: 14px; border-right: 1px solid var(--line); background: #111b2b; border-radius: 9px 0 0 9px; position: relative; min-width: 0; }
+.fantasy-graphic-identity label { width: 100%; }
+.fantasy-graphic-headshot { width: 186px; max-width: 100%; height: 136px; object-fit: contain; }
+.fantasy-graphic-identity strong { font: 600 24px/1.2 var(--display); text-align: center; text-transform: uppercase; overflow-wrap: anywhere; }
+.fantasy-graphic-identity > button { margin-top: 10px; font-size: 12px; }
+.fantasy-graphic-opponent { display: flex; align-items: center; gap: 10px; min-height: 40px; font: 500 12px var(--mono); color: var(--muted); }
+.fantasy-graphic-opponent img { width: 42px; height: 32px; object-fit: contain; }
+.fantasy-graphic-reason { padding: 25px; justify-content: center; }
+.fantasy-graphic-reason > span { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: 1px; color: var(--accent); }
+.fantasy-graphic-reason > span::before { content: ''; display: inline-block; margin-right: 8px; width: 6px; height: 6px; border-radius: 50%; background: #cc2633; }
+.fantasy-graphic-reason textarea { min-height: 140px; font-size: 16px; }
+.fantasy-graphic-search { width: 100%; max-height: 260px; overflow: auto; padding: 0; list-style: none; border: 1px solid var(--accent); }
+.fantasy-graphic-search button { width: 100%; text-align: left; }
+.fantasy-graphic-preview { width: 100%; max-width: 700px; margin: 16px auto; }
+.fantasy-graphic-preview > img { display: block; width: 100%; height: auto; border: 1px solid var(--line); }
+.fantasy-graphic-preview a { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; text-decoration: none; }
+.fantasy-graphic-editor .angle-actions { margin-top: 18px; flex-wrap: wrap; }
+.fantasy-graphic-editor button[type="submit"] { background: #cc2633; border-color: #cc2633; color: #fff; }
+.fantasy-graphic-download { margin-top: 12px; }
+.fantasy-graphic-download button { display: flex; align-items: center; gap: 8px; }
+.fantasy-graphic-drafts { margin: 24px 0; }
+.fantasy-graphic-drafts > button { display: block; text-align: left; width: 100%; margin: 8px 0; overflow-wrap: anywhere; }
+.fantasy-graphic-drafts small { display: block; color: var(--muted); margin-top: 6px; }
+.fantasy-graphic-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.fantasy-graphic-gallery > h3, .fantasy-graphic-gallery > p { grid-column: 1 / -1; }
+.fantasy-graphic-gallery article { min-width: 0; padding: 16px; background: #0b111c; border: 1px solid var(--line); border-radius: 8px; }
+.fantasy-graphic-gallery details { line-height: 1.5; }
+.fantasy-graphic-gallery summary { cursor: pointer; min-height: 44px; }
+@media (max-width: 760px) {
+  .fantasy-graphic-editor { padding: 12px; }
+  .fantasy-graphic-slot { grid-template-columns: minmax(0, 1fr); }
+  .fantasy-graphic-identity { border-right: 0; border-bottom: 1px solid var(--line); border-radius: 9px 9px 0 0; }
+  .fantasy-graphic-reason { padding: 16px; }
+  .fantasy-graphic-gallery { grid-template-columns: minmax(0, 1fr); }
+}

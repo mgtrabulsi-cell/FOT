@@ -1,4 +1,5 @@
 import OfflineImage from './OfflineImage';
+import FantasyStartSit from './FantasyStartSit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
@@ -616,7 +617,7 @@ function App() {
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
   const [analystMode, setAnalystMode] = useState<'Fantasy' | 'Angle' | 'Results'>('Angle');
-  const [fantasyMode, setFantasyMode] = useState<'Matchups' | 'News' | 'Hate'>('News');
+  const [fantasyMode, setFantasyMode] = useState<'Matchups' | 'News' | 'Hate' | 'StartSit'>('News');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
@@ -1186,6 +1187,7 @@ function App() {
         </div>}
         {view === 'Analyst' && analystMode === 'Fantasy' && <div className="player-mode-tabs fantasy-mode-tabs" role="tablist" aria-label="Fantasy view">
           <button role="tab" aria-selected={fantasyMode === 'News'} aria-label={analystUnread.news ? 'Fantasy News, unread posts' : 'Fantasy News'} className={fantasyMode === 'News' ? 'active' : ''} onClick={() => setFantasyMode('News')}>Fantasy News{analystUnread.news && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
+          <button role="tab" aria-selected={fantasyMode === 'StartSit'} className={fantasyMode === 'StartSit' ? 'active' : ''} onClick={() => setFantasyMode('StartSit')}>Start/Sit</button>
           <button role="tab" aria-selected={fantasyMode === 'Matchups'} aria-label={analystUnread.picks ? 'Top Performers, unread updates' : 'Top Performers'} className={fantasyMode === 'Matchups' ? 'active' : ''} onClick={() => setFantasyMode('Matchups')}>Top Performers{analystUnread.picks && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={fantasyMode === 'Hate'} aria-label={analystUnread.hate ? 'Hate Watch, unread updates' : 'Hate Watch'} className={fantasyMode === 'Hate' ? 'active' : ''} onClick={() => setFantasyMode('Hate')}>Hate Watch{analystUnread.hate && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
         </div>}
@@ -1195,6 +1197,7 @@ function App() {
             <FavorableMatchups active={active} boardType={boardType} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={authUser} onSeen={analystUnread.markRead} />
           </div>;
         })}
+        <FantasyStartSit key={`start-sit:${sessionUser?.id ?? 'guest'}`} active={view === 'Analyst' && analystMode === 'Fantasy' && fantasyMode === 'StartSit'} games={lockerRoomReady ? games : []} season={lockerRoomSeason} week={lockerRoomWeek} user={sessionUser} />
         {(['angle', 'news'] as const).map((section) => <TheAngle
           key={`${section}:${sessionUser?.id ?? 'guest'}`}
           active={view === 'Analyst' && (section === 'news' ? analystMode === 'Fantasy' && fantasyMode === 'News' : analystMode === 'Angle')}
