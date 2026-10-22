@@ -86,7 +86,7 @@ export async function analysisImages(source: XPostSource): Promise<Array<{ png: 
     const height = Math.max(680, start + (pageLines.length - 1) * 44 + 150);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}">
       <rect width="1200" height="${height}" fill="#101b2b"/><rect x="0" width="8" height="${height}" fill="#f43f54"/>
-      <image x="64" y="0" width="${brandWidth}" height="104" href="${brandUri}"/>
+      <image x="32" y="0" width="${brandWidth}" height="104" href="${brandUri}"/>
       <text x="1136" y="76" text-anchor="end" font-family="Noto Sans" font-size="20" fill="#a7b7cd">ANALYSIS · ${page + 1}/${count}</text>
       <path d="M64 110H1136" stroke="#314159"/>
       ${heading.map((line, index) => svgText(line, 177 + index * 56, 42, fonts, '#f1f5f9')).join('')}

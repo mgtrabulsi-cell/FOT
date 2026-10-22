@@ -40,6 +40,6 @@ Deno.test('Analysis branding bundles the actual site logo and Oswald wordmark at
   const dimensions = new DataView(brand.buffer, brand.byteOffset);
   assert(dimensions.getUint32(16) === 640 && dimensions.getUint32(20) === 196, 'Brand exported at 4x actual desktop lockup dimensions (160×49 CSS pixels)');
   const renderer = await Deno.readTextFile(new URL('./analysisImages.ts', import.meta.url));
-  assert(renderer.includes('href="${brandUri}"') && renderer.includes('<image x="64" y="0"') && renderer.includes('height="104"'), 'Canonical branding placed at upper left with original-sized wordmark');
+  assert(renderer.includes('href="${brandUri}"') && renderer.includes('<image x="32" y="0"') && renderer.includes('height="104"'), 'Canonical branding offsets its internal padding to align the visible stadium with the 64px text margin');
   assert(!renderer.includes('>GAME<tspan'), 'Approximate text wordmark removed');
 });
