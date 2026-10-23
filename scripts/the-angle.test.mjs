@@ -1,6 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { pendingAnglesFirst } from '../src/services/theAngle.ts';
 import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleThemes, angleVisibleInWeek, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+
+test('Pending bets lead the Angle feed, preserving order and treating mixed, legacy and sprinkle picks correctly', () => {
+  const story = (id, picks) => ({ id, pick: '', picks });
+  const pick = (result, category = 'straight') => ({ id: 'pick', text: 'Admin pick', result, category });
+  const stories = [
+    story('settled', [pick('hit'), pick('miss')]),
+    story('mixed', [pick('hit'), pick('pending', 'parlay')]),
+    story('no-picks', []),
+    story('sprinkle', [pick('pending', 'sprinkle')]),
+    { id: 'legacy', pick: 'Legacy unsettled pick' },
+    story('empty', []),
+    story('pending', [pick('pending')]),
+    story('lost', [pick('miss')]),
+  ];
+  const original = [...stories];
+  assert.deepEqual(pendingAnglesFirst(stories).map((story) => story.id),
+    ['mixed', 'sprinkle', 'legacy', 'pending', 'settled', 'no-picks', 'empty', 'lost']);
+  assert.deepEqual(stories, original, 'Does not mutate the fetched feed');
+  stories[1].picks[1].result = 'hit';
+  assert.deepEqual(pendingAnglesFirst(stories).map((story) => story.id),
+    ['sprinkle', 'legacy', 'pending', 'settled', 'mixed', 'no-picks', 'empty', 'lost']);
+  assert.deepEqual(pendingAnglesFirst([]), []);
+});
+
+test('Only The Angle uses pending-first ordering, with a linked story still pinned first', () => {
+  const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
+  assert.match(source, /\.\.\.\(visibleLinked \? \[visibleLinked\] : \[\]\),\s*\.\.\.\(news \? feedStories : pendingAnglesFirst\(feedStories\)\)/);
+  assert.match(source, /row\.id !== visibleLinked\?\.id/);
+});
 
 test('Non-NFL Angle stories cross weeks for exactly 168 hours, then stay in their original week', () => {
   const now = Date.parse('2026-11-04T12:00:00Z');

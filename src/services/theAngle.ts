@@ -53,6 +53,14 @@ export function publishedAnglePicks(stories: Angle[]) {
   return stories.filter((story) => story.status === 'published')
     .flatMap((story) => anglePicks(story).map((pick) => ({ story, pick })));
 }
+export function pendingAnglesFirst<T extends Pick<Angle, 'id' | 'pick' | 'picks'>>(stories: T[]): T[] {
+  const pending: T[] = [];
+  const remaining: T[] = [];
+  for (const story of stories) {
+    (anglePicks(story).some((pick) => pick.result === 'pending') ? pending : remaining).push(story);
+  }
+  return [...pending, ...remaining];
+}
 export type AngleSuggestion = {
   key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string; subject?: string;
   history?: { evidence: string; meetings: Array<{ label: string; url: string }> };
