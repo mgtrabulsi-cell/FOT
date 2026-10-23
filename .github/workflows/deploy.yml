@@ -32,7 +32,7 @@ jobs:
       - name: Test X publishing
         run: node --test scripts/x-posting.test.mjs
       - name: Test Start/Sit graphics
-        run: node --test scripts/fantasy-graphics.test.mjs
+        run: node --test scripts/fantasy-graphics.test.mjs scripts/fantasy-graphic-drafts.test.mjs
       - name: Test results sport filters
         run: node --test scripts/results-filter.test.mjs
       - name: Test Start/Sit roster gateway

@@ -57,7 +57,7 @@ Deno.serve(async (request: Request) => {
             if (error) throw error;
             return data && data.status === 'published' ? xSource(data, true, delivery.source_id) : null;
           }
-          const { data, error } = await admin.from('livewire_posts').select('title,body,angle_id').eq('id', delivery.source_id).maybeSingle();
+          const { data, error } = await admin.from('livewire_posts').select('title,body,angle_id,fantasy_graphic_id,image_paths').eq('id', delivery.source_id).maybeSingle();
           if (error) throw error;
           return data && data.angle_id === null ? xSource(data, false, delivery.source_id) : null;
         };
@@ -71,7 +71,15 @@ Deno.serve(async (request: Request) => {
         }
         const link = `https://gamewire.us/${angle ? '#analyst-desk/story/' : '#livewire/post/'}${delivery.source_id}`;
         const text = xImagePostText(source, link);
-        const images = await analysisImages(source);
+        const graphicImage = source.graphicImage;
+        const images = graphicImage ? await (async () => {
+          const { data, error } = await admin.storage.from('livewire-photos').download(graphicImage);
+          if (error) throw error;
+          if (!data || data.type !== 'image/png' || data.size > 5 * 1024 * 1024) throw new Error('The published Start/Sit PNG is missing or invalid. No tweet was sent.');
+          const png = new Uint8Array(await data.arrayBuffer());
+          if (![137,80,78,71,13,10,26,10].every((byte, index) => png[index] === byte)) throw new Error('The published Start/Sit attachment is not a PNG. No tweet was sent.');
+          return [{ png, alt: source.title }];
+        })() : await analysisImages(source);
         const mediaIds: string[] = [];
         for (const image of images) mediaIds.push(await uploadAnalysisImage(credentials, image));
         const latest = await loadSource();

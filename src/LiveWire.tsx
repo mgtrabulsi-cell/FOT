@@ -357,7 +357,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
           {postThemes.filter((theme) => post.themes?.includes(theme.value)).map((theme) => <span className={`wire-primetime-tag tag-${theme.color}`} key={theme.value}>{theme.label}</span>)}
         </header>
         {post.title && <h3>{post.title}</h3>}
-        <p>{post.body}</p>
+        {post.body && <p>{post.body}</p>}
         {post.angle_id && <AnglePicks picks={post.admin_picks ?? anglePicks({ id: post.angle_id, pick: post.admin_pick ?? '' })} />}
         {(role === 'owner' || role === 'admin') && <span className="livewire-views">{post.view_count === undefined && viewCounts[post.id] === undefined
           ? 'Views unavailable'
@@ -365,7 +365,7 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         <PostGallery paths={post.image_paths ?? []} title={post.title ?? 'LIVEWIRE post'} />
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}
         {post.angle_id && <a href={`#analyst-desk/story/${post.angle_id}`}>{post.themes?.includes('fantasy') ? 'View in Fantasy News' : 'View in The Angle'}</a>}
-        {!post.angle_id && role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
+        {!post.angle_id && !post.fantasy_graphic_id && role && (role === 'owner' || post.author_id === user?.id) && <div className="livewire-actions">
           <button disabled={busy || !draftReady} onClick={() => { if ((draftRestoreFailed || title || body || source || themes.length || photos.length) && !window.confirm('Replace your saved draft with this post?')) return; resetPhotos(); setDraftRestoreFailed(false); setThemes(post.themes ?? []); setPhotos((post.image_paths ?? []).map((path) => ({ path, preview: photoUrl(path) }))); setEditing(post.id); setTitle(post.title ?? ''); setBody(post.body); setSource(post.source_url ?? ''); setActionError(''); setComposerOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Edit</button>
           <button disabled={busy} onClick={() => { if (supabase && window.confirm('Delete this LIVEWIRE post?')) void act(() => supabase!.rpc('delete_livewire_post', { post_id: post.id }), () => {
             if (editing === post.id) { resetPhotos(); setThemes([]); setEditing(null); setTitle(''); setBody(''); setSource(''); setComposerOpen(false); }

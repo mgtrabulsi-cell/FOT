@@ -43,6 +43,19 @@
 .fantasy-graphic-gallery article { min-width: 0; padding: 16px; background: #0b111c; border: 1px solid var(--line); border-radius: 8px; }
 .fantasy-graphic-gallery details { line-height: 1.5; }
 .fantasy-graphic-gallery summary { cursor: pointer; min-height: 44px; }
+.fantasy-graphic-editor .x-publishing-choice { flex-direction: row; align-items: center; }
+.fantasy-graphic-editor .x-publishing-choice input { width: 20px; min-height: 20px; flex: 0 0 20px; }
+@media (min-width: 761px) {
+  .fantasy-graphic-editor { padding: 14px; }
+  .fantasy-graphic-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .fantasy-graphic-slot { grid-template-columns: minmax(120px, 32%) minmax(0, 1fr); }
+  .fantasy-graphic-identity { padding: 10px; }
+  .fantasy-graphic-headshot { width: 124px; height: 90px; }
+  .fantasy-graphic-identity strong { font-size: 20px; }
+  .fantasy-graphic-reason { padding: 12px; }
+  .fantasy-graphic-reason textarea { font-size: 14px; min-height: 125px; }
+  .fantasy-graphic-editor > .fantasy-graphic-preview { max-width: 380px; }
+}
 @media (max-width: 760px) {
   .fantasy-graphic-editor { padding: 12px; }
   .fantasy-graphic-slot { grid-template-columns: minmax(0, 1fr); }

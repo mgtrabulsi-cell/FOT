@@ -26,6 +26,10 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
   let longAnalysis = false;
   let fourPages = false;
   let overlongCaption = false;
+  let graphic = false;
+  let graphicFailure = false;
+  const graphicPng = new Uint8Array(1500);
+  graphicPng.set([137,80,78,71,13,10,26,10]);
   try {
     for (const name of names) Deno.env.set(name, name === 'SUPABASE_URL' ? 'https://test.invalid' : name === 'X_ACCOUNT_ID' ? '123' : 'fixture');
     Object.defineProperty(Deno, 'serve', { configurable: true, writable: true, value: (callback: typeof handler) => { handler = callback; } });
@@ -42,6 +46,10 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
           const form = await request.formData();
           const media = form.get('media');
           assert(media instanceof File && media.type === 'image/png' && media.size > 1000, 'Rendered PNG attached');
+          if (graphic && media instanceof File) {
+            const bytes = new Uint8Array(await media.arrayBuffer());
+            assert(bytes.length === graphicPng.length && bytes.every((byte, index) => byte === graphicPng[index]), 'Original graphic PNG is uploaded byte-for-byte, not an analysis replacement');
+          }
           assert(form.get('media_category') === 'tweet_image', 'Image category required');
           if (failure === 'upload') return new Response('', { status: 403 });
           if (failure === 'upload-timeout') throw new DOMException('Timed out', 'TimeoutError');
@@ -88,9 +96,15 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
       if (url.pathname.endsWith('/livewire_posts')) {
         sourceReads++;
         return Response.json(missing || (removedDuringUpload && sourceReads > 1) ? null : {
-          title: changed && sourceReads > 1 ? 'Changed headline' : 'LIVEWIRE headline',
-          body: longAnalysis ? 'Long analysis. '.repeat(5000) : 'Our news.', angle_id: null,
+          title: changed && sourceReads > 1 ? 'Changed headline' : graphic ? 'Week 7 Must Start Fantasy QB' : 'LIVEWIRE headline',
+          body: graphic ? '' : longAnalysis ? 'Long analysis. '.repeat(5000) : 'Our news.', angle_id: null,
+          ...(graphic ? { fantasy_graphic_id: '11111111-1111-4111-8111-111111111111',
+            image_paths: ['11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png'] } : {}),
         });
+      }
+      if (url.pathname.includes('/storage/v1/object/')) {
+        if (graphicFailure) return new Response('Missing graphic', { status: 404 });
+        return new Response(graphicPng, { headers: { 'Content-Type': 'image/png' } });
       }
       throw new Error(`Unexpected test request: ${url.pathname}`);
     };
@@ -118,6 +132,11 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
     assert((await invoke()).status === 503 && !texts.length && uploads === 0 && writes.some(row => row.status === 'failed'), 'Caption overflow never silently drops picks or uploads images');
     reset(); storyline = false;
     assert((await invoke()).status === 200 && texts[0].includes('#livewire/post/'), 'Standalone post uses LIVEWIRE URL');
+    reset(); graphic = true;
+    assert((await invoke()).status === 200 && texts[0] === 'Week 7 Must Start Fantasy QB' && uploads === 1, 'Start/Sit tweet has exactly the subject and original graphic, no URL or extra wording');
+    reset(); graphicFailure = true;
+    assert((await invoke()).status === 503 && !texts.length && uploads === 0, 'Missing graphic fails explicitly without substituting analysis');
+    graphic = false; graphicFailure = false;
     reset(); changed = true;
     assert((await invoke()).status === 503 && !texts.length && writes.some(row => row.status === 'failed'), 'Source changes during upload never send stale content');
     reset(); removedDuringUpload = true;

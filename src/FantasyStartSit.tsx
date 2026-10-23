@@ -7,6 +7,9 @@ import { emptyFantasyGraphic, fantasyGraphicPublishError, graphicPositionLabels,
 import type { FantasyGraphic, FantasyGraphicRow, GraphicPlayer } from './services/fantasyGraphics';
 import { renderFantasyGraphic } from './services/fantasyGraphicImage';
 import { fetchFantasyGraphicRoster } from './services/fantasyGraphicRoster';
+import { clearFantasyGraphicDraft, loadFantasyGraphicDraft, saveFantasyGraphicDraft } from './services/fantasyGraphicDrafts';
+import type { FantasyGraphicDraft } from './services/fantasyGraphicDrafts';
+import XPublishingStatus from './XPublishingStatus';
 import './fantasyStartSit.css';
 
 const message = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -54,6 +57,10 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
   const [rosterError, setRosterError] = useState('');
   const [rosterRetry, setRosterRetry] = useState(0);
   const [queries, setQueries] = useState(['', '', '', '']);
+  const [draftError, setDraftError] = useState('');
+  const [postToX, setPostToX] = useState(false);
+  const restoreFailed = useRef(false);
+  const retainedDrafts = useRef(new Map<string, FantasyGraphicDraft>());
   const editor = useRef<HTMLFormElement>(null);
   const scope = `${user?.id ?? 'guest'}:${season}:${week}`;
   const formScope = useRef(scope);
@@ -96,6 +103,9 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
     setRows([]); setNotice(''); setPlayers([]);
   }, [scope]);
   useEffect(() => {
+    restoreDraft();
+  }, [scope]);
+  useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener('beforeunload', warn);
@@ -114,35 +124,111 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
     return () => { current = false; clearTimeout(timeout); controller.abort(); };
   }, [active, admin, !!activeForm, season, scheduleKey, rosterRetry]);
 
+  function restoreDraft() {
+    formScope.current = scope;
+    setForm(null); setEditing(null); setDirty(false); setQueries(['', '', '', '']); setPostToX(false);
+    setDraftError(''); restoreFailed.current = false;
+    if (!user || !season || !week) return;
+    try {
+      const draft = retainedDrafts.current.get(scope) ?? loadFantasyGraphicDraft(user.id, season, week);
+      if (!draft) return;
+      setForm(draft.form); setEditing(draft.editing); setDirty(draft.dirty); setQueries(draft.queries);
+      setPostToX(draft.postToX ?? false);
+      persistDraft(draft);
+      setNotice('Your on-device Start/Sit draft was restored. Save shared draft to share it with other admins.');
+    } catch (cause) {
+      restoreFailed.current = true;
+      setDraftError(`Could not restore your on-device draft: ${message(cause)}`);
+    }
+  }
+  function persistDraft(draft: FantasyGraphicDraft) {
+    if (!user || !season || !week) return;
+    retainedDrafts.current.set(scope, draft);
+    try {
+      saveFantasyGraphicDraft(user.id, season, week, draft);
+      setDraftError(''); restoreFailed.current = false;
+    } catch (cause) {
+      setDraftError(`On-device draft saving failed: ${message(cause)} Keep this editor open and save a shared draft to protect your work.`);
+    }
+  }
   function open(row?: FantasyGraphicRow) {
     if (dirtyRef.current && !window.confirm('Replace your unsaved graphic changes? Save the draft first to keep them.')) return;
-    setForm(row?.content ?? emptyFantasyGraphic()); setEditing(row ?? null); setDirty(false);
-    setQueries(['', '', '', '']); setNotice(''); setError(''); formScope.current = scope;
+    if (restoreFailed.current && !window.confirm('Your on-device draft could not be restored. Replace it with this graphic?')) return;
+    const next = row?.content ?? emptyFantasyGraphic();
+    const nextQueries = ['', '', '', ''];
+    setForm(next); setEditing(row ?? null); setDirty(false); setPostToX(false);
+    setQueries(nextQueries); setNotice(''); setError(''); formScope.current = scope;
+    persistDraft({ form: next, editing: row ?? null, dirty: false, queries: nextQueries });
     window.setTimeout(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
   }
-  function change(next: FantasyGraphic) { setForm(next); setDirty(true); setNotice(''); }
+  function change(next: FantasyGraphic, nextQueries = queries) {
+    setForm(next); setDirty(true); setQueries(nextQueries); setNotice('');
+    persistDraft({ form: next, editing, dirty: true, queries: nextQueries, postToX });
+  }
+  function changeQuery(index: number, query: string) {
+    const nextQueries = queries.map((value, i) => i === index ? query : value);
+    setQueries(nextQueries);
+    if (activeForm) persistDraft({ form: activeForm, editing, dirty, queries: nextQueries, postToX });
+  }
+  function closeEditor() {
+    if (dirty && !window.confirm('Discard unsaved changes? The saved shared draft is unchanged.')) return;
+    try {
+      if (user && season && week) clearFantasyGraphicDraft(user.id, season, week);
+    } catch (cause) {
+      setDraftError(`Could not clear your on-device draft: ${message(cause)} The editor was kept open. Please retry.`);
+      return;
+    }
+    retainedDrafts.current.delete(scope);
+    setForm(null); setEditing(null); setDirty(false); setDraftError(''); setNotice('');
+  }
   async function save(action: 'draft' | 'publish' | 'unpublish') {
-    if (!supabase || !activeForm || !admin || !season || !week || busy) return;
+    if (!supabase || !user || !activeForm || !admin || !season || !week || busy) return;
     const savedScope = scope;
     setBusy(true); setError(''); setNotice('');
+    let uploadedPath: string | null = null;
     try {
       if (action === 'publish') {
         const validation = fantasyGraphicPublishError(activeForm);
         if (validation) throw new Error(validation);
-        await renderFantasyGraphic(activeForm, true);
+        const png = await renderFantasyGraphic(activeForm, true);
+        if (png.size > 5 * 1024 * 1024) throw new Error('The graphic exceeds the 5 MB photo limit. Shorten the content or retry rendering.');
+        const path = `${user.id}/${crypto.randomUUID()}.png`;
+        const uploaded = await supabase.storage.from('livewire-photos').upload(path, png, { contentType: 'image/png', upsert: false });
+        if (uploaded.error) throw uploaded.error;
+        uploadedPath = path;
       }
-      const result = await supabase.rpc('save_fantasy_graphic', {
+      const result = await supabase.rpc('save_fantasy_graphic_publication', {
         graphic_id: editing?.id ?? null, graphic_season: season, graphic_week: week, graphic_content: activeForm,
         expected_revision: editing?.revision ?? 0, graphic_action: action,
+        graphic_image_path: uploadedPath, post_to_x: postToX,
       });
-      if (result.error) throw result.error;
+      if (result.error) {
+        // Cleanup only a confirmed RPC rejection; an interrupted response may have committed.
+        if (uploadedPath && result.error.code) {
+          const cleanup = await supabase.storage.from('livewire-photos').remove([uploadedPath]);
+          if (cleanup.error) throw new Error(`${message(result.error)} Unused graphic cleanup also failed: ${cleanup.error.message}`);
+        }
+        throw result.error;
+      }
       const [row] = readFantasyGraphicRows(result.data);
       if (!row) throw new Error('The saved graphic was not returned. Reload before trying again.');
-      if (formScope.current !== savedScope) return;
+      // Keep the completed save's revision even if the user changed weeks while it was in flight.
+      const savedDraft = { form: activeForm, editing: row, dirty: false, queries, postToX };
+      retainedDrafts.current.set(savedScope, savedDraft);
+      try {
+        saveFantasyGraphicDraft(user.id, season, week, savedDraft);
+        if (currentScope.current === savedScope) setDraftError('');
+      } catch (cause) {
+        if (currentScope.current === savedScope) setDraftError(`The shared graphic was saved, but on-device draft saving failed: ${message(cause)}`);
+        else console.error('Could not update the saved Start/Sit draft on this device', cause);
+      }
+      if (currentScope.current !== savedScope || formScope.current !== savedScope) return;
       setEditing(row); setDirty(false);
       if (currentScope.current === savedScope) setRows((previous) => [row, ...previous.filter((item) => item.id !== row.id)]);
-      setNotice(action === 'publish' ? 'Graphic published in Fantasy Start/Sit.' : action === 'unpublish' ? 'Graphic unpublished. The shared draft is still available to admins.' : 'Shared draft saved. All admins can continue editing it.');
-    } catch (cause) { if (formScope.current === savedScope) setError(message(cause)); }
+      setNotice(action === 'publish' ? `Graphic published in Start/Sit and LIVEWIRE.${postToX ? ' Check X publishing status below for delivery; only first publications are eligible.' : ''}` : action === 'unpublish' ? 'Graphic removed from Start/Sit and LIVEWIRE. The shared draft is still available to admins. Any tweet already sent is unchanged.' : 'Shared draft saved. All admins can continue editing it.');
+    } catch (cause) {
+      if (formScope.current === savedScope) setError(message(cause));
+    }
     finally { setBusy(false); }
   }
   const published = rows.filter((row) => row.published_content);
@@ -154,18 +240,21 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
       </div>
     </div>
     {error && <p className="feed-warning" role="alert">{error}</p>}
+    {admin && draftError && <p className="feed-warning" role="alert">{draftError} <button type="button" disabled={busy} onClick={() => {
+      if (activeForm) persistDraft({ form: activeForm, editing, dirty, queries, postToX });
+      else restoreDraft();
+    }}>Retry on-device draft</button></p>}
     {notice && <p role="status">{notice}</p>}
-    {admin && form && !activeForm && <p role="status">Your open graphic is retained in its original week. Switch back to continue it, or create/edit a graphic for this week.</p>}
     {admin && activeForm && <form ref={editor} className="fantasy-graphic-editor" aria-label="Start/Sit graphic editor" onSubmit={(event) => { event.preventDefault(); void save('publish'); }}>
       <h3>{editing ? 'Edit shared graphic' : 'Create Start/Sit graphic'}</h3>
-      <p>{dirty ? 'Unsaved changes. Save draft to share your work with other admins.' : editing ? 'Shared draft loaded. Published artwork stays unchanged until you publish again.' : 'Choose four players and write your take. Save draft to keep unfinished work.'}</p>
+      <p>{draftError ? 'On-device recovery is not up to date. Save a shared draft to protect your work.' : 'Changes are saved automatically on this device for this account and week.'} {dirty ? 'Not yet saved to the shared draft.' : editing ? 'Published artwork stays unchanged until you publish again.' : 'Choose four players and write your take.'} Save shared draft to share your work with other admins.</p>
       <fieldset disabled={busy} className="fantasy-graphic-controls">
         <label>Graphic type<select aria-label="Graphic type" value={activeForm.kind} onChange={(event) => change({ ...activeForm, kind: event.target.value === 'sit' ? 'sit' : 'start' })}><option value="start">Must Start</option><option value="sit">Must Sit</option></select></label>
         <label>Position<select aria-label="Position" value={activeForm.position} onChange={(event) => {
           const position = graphicPositions.find((value) => value === event.target.value);
           if (!position || position === activeForm.position) return;
           if (activeForm.slots.some((slot) => slot.player || slot.reason) && !window.confirm('Changing position clears the four player slots and reasoning. Continue?')) return;
-          change({ ...emptyFantasyGraphic(), kind: activeForm.kind, position }); setQueries(['', '', '', '']);
+          change({ ...emptyFantasyGraphic(), kind: activeForm.kind, position }, ['', '', '', '']);
         }}>{graphicPositions.map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
       </fieldset>
       <p>Search ESPN active skill-player rosters. Matchups come from the selected week's schedule; unavailable opponents show TBD, not an invented matchup. Verify injuries, opponents, and claims before publishing.</p>
@@ -177,11 +266,11 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
           const matches = query.length >= 2 ? players.filter((player) => player.position === activeForm.position && player.name.toLocaleLowerCase().includes(query)).slice(0, 12) : [];
           return <div className="fantasy-graphic-slot" key={index}>
             <div className="fantasy-graphic-identity">
-              <label>Player {index + 1} search<input type="search" autoComplete="off" placeholder={`Search ${activeForm.position} name`} value={queries[index]} onChange={(event) => setQueries((previous) => previous.map((value, i) => i === index ? event.target.value : value))} /></label>
+              <label>Player {index + 1} search<input type="search" autoComplete="off" placeholder={`Search ${activeForm.position} name`} value={queries[index]} onChange={(event) => changeQuery(index, event.target.value)} /></label>
               {query.length >= 2 && <ul className="fantasy-graphic-search" aria-label={`Player ${index + 1} results`}>
                 {matches.map((player) => <li key={player.id}><button type="button" disabled={activeForm.slots.some((item, i) => i !== index && item.player?.id === player.id)} onClick={() => {
-                  change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index ? { ...item, player } : item) });
-                  setQueries((previous) => previous.map((value, i) => i === index ? '' : value));
+                  change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index ? { ...item, player } : item) },
+                    queries.map((value, i) => i === index ? '' : value));
                 }}>{player.name} · {player.teamAbbr}</button></li>)}
                 {!matches.length && !rosterLoading && <li>No matching {activeForm.position} players.</li>}
               </ul>}
@@ -196,14 +285,20 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
       </fieldset>
       <h3>Graphic preview</h3>
       <GraphicPreview graphic={activeForm} />
+      <label className="x-publishing-choice"><input type="checkbox" checked={postToX} disabled={busy} onChange={(event) => {
+        setPostToX(event.target.checked);
+        persistDraft({ form: activeForm, editing, dirty, queries, postToX: event.target.checked });
+      }} />Post to X on first publication</label>
+      <p>Publishing also posts the subject and graphic only in LIVEWIRE. Checked X posts use the exact same subject and PNG, without extra wording or a link. Edits and republishing do not send another tweet.</p>
       <div className="angle-actions">
         <button type="button" disabled={busy} onClick={() => void save('draft')}>Save shared draft</button>
         <button type="submit" disabled={busy}>{busy ? 'Saving...' : 'Publish graphic'}</button>
         {editing?.published_content && <button type="button" disabled={busy} onClick={() => { if (window.confirm('Remove this graphic from the public Start/Sit gallery?')) void save('unpublish'); }}>Unpublish graphic</button>}
-        <button type="button" disabled={busy} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes? The saved shared draft is unchanged.')) { setForm(null); setEditing(null); setDirty(false); } }}>Close editor</button>
+        <button type="button" disabled={busy} onClick={closeEditor}>Close editor</button>
       </div>
       {!fantasyGraphicPublishError(activeForm) && <GraphicDownload graphic={activeForm} />}
     </form>}
+    {admin && active && <XPublishingStatus />}
     {admin && <section aria-label="Shared Start/Sit drafts" className="fantasy-graphic-drafts"><h3>Shared admin drafts</h3>
       <p>All admins can edit these graphics. Saving a draft does not replace the published version.</p>
       {rows.map((row) => <button type="button" key={row.id} disabled={busy} onClick={() => open(row)}>

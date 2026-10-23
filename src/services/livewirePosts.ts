@@ -5,6 +5,7 @@ import type { PostTheme } from './postThemes';
 export type { PostTheme } from './postThemes';
 export type LivewirePost = {
   id: string; author_id: string | null; author_name: string; angle_id?: string | null;
+  fantasy_graphic_id?: string | null;
   admin_pick?: string; admin_picks?: AnglePick[]; title: string | null; body: string;
   themes?: PostTheme[]; image_paths?: string[]; source_url: string | null;
   created_at: string; updated_at: string; view_count?: number;
@@ -19,6 +20,7 @@ export function readLivewirePosts(value: unknown): LivewirePost[] {
     && typeof post.created_at === 'string' && Number.isFinite(Date.parse(post.created_at))
     && typeof post.updated_at === 'string' && Number.isFinite(Date.parse(post.updated_at))
     && (post.angle_id === undefined || post.angle_id === null || typeof post.angle_id === 'string')
+    && (post.fantasy_graphic_id === undefined || post.fantasy_graphic_id === null || typeof post.fantasy_graphic_id === 'string')
     && (post.admin_pick === undefined || typeof post.admin_pick === 'string')
     && (post.image_paths === undefined || (Array.isArray(post.image_paths) && post.image_paths.length <= 4
       && post.image_paths.every((path: unknown) => typeof path === 'string')))

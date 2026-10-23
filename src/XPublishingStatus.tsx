@@ -34,6 +34,7 @@ export default function XPublishingStatus() {
     <summary>X publishing: {enabled === null ? 'checking connection' : enabled ? 'enabled' : 'not connected'}</summary>
     <p>Only first publications are eligible. Edits, mirrored posts, and weekly player boards do not send extra tweets.</p>
     <p>Checked posts share the headline, subject, admin picks with sport emojis, story link, and full analysis as up to four images. Overlong captions or analysis show a delivery error instead of being cut short.</p>
+    <p>Start/Sit graphics are different: the tweet contains only the LIVEWIRE subject and the published graphic, with no extra wording or link.</p>
     {enabled === false && <p>Connect the GameWire X account before enabling. Posts published while disconnected are not queued for later.</p>}
     {error && <p role="alert">{error} <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
     <ul>{deliveries.map((delivery) => <li key={delivery.id}>

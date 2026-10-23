@@ -4,6 +4,7 @@ export type XCredentials = { apiKey: string; apiSecret: string; accessToken: str
 export type XPostSource = {
   title: string; subject: string; analysis: string; gameId: string;
   picks: ReturnType<typeof readAnglePicks>;
+  graphicImage?: string;
 };
 
 export function xSource(row: Record<string, unknown>, angle: boolean, id: string): XPostSource {
@@ -13,7 +14,18 @@ export function xSource(row: Record<string, unknown>, angle: boolean, id: string
     return value;
   };
   const title = row.title === null && !angle ? 'GameWire update' : text('title');
-  if (!angle) return { title, subject: '', analysis: text('body'), gameId: '', picks: [] };
+  if (!angle) {
+    if (row.fantasy_graphic_id !== undefined && row.fantasy_graphic_id !== null) {
+      if (typeof row.fantasy_graphic_id !== 'string' || row.body !== ''
+        || !/^Week (?:[1-9]|1[0-8]) Must (?:Start|Sit) Fantasy (?:QB|RB|WR|TE)$/.test(title)
+        || !Array.isArray(row.image_paths) || row.image_paths.length !== 1
+        || typeof row.image_paths[0] !== 'string' || !/^[0-9a-f-]+\/[0-9a-f-]+[.]png$/.test(row.image_paths[0])) {
+        throw new Error('Published Start/Sit source has an invalid subject or graphic attachment');
+      }
+      return { title, subject: '', analysis: '', gameId: '', picks: [], graphicImage: row.image_paths[0] };
+    }
+    return { title, subject: '', analysis: text('body'), gameId: '', picks: [] };
+  }
   const picks = row.picks === undefined ? undefined : readAnglePicks(row.picks);
   const narrative = text('narrative');
   const evidence = text('evidence');
@@ -30,6 +42,7 @@ export function xPickLines(source: XPostSource): string[] {
 }
 
 export function xImagePostText(source: XPostSource, link: string): string {
+  if (source.graphicImage) return source.title;
   const clean = (value: string) => value.replace(/\s+/gu, ' ').trim();
   const heading = clean(source.title);
   const subject = clean(source.subject);

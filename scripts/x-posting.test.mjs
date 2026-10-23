@@ -53,3 +53,19 @@ test('Source normalization includes all analysis sections, legacy picks and no i
   assert.throws(() => xSource({ ...row, narrative: null }, true, 'id'), /invalid narrative/);
   assert.deepEqual(xSource({ title: null, body: 'News body' }, false, 'id'), { title: 'GameWire update', subject: '', analysis: 'News body', gameId: '', picks: [] });
 });
+
+test('Start/Sit tweets contain exactly the LIVEWIRE subject, no URL or other wording, and reference the original PNG', () => {
+  for (const kind of ['Start', 'Sit']) for (const position of ['QB', 'RB', 'WR', 'TE']) {
+    const title = `Week 7 Must ${kind} Fantasy ${position}`;
+    const source = xSource({ title, body: '', fantasy_graphic_id: 'graphic-id',
+      image_paths: ['11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png'] }, false, 'id');
+    assert.equal(xImagePostText(source, 'https://gamewire.us/#livewire/post/id'), title);
+    assert.equal(source.graphicImage, '11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png');
+    assert.equal(source.analysis, '');
+    assert.deepEqual(source.picks, []);
+  }
+  const row = { title: 'Week 7 Must Start Fantasy QB', body: '', fantasy_graphic_id: 'graphic-id', image_paths: ['a/b.png'] };
+  for (const change of [{ body: 'Extra wording' }, { title: 'Invalid title' }, { image_paths: [] }, { image_paths: ['https://example.com/image.png'] }]) {
+    assert.throws(() => xSource({ ...row, ...change }, false, 'id'), /invalid subject or graphic/);
+  }
+});
