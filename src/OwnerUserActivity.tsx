@@ -14,6 +14,7 @@ type UserActivity = {
   notification_devices: number;
   score_alert_devices: number;
 };
+type GuestActivity = { sessions: number; total_opens: number; active_week: number; last_opened_at: string | null };
 
 const dateFormat = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -36,6 +37,8 @@ function formatLastOpened(value: string | null, now: number) {
 export default function OwnerUserActivity({ user }: { user: User }) {
   const [isOwner, setIsOwner] = useState(false);
   const [rows, setRows] = useState<UserActivity[] | null>(null);
+  const [guests, setGuests] = useState<GuestActivity | null>(null);
+  const [guestError, setGuestError] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -54,10 +57,28 @@ export default function OwnerUserActivity({ user }: { user: User }) {
     if (!supabase) return;
     setLoading(true);
     setError('');
-    const { data, error: loadError } = await supabase.rpc('owner_user_activity');
-    if (loadError) setError('Could not load registered users. Try again.');
-    else { setRows((data ?? []) as UserActivity[]); setNow(Date.now()); }
-    setLoading(false);
+    try {
+      const { data, error: loadError } = await supabase.rpc('owner_user_activity');
+      if (loadError) setError('Could not load registered users. Try again.');
+      else { setRows((data ?? []) as UserActivity[]); setNow(Date.now()); }
+      const { data: guestData, error: guestLoadError } = await supabase.rpc('owner_guest_activity');
+      if (guestLoadError) setGuestError('Could not load guest visits. Try refreshing.');
+      else {
+        const row = guestData?.[0];
+        if (!row || !['sessions', 'total_opens', 'active_week'].every((key) => Number.isFinite(Number(row[key])) && Number(row[key]) >= 0)
+          || (row.last_opened_at !== null && (typeof row.last_opened_at !== 'string' || !Number.isFinite(Date.parse(row.last_opened_at))))) {
+          setGuestError('The server returned invalid guest activity. Try refreshing.');
+        } else {
+          setGuests({ sessions: Number(row.sessions), total_opens: Number(row.total_opens), active_week: Number(row.active_week), last_opened_at: row.last_opened_at });
+          setGuestError('');
+        }
+      }
+    } catch (cause) {
+      console.error('Could not refresh owner visit activity', cause);
+      setError('Could not refresh visit activity. Try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { if (isOwner) void load(); }, [isOwner, load]);
@@ -105,7 +126,15 @@ export default function OwnerUserActivity({ user }: { user: User }) {
         <span className="owner-users-joined"><small>Joined </small>{formatDate(row.joined_at)}</span>
       </li>)}
     </ol>}
-    <p className="owner-users-note">Opens are counted for signed-in visits starting Oct 19, 2026. Guests and your owner account are not included in opens or activity totals.</p>
+    <h3>Guest visits</h3>
+    <div className="owner-users-stats" aria-label="Guest activity">
+      <span><b>{guests ? guests.sessions.toLocaleString() : '—'}</b><small>GUEST SESSIONS</small></span>
+      <span><b>{guests ? guests.total_opens.toLocaleString() : '—'}</b><small>GUEST OPENS</small></span>
+      <span><b>{guests ? guests.active_week.toLocaleString() : '—'}</b><small>ACTIVE 7 DAYS</small></span>
+    </div>
+    {guestError && <p className="auth-error" role="alert">{guestError}</p>}
+    {guests && <p className="owner-users-note">Last guest open: {formatLastOpened(guests.last_opened_at, now)}.</p>}
+    <p className="owner-users-note">Account totals above cover signed-in visits starting Oct 19, 2026; your owner account is excluded. Guest totals are separate and start Oct 23, 2026. Guests are anonymous browser/app sessions, not unique people; no names or emails are collected. Returning after 30+ minutes in the background counts another open. Signed-out owner visits cannot be distinguished from other guests.</p>
     <p className="owner-users-note">Notification status reflects saved push subscriptions, not current phone permissions. A user may have muted notifications in device settings. Angle and LIVEWIRE alerts go to registered push devices even when score alerts are off.</p>
   </section>;
 }

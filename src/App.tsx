@@ -634,7 +634,7 @@ function App() {
   const [scoreboardRetry, setScoreboardRetry] = useState(0);
   useEffect(() => subscribeForegroundRefresh(() => setScoreboardRetry((value) => value + 1)), []);
   useOfflineSnapshots(games, view !== 'LiveWire' && deletedAccount === null && (!!authUser || guestMode));
-  useSiteOpenTracking(deletedAccount === null ? authUser?.id : null);
+  useSiteOpenTracking(authUser?.id, deletedAccount === null && !authLoading && (!!authUser || guestMode));
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;
   const notificationEventRef = useRef(notificationEventId);

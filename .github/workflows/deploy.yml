@@ -36,7 +36,7 @@ jobs:
       - name: Test results sport filters
         run: node --test scripts/results-filter.test.mjs
       - name: Test foreground score refresh
-        run: node --test scripts/foreground-refresh.test.mjs
+        run: node --test scripts/foreground-refresh.test.mjs scripts/site-opens.test.mjs
       - name: Test Start/Sit roster gateway
         run: npx --yes deno test --config supabase/functions/send-x-posts/deno.json supabase/functions/fantasy-roster/index.test.ts
       - name: Test X dispatcher
