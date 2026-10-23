@@ -3,28 +3,26 @@ import type { Game } from './sportsData';
 import { graphicPlayerMatchup, graphicPositions } from './fantasyGraphics';
 import type { GraphicPlayer } from './fantasyGraphics';
 
-type Team = { id: string; abbreviation: string };
-function readTeams(value: unknown): Team[] {
-  if (!value || typeof value !== 'object' || !('sports' in value) || !Array.isArray(value.sports)) throw new Error('ESPN returned an invalid NFL team directory.');
-  const teams: Team[] = [];
-  for (const sport of value.sports) {
-    if (!sport || !Array.isArray(sport.leagues)) throw new Error('ESPN returned an invalid NFL league.');
-    for (const league of sport.leagues) {
-      if (!Array.isArray(league.teams)) throw new Error('ESPN returned an invalid NFL team list.');
-      for (const entry of league.teams) {
-        const team = entry?.team;
-        if (!team || typeof team.id !== 'string' || !/^\d+$/.test(team.id) || typeof team.abbreviation !== 'string') throw new Error('ESPN returned an invalid NFL team.');
-        teams.push({ id: team.id, abbreviation: team.abbreviation });
-      }
-    }
-  }
-  if (!teams.length) throw new Error('No NFL teams were available for player search.');
-  return teams;
-}
+// ESPN's directory lacks browser CORS headers; roster URLs support CORS.
+const teams = [
+  { id: '22', abbreviation: 'ARI' }, { id: '1', abbreviation: 'ATL' },
+  { id: '33', abbreviation: 'BAL' }, { id: '2', abbreviation: 'BUF' },
+  { id: '29', abbreviation: 'CAR' }, { id: '3', abbreviation: 'CHI' },
+  { id: '4', abbreviation: 'CIN' }, { id: '5', abbreviation: 'CLE' },
+  { id: '6', abbreviation: 'DAL' }, { id: '7', abbreviation: 'DEN' },
+  { id: '8', abbreviation: 'DET' }, { id: '9', abbreviation: 'GB' },
+  { id: '34', abbreviation: 'HOU' }, { id: '11', abbreviation: 'IND' },
+  { id: '30', abbreviation: 'JAX' }, { id: '12', abbreviation: 'KC' },
+  { id: '13', abbreviation: 'LV' }, { id: '24', abbreviation: 'LAC' },
+  { id: '14', abbreviation: 'LAR' }, { id: '15', abbreviation: 'MIA' },
+  { id: '16', abbreviation: 'MIN' }, { id: '17', abbreviation: 'NE' },
+  { id: '18', abbreviation: 'NO' }, { id: '19', abbreviation: 'NYG' },
+  { id: '20', abbreviation: 'NYJ' }, { id: '21', abbreviation: 'PHI' },
+  { id: '23', abbreviation: 'PIT' }, { id: '25', abbreviation: 'SF' },
+  { id: '26', abbreviation: 'SEA' }, { id: '27', abbreviation: 'TB' },
+  { id: '10', abbreviation: 'TEN' }, { id: '28', abbreviation: 'WSH' },
+];
 export async function fetchFantasyGraphicRoster(season: number, games: Game[], signal: AbortSignal) {
-  const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams?limit=32', { signal });
-  if (!response.ok) throw new Error(`NFL team search returned HTTP ${response.status}.`);
-  const teams = readTeams(await response.json());
   const players: GraphicPlayer[] = [], failures: string[] = [];
   for (let start = 0; start < teams.length; start += 6) {
     if (signal.aborted) throw new Error('Player search was cancelled.');
@@ -40,11 +38,11 @@ export async function fetchFantasyGraphicRoster(season: number, games: Game[], s
           if (position) players.push({ id: player.id, name: player.name, position, teamId: team.id, teamAbbr: team.abbreviation,
             headshot: player.headshot ?? '', ...graphicPlayerMatchup(team.id, games) });
         }
-        if (signal.aborted) throw new Error('Player search was cancelled or timed out. Retry player search.');
-        if (!players.length) throw new Error(`No active players could be loaded. ${failures.join(' ')}`);
       } catch (cause) { failures.push(`${team.abbreviation}: ${cause instanceof Error ? cause.message : 'Roster unavailable'}`); }
     }));
   }
+  if (signal.aborted) throw new Error('Player search was cancelled or timed out. Retry player search.');
+  if (!players.length) throw new Error(`No active players could be loaded. Retry player search. ${failures.join(' ')}`);
   return { players: [...new Map(players.map((player) => [player.id, player])).values()].sort((a, b) => a.name.localeCompare(b.name)),
     warning: failures.length ? `Some players are unavailable. ${failures.join(' ')}` : '' };
 }

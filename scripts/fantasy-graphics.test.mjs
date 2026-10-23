@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { emptyFantasyGraphic, readFantasyGraphic, fantasyGraphicPublishError, readFantasyGraphicRows, graphicPlayerMatchup } from '../src/services/fantasyGraphics.ts';
 
 const player = (id) => ({ id: String(id), name: `Player ${id}`, position: 'QB', teamId: '9', teamAbbr: 'GB',
@@ -7,6 +9,56 @@ const player = (id) => ({ id: String(id), name: `Player ${id}`, position: 'QB', 
   opponentLogo: 'https://a.espncdn.com/i/teamlogos/nfl/500/det.png', matchup: 'VS' });
 const complete = () => ({ kind: 'start', position: 'QB',
   slots: [1, 2, 3, 4].map((id) => ({ player: player(id), reason: 'A verified matchup and an admin opinion.' })) });
+
+async function rosterLoader(fetchRoster) {
+  const compiled = ts.transpileModule(readFileSync(new URL('../src/services/fantasyGraphicRoster.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText.replace(/import \{ fetchNFLActiveSkillRoster \} from [^;]+;/, 'let fetchNFLActiveSkillRoster; export const setRoster = (loader) => { fetchNFLActiveSkillRoster = loader; };')
+    .replace(/from ['"]\.\/fantasyGraphics['"]/g, `from '${new URL('../src/services/fantasyGraphics.ts', import.meta.url)}'`);
+  const module = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+  module.setRoster(fetchRoster);
+  return module.fetchFantasyGraphicRoster;
+}
+
+test('Player search loads all 32 real team routes without the browser-blocked directory, including bye teams', async () => {
+  const requests = [];
+  const loader = await rosterLoader(async (feed, teamId, season) => {
+    requests.push({ feed, teamId, season });
+    return [{ id: teamId, name: `Player ${teamId}`, position: 'QB', headshot: '' }];
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => { throw new Error('The team directory is not browser-readable'); };
+  try {
+    const result = await loader(2026, [], new AbortController().signal);
+    assert.equal(requests.length, 32);
+    assert.equal(new Set(requests.map((request) => request.teamId)).size, 32);
+    assert.ok(requests.some((request) => request.teamId === '9'));
+    assert.ok(requests.every((request) => request.feed === 'football/nfl' && request.season === 2026));
+    assert.equal(result.players.length, 32);
+    assert.equal(result.players.find((player) => player.teamId === '9').teamAbbr, 'GB');
+    assert.equal(result.players.find((player) => player.teamId === '9').matchup, 'TBD');
+    assert.equal(result.warning, '');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Search preserves partial successes, reports all-roster failures, and rejects cancellation', async () => {
+  const loader = await rosterLoader(async (_, teamId) => {
+    if (teamId === '22') throw new Error('HTTP 503');
+    if (teamId !== '9') return [];
+    return [{ id: '4036378', name: 'Jordan Love', position: 'QB', headshot: '' }];
+  });
+  const result = await loader(2026, [], new AbortController().signal);
+  assert.equal(result.players.length, 1);
+  assert.match(result.warning, /ARI: HTTP 503/);
+  assert.doesNotMatch(result.warning, /No active players/);
+  const empty = await rosterLoader(async () => []);
+  await assert.rejects(empty(2026, [], new AbortController().signal), /No active players could be loaded/);
+  const failed = await rosterLoader(async () => { throw new Error('offline'); });
+  await assert.rejects(failed(2026, [], new AbortController().signal), /Retry player search/);
+  const controller = new AbortController();
+  const cancelled = await rosterLoader(async () => { controller.abort(); return []; });
+  await assert.rejects(cancelled(2026, [], controller.signal), /cancelled/);
+});
 
 test('Four-slot drafts are independent and support both headings and all positions', () => {
   const a = emptyFantasyGraphic(), b = emptyFantasyGraphic();
