@@ -10,10 +10,7 @@ import { fetchFantasyGraphicRoster } from './services/fantasyGraphicRoster';
 import { clearFantasyGraphicDraft, loadFantasyGraphicDraft, saveFantasyGraphicDraft } from './services/fantasyGraphicDrafts';
 import type { FantasyGraphicDraft } from './services/fantasyGraphicDrafts';
 import XPublishingStatus from './XPublishingStatus';
-import OfflineImage from './OfflineImage';
 import { useOnlineStatus } from './OfflineStatus';
-import { graphicPlayerMatchup } from './services/fantasyGraphics';
-import { loadFantasyRoster, loadFantasySharedDrafts, loadFantasyWorkspace, saveFantasyRoster, saveFantasySharedDrafts, saveFantasyWorkspace } from './services/fantasyGraphicOffline';
 import './fantasyStartSit.css';
 
 const message = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -25,31 +22,35 @@ function GraphicPreview({ graphic, onDownload = false }: { graphic: FantasyGraph
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [ready, setReady] = useState(false);
+  const renderedUrl = useRef('');
+  useEffect(() => () => { if (renderedUrl.current) URL.revokeObjectURL(renderedUrl.current); }, []);
   useEffect(() => {
-    let current = true, next = '';
+    let current = true;
     setReady(false); setError('');
     const timer = window.setTimeout(() => {
       void renderFantasyGraphic(graphic, onDownload).then((blob) => {
         if (!current) return;
-        next = URL.createObjectURL(blob); setUrl(next); setReady(true);
-      }).catch((cause: unknown) => { if (current) { setUrl(''); setError(message(cause)); } });
+        const previous = renderedUrl.current;
+        const next = URL.createObjectURL(blob);
+        renderedUrl.current = next; setUrl(next); setReady(true);
+        if (previous) URL.revokeObjectURL(previous);
+      }).catch((cause: unknown) => { if (current) setError(message(cause)); });
     }, 250);
-    return () => { current = false; clearTimeout(timer); if (next) URL.revokeObjectURL(next); };
+    return () => { current = false; clearTimeout(timer); };
   }, [graphic, retry, onDownload]);
   return <div className="fantasy-graphic-preview">
-    {error ? <p role="alert">{error} <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry preview</button></p>
-      : !ready && <p role="status">Rendering graphic...</p>}
-    {url && ready && <img src={url} width={1080} height={1350} alt={`GameWire Must ${graphic.kind === 'start' ? 'Start' : 'Sit'} ${graphicPositionLabels[graphic.position]} graphic`} />}
+    {error ? <p role="alert">{error} {url && 'Showing the last rendered preview; your edits are still kept.'} <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry preview</button></p>
+      : !ready && <p role="status">{url ? 'Updating preview...' : 'Rendering graphic...'}</p>}
+    {url && <img src={url} width={1080} height={1350} alt={ready ? `GameWire Must ${graphic.kind === 'start' ? 'Start' : 'Sit'} ${graphicPositionLabels[graphic.position]} graphic` : 'Last rendered Start/Sit graphic preview (not up to date)'} />}
     {onDownload && ready && <a className="angle-create-button" href={url} download={`GameWire-Must-${graphic.kind}-${graphic.position}.png`}><Download size={16} aria-hidden="true" />Download PNG · 2160 × 2700</a>}
   </div>;
 }
 
 export default function FantasyStartSit({ active, season: feedSeason, week: feedWeek, games, user }: Props) {
   const online = useOnlineStatus();
-  const [savedWeek, setSavedWeek] = useState<{ userId: string; season: number; week: number } | null>(null);
   const lastWeek = useRef<{ userId: string; season: number; week: number } | null>(null);
   if (user && feedSeason && feedWeek) lastWeek.current = { userId: user.id, season: feedSeason, week: feedWeek };
-  const previousWeek = lastWeek.current?.userId === user?.id ? lastWeek.current : savedWeek?.userId === user?.id ? savedWeek : null;
+  const previousWeek = lastWeek.current?.userId === user?.id ? lastWeek.current : null;
   const season = feedWeek ? feedSeason : previousWeek?.season ?? feedSeason;
   const week = feedWeek ?? previousWeek?.week ?? null;
   const [admin, setAdmin] = useState(false);
@@ -60,7 +61,6 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
-  const [cacheError, setCacheError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -85,15 +85,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
   const activeForm = formScope.current === scope ? form : null;
 
   useEffect(() => {
-    setAdmin(false); setAccessReady(false); setAccessError(''); setCacheError('');
-    if (!user) return;
-    try {
-      const cached = loadFantasyWorkspace(user.id);
-      if (cached) {
-        setAdmin(cached.admin); setAccessReady(true);
-        if (cached.season && cached.week) setSavedWeek({ userId: user.id, season: cached.season, week: cached.week });
-      }
-    } catch (cause) { setCacheError(`Could not load offline editing data: ${message(cause)}`); }
+    setAdmin(false); setAccessReady(false); setAccessError('');
   }, [user?.id]);
   useEffect(() => {
     let current = true;
@@ -103,16 +95,9 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
       if (current) {
         const allowed = data?.role === 'admin' || data?.role === 'owner';
         setAdmin(allowed); setAccessReady(true); setAccessError('');
-        try {
-          const cached = loadFantasyWorkspace(user.id);
-          saveFantasyWorkspace(user.id, { admin: allowed,
-            season: season && week ? season : cached?.season ?? null,
-            week: season && week ? week : cached?.week ?? null });
-        }
-        catch (cause) { setCacheError(`Could not save offline editing access: ${message(cause)}`); }
       }
     }).catch((cause: unknown) => {
-      if (current) { setAccessReady(true); setAccessError(`Could not refresh Start/Sit access: ${message(cause)} Local editing remains available; publishing requires verified server access.`); }
+      if (current) { setAccessReady(true); setAccessError(`Could not refresh Start/Sit access: ${message(cause)} Your working graphic stays open. Retry when the connection improves.`); }
     });
     return () => { current = false; };
   }, [user?.id, refresh, online]);
@@ -128,13 +113,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
       .then(({ data, error: cause }) => {
         if (cause) throw cause;
         const next = readFantasyGraphicRows(data);
-        if (current) {
-          setRows(next); setError('');
-          if (user && admin) {
-            try { saveFantasySharedDrafts(user.id, season, week, next); }
-            catch (cause) { setCacheError(`Could not save shared graphics for offline editing: ${message(cause)}`); }
-          }
-        }
+        if (current) { setRows(next); setError(''); }
       }).catch((cause: unknown) => { if (current) setError(`Could not load Start/Sit graphics: ${message(cause)}`); })
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; clearTimeout(timeout); controller.abort(); };
@@ -142,11 +121,6 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
 
   useEffect(() => {
     setRows([]); setNotice(''); setPlayers([]);
-    if (!user || !season || !week) return;
-    try {
-      setRows(loadFantasySharedDrafts(user.id, season, week));
-      setPlayers(loadFantasyRoster(season).map((player) => ({ ...player, ...graphicPlayerMatchup(player.teamId, games) })));
-    } catch (cause) { setCacheError(`Could not restore offline graphic data: ${message(cause)}`); }
   }, [scope]);
   useEffect(() => {
     restoreDraft();
@@ -164,13 +138,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
     const timeout = window.setTimeout(() => controller.abort(), 60_000);
     setRosterLoading(true); setRosterError('');
     void fetchFantasyGraphicRoster(season, games, controller.signal).then((result) => {
-      if (current) {
-        setPlayers(result.players); setRosterError(result.warning);
-        try {
-          const previous = loadFantasyRoster(season);
-          saveFantasyRoster(season, [...new Map([...previous, ...result.players].map((player) => [player.id, player])).values()]);
-        } catch (cause) { setCacheError(`Player search loaded, but could not be saved for offline use: ${message(cause)}`); }
-      }
+      if (current) { setPlayers(result.players); setRosterError(result.warning); }
     }).catch((cause: unknown) => { if (current) setRosterError(message(cause)); })
       .finally(() => { if (current) setRosterLoading(false); });
     return () => { current = false; clearTimeout(timeout); controller.abort(); };
@@ -202,8 +170,6 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
     } catch (cause) {
       setDraftError(`On-device draft saving failed: ${message(cause)} Keep this editor open and save a shared draft to protect your work.`);
     }
-    try { saveFantasyWorkspace(user.id, { admin: loadFantasyWorkspace(user.id)?.admin ?? admin, season, week }); }
-    catch (cause) { setCacheError(`Could not save the selected week for offline editing: ${message(cause)}`); }
   }
   function open(row?: FantasyGraphicRow) {
     if (dirtyRef.current && !window.confirm('Replace your unsaved graphic changes? Save the draft first to keep them.')) return;
@@ -237,7 +203,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
   }
   async function save(action: 'draft' | 'publish' | 'unpublish') {
     if (!supabase || !user || !activeForm || !admin || !season || !week || busy) return;
-    if (!online) { setError('You are offline. Your working graphic stays on this device. Reconnect to save a shared draft or publish.'); return; }
+    if (!online) { setError('Connection unavailable. Your graphic stays open and your edits are kept. Reconnect to save a shared draft or publish.'); return; }
     const savedScope = scope;
     setBusy(true); setError(''); setNotice('');
     let uploadedPath: string | null = null;
@@ -280,11 +246,6 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
         else console.error('Could not update the saved Start/Sit draft on this device', cause);
       }
       const nextRows = [row, ...rows.filter((item) => item.id !== row.id)];
-      try { saveFantasySharedDrafts(user.id, season, week, nextRows); }
-      catch (cause) {
-        if (currentScope.current === savedScope) setCacheError(`The shared graphic was saved, but offline gallery saving failed: ${message(cause)}`);
-        else console.error('Could not save the shared graphic for offline editing', cause);
-      }
       if (currentScope.current !== savedScope || formScope.current !== savedScope) return;
       setForm(savedDraft.form); setEditing(savedDraft.editing); setDirty(false); setQueries(savedDraft.queries); setPostToX(savedDraft.postToX);
       setRows(nextRows);
@@ -304,8 +265,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
     </div>
     {error && <p className="feed-warning" role="alert">{error}</p>}
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
-    {cacheError && <p className="feed-warning" role="alert">{cacheError}</p>}
-    {!online && <p role="status">Offline editing · Changes stay on this device. Previously loaded players and shared graphics are available, but saved rosters may be outdated. Reconnect to verify rosters and matchups, save shared drafts, or publish. A preview needs photos and fonts already saved on this device; unavailable preview assets do not stop editing.</p>}
+    {!online && activeForm && <p role="status">Connection interrupted. Your graphic stays open and your edits are kept. Saving shared drafts and publishing will be available when you reconnect.</p>}
     {(admin || activeForm) && draftError && <p className="feed-warning" role="alert">{draftError} <button type="button" disabled={busy} onClick={() => {
       if (activeForm) persistDraft({ form: activeForm, editing, dirty, queries, postToX });
       else restoreDraft();
@@ -325,7 +285,6 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
       </fieldset>
       <p>Search ESPN active skill-player rosters. Matchups come from the selected week's schedule; unavailable opponents show TBD, not an invented matchup. Verify injuries, opponents, and claims before publishing.</p>
       {rosterLoading && <p role="status">Loading player search...</p>}
-      {!online && !players.length && <p role="status">No player roster has been saved on this device for this season. You can edit reasoning and existing player selections now; reconnect once to load player search.</p>}
       {rosterError && <p className="feed-warning" role="alert">{rosterError} <button type="button" onClick={() => setRosterRetry((value) => value + 1)}>Retry player search</button></p>}
       <fieldset disabled={busy} className="fantasy-graphic-slots">
         {activeForm.slots.map((slot, index) => {
@@ -341,8 +300,8 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
                 }}>{player.name} · {player.teamAbbr}</button></li>)}
                 {!matches.length && !rosterLoading && <li>No matching {activeForm.position} players.</li>}
               </ul>}
-              {slot.player ? <><OfflineImage className="fantasy-graphic-headshot" src={slot.player.headshot || undefined} alt={slot.player.name} /><strong>{slot.player.name}</strong>
-                <div className="fantasy-graphic-opponent"><span>{slot.player.matchup}</span>{slot.player.opponentLogo && <OfflineImage src={slot.player.opponentLogo} alt="" />}<span>{slot.player.opponent}</span></div>
+              {slot.player ? <><img className="fantasy-graphic-headshot" src={slot.player.headshot || undefined} alt={slot.player.name} /><strong>{slot.player.name}</strong>
+                <div className="fantasy-graphic-opponent"><span>{slot.player.matchup}</span>{slot.player.opponentLogo && <img src={slot.player.opponentLogo} alt="" />}<span>{slot.player.opponent}</span></div>
                 <button type="button" onClick={() => change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index ? { ...item, player: null } : item) })}>Clear player {index + 1}</button>
               </> : <p>Choose a player to add their face, name, and matchup.</p>}
             </div>

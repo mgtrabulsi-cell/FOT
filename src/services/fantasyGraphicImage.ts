@@ -1,26 +1,18 @@
 import { fantasyGraphicPublishError, graphicPositionLabels, graphicPositions } from './fantasyGraphics';
 import type { FantasyGraphic } from './fantasyGraphics';
-import { nativeApp, nativeImageSource } from './nativeOffline';
-import { webOfflineStore } from './webOffline';
 
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
 function loadImage(url: string) {
   const cached = imageCache.get(url);
   if (cached) return cached;
-  const request = (async () => {
-    const blob = nativeApp ? null : await webOfflineStore().image(url);
-    const source = nativeApp ? await nativeImageSource(url) : blob ? URL.createObjectURL(blob) : url;
-    try {
-      return await new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        const timer = window.setTimeout(() => { img.src = ''; reject(new Error('An image timed out. Retry the preview.')); }, 15_000);
-        img.onload = () => { clearTimeout(timer); resolve(img); };
-        img.onerror = () => { clearTimeout(timer); reject(new Error('A player photo or team logo could not load. Retry the preview or choose another player.')); };
-        img.src = source;
-      });
-    } finally { if (blob) URL.revokeObjectURL(source); }
-  })();
+  const request = new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const timer = window.setTimeout(() => { img.src = ''; reject(new Error('An image timed out. Retry the preview.')); }, 15_000);
+    img.onload = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('A player photo or team logo could not load. Retry the preview or choose another player.')); };
+    img.src = url;
+  });
   imageCache.set(url, request);
   void request.catch(() => imageCache.delete(url));
   return request;

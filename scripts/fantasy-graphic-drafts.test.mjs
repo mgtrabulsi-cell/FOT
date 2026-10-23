@@ -7,7 +7,6 @@ import ts from 'typescript';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import * as graphics from '../src/services/fantasyGraphics.ts';
 import * as drafts from '../src/services/fantasyGraphicDrafts.ts';
-import * as offline from '../src/services/fantasyGraphicOffline.ts';
 
 const records = new Map();
 let storageFailure = false;
@@ -56,37 +55,22 @@ test('Invalid data and storage failures are explicit and do not remove recoverab
   } finally { storageFailure = false; }
 });
 
-test('Offline caches validate player identity and week/account boundaries and report damaged storage', () => {
-  const player = { id: '101', name: 'Saved QB', position: 'QB', teamId: '9', teamAbbr: 'GB',
-    headshot: '', opponent: '', opponentLogo: '', matchup: 'TBD' };
-  offline.saveFantasyRoster(2025, [player]);
-  assert.deepEqual(offline.loadFantasyRoster(2025), [player]);
-  offline.saveFantasySharedDrafts('cache-owner', 2025, 7, [{ ...row(graphics.emptyFantasyGraphic()), season: 2025 }]);
-  assert.equal(offline.loadFantasySharedDrafts('cache-owner', 2025, 7).length, 1);
-  assert.deepEqual(offline.loadFantasySharedDrafts('cache-owner', 2025, 8), []);
-  assert.deepEqual(offline.loadFantasySharedDrafts('someone-else', 2025, 7), []);
-  records.set('gamewire-fantasy-offline:workspace:bad', '{"admin":true,"season":"2026","week":7}');
-  assert.throws(() => offline.loadFantasyWorkspace('bad'), /invalid/);
-  records.set('gamewire-fantasy-offline:roster:2025', JSON.stringify([{ ...player, headshot: 'javascript:alert(1)' }]));
-  assert.throws(() => offline.loadFantasyRoster(2025), /invalid player/);
-  storageFailure = true;
-  try {
-    assert.throws(() => offline.saveFantasyWorkspace('cache-owner', { admin: true, season: 2025, week: 7 }), /Quota/);
-    assert.throws(() => offline.loadFantasySharedDrafts('cache-owner', 2025, 7), /unavailable/);
-  } finally { storageFailure = false; }
-});
-
 const source = readFileSync(new URL('../src/FantasyStartSit.tsx', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('FantasyStartSit.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const component = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'FantasyStartSit');
 const compiled = ts.transpileModule(component.getText(parsed).replace('export default ', ''), {
   compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
+const previewComponent = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'GraphicPreview');
+const compiledPreview = ts.transpileModule(previewComponent.getText(parsed), {
+  compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
 
 function setup(userId, options = {}) {
   const hooks = [];
   let cursor = 0, changed = false, effects = [], tree;
-  const props = { active: true, user: { id: userId }, season: 2026, week: 7, games: [] };
+  const props = options.preview ? { graphic: graphics.emptyFantasyGraphic(), onDownload: true }
+    : { active: true, user: { id: userId }, season: 2026, week: 7, games: [] };
   const requests = [];
   const uploads = [];
   const removals = [];
@@ -94,24 +78,27 @@ function setup(userId, options = {}) {
   const network = { onLine: options.online !== false };
   const rosterCalls = [];
   const roleCalls = [];
+  const timers = new Map(), revoked = [];
+  let timerId = 0, imageId = 0;
   const equal = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
   const context = vm.createContext({
     exports: {}, require: () => ({
       Fragment,
       jsx: (type, props, key) => { assert.ok(type, 'JSX element type exists'); return jsx(type, props, key); },
       jsxs: (type, props, key) => { assert.ok(type, 'JSX element type exists'); return jsxs(type, props, key); },
-    }), ...graphics, ...drafts, ...offline,
+    }), ...graphics, ...drafts,
     navigator: network,
     useOnlineStatus: () => network.onLine,
-    console, AbortController, crypto: webcrypto, clearTimeout() {},
+    console, AbortController, crypto: webcrypto,
+    clearTimeout: (id) => timers.delete(id),
+    URL: { createObjectURL: () => `blob:preview-${++imageId}`, revokeObjectURL: (url) => revoked.push(url) },
     message: (error) => error.message,
-    window: { setTimeout() { return 1; },
+    window: { setTimeout(callback) { const id = ++timerId; timers.set(id, callback); return id; },
       addEventListener(name, callback) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(callback); },
       removeEventListener(name, callback) { listeners.get(name)?.delete(callback); },
       confirm: () => options.confirm !== false },
-    GraphicPreview: 'graphic-preview', GraphicDownload: 'graphic-download', Plus: 'plus', RefreshCw: 'refresh',
+    GraphicPreview: 'graphic-preview', GraphicDownload: 'graphic-download', Download: 'download', Plus: 'plus', RefreshCw: 'refresh',
     XPublishingStatus: 'x-publishing-status',
-    OfflineImage: 'offline-image',
     fetchFantasyGraphicRoster: async () => {
       rosterCalls.push(true);
       if (options.rosterFailure) throw new Error('Roster feed unavailable');
@@ -156,13 +143,13 @@ function setup(userId, options = {}) {
       });
     },
   });
-  vm.runInContext(compiled, context);
+  vm.runInContext(options.preview ? compiledPreview : compiled, context);
   function render() {
     let passes = 0;
     do {
       assert.ok(++passes < 20, 'Effects settle without a render loop');
       changed = false; cursor = 0; effects = [];
-      tree = context.FantasyStartSit(props);
+      tree = options.preview ? context.GraphicPreview(props) : context.FantasyStartSit(props);
       effects.forEach((effect) => effect());
     } while (changed);
     return tree;
@@ -177,7 +164,8 @@ function setup(userId, options = {}) {
   }
   render();
   return {
-    requests, uploads, removals, rosterCalls, roleCalls, settle, render, props, find,
+    requests, uploads, removals, rosterCalls, roleCalls, settle, render, props, find, revoked,
+    runTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach((callback) => callback()); },
     button(label) { return find((node) => node.type === 'button' && node.props.children === label)[0]; },
     create() { find((node) => node.type === 'button' && Array.isArray(node.props.children) && node.props.children.includes('Create graphic'))[0].props.onClick(); render(); },
     reason(index = 0) { return find((node) => node.type === 'textarea')[index]; },
@@ -215,6 +203,30 @@ test('A phone page restart restores the latest keystroke before any effects or l
   again.props.active = true; again.render();
   assert.equal(again.reason().props.value, 'Last keystroke before suspension');
   again.unmount();
+});
+
+test('The last preview stays visible during updates and render failures, without offering a stale download', async () => {
+  const options = { preview: true };
+  const app = setup('preview', options);
+  app.runTimers(); await app.settle();
+  assert.equal(app.find((node) => node.type === 'img')[0].props.src, 'blob:preview-1');
+  assert.equal(app.find((node) => node.type === 'a').length, 1);
+  options.renderFailure = true;
+  app.props.graphic = { ...app.props.graphic, kind: 'sit' }; app.render();
+  assert.equal(app.find((node) => node.type === 'img')[0].props.src, 'blob:preview-1', 'Updating must not blank the last preview');
+  assert.equal(app.find((node) => node.type === 'a').length, 0, 'Outdated artwork must not be offered for download');
+  app.runTimers(); await app.settle();
+  assert.equal(app.find((node) => node.type === 'img')[0].props.src, 'blob:preview-1', 'A failed update must not remove the rendered preview');
+  assert.equal(app.alerts().length, 1);
+  assert.deepEqual(app.revoked, [], 'The visible preview URL must remain valid');
+  options.renderFailure = false;
+  app.button('Retry preview').props.onClick(); app.render();
+  app.runTimers(); await app.settle();
+  assert.equal(app.find((node) => node.type === 'img')[0].props.src, 'blob:preview-2');
+  assert.deepEqual(app.revoked, ['blob:preview-1']);
+  assert.equal(app.find((node) => node.type === 'a').length, 1);
+  app.unmount();
+  assert.deepEqual(app.revoked, ['blob:preview-1', 'blob:preview-2']);
 });
 
 test('X opt-in is unchecked by default, persists per draft and survives a page restart', async () => {
@@ -258,7 +270,7 @@ test('Publishing uploads the exact rendered PNG and sends it with the X choice i
   assert.equal(drafts.loadFantasyGraphicDraft('publisher', 2026, 7).editing, null);
   assert.equal(app.reason().props.value, '');
   assert.equal(app.checkbox().props.checked, false);
-  assert.equal(offline.loadFantasySharedDrafts('publisher', 2026, 7)[0].published_content.slots[0].reason, 'Reason 1');
+  assert.ok(app.find((node) => node.type === 'article').length, 'The published graphic remains in the gallery');
   app.unmount();
   const restarted = setup('publisher');
   await restarted.settle();
@@ -285,52 +297,41 @@ test('A late successful publish resets only its original week, not a different w
   await app.settle();
   assert.equal(drafts.loadFantasyGraphicDraft('late-publisher', 2026, 7).form.slots[0].reason, '');
   assert.equal(drafts.loadFantasyGraphicDraft('late-publisher', 2026, 8).form.slots[0].reason, 'Other week draft');
-  assert.equal(offline.loadFantasySharedDrafts('late-publisher', 2026, 7)[0].id, 'shared-id');
   app.unmount();
 });
 
-test('Cached editing access never bypasses server revocation and private cached rows stay account-scoped', async () => {
-  offline.saveFantasyWorkspace('revoked', { admin: true, season: 2026, week: 7 });
-  offline.saveFantasySharedDrafts('revoked', 2026, 7, [row(completeDraft().form)]);
+test('A confirmed access revocation disables publishing without removing the working graphic', async () => {
   drafts.saveFantasyGraphicDraft('revoked', 2026, 7, completeDraft());
   const app = setup('revoked', { role: 'reader' });
   await app.settle();
   assert.equal(app.reason().props.value, 'Reason 1', 'Local edits remain recoverable after a role change');
   assert.equal(app.button('Publish graphic').props.disabled, true);
   assert.equal(app.button('Save shared draft').props.disabled, true);
-  assert.equal(offline.loadFantasyWorkspace('revoked').admin, false);
-  assert.deepEqual(offline.loadFantasySharedDrafts('different-account', 2026, 7), []);
   app.unmount();
 });
 
-test('Offline reopening can create, search saved players and edit without any feed/access request', async () => {
+test('A dropped connection keeps the open builder editable and already loaded players searchable', async () => {
   const savedPlayer = completeDraft().form.slots[0].player;
   const app = setup('offline-author', { players: [savedPlayer] });
   await app.settle(); app.create(); await app.settle();
   assert.equal(app.rosterCalls.length, 1, 'Opening an online editor loads its roster');
-  assert.equal(offline.loadFantasyRoster(2026).length, 1, `Roster is saved before going offline: ${JSON.stringify(app.alerts().map((node) => node.props.children))}`);
   app.reason().props.onChange({ target: { value: 'Original online reasoning' } }); app.render();
-  app.unmount();
-  const offlineApp = setup('offline-author', { online: false, roleFailure: true, feedFailure: true, rosterFailure: true });
-  await offlineApp.settle();
-  assert.equal(offlineApp.roleCalls.length, 0);
-  assert.equal(offlineApp.rosterCalls.length, 0);
-  assert.equal(offlineApp.reason().props.value, 'Original online reasoning');
-  offlineApp.reason().props.onChange({ target: { value: 'Words written offline' } }); offlineApp.render();
-  assert.equal(drafts.loadFantasyGraphicDraft('offline-author', 2026, 7).form.slots[0].reason, 'Words written offline');
-  offlineApp.search().props.onChange({ target: { value: 'Player' } }); offlineApp.render();
-  const result = offlineApp.find((node) => node.type === 'button' && Array.isArray(node.props.children) && node.props.children.includes(savedPlayer.name))[0];
-  assert.ok(result, 'Cached roster remains searchable without a network');
-  result.props.onClick(); offlineApp.render();
+  const roleCalls = app.roleCalls.length, rosterCalls = app.rosterCalls.length;
+  app.network(false); await app.settle();
+  assert.equal(app.roleCalls.length, roleCalls, 'A dropped connection must not restart access checks');
+  assert.equal(app.rosterCalls.length, rosterCalls);
+  assert.equal(app.reason().props.value, 'Original online reasoning');
+  app.reason().props.onChange({ target: { value: 'More reasoning during connection loss' } }); app.render();
+  assert.equal(drafts.loadFantasyGraphicDraft('offline-author', 2026, 7).form.slots[0].reason, 'More reasoning during connection loss');
+  app.search().props.onChange({ target: { value: 'Player' } }); app.render();
+  const result = app.find((node) => node.type === 'button' && Array.isArray(node.props.children) && node.props.children.includes(savedPlayer.name))[0];
+  assert.ok(result, 'Already loaded search results remain on screen');
+  result.props.onClick(); app.render();
   assert.equal(drafts.loadFantasyGraphicDraft('offline-author', 2026, 7).form.slots[0].player.id, savedPlayer.id);
-  assert.equal(offlineApp.button('Save shared draft').props.disabled, true);
-  assert.equal(offlineApp.button('Publish graphic').props.disabled, true);
-  offlineApp.button('Close editor').props.onClick(); offlineApp.render();
-  offlineApp.create();
-  assert.equal(offlineApp.reason().props.value, '');
-  offlineApp.reason().props.onChange({ target: { value: 'Created entirely offline' } }); offlineApp.render();
-  assert.equal(offlineApp.requests.length, 0);
-  offlineApp.unmount();
+  assert.equal(app.button('Save shared draft').props.disabled, true);
+  assert.equal(app.button('Publish graphic').props.disabled, true);
+  assert.equal(app.requests.length, 0);
+  app.unmount();
 });
 
 test('Feed/access failures, refresh and reconnect never hide or reset the working graphic', async () => {
@@ -350,21 +351,6 @@ test('Feed/access failures, refresh and reconnect never hide or reset the workin
   app.network(true); await app.settle();
   assert.equal(app.reason().props.value, 'Keep this visible through all feed failures');
   assert.equal(app.requests.length, 0, 'Reconnect must not automatically publish or save remotely');
-  app.unmount();
-});
-
-test('An offline restart with no scoreboard restores the last editing week and cached shared graphics', async () => {
-  offline.saveFantasyWorkspace('saved-workspace', { admin: true, season: 2026, week: 7 });
-  const shared = row(completeDraft().form, 5);
-  offline.saveFantasySharedDrafts('saved-workspace', 2026, 7, [shared]);
-  const app = setup('saved-workspace', { online: false });
-  app.props.week = null; app.props.season = null; app.render(); await app.settle();
-  const sharedButton = app.find((node) => node.type === 'button' && node.props.className === undefined
-    && Array.isArray(node.props.children) && node.props.children.includes('QB'))[0];
-  assert.ok(sharedButton, 'Previously loaded shared graphics remain available offline');
-  sharedButton.props.onClick(); app.render();
-  assert.equal(app.reason().props.value, 'Reason 1');
-  assert.equal(drafts.loadFantasyGraphicDraft('saved-workspace', 2026, 7).editing.revision, 5);
   app.unmount();
 });
 
