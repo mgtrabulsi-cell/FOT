@@ -10,6 +10,10 @@ import { fetchFantasyGraphicRoster } from './services/fantasyGraphicRoster';
 import { clearFantasyGraphicDraft, loadFantasyGraphicDraft, saveFantasyGraphicDraft } from './services/fantasyGraphicDrafts';
 import type { FantasyGraphicDraft } from './services/fantasyGraphicDrafts';
 import XPublishingStatus from './XPublishingStatus';
+import OfflineImage from './OfflineImage';
+import { useOnlineStatus } from './OfflineStatus';
+import { graphicPlayerMatchup } from './services/fantasyGraphics';
+import { loadFantasyRoster, loadFantasySharedDrafts, loadFantasyWorkspace, saveFantasyRoster, saveFantasySharedDrafts, saveFantasyWorkspace } from './services/fantasyGraphicOffline';
 import './fantasyStartSit.css';
 
 const message = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -40,7 +44,14 @@ function GraphicPreview({ graphic, onDownload = false }: { graphic: FantasyGraph
   </div>;
 }
 
-export default function FantasyStartSit({ active, season, week, games, user }: Props) {
+export default function FantasyStartSit({ active, season: feedSeason, week: feedWeek, games, user }: Props) {
+  const online = useOnlineStatus();
+  const [savedWeek, setSavedWeek] = useState<{ userId: string; season: number; week: number } | null>(null);
+  const lastWeek = useRef<{ userId: string; season: number; week: number } | null>(null);
+  if (user && feedSeason && feedWeek) lastWeek.current = { userId: user.id, season: feedSeason, week: feedWeek };
+  const previousWeek = lastWeek.current?.userId === user?.id ? lastWeek.current : savedWeek?.userId === user?.id ? savedWeek : null;
+  const season = feedWeek ? feedSeason : previousWeek?.season ?? feedSeason;
+  const week = feedWeek ?? previousWeek?.week ?? null;
   const [admin, setAdmin] = useState(false);
   const [accessReady, setAccessReady] = useState(false);
   const [rows, setRows] = useState<FantasyGraphicRow[]>([]);
@@ -48,6 +59,8 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
   const [editing, setEditing] = useState<FantasyGraphicRow | null>(null);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState('');
+  const [accessError, setAccessError] = useState('');
+  const [cacheError, setCacheError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -72,18 +85,40 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
   const activeForm = formScope.current === scope ? form : null;
 
   useEffect(() => {
-    setAdmin(false); setAccessReady(false); setRows([]); setError('');
+    setAdmin(false); setAccessReady(false); setAccessError(''); setCacheError('');
+    if (!user) return;
+    try {
+      const cached = loadFantasyWorkspace(user.id);
+      if (cached) {
+        setAdmin(cached.admin); setAccessReady(true);
+        if (cached.season && cached.week) setSavedWeek({ userId: user.id, season: cached.season, week: cached.week });
+      }
+    } catch (cause) { setCacheError(`Could not load offline editing data: ${message(cause)}`); }
+  }, [user?.id]);
+  useEffect(() => {
     let current = true;
-    if (!user || !supabase) { setAccessReady(true); return; }
+    if (!user || !supabase || !online) { setAccessReady(true); return; }
     void Promise.resolve(supabase.from('livewire_roles').select('role').eq('user_id', user.id).maybeSingle()).then(({ data, error: cause }) => {
       if (cause) throw cause;
-      if (current) { setAdmin(data?.role === 'admin' || data?.role === 'owner'); setAccessReady(true); }
-    }).catch((cause: unknown) => { if (current) setError(`Could not check Start/Sit access: ${message(cause)}`); });
+      if (current) {
+        const allowed = data?.role === 'admin' || data?.role === 'owner';
+        setAdmin(allowed); setAccessReady(true); setAccessError('');
+        try {
+          const cached = loadFantasyWorkspace(user.id);
+          saveFantasyWorkspace(user.id, { admin: allowed,
+            season: season && week ? season : cached?.season ?? null,
+            week: season && week ? week : cached?.week ?? null });
+        }
+        catch (cause) { setCacheError(`Could not save offline editing access: ${message(cause)}`); }
+      }
+    }).catch((cause: unknown) => {
+      if (current) { setAccessReady(true); setAccessError(`Could not refresh Start/Sit access: ${message(cause)} Local editing remains available; publishing requires verified server access.`); }
+    });
     return () => { current = false; };
-  }, [user?.id, refresh]);
+  }, [user?.id, refresh, online]);
 
   useEffect(() => {
-    if (!active || !accessReady || !season || !week) return;
+    if (!active || !online || !accessReady || !season || !week) { setLoading(false); return; }
     let current = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15_000);
@@ -93,14 +128,25 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
       .then(({ data, error: cause }) => {
         if (cause) throw cause;
         const next = readFantasyGraphicRows(data);
-        if (current) { setRows(next); setError(''); }
+        if (current) {
+          setRows(next); setError('');
+          if (user && admin) {
+            try { saveFantasySharedDrafts(user.id, season, week, next); }
+            catch (cause) { setCacheError(`Could not save shared graphics for offline editing: ${message(cause)}`); }
+          }
+        }
       }).catch((cause: unknown) => { if (current) setError(`Could not load Start/Sit graphics: ${message(cause)}`); })
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; clearTimeout(timeout); controller.abort(); };
-  }, [active, accessReady, season, week, user?.id, refresh]);
+  }, [active, online, accessReady, admin, season, week, user?.id, refresh]);
 
   useEffect(() => {
     setRows([]); setNotice(''); setPlayers([]);
+    if (!user || !season || !week) return;
+    try {
+      setRows(loadFantasySharedDrafts(user.id, season, week));
+      setPlayers(loadFantasyRoster(season).map((player) => ({ ...player, ...graphicPlayerMatchup(player.teamId, games) })));
+    } catch (cause) { setCacheError(`Could not restore offline graphic data: ${message(cause)}`); }
   }, [scope]);
   useEffect(() => {
     restoreDraft();
@@ -112,17 +158,23 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
   useEffect(() => {
-    if (!active || !admin || !activeForm || !season) return;
+    if (!active || !online || !activeForm || !season) { setRosterLoading(false); return; }
     let current = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 60_000);
     setRosterLoading(true); setRosterError('');
     void fetchFantasyGraphicRoster(season, games, controller.signal).then((result) => {
-      if (current) { setPlayers(result.players); setRosterError(result.warning); }
+      if (current) {
+        setPlayers(result.players); setRosterError(result.warning);
+        try {
+          const previous = loadFantasyRoster(season);
+          saveFantasyRoster(season, [...new Map([...previous, ...result.players].map((player) => [player.id, player])).values()]);
+        } catch (cause) { setCacheError(`Player search loaded, but could not be saved for offline use: ${message(cause)}`); }
+      }
     }).catch((cause: unknown) => { if (current) setRosterError(message(cause)); })
       .finally(() => { if (current) setRosterLoading(false); });
     return () => { current = false; clearTimeout(timeout); controller.abort(); };
-  }, [active, admin, !!activeForm, season, scheduleKey, rosterRetry]);
+  }, [active, online, !!activeForm, season, scheduleKey, rosterRetry]);
 
   function restoreDraft() {
     formScope.current = scope;
@@ -150,6 +202,8 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
     } catch (cause) {
       setDraftError(`On-device draft saving failed: ${message(cause)} Keep this editor open and save a shared draft to protect your work.`);
     }
+    try { saveFantasyWorkspace(user.id, { admin: loadFantasyWorkspace(user.id)?.admin ?? admin, season, week }); }
+    catch (cause) { setCacheError(`Could not save the selected week for offline editing: ${message(cause)}`); }
   }
   function open(row?: FantasyGraphicRow) {
     if (dirtyRef.current && !window.confirm('Replace your unsaved graphic changes? Save the draft first to keep them.')) return;
@@ -183,6 +237,7 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
   }
   async function save(action: 'draft' | 'publish' | 'unpublish') {
     if (!supabase || !user || !activeForm || !admin || !season || !week || busy) return;
+    if (!online) { setError('You are offline. Your working graphic stays on this device. Reconnect to save a shared draft or publish.'); return; }
     const savedScope = scope;
     setBusy(true); setError(''); setNotice('');
     let uploadedPath: string | null = null;
@@ -213,7 +268,9 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
       const [row] = readFantasyGraphicRows(result.data);
       if (!row) throw new Error('The saved graphic was not returned. Reload before trying again.');
       // Keep the completed save's revision even if the user changed weeks while it was in flight.
-      const savedDraft = { form: activeForm, editing: row, dirty: false, queries, postToX };
+      const savedDraft = action === 'publish'
+        ? { form: emptyFantasyGraphic(), editing: null, dirty: false, queries: ['', '', '', ''], postToX: false }
+        : { form: activeForm, editing: row, dirty: false, queries, postToX };
       retainedDrafts.current.set(savedScope, savedDraft);
       try {
         saveFantasyGraphicDraft(user.id, season, week, savedDraft);
@@ -222,10 +279,16 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
         if (currentScope.current === savedScope) setDraftError(`The shared graphic was saved, but on-device draft saving failed: ${message(cause)}`);
         else console.error('Could not update the saved Start/Sit draft on this device', cause);
       }
+      const nextRows = [row, ...rows.filter((item) => item.id !== row.id)];
+      try { saveFantasySharedDrafts(user.id, season, week, nextRows); }
+      catch (cause) {
+        if (currentScope.current === savedScope) setCacheError(`The shared graphic was saved, but offline gallery saving failed: ${message(cause)}`);
+        else console.error('Could not save the shared graphic for offline editing', cause);
+      }
       if (currentScope.current !== savedScope || formScope.current !== savedScope) return;
-      setEditing(row); setDirty(false);
-      if (currentScope.current === savedScope) setRows((previous) => [row, ...previous.filter((item) => item.id !== row.id)]);
-      setNotice(action === 'publish' ? `Graphic published in Start/Sit and LIVEWIRE.${postToX ? ' Check X publishing status below for delivery; only first publications are eligible.' : ''}` : action === 'unpublish' ? 'Graphic removed from Start/Sit and LIVEWIRE. The shared draft is still available to admins. Any tweet already sent is unchanged.' : 'Shared draft saved. All admins can continue editing it.');
+      setForm(savedDraft.form); setEditing(savedDraft.editing); setDirty(false); setQueries(savedDraft.queries); setPostToX(savedDraft.postToX);
+      setRows(nextRows);
+      setNotice(action === 'publish' ? `Graphic published in Start/Sit and LIVEWIRE. The working template is cleared for your next graphic.${postToX ? ' Check X publishing status below for delivery; only first publications are eligible.' : ''}` : action === 'unpublish' ? 'Graphic removed from Start/Sit and LIVEWIRE. The shared draft is still available to admins. Any tweet already sent is unchanged.' : 'Shared draft saved. All admins can continue editing it.');
     } catch (cause) {
       if (formScope.current === savedScope) setError(message(cause));
     }
@@ -240,12 +303,15 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
       </div>
     </div>
     {error && <p className="feed-warning" role="alert">{error}</p>}
-    {admin && draftError && <p className="feed-warning" role="alert">{draftError} <button type="button" disabled={busy} onClick={() => {
+    {accessError && <p className="feed-warning" role="status">{accessError}</p>}
+    {cacheError && <p className="feed-warning" role="alert">{cacheError}</p>}
+    {!online && <p role="status">Offline editing · Changes stay on this device. Previously loaded players and shared graphics are available, but saved rosters may be outdated. Reconnect to verify rosters and matchups, save shared drafts, or publish. A preview needs photos and fonts already saved on this device; unavailable preview assets do not stop editing.</p>}
+    {(admin || activeForm) && draftError && <p className="feed-warning" role="alert">{draftError} <button type="button" disabled={busy} onClick={() => {
       if (activeForm) persistDraft({ form: activeForm, editing, dirty, queries, postToX });
       else restoreDraft();
     }}>Retry on-device draft</button></p>}
     {notice && <p role="status">{notice}</p>}
-    {admin && activeForm && <form ref={editor} className="fantasy-graphic-editor" aria-label="Start/Sit graphic editor" onSubmit={(event) => { event.preventDefault(); void save('publish'); }}>
+    {activeForm && <form ref={editor} className="fantasy-graphic-editor" aria-label="Start/Sit graphic editor" onSubmit={(event) => { event.preventDefault(); void save('publish'); }}>
       <h3>{editing ? 'Edit shared graphic' : 'Create Start/Sit graphic'}</h3>
       <p>{draftError ? 'On-device recovery is not up to date. Save a shared draft to protect your work.' : 'Changes are saved automatically on this device for this account and week.'} {dirty ? 'Not yet saved to the shared draft.' : editing ? 'Published artwork stays unchanged until you publish again.' : 'Choose four players and write your take.'} Save shared draft to share your work with other admins.</p>
       <fieldset disabled={busy} className="fantasy-graphic-controls">
@@ -259,6 +325,7 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
       </fieldset>
       <p>Search ESPN active skill-player rosters. Matchups come from the selected week's schedule; unavailable opponents show TBD, not an invented matchup. Verify injuries, opponents, and claims before publishing.</p>
       {rosterLoading && <p role="status">Loading player search...</p>}
+      {!online && !players.length && <p role="status">No player roster has been saved on this device for this season. You can edit reasoning and existing player selections now; reconnect once to load player search.</p>}
       {rosterError && <p className="feed-warning" role="alert">{rosterError} <button type="button" onClick={() => setRosterRetry((value) => value + 1)}>Retry player search</button></p>}
       <fieldset disabled={busy} className="fantasy-graphic-slots">
         {activeForm.slots.map((slot, index) => {
@@ -274,8 +341,8 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
                 }}>{player.name} · {player.teamAbbr}</button></li>)}
                 {!matches.length && !rosterLoading && <li>No matching {activeForm.position} players.</li>}
               </ul>}
-              {slot.player ? <><img className="fantasy-graphic-headshot" src={slot.player.headshot || undefined} alt={slot.player.name} /><strong>{slot.player.name}</strong>
-                <div className="fantasy-graphic-opponent"><span>{slot.player.matchup}</span>{slot.player.opponentLogo && <img src={slot.player.opponentLogo} alt="" />}<span>{slot.player.opponent}</span></div>
+              {slot.player ? <><OfflineImage className="fantasy-graphic-headshot" src={slot.player.headshot || undefined} alt={slot.player.name} /><strong>{slot.player.name}</strong>
+                <div className="fantasy-graphic-opponent"><span>{slot.player.matchup}</span>{slot.player.opponentLogo && <OfflineImage src={slot.player.opponentLogo} alt="" />}<span>{slot.player.opponent}</span></div>
                 <button type="button" onClick={() => change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index ? { ...item, player: null } : item) })}>Clear player {index + 1}</button>
               </> : <p>Choose a player to add their face, name, and matchup.</p>}
             </div>
@@ -291,14 +358,14 @@ export default function FantasyStartSit({ active, season, week, games, user }: P
       }} />Post to X on first publication</label>
       <p>Publishing also posts the subject and graphic only in LIVEWIRE. Checked X posts use the exact same subject and PNG, without extra wording or a link. Edits and republishing do not send another tweet.</p>
       <div className="angle-actions">
-        <button type="button" disabled={busy} onClick={() => void save('draft')}>Save shared draft</button>
-        <button type="submit" disabled={busy}>{busy ? 'Saving...' : 'Publish graphic'}</button>
-        {editing?.published_content && <button type="button" disabled={busy} onClick={() => { if (window.confirm('Remove this graphic from the public Start/Sit gallery?')) void save('unpublish'); }}>Unpublish graphic</button>}
+        <button type="button" disabled={busy || !online || !admin} onClick={() => void save('draft')}>Save shared draft</button>
+        <button type="submit" disabled={busy || !online || !admin}>{busy ? 'Saving...' : 'Publish graphic'}</button>
+        {editing?.published_content && <button type="button" disabled={busy || !online || !admin} onClick={() => { if (window.confirm('Remove this graphic from the public Start/Sit gallery?')) void save('unpublish'); }}>Unpublish graphic</button>}
         <button type="button" disabled={busy} onClick={closeEditor}>Close editor</button>
       </div>
       {!fantasyGraphicPublishError(activeForm) && <GraphicDownload graphic={activeForm} />}
     </form>}
-    {admin && active && <XPublishingStatus />}
+    {admin && active && online && <XPublishingStatus />}
     {admin && <section aria-label="Shared Start/Sit drafts" className="fantasy-graphic-drafts"><h3>Shared admin drafts</h3>
       <p>All admins can edit these graphics. Saving a draft does not replace the published version.</p>
       {rows.map((row) => <button type="button" key={row.id} disabled={busy} onClick={() => open(row)}>
