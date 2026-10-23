@@ -1,9 +1,10 @@
-import { fetchNFLActiveSkillRoster } from './sportsData';
+import { readNFLActiveSkillRoster } from './sportsData';
+import { publicSupabaseConfig } from './supabaseClient';
 import type { Game } from './sportsData';
 import { graphicPlayerMatchup, graphicPositions } from './fantasyGraphics';
 import type { GraphicPlayer } from './fantasyGraphics';
 
-// ESPN's directory lacks browser CORS headers; roster URLs support CORS.
+// Keep bye-week teams searchable without ESPN's browser-blocked directory.
 const teams = [
   { id: '22', abbreviation: 'ARI' }, { id: '1', abbreviation: 'ATL' },
   { id: '33', abbreviation: 'BAL' }, { id: '2', abbreviation: 'BUF' },
@@ -23,13 +24,24 @@ const teams = [
   { id: '10', abbreviation: 'TEN' }, { id: '28', abbreviation: 'WSH' },
 ];
 export async function fetchFantasyGraphicRoster(season: number, games: Game[], signal: AbortSignal) {
+  if (!publicSupabaseConfig) throw new Error('Player search is unavailable: account services are not configured.');
+  const endpoint = `${publicSupabaseConfig.url}/functions/v1/fantasy-roster`;
   const players: GraphicPlayer[] = [], failures: string[] = [];
   for (let start = 0; start < teams.length; start += 6) {
     if (signal.aborted) throw new Error('Player search was cancelled.');
     await Promise.all(teams.slice(start, start + 6).map(async (team) => {
       try {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const request = fetchNFLActiveSkillRoster('football/nfl', team.id, season);
+        const url = new URL(endpoint);
+        url.searchParams.set('team', team.id); url.searchParams.set('season', String(season));
+        const request = fetch(url, { signal }).then(async (response) => {
+          if (!response.ok) {
+            const body: unknown = await response.json();
+            const detail = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' ? body.error : `Roster returned HTTP ${response.status}`;
+            throw new Error(detail);
+          }
+          return readNFLActiveSkillRoster(await response.json());
+        });
         const roster = await Promise.race([request, new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error('Roster request timed out')), 15_000);
         })]).finally(() => clearTimeout(timer));

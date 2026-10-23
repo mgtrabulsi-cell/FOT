@@ -8,6 +8,9 @@ enable_confirmations = false
 [functions.send-test-push]
 verify_jwt = true
 
+[functions.fantasy-roster]
+verify_jwt = false
+
 [functions.poll-live-games]
 verify_jwt = false
 

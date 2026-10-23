@@ -33,6 +33,8 @@ jobs:
         run: node --test scripts/x-posting.test.mjs
       - name: Test Start/Sit graphics
         run: node --test scripts/fantasy-graphics.test.mjs
+      - name: Test Start/Sit roster gateway
+        run: npx --yes deno test --config supabase/functions/send-x-posts/deno.json supabase/functions/fantasy-roster/index.test.ts
       - name: Test X dispatcher
         run: npx --yes deno test --config supabase/functions/send-x-posts/deno.json --allow-env --allow-read supabase/functions/send-x-posts/index.test.ts supabase/functions/send-x-posts/analysisImages.test.ts
       - name: Build site

@@ -1216,49 +1216,59 @@ function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number):
   const request = fetch(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`)
     .then(async (response) => {
       if (!response.ok) throw new Error(`Team roster returned HTTP ${response.status}`);
-      const payload = asObject(await response.json());
-      return asArray(payload.athletes).map(asObject).flatMap((group) => asArray(group.items)).map(asObject).flatMap((player) => {
-        const position = text(asObject(player.position).abbreviation).toUpperCase();
-        const statusObj = asObject(player.status);
-        const statusType = text(statusObj.type).toLowerCase();
-        const statusName = text(statusObj.name).toLowerCase();
-        if (
-          statusType === 'practice-squad'
-          || statusType === 'injured-reserve'
-          || statusType === 'ir'
-          || statusType === 'suspended'
-          || statusName.includes('reserve')
-          || statusName.includes('practice')
-        ) {
-          return [];
-        }
-        if (statusType && statusType !== 'active' && statusType !== 'day-to-day') return [];
-
-        const injuries = asArray(player.injuries).map(asObject);
-        const isOut = injuries.some((inj) => {
-          const typeObj = asObject(inj.type);
-          return isInjuryInactive(
-            text(inj.status),
-            text(typeObj.description),
-            text(typeObj.name),
-            text(typeObj.abbreviation),
-          );
-        });
-        if (isOut) return [];
-
-        const headshot = asObject(player.headshot);
-        return [{
-          id: text(player.id),
-          name: text(player.displayName, text(player.fullName, 'Player')),
-          position,
-          jersey: text(player.jersey),
-          headshot: text(player.headshot, text(headshot.href, '')) || undefined,
-        }];
-      });
+      return readNFLActiveRoster(await response.json());
     });
   nflRosters.set(cacheKey, { timestamp: Date.now(), promise: request });
   void request.catch(() => nflRosters.delete(cacheKey));
   return request;
+}
+
+function readNFLActiveRoster(value: unknown): NFLRosterSkillPlayer[] {
+  const payload = asObject(value);
+  return asArray(payload.athletes).map(asObject).flatMap((group) => asArray(group.items)).map(asObject).flatMap((player) => {
+    const position = text(asObject(player.position).abbreviation).toUpperCase();
+    const statusObj = asObject(player.status);
+    const statusType = text(statusObj.type).toLowerCase();
+    const statusName = text(statusObj.name).toLowerCase();
+    if (
+      statusType === 'practice-squad'
+      || statusType === 'injured-reserve'
+      || statusType === 'ir'
+      || statusType === 'suspended'
+      || statusName.includes('reserve')
+      || statusName.includes('practice')
+    ) {
+      return [];
+    }
+    if (statusType && statusType !== 'active' && statusType !== 'day-to-day') return [];
+
+    const injuries = asArray(player.injuries).map(asObject);
+    const isOut = injuries.some((inj) => {
+      const typeObj = asObject(inj.type);
+      return isInjuryInactive(
+        text(inj.status),
+        text(typeObj.description),
+        text(typeObj.name),
+        text(typeObj.abbreviation),
+      );
+    });
+    if (isOut) return [];
+
+    const headshot = asObject(player.headshot);
+    return [{
+      id: text(player.id),
+      name: text(player.displayName, text(player.fullName, 'Player')),
+      position,
+      jersey: text(player.jersey),
+      headshot: text(player.headshot, text(headshot.href, '')) || undefined,
+    }];
+  });
+}
+
+export function readNFLActiveSkillRoster(value: unknown): NFLRosterSkillPlayer[] {
+  const payload = asObject(value);
+  if (!Array.isArray(payload.athletes)) throw new Error('ESPN returned an invalid team roster.');
+  return readNFLActiveRoster(value).filter((player) => nflSkillPositions.has(player.position));
 }
 
 export async function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { readNFLActiveSkillRoster } from '../src/services/sportsData.ts';
 import { emptyFantasyGraphic, readFantasyGraphic, fantasyGraphicPublishError, readFantasyGraphicRows, graphicPlayerMatchup } from '../src/services/fantasyGraphics.ts';
 
 const player = (id) => ({ id: String(id), name: `Player ${id}`, position: 'QB', teamId: '9', teamAbbr: 'GB',
@@ -13,10 +14,12 @@ const complete = () => ({ kind: 'start', position: 'QB',
 async function rosterLoader(fetchRoster) {
   const compiled = ts.transpileModule(readFileSync(new URL('../src/services/fantasyGraphicRoster.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-  }).outputText.replace(/import \{ fetchNFLActiveSkillRoster \} from [^;]+;/, 'let fetchNFLActiveSkillRoster; export const setRoster = (loader) => { fetchNFLActiveSkillRoster = loader; };')
+  }).outputText.replace(/import \{ readNFLActiveSkillRoster \} from [^;]+;/, 'const readNFLActiveSkillRoster = (value) => value; let rosterFetch; export const setRoster = (loader) => { rosterFetch = loader; };')
+    .replace(/import \{ publicSupabaseConfig \} from [^;]+;/, 'const publicSupabaseConfig = { url: "https://fixture.supabase.co" };')
+    .replace('const request = fetch(', 'const request = rosterFetch(')
     .replace(/from ['"]\.\/fantasyGraphics['"]/g, `from '${new URL('../src/services/fantasyGraphics.ts', import.meta.url)}'`);
   const module = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
-  module.setRoster(fetchRoster);
+  module.setRoster(async (url) => ({ ok: true, json: async () => fetchRoster('football/nfl', url.searchParams.get('team'), Number(url.searchParams.get('season'))) }));
   return module.fetchFantasyGraphicRoster;
 }
 
@@ -47,6 +50,7 @@ test('Search preserves partial successes, reports all-roster failures, and rejec
     if (teamId !== '9') return [];
     return [{ id: '4036378', name: 'Jordan Love', position: 'QB', headshot: '' }];
   });
+
   const result = await loader(2026, [], new AbortController().signal);
   assert.equal(result.players.length, 1);
   assert.match(result.warning, /ARI: HTTP 503/);
@@ -58,6 +62,19 @@ test('Search preserves partial successes, reports all-roster failures, and rejec
   const controller = new AbortController();
   const cancelled = await rosterLoader(async () => { controller.abort(); return []; });
   await assert.rejects(cancelled(2026, [], controller.signal), /cancelled/);
+});
+
+test('Gateway roster parsing preserves existing active skill-player and injury rules', () => {
+  const athlete = (id, position, type, injuries = []) => ({ id, displayName: `Player ${id}`, position: { abbreviation: position },
+    status: { type }, headshot: { href: `https://a.espncdn.com/${id}.png` }, injuries });
+  const parsed = readNFLActiveSkillRoster({ athletes: [{ items: [
+    athlete('1','QB','active'), athlete('2','RB','day-to-day'), athlete('3','G','active'),
+    athlete('4','WR','practice-squad'), athlete('5','TE','injured-reserve'),
+    athlete('6','WR','active',[{ status:'Out' }]),
+  ] }] });
+  assert.deepEqual(parsed.map((player) => player.id), ['1','2']);
+  assert.equal(parsed[0].headshot, 'https://a.espncdn.com/1.png');
+  assert.throws(() => readNFLActiveSkillRoster({}), /invalid team roster/);
 });
 
 test('Four-slot drafts are independent and support both headings and all positions', () => {
