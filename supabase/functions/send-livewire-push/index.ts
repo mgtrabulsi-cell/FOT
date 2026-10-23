@@ -41,8 +41,14 @@ Deno.serve(async (request: Request) => {
               return;
             }
           }
+          const graphicSubject = !delivery.angle_id && delivery.primary_theme === 'fantasy'
+            ? /^(Week \d+ Must (?:Start|Sit)) Fantasy (QB|RB|WR|TE)$/.exec(delivery.subject)
+            : null;
+          const title = graphicSubject
+            ? `${graphicSubject[1]} ${graphicSubject[2]}s`
+            : `${delivery.primary_theme ? delivery.primary_theme[0].toUpperCase() + delivery.primary_theme.slice(1) : delivery.angle_id ? 'News' : 'LIVEWIRE'}: ${delivery.subject}`;
           await sendWebPush(pushServer, target.subscription, {
-            title: `${delivery.primary_theme ? delivery.primary_theme[0].toUpperCase() + delivery.primary_theme.slice(1) : delivery.angle_id ? 'News' : 'LIVEWIRE'}: ${delivery.subject}`,
+            title,
             body: '',
             url: new URL(delivery.angle_id ? `#analyst-desk/story/${delivery.angle_id}` : `#livewire/post/${delivery.post_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
             tag: delivery.angle_id ? `gamewire-storyline-${delivery.angle_id}` : `gamewire-livewire-${delivery.post_id}`,
