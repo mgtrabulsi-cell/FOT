@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
@@ -24,6 +25,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"]\.\/services\/livewirePosts['"]/g, `from '${new URL('../src/services/livewirePosts.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/theAngle['"]/g, `from '${new URL('../src/services/theAngle.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/postThemes['"]/g, `from '${new URL('../src/services/postThemes.ts', import.meta.url)}'`)
+  .replace(/from ['"]\.\/services\/foregroundRefresh['"]/g, `from '${new URL('../src/services/foregroundRefresh.ts', import.meta.url)}'`)
   .replace(/import OfflineImage from [^;]+;/, 'const OfflineImage = () => null;')
   .replace(/import PostGallery from [^;]+;/, 'const PostGallery = () => null;')
   .replace(/import AnglePicks from [^;]+;/, 'const AnglePicks = () => null;')
@@ -33,6 +35,141 @@ const compiled = ts.transpileModule(source, {
   .replace(/import \{ observePostViews \} from [^;]+;/, 'const observePostViews = () => () => {};')
   .replace(/import \{ loadLivewireDraft, saveLivewireDraft \} from [^;]+;/, 'const loadLivewireDraft = async () => null; const saveLivewireDraft = async () => {};');
 const { default: LiveWire } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+
+test('The app keeps one LIVEWIRE instance mounted outside tab-selection conditionals', () => {
+  const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const app = ts.createSourceFile('App.tsx', appSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const instances = [];
+  const visit = (node) => {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(app) === 'LiveWire') instances.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(app);
+  assert.equal(instances.length, 1);
+  const wrapper = instances[0].parent;
+  assert.ok(ts.isJsxElement(wrapper), 'LIVEWIRE stays mounted inside a visibility wrapper');
+  assert.match(wrapper.openingElement.getText(app), /hidden=\{view !== 'LiveWire'\}/);
+  assert.match(instances[0].getText(app), /active=\{view === 'LiveWire'\}/);
+  assert.ok(ts.isJsxElement(wrapper.parent), 'The wrapper is a direct main-app child, not a conditional branch');
+});
+
+const parsed = ts.createSourceFile('LiveWire.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const component = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'LiveWire');
+const executable = ts.transpileModule(component.getText(parsed).replace('export default ', ''), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+}).outputText;
+
+function livewireFixture() {
+  const hooks = [], requests = [], timers = new Map();
+  let cursor = 0, changed = false, effects = [], tree, saved = null, foreground;
+  const props = { user: null, active: false };
+  const equal = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
+  const jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({
+    exports: {}, require: () => ({ jsx, jsxs: jsx }), console, AbortController, Error,
+    publicSupabaseConfig: { url: 'https://test.supabase.co', key: 'public-key' }, supabase: null,
+    usePublicDataRevision: () => 0,
+    readRenderSnapshot: () => saved,
+    saveRenderSnapshot: (_kind, _key, data) => { saved = data; },
+    livewireSnapshot,
+    fetchLivewirePosts: (_config, options, signal) => new Promise((resolve, reject) => requests.push({ options, signal, resolve, reject })),
+    subscribeForegroundRefresh: (callback) => { foreground = callback; return () => { foreground = undefined; }; },
+    document: { visibilityState: 'visible' },
+    window: { setInterval: (callback) => { const id = timers.size + 1; timers.set(id, callback); return id; }, clearInterval: (id) => timers.delete(id) },
+    postThemes: [{ value: 'news', label: 'News', color: 'tnf' }, { value: 'fantasy', label: 'Fantasy', color: 'snf' }],
+    PostGallery: 'gallery', AnglePicks: 'picks', XPublishingStatus: 'x-status', Plus: 'plus',
+    useRef(initial) { const index = cursor++; return hooks[index] ??= { current: initial }; },
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial;
+      return [hooks[index], (next) => {
+        const value = typeof next === 'function' ? next(hooks[index]) : next;
+        if (!Object.is(value, hooks[index])) { hooks[index] = value; changed = true; }
+      }];
+    },
+    useEffect(callback, deps) {
+      const index = cursor++, previous = hooks[index];
+      if (!previous || !equal(previous.deps, deps)) {
+        effects.push(() => { previous?.cleanup?.(); hooks[index] = { deps, cleanup: callback() }; });
+      }
+    },
+  });
+  vm.runInContext(executable, context);
+  function render() {
+    for (let iteration = 0; iteration < 30; iteration++) {
+      cursor = 0; changed = false; effects = [];
+      tree = context.LiveWire(props);
+      effects.forEach((run) => run());
+      if (!changed) return tree;
+    }
+    throw new Error('LIVEWIRE fixture did not stabilize');
+  }
+  function all(node = tree) {
+    if (!node || typeof node !== 'object') return [];
+    if (Array.isArray(node)) return node.flatMap((child) => all(child ?? null));
+    return [node, ...all(node.props?.children ?? null)];
+  }
+  return {
+    props, requests, timers, render,
+    async settle() { await new Promise((resolve) => setImmediate(resolve)); render(); },
+    text: () => JSON.stringify(tree),
+    button: (label) => all().find((node) => node.type === 'button' && node.props.children === label),
+    themeButton: (label) => all().find((node) => node.type === 'button' && node.props.children?.props?.children === label),
+    foreground: () => foreground(),
+    unmount: () => hooks.forEach((hook) => hook?.cleanup?.()),
+  };
+}
+
+test('LIVEWIRE preloads before its tab opens, preserves in-flight loads and keeps posts through tab changes and slow refreshes', async () => {
+  const app = livewireFixture();
+  try {
+    app.render();
+    assert.equal(app.requests.length, 1, 'Public feed starts loading while another tab is open');
+    const preload = app.requests[0];
+    app.props.active = true; app.render();
+    assert.equal(app.requests.length, 1, 'Opening does not restart a pending preload');
+    assert.equal(preload.signal.aborted, false);
+    preload.resolve([post]);
+    await app.settle();
+    assert.match(app.text(), /Saved headline/);
+    assert.doesNotMatch(app.text(), /Loading LIVEWIRE/);
+    app.props.active = false; app.render();
+    app.timers.forEach((tick) => tick());
+    app.render();
+    assert.equal(app.requests.length, 1, 'Hidden tabs do not poll');
+    app.props.active = true; app.render();
+    assert.equal(app.requests.length, 2, 'Reopening refreshes in the background');
+    assert.match(app.text(), /Saved headline/);
+    assert.doesNotMatch(app.text(), /Loading LIVEWIRE/);
+    app.requests[1].reject(new Error('Connection unavailable'));
+    await app.settle();
+    assert.match(app.text(), /Saved headline/);
+    assert.match(app.text(), /Connection unavailable/);
+    assert.doesNotMatch(app.text(), /Loading LIVEWIRE/);
+    app.foreground(); app.render();
+    assert.equal(app.requests.length, 3, 'Foreground return retries without removing posts');
+    app.requests[2].resolve([]);
+    await app.settle();
+    assert.doesNotMatch(app.text(), /Saved headline/);
+    assert.match(app.text(), /No posts yet/);
+  } finally { app.unmount(); }
+});
+
+test('LIVEWIRE theme changes filter available posts immediately without showing a network-only loading screen', async () => {
+  const app = livewireFixture();
+  try {
+    app.render();
+    app.requests[0].resolve([post, { ...post, id: 'fantasy', title: 'Fantasy headline', themes: ['fantasy'] }]);
+    await app.settle();
+    app.themeButton('Fantasy').props.onClick(); app.render();
+    assert.match(app.text(), /Fantasy headline/);
+    assert.doesNotMatch(app.text(), /Saved headline|Loading LIVEWIRE/);
+    app.button('All posts').props.onClick(); app.render();
+    assert.match(app.text(), /Saved headline/);
+    assert.match(app.text(), /Fantasy headline/);
+    assert.doesNotMatch(app.text(), /Loading LIVEWIRE/);
+  } finally { app.unmount(); }
+});
 
 function withStorage(run) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');

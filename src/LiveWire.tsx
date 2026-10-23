@@ -14,6 +14,7 @@ import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { LivewirePost as Post, PostTheme } from './services/livewirePosts';
 import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import { postThemes } from './services/postThemes';
+import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
 type Admin = { user_id: string; role: 'owner' | 'admin'; display_name: string };
 type DraftPhoto = { path?: string; file?: File; preview: string };
@@ -31,12 +32,16 @@ function safeNewsLink(value: string): string | null {
   }
 }
 
-export default function LiveWire({ user, postId = null, onPostSeen }: { user: User | null; postId?: string | null; onPostSeen?: (postId: string) => Promise<void> }) {
+export default function LiveWire({ user, active: isActive = true, postId = null, onPostSeen }: { user: User | null; active?: boolean; postId?: string | null; onPostSeen?: (postId: string) => Promise<void> }) {
   const publicRevision = usePublicDataRevision('posts');
   const [savedFeed] = useState(() => readRenderSnapshot('posts', 'livewire'));
   const [posts, setPosts] = useState<Post[]>(savedFeed?.posts ?? []);
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [loaded, setLoaded] = useState(!!savedFeed);
+  const activeRef = useRef(isActive);
+  activeRef.current = isActive;
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
   const [error, setError] = useState('');
   const [linkedError, setLinkedError] = useState('');
   const [accessError, setAccessError] = useState('');
@@ -47,6 +52,12 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const feedElement = useRef<HTMLDivElement | null>(null);
   const [refresh, setRefresh] = useState(0);
+  useEffect(() => subscribeForegroundRefresh(() => {
+    if (activeRef.current) setRefresh((value) => value + 1);
+  }), []);
+  useEffect(() => {
+    if (isActive && loadedRef.current) setRefresh((value) => value + 1);
+  }, [isActive]);
   const [limit, setLimit] = useState(20);
   const [hasMore, setHasMore] = useState(savedFeed?.hasMore ?? false);
   const [body, setBody] = useState('');
@@ -191,13 +202,15 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
     void load().catch((cause: unknown) => {
       if (active) setError(cause instanceof Error ? cause.message : 'Could not load LIVEWIRE. Please retry.');
     });
-    const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
+    const timer = window.setInterval(() => {
+      if (activeRef.current && document.visibilityState !== 'hidden') setRefresh((value) => value + 1);
+    }, 30_000);
     return () => { active = false; controller.abort(); window.clearInterval(timer); };
   }, [user?.id, refresh, limit, themeFilters, publicRevision]);
 
   useEffect(() => {
     setLinkedPost(null); setLinkedMissing(false); setLinkedReady(null); setLinkedError('');
-    if (!postId || !publicSupabaseConfig) return;
+    if (!isActive || !postId || !publicSupabaseConfig) return;
     let active = true;
     const controller = new AbortController();
     void fetchLivewirePosts(publicSupabaseConfig, { limit: 1, themes: [], postId, fresh: refresh > 0 }, controller.signal)
@@ -211,21 +224,21 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
         if (active) setLinkedError(cause instanceof Error ? cause.message : 'Could not load the linked LIVEWIRE post. Please retry.');
       });
     return () => { active = false; controller.abort(); };
-  }, [postId, refresh, publicRevision]);
+  }, [isActive, postId, refresh, publicRevision]);
 
   useEffect(() => {
-    if (!postId) { scrolledPost.current = null; return; }
+    if (!isActive || !postId) { scrolledPost.current = null; return; }
     if (linkedReady === postId && linkedPost && focusedPost.current && scrolledPost.current !== postId) {
       focusedPost.current.scrollIntoView({ block: 'center' });
       focusedPost.current.focus({ preventScroll: true });
       scrolledPost.current = postId;
     }
-  }, [postId, linkedReady, linkedPost, posts]);
+  }, [isActive, postId, linkedReady, linkedPost, posts]);
 
   const visiblePosts = linkedPost && linkedPost.id === postId && !posts.some((post) => post.id === postId)
     ? [linkedPost, ...posts] : posts;
   useEffect(() => {
-    if (!feedElement.current || !supabase) return;
+    if (!isActive || !feedElement.current || !supabase) return;
     const client = supabase;
     let active = true;
     const stop = observePostViews(feedElement.current, async (id) => {
@@ -241,12 +254,12 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       setViewError('Some post views could not be recorded. Reconnect or reopen LIVEWIRE to try again.');
     });
     return () => { active = false; stop(); };
-  }, []);
+  }, [isActive]);
   const linkedOutsideFilter = linkedPost && themeFilters.length > 0
     && !themeFilters.some((theme) => linkedPost.themes?.includes(theme));
 
   useEffect(() => {
-    if (!feedElement.current || !onPostSeen) return;
+    if (!isActive || !feedElement.current || !onPostSeen) return;
     return observePostViews(feedElement.current, async (id) => {
       await onPostSeen(id);
       setReadError('');
@@ -254,10 +267,14 @@ export default function LiveWire({ user, postId = null, onPostSeen }: { user: Us
       console.error('Could not mark LIVEWIRE post as read', cause);
       setReadError('Could not save your read status. Reconnect or return to the app to retry.');
     }, { minimumRatio: 0.01, bottomInset: 64, allowOffline: !user, retryFailed: true });
-  }, [onPostSeen, user?.id]);
+  }, [isActive, onPostSeen, user?.id]);
 
   function filterThemes(next: PostTheme[]) {
-    setThemeFilters(next); setLimit(20); setPosts([]); setHasMore(false); setLoaded(false);
+    const saved = readRenderSnapshot('posts', 'livewire');
+    const available = saved?.posts ?? posts;
+    setThemeFilters(next); setLimit(20);
+    setPosts(available.filter((post) => !next.length || next.some((theme) => post.themes?.includes(theme))));
+    setHasMore(saved?.hasMore ?? hasMore);
   }
 
   async function act(operation: () => PromiseLike<{ error: { message: string } | null }>, success: () => void) {

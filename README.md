@@ -76,6 +76,8 @@ GitHub Actions does not read your local `.env.local`; configure the repository s
 
 Choosing **Continue as guest** loads the live scoreboard and stats without signing in, including when Supabase accounts are configured.
 
+LIVEWIRE preloads its public feed as soon as the main app opens and stays mounted while navigating between tabs, like The Angle. Opening the tab does not cancel an unfinished preload; loaded posts render immediately while subsequent refreshes run in the background. Previously saved posts also render synchronously after a restart. Theme filters show available matching posts immediately while fetching the full filtered result. Read/view tracking and periodic polling run only while LIVEWIRE is active, so preloading does not mark unseen posts as read or viewed. A first-ever visit still needs an initial download; refresh failures retain visible posts and show a retryable error.
+
 All `VITE_` values are public in the built JavaScript, even when supplied through GitHub secrets. Never put a Supabase service-role/secret key, private VAPID key, or cron secret in them. Local environment files remain gitignored.
 
 To verify the project-path build locally in PowerShell:
