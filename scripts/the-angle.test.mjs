@@ -143,7 +143,7 @@ test('Separate picks preserve IDs and independent grades, and reject malformed r
   assert.deepEqual(readAnglePicks(picks), picks);
   assert.deepEqual(anglePicks({ id: 'legacy', pick: 'Combined old pick' }), [{ id: 'legacy', text: 'Combined old pick', result: 'pending' }]);
   assert.deepEqual(anglePicks({ id: 'new', pick: 'Old fallback', picks: [] }), []);
-  for (const invalid of [null, {}, [picks[0], picks[0]], [{ ...picks[0], result: 'win' }], [{ ...picks[0], text: '' }], [{ ...picks[0], id: 'invalid' }]]) {
+  for (const invalid of [null, {}, [picks[0], picks[0]], [{ ...picks[0], result: 'win' }], [{ ...picks[0], category: 'bad' }], [{ ...picks[0], category: null }], [{ ...picks[0], text: '' }], [{ ...picks[0], id: 'invalid' }]]) {
     assert.throws(() => readAnglePicks(invalid), /invalid admin picks/);
   }
   const story = { game_id: 'NFL:123', matchup: 'A @ B', kind: 'team', subject: '', category: 'Other',
@@ -153,6 +153,28 @@ test('Separate picks preserve IDs and independent grades, and reject malformed r
   assert.deepEqual(saved.picks, picks);
   assert.equal(saved.pick, 'Team ML');
   assert.equal('published_at' in saved, false);
+});
+
+test('Pick categories survive saves and reads, with independent records and no sprinkle results counted', () => {
+  const picks = ['straight', 'parlay', 'sprinkle'].flatMap((category, categoryIndex) =>
+    ['hit', 'miss', 'pending'].map((result, resultIndex) => ({
+      id: `a8541111-1111-4111-8111-1111111111${categoryIndex}${resultIndex}`,
+      text: `${category} ${result}`, result, category,
+    })));
+  assert.deepEqual(readAnglePicks(picks), picks);
+  const story = { game_id: 'NFL:123', matchup: 'A @ B', kind: 'team', subject: '', category: 'Other',
+    title: 'Story', narrative: 'Story', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '',
+    reviewed: true, status: 'published', picks };
+  assert.deepEqual(angleWriteFields(story, 'published').picks, picks);
+  for (const category of ['straight', 'parlay']) {
+    const record = angleSportRecords([story], category).find((sport) => sport.key === 'NFL');
+    assert.equal(record.wins, 1);
+    assert.equal(record.losses, 1);
+  }
+  assert.equal(publishedAnglePicks([story]).length, 9, 'Sprinkles remain public without entering either record');
+  const changed = { ...story, picks: picks.map((pick) => pick.category === 'straight' ? { ...pick, category: 'sprinkle' } : pick) };
+  assert.equal(angleSportRecords([changed])[0].wins, 0);
+  assert.equal(angleSportRecords([changed], 'parlay')[0].wins, 1);
 });
 
 test('Results include every published Admin pick as a separate item without splitting or duplicating text', () => {

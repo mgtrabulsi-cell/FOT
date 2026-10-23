@@ -5,6 +5,8 @@ import { supabase } from './services/supabaseClient';
 import { anglePicks, angleSport, angleSportRecords, publishedAnglePicks, readAngles } from './services/theAngle';
 import type { Angle, AnglePick, AngleSportKey } from './services/theAngle';
 import { PickResult } from './AnglePicks';
+import { pickCategories, pickCategory, pickCategoryLabels } from './services/anglePicks';
+import type { PickCategory } from './services/anglePicks';
 
 const message = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'Could not load results. Please retry.';
@@ -20,6 +22,7 @@ export default function OurResults({ user }: { user: User | null }) {
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [selectedSport, setSelectedSport] = useState<AngleSportKey | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<PickCategory | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -51,19 +54,19 @@ export default function OurResults({ user }: { user: User | null }) {
     return () => { active = false; window.clearInterval(timer); };
   }, [user?.id, refresh]);
 
-  async function grade(story: Angle, pickId: string, result: AnglePick['result']) {
+  async function updatePick(story: Angle, pickId: string, changes: Partial<Pick<AnglePick, 'result' | 'category'>>) {
     if (!supabase || !admin || busy) return;
     setBusy(true); setActionError(''); setNotice('');
     try {
       const response = await supabase.from('angles').update({
-        picks: anglePicks(story).map((pick) => pick.id === pickId ? { ...pick, result } : pick),
+        picks: anglePicks(story).map((pick) => pick.id === pickId ? { ...pick, ...changes } : pick),
         revision: story.revision + 1,
       }).eq('id', story.id).eq('revision', story.revision).eq('status', 'published').select('*').maybeSingle();
       if (response.error) throw response.error;
       if (!response.data) throw new Error('Another admin changed or unpublished this story. Results are refreshing; check the latest version before trying again.');
       const saved = readAngles([response.data])[0];
       setRows((previous) => previous.map((row) => row.id === saved.id ? saved : row));
-      setNotice('Pick result saved.');
+      setNotice('Pick updated.');
     } catch (cause) {
       setActionError(message(cause));
       setRefresh((value) => value + 1);
@@ -72,7 +75,8 @@ export default function OurResults({ user }: { user: User | null }) {
   const picks = publishedAnglePicks(rows);
   const records = angleSportRecords(rows);
   const sportLabel = records.find((sport) => sport.key === selectedSport)?.label;
-  const visiblePicks = selectedSport ? picks.filter(({ story }) => angleSport(story.game_id).key === selectedSport) : picks;
+  const visiblePicks = picks.filter(({ story, pick }) => (!selectedSport || angleSport(story.game_id).key === selectedSport)
+    && (!selectedCategory || pickCategory(pick) === selectedCategory));
   return <section className="angle-panel results-panel" aria-label="Our Results">
     <p className="angle-disclaimer">Results are marked by admins. Editorial opinions, not betting recommendations.</p>
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
@@ -80,39 +84,52 @@ export default function OurResults({ user }: { user: User | null }) {
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
     {!loaded && !error && <p role="status">Loading results...</p>}
-    {loaded && <details className="results-records">
+    {loaded && (['straight', 'parlay'] as const).map((category) => {
+      const categoryPicks = picks.filter(({ pick }) => pickCategory(pick) === category);
+      const categoryRecords = angleSportRecords(rows, category);
+      return <details className="results-records" key={category}>
       <summary>
-        <span>Overall record</span>
-        <strong><span className="results-record-wins">{picks.filter(({ pick }) => pick.result === 'hit').length} Wins</span>
+        <span>{pickCategoryLabels[category]} record</span>
+        <strong><span className="results-record-wins">{categoryPicks.filter(({ pick }) => pick.result === 'hit').length} Wins</span>
           <span aria-hidden="true"> - </span>
-          <span className="results-record-losses">{picks.filter(({ pick }) => pick.result === 'miss').length} Losses</span></strong>
+          <span className="results-record-losses">{categoryPicks.filter(({ pick }) => pick.result === 'miss').length} Losses</span></strong>
         <small>Record by sport</small>
       </summary>
-      <p>All published picks across all weeks. Hit counts as a win; Missed counts as a loss. Pending picks are excluded.</p>
-      <table aria-label="Admin-reported wins and losses by sport">
+      <p>All published {pickCategoryLabels[category].toLowerCase()} picks across all weeks. Hit counts as a win; Missed counts as a loss. Pending picks and all sprinkles are excluded. Each parlay counts once, not once per leg.</p>
+      <table aria-label={`${pickCategoryLabels[category]} admin-reported wins and losses by sport`}>
         <thead><tr><th scope="col">Sport</th><th scope="col">Wins</th><th scope="col">Losses</th></tr></thead>
-        <tbody>{records.map((sport) => <tr key={sport.key} className={selectedSport === sport.key ? 'results-sport-selected' : undefined}>
+        <tbody>{categoryRecords.map((sport) => <tr key={sport.key} className={selectedSport === sport.key ? 'results-sport-selected' : undefined}>
           <th scope="row"><button type="button" className="results-sport-filter" aria-pressed={selectedSport === sport.key} aria-controls="results-picks-feed" onClick={() => setSelectedSport(sport.key)}><span className="angle-sport-emoji" aria-hidden="true">{sport.emoji}</span>{sport.label}</button></th>
           <td className="results-record-wins">{sport.wins}</td>
           <td className="results-record-losses">{sport.losses}</td>
         </tr>)}</tbody>
       </table>
-    </details>}
+    </details>;
+    })}
+    {loaded && <div className="results-feed-filter" role="group" aria-label="Filter picks by type">
+      <button type="button" aria-pressed={selectedCategory === null} onClick={() => setSelectedCategory(null)}>All types</button>
+      {pickCategories.map((category) => <button type="button" key={category} aria-pressed={selectedCategory === category} onClick={() => setSelectedCategory(category)}>{pickCategoryLabels[category]}</button>)}
+      <p>Sprinkles remain visible and can be graded, but never count toward a record.</p>
+    </div>}
     {loaded && <div className="results-feed-filter">
-      <p role="status">{sportLabel ? `${sportLabel} picks` : 'All sports'} · {visiblePicks.length} {visiblePicks.length === 1 ? 'pick' : 'picks'} · All weeks</p>
+      <p role="status">{sportLabel ? `${sportLabel} picks` : 'All sports'} · {selectedCategory ? pickCategoryLabels[selectedCategory] : 'All types'} · {visiblePicks.length} {visiblePicks.length === 1 ? 'pick' : 'picks'} · All weeks</p>
       {selectedSport && <button type="button" onClick={() => setSelectedSport(null)}>Show all sports</button>}
     </div>}
     {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
-    {loaded && picks.length > 0 && !visiblePicks.length && <p className="angle-empty">No published {sportLabel} picks yet.</p>}
+    {loaded && picks.length > 0 && !visiblePicks.length && <p className="angle-empty">No published {sportLabel ?? ''}{selectedCategory ? ` ${pickCategoryLabels[selectedCategory]}` : ''} picks yet.</p>}
     <div className="results-stories" id="results-picks-feed">{visiblePicks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
       <div className={`angle-pick results-pick-${pick.result}`}>
-        <div className="angle-pick-heading"><span className="results-pick-label"><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</span><PickResult result={pick.result} /></div>
+        <div className="angle-pick-heading"><span className="results-pick-label"><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · {pickCategoryLabels[pickCategory(pick)]} · Opinion</span><PickResult result={pick.result} /></div>
         <h3 className="results-pick-text">{pick.text}</h3>
       </div>
       <h4>{story.title}</h4><p className="angle-matchup">{angleSport(story.game_id).key === 'NFL' ? '' : `${angleSport(story.game_id).label} · `}{story.matchup} · {story.season} · Week {story.week}</p>
       <a href={`#analyst-desk/story/${story.id}`}>View story</a>
       {admin && <div className="angle-actions" role="group" aria-label={`Result for pick: ${pick.text}`}>
-        {(['hit', 'miss', 'pending'] as const).map((result) => <button key={result} className={`grade-${result}`} aria-pressed={pick.result === result} disabled={busy} onClick={() => void grade(story, pick.id, result)}>{result === 'hit' ? <Check size={18} aria-hidden="true" /> : result === 'miss' ? <X size={18} aria-hidden="true" /> : null}{result === 'hit' ? 'Mark hit' : result === 'miss' ? 'Mark missed' : 'Reset to pending'}</button>)}
+        <label>Pick type<select aria-label={`Pick type for: ${pick.text}`} value={pickCategory(pick)} disabled={busy} onChange={(event) => {
+          const category = pickCategories.find((value) => value === event.target.value);
+          if (category) void updatePick(story, pick.id, { category });
+        }}>{pickCategories.map((category) => <option key={category} value={category}>{pickCategoryLabels[category]}</option>)}</select></label>
+        {(['hit', 'miss', 'pending'] as const).map((result) => <button key={result} className={`grade-${result}`} aria-pressed={pick.result === result} disabled={busy} onClick={() => void updatePick(story, pick.id, { result })}>{result === 'hit' ? <Check size={18} aria-hidden="true" /> : result === 'miss' ? <X size={18} aria-hidden="true" /> : null}{result === 'hit' ? 'Mark hit' : result === 'miss' ? 'Mark missed' : 'Reset to pending'}</button>)}
       </div>}
     </article>)}</div>
   </section>;

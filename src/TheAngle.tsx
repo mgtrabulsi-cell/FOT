@@ -14,6 +14,7 @@ import { observePostViews } from './services/livewireViews';
 import PostGallery, { postPhotoUrl } from './PostGallery';
 import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
+import { pickCategories, pickCategory, pickCategoryLabels } from './services/anglePicks';
 import XPublishingStatus from './XPublishingStatus';
 import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
 import { postThemes } from './services/postThemes';
@@ -436,10 +437,15 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         <div className="angle-pick-editor">
           <p>Admin picks (optional opinions). Add each bet separately.</p>
           {(form.picks ?? []).map((pick, index) => <div key={pick.id}>
+            <label>Pick {index + 1} type<select value={pickCategory(pick)} onChange={(event) => {
+              const category = pickCategories.find((value) => value === event.target.value);
+              if (category) change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, category } : item));
+            }}>{pickCategories.map((category) => <option key={category} value={category}>{pickCategoryLabels[category]}</option>)}</select></label>
             <label>Admin pick {index + 1}<textarea maxLength={500} value={pick.text} onChange={(event) => change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, text: event.target.value, result: 'pending' as const } : item))} /></label>
             <button type="button" onClick={() => change('picks', (form.picks ?? []).filter((item) => item.id !== pick.id))}>Remove pick {index + 1}</button>
           </div>)}
-          <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
+          <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending', category: 'straight' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
+          <p>Straights and parlays have separate records. Sprinkles are shown but excluded from records. Enter each parlay as one pick, not one pick per leg.</p>
         </div>
         <label htmlFor={`angle-${section}-photos`}>Photos (optional, up to four)</label>
         <input id={`angle-${section}-photos`} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {

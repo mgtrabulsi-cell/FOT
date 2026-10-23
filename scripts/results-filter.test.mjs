@@ -9,12 +9,13 @@ const source = ts.transpileModule(readFileSync(new URL('../src/OurResults.tsx', 
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText
   .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let states = [], index = 0;
-    export const fixture = (rows, sport) => { states = [rows, false, true, '', '', '', '', false, 0, sport]; index = 0; };
+    export const fixture = (rows, sport, category = null) => { states = [rows, false, true, '', '', '', '', false, 0, sport, category]; index = 0; };
     const useEffect = () => {}; const useState = () => [states[index++], () => {}];`)
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
   .replace(/import \{ supabase \} from [^;]+;/, 'const supabase = null;')
   .replace(/from ['"]\.\/services\/theAngle['"]/g, `from '${new URL('../src/services/theAngle.ts', import.meta.url)}'`)
+  .replace(/from ['"]\.\/services\/anglePicks['"]/g, `from '${new URL('../src/services/anglePicks.ts', import.meta.url)}'`)
   .replace(/import \{ PickResult \} from [^;]+;/, 'const PickResult = () => null;');
 const { default: Results, fixture } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const rows = ['NFL', 'NBA', 'NHL', 'UCL'].flatMap((sport) => [6, 7].map((week) => ({
@@ -38,5 +39,27 @@ test('Sport records filter all-week picks without changing records, losing pendi
     }
     if (sport) assert.match(html, /Show all sports/);
     if (sport === 'SOCCER') assert.match(html, /No published Soccer picks yet/);
+  }
+});
+
+test('Separate Straight and Parlay records exclude Sprinkles while type and sport filters preserve every pick', () => {
+  const stories = [{
+    ...rows[0], picks: [
+      { id: 'straight-hit', text: 'Straight win', result: 'hit', category: 'straight' },
+      { id: 'parlay-miss', text: 'Three leg parlay', result: 'miss', category: 'parlay' },
+      { id: 'sprinkle-hit', text: 'Sprinkle win', result: 'hit', category: 'sprinkle' },
+      { id: 'sprinkle-miss', text: 'Sprinkle loss', result: 'miss', category: 'sprinkle' },
+    ],
+  }];
+  for (const [category, count] of [[null, 4], ['straight', 1], ['parlay', 1], ['sprinkle', 2]]) {
+    fixture(stories, 'NFL', category);
+    const html = renderToStaticMarkup(createElement(Results, { user: null }));
+    assert.match(html, /Straight record/);
+    assert.match(html, /Parlay record/);
+    assert.equal((html.match(/1 Wins/g) ?? []).length, 1, 'Sprinkle win is not counted');
+    assert.equal((html.match(/1 Losses/g) ?? []).length, 1, 'Sprinkle loss is not counted');
+    const feed = html.slice(html.indexOf('id="results-picks-feed"'));
+    assert.equal((feed.match(/<article /g) ?? []).length, count);
+    if (category === 'sprinkle') assert.match(feed, /Sprinkle win/);
   }
 });

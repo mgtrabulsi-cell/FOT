@@ -1,8 +1,8 @@
 import type { DenNewsItem, Game } from './sportsData';
 import { postThemes } from './postThemes.ts';
 import type { PostTheme } from './postThemes.ts';
-import { anglePicks, angleSport, angleSports, nflSport, readAnglePicks } from './anglePicks.ts';
-import type { AnglePick } from './anglePicks.ts';
+import { anglePicks, angleSport, angleSports, nflSport, pickCategory, readAnglePicks } from './anglePicks.ts';
+import type { AnglePick, PickCategory } from './anglePicks.ts';
 export { anglePicks, angleSport, angleSports, readAnglePicks } from './anglePicks.ts';
 export type { AnglePick, AngleSportKey } from './anglePicks.ts';
 
@@ -67,9 +67,10 @@ export function angleLeadGroup(category: AngleCategory): typeof angleLeadGroups[
 
 export const angleSportGameId = (key: typeof angleSports[number]['key']) => `${key}:0`;
 
-export function angleSportRecords(stories: Angle[]) {
+export function angleSportRecords(stories: Angle[], category: Exclude<PickCategory, 'sprinkle'> = 'straight') {
   const records = [nflSport, ...angleSports].map((sport) => ({ ...sport, wins: 0, losses: 0 }));
   for (const { story, pick } of publishedAnglePicks(stories)) {
+    if (pickCategory(pick) !== category) continue;
     const record = records.find((sport) => sport.key === angleSport(story.game_id).key);
     if (record && pick.result === 'hit') record.wins += 1;
     if (record && pick.result === 'miss') record.losses += 1;

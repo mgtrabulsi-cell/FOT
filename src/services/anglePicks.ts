@@ -1,9 +1,14 @@
-export type AnglePick = { id: string; text: string; result: 'pending' | 'hit' | 'miss' };
+export const pickCategories = ['straight', 'parlay', 'sprinkle'] as const;
+export type PickCategory = typeof pickCategories[number];
+export const pickCategoryLabels: Record<PickCategory, string> = { straight: 'Straight', parlay: 'Parlay', sprinkle: 'Sprinkle' };
+export type AnglePick = { id: string; text: string; result: 'pending' | 'hit' | 'miss'; category?: PickCategory };
+export const pickCategory = (pick: AnglePick): PickCategory => pick.category ?? 'straight';
 export function readAnglePicks(value: unknown): AnglePick[] {
   if (!Array.isArray(value) || !value.every((pick) => pick && typeof pick === 'object'
     && typeof pick.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pick.id)
     && typeof pick.text === 'string' && pick.text.trim().length > 0 && pick.text.length <= 500
-    && ['pending', 'hit', 'miss'].includes(pick.result))
+    && ['pending', 'hit', 'miss'].includes(pick.result)
+    && (pick.category === undefined || pickCategories.some((category) => category === pick.category)))
     || new Set(value.map((pick) => pick.id.toLowerCase())).size !== value.length) throw new Error('The server returned invalid admin picks. Please reload.');
   return value;
 }
