@@ -436,13 +436,14 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         {field('title', 'Headline (your own words)', 140)}
         {field('narrative', 'Storyline', 1500, true)}
         <div className="angle-pick-editor">
-          <p>Admin picks (optional opinions). Add each bet separately.</p>
+          <p>Admin picks (optional opinions). Add each straight, sprinkle, or complete parlay separately.</p>
           {(form.picks ?? []).map((pick, index) => <div key={pick.id}>
             <label>Pick {index + 1} type<select className="pick-type-select" value={pickCategory(pick)} onChange={(event) => {
               const category = pickCategories.find((value) => value === event.target.value);
               if (category) change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, category } : item));
             }}>{pickCategories.map((category) => <option key={category} value={category}>{pickCategoryLabels[category]}</option>)}</select></label>
-            <label>Admin pick {index + 1}<textarea maxLength={500} value={pick.text} onChange={(event) => change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, text: event.target.value, result: 'pending' as const } : item))} /></label>
+            <label>{pickCategory(pick) === 'parlay' ? 'Parlay' : 'Admin pick'} {index + 1}<textarea className={pickCategory(pick) === 'parlay' ? 'angle-parlay-input' : undefined} rows={pickCategory(pick) === 'parlay' ? 5 : 2} aria-describedby={pickCategory(pick) === 'parlay' ? `parlay-help-${pick.id}` : undefined} placeholder={pickCategory(pick) === 'parlay' ? 'Leg 1\nLeg 2\nLeg 3' : 'Enter your pick'} maxLength={500} value={pick.text} onChange={(event) => change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, text: event.target.value, result: 'pending' as const } : item))} /></label>
+            {pickCategory(pick) === 'parlay' && <p id={`parlay-help-${pick.id}`}>Press Enter for each leg. All lines stay together as one parlay with one result and one record entry.</p>}
             <button type="button" onClick={() => change('picks', (form.picks ?? []).filter((item) => item.id !== pick.id))}>Remove pick {index + 1}</button>
           </div>)}
           <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending', category: 'straight' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>

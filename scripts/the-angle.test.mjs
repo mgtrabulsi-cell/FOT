@@ -33,6 +33,30 @@ test('Only The Angle uses pending-first ordering, with a linked story still pinn
   assert.match(source, /row\.id !== visibleLinked\?\.id/);
 });
 
+test('Multiline parlay legs survive save/read as one pick, one grade and one record entry', () => {
+  const text = 'Pacers ML\nSpurs +5.5\nRockets team total over 110.5';
+  const pick = { id: '11111111-1111-4111-8111-111111111111', text, category: 'parlay', result: 'hit' };
+  const story = { id: 'parlay-story', game_id: 'COMBO:0', matchup: 'NBA', kind: 'team', subject: '',
+    category: 'Other', title: 'Three-leg parlay', narrative: 'Editorial opinion', evidence: '', counterpoint: '',
+    pick: text, picks: [pick], source_url: '', source_label: '', reviewed: true,
+    season: 2026, week: 7, revision: 1, status: 'published' };
+  const saved = angleWriteFields(story, 'published');
+  const [restored] = readAngles(JSON.parse(JSON.stringify([{ ...story, ...saved }])));
+  assert.equal(restored.picks.length, 1);
+  assert.equal(restored.picks[0].text, text);
+  assert.equal(restored.picks[0].id, pick.id);
+  assert.equal(publishedAnglePicks([restored]).length, 1);
+  const record = angleSportRecords([restored], 'parlay').find((sport) => sport.key === 'COMBO');
+  assert.equal(record.wins, 1);
+  assert.equal(record.losses, 0);
+  const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
+  assert.match(source, /rows=\{pickCategory\(pick\) === 'parlay' \? 5 : 2\}/);
+  assert.match(source, /Press Enter for each leg/);
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.angle-pick p \{ white-space: pre-wrap;/);
+  assert.match(css, /textarea\.angle-parlay-input \{ min-height: 130px;/);
+});
+
 test('Non-NFL Angle stories cross weeks for exactly 168 hours, then stay in their original week', () => {
   const now = Date.parse('2026-11-04T12:00:00Z');
   const story = { season: 2026, week: 7, section: 'angle', status: 'published', game_id: 'NBA:0', published_at: new Date(now - 1000).toISOString() };

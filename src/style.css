@@ -463,6 +463,8 @@ button { color: inherit; }
 .angle-story, .angle-editor details p { white-space: pre-wrap; }
 .angle-counterpoint { border-left: 2px solid #8198bd; }
 .angle-pick { border-left: 2px solid #cc2633; }
+.angle-pick p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.angle-editor .angle-pick-editor textarea.angle-parlay-input { min-height: 130px; resize: vertical; }
 .angle-pick-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
 .angle-pick .angle-pick-heading > :is(h3, h4) { min-width: 0; margin: 0; }
 .pick-result { display: inline-flex; align-items: center; flex-shrink: 0; }
