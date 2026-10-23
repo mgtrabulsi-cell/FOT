@@ -18,6 +18,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
   .replace(/from ['"].\/services\/sportsData['"]/g, `from '${new URL('../src/services/sportsData.ts', import.meta.url)}'`)
+  .replace(/from ['"].\/services\/foregroundRefresh['"]/g, `from '${new URL('../src/services/foregroundRefresh.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/renderSnapshots['"]/g, `from '${new URL('../src/services/renderSnapshots.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/nflSituation.ts['"]/g, `from '${new URL('../src/services/nflSituation.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/teamComparisonRanks.ts['"]/g, `from '${new URL('../src/services/teamComparisonRanks.ts', import.meta.url)}'`)

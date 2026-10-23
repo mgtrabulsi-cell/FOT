@@ -82,3 +82,34 @@ test('Native saved-first reads return immediately, refresh once, and notify only
   assert.deepEqual(await (await fetcher(scoreboard)).json(), { yards: 456 });
   assert.equal(reads, 1);
 });
+
+test('Native live no-store requests wait for fresh scores, while network fallback stays explicitly marked', async () => {
+  for (const cache of ['no-store', 'reload']) {
+    let finish;
+    const updates = [];
+    const cached = [];
+    const fetcher = createNativePublicFetch(() => { throw Error('Unexpected browser fetch'); },
+      () => new Promise((resolve) => { finish = resolve; }), (stamp) => cached.push(stamp),
+      origin, 'capacitor://localhost/', {
+        peek: async () => ({ body: '{"score":7}', savedAt: '2026-10-16T19:00:00Z' }),
+        online: () => true, updated: (url) => updates.push(url), error: assert.fail,
+      });
+    let settled = false;
+    const pending = fetcher(scoreboard, { cache }).then((result) => { settled = true; return result; });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false, `${cache} must not immediately return an old saved score`);
+    finish({ body: '{"score":21}' });
+    const response = await pending;
+    assert.deepEqual(await response.json(), { score: 21 });
+    assert.equal(response.headers.has('x-gamewire-saved-at'), false);
+    assert.deepEqual(updates, [scoreboard]);
+    assert.deepEqual(cached, []);
+    const fallback = fetcher(scoreboard, { cache });
+    await new Promise((resolve) => setImmediate(resolve));
+    finish({ body: '{"score":7}', savedAt: '2026-10-16T19:00:00Z' });
+    const saved = await fallback;
+    assert.deepEqual(await saved.json(), { score: 7 });
+    assert.equal(saved.headers.get('x-gamewire-saved-at'), '2026-10-16T19:00:00Z');
+    assert.deepEqual(cached, ['2026-10-16T19:00:00Z']);
+  }
+});

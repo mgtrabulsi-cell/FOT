@@ -632,7 +632,7 @@ export async function fetchNFLFavoritePlays(
     if (game.status === 'FINAL' && cached && cached.cachedAt >= cutoff) {
       summary = cached.summary as Record<string, unknown>;
     } else {
-      const response = await fetch(`${apiBase}/${game.feedPath}/summary?event=${encodeURIComponent(game.eventId)}`, { signal });
+      const response = await fetch(`${apiBase}/${game.feedPath}/summary?event=${encodeURIComponent(game.eventId)}`, { signal, cache: 'no-store' });
       if (!response.ok) throw new Error(`Live play summary returned HTTP ${response.status}`);
       summary = asObject(await response.json());
       if (game.status === 'FINAL') {

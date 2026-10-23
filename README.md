@@ -2,6 +2,8 @@
 
 A responsive NFL hub with live scoreboards, weekly matchups, player statistics, and a favorite-centered feed called Your Locker Room.
 
+Scores refresh immediately when returning to a visible app/tab, restoring a page, or reconnecting; open game box scores and Locker Room plays also refresh on return rather than waiting for their polling timers. Web and native score/box-score requests explicitly asking for fresh data wait for the network read instead of returning a saved-first response. Saved data remains available on connection failures. Regular scoreboard polling remains every 30 seconds, with live box scores and favorite plays every 15 seconds. Closed or OS-suspended apps cannot guarantee background polling.
+
 ## Run locally
 
 Install Node.js 20 or newer, then run:

@@ -96,7 +96,7 @@ export function createWebOfflineStore(options: StoreOptions) {
       refreshing.set(key.href, load);
       return load;
     };
-    if (cached && request.cache !== 'reload') {
+    if (cached && request.cache !== 'reload' && request.cache !== 'no-store') {
       if (options.online() && Date.now() - (checked.get(key.href) ?? 0) >= 15000) {
         void refresh().catch((error: unknown) => {
           if (!stopped) report(error);

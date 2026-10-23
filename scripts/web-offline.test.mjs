@@ -56,6 +56,22 @@ function fixture() {
 const stats = 'https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/123/stats?seasontype=2';
 const image = 'https://a.espncdn.com/i/headshots/nfl/players/full/123.png';
 
+test('Live no-store reads return current network scores on the first request and retain offline fallback', async () => {
+  const f = fixture();
+  const scoreboard = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
+  const store = f.store();
+  await store.fetch(scoreboard);
+  f.setValue(456);
+  const response = await store.fetch(scoreboard, { cache: 'no-store' });
+  assert.deepEqual(await response.json(), { yards: 456 });
+  assert.equal(response.headers.has('x-gamewire-saved-at'), false);
+  assert.equal(f.requests.length, 2, 'Explicit live reads bypass saved-first and its refresh throttle');
+  f.offline();
+  const saved = await store.fetch(scoreboard, { cache: 'no-store' });
+  assert.deepEqual(await saved.json(), { yards: 456 });
+  assert.ok(saved.headers.get('x-gamewire-saved-at'), 'Unavailable live data stays marked as a saved copy');
+});
+
 test('Every public site feed retains its exact response across a cold offline launch', async () => {
   const f = fixture();
   const urls = [

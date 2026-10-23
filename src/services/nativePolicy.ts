@@ -65,7 +65,7 @@ export function createNativePublicFetch(
       return load;
     };
     let result: NativePublicResponse;
-    if (previous.body !== undefined && request.cache !== 'reload') {
+    if (previous.body !== undefined && request.cache !== 'reload' && request.cache !== 'no-store') {
       result = { body: previous.body, savedAt: previous.savedAt };
       if (savedFirst?.online() && Date.now() - (checked.get(key) ?? 0) >= 15000) {
         void refresh().catch(savedFirst.error);

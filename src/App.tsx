@@ -39,6 +39,7 @@ import { useSwipeBack } from './useSwipeBack';
 import { useOnlineStatus } from './OfflineStatus';
 import { useOfflineSnapshots } from './useOfflineSnapshots';
 import { usePublicDataRevision } from './usePublicDataRevision';
+import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { publicSupabaseConfig, supabase } from './services/supabaseClient';
 import { getInterfaceScale } from './uiScale';
@@ -631,6 +632,7 @@ function App() {
   const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
   const [scoreboardStatus, setScoreboardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [scoreboardRetry, setScoreboardRetry] = useState(0);
+  useEffect(() => subscribeForegroundRefresh(() => setScoreboardRetry((value) => value + 1)), []);
   useOfflineSnapshots(games, view !== 'LiveWire' && deletedAccount === null && (!!authUser || guestMode));
   useSiteOpenTracking(deletedAccount === null ? authUser?.id : null);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -870,7 +872,7 @@ function App() {
       controller.abort();
       window.clearInterval(refreshId);
     };
-  }, [weeklyPlayGameKey, nflPlayFavoritesKey]);
+  }, [weeklyPlayGameKey, nflPlayFavoritesKey, scoreboardRetry]);
 
   const toggleFavorite = (favorite: FavoriteTarget) => {
     if (!online) { setFavoriteSyncError('Reconnect to change favorites. Offline browsing is read-only.'); return; }
@@ -942,7 +944,10 @@ function App() {
     let hasGames = gamesRef.current.length > 0;
     let quickRetryId: number | undefined;
     let quickRetries = 0;
+    let refreshing = false;
     const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
       window.clearTimeout(quickRetryId);
       try {
         const result = await fetchScoreboards(controller.signal, selectedNFLWeek ?? undefined);
@@ -1022,6 +1027,8 @@ function App() {
             if (quickRetries < 6) quickRetryId = window.setTimeout(() => { quickRetries++; void refresh(); }, 5_000);
           }
         }
+      } finally {
+        refreshing = false;
       }
     };
 

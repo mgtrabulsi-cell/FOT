@@ -26,6 +26,7 @@ import {
 } from './services/sportsData';
 import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
+import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
 import { nflFieldPosition, type NFLLastPlay } from './services/nflSituation.ts';
 import { ScoreTicker } from './ScoreTicker.tsx';
@@ -300,6 +301,8 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
   const [playerAveragesFailed, setPlayerAveragesFailed] = useState(false);
   const [playerAveragesRetry, setPlayerAveragesRetry] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [foregroundRevision, setForegroundRevision] = useState(0);
+  useEffect(() => subscribeForegroundRefresh(() => setForegroundRevision((value) => value + 1)), []);
   const [failed, setFailed] = useState(false);
   const [loadedSeasonAverages, setSeasonAverages] = useState<{ gameId: string; teams: NFLTeamSeasonAverages[] } | null>(null);
   const [averagesLoading, setAveragesLoading] = useState(false);
@@ -533,7 +536,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
       controller.abort();
       if (intervalId) window.clearInterval(intervalId);
     };
-  }, [detailOpen, eventId, feedPath, isLive, savedRevision]);
+  }, [detailOpen, eventId, feedPath, isLive, savedRevision, foregroundRevision]);
 
   useEffect(() => {
     setPlayerAveragesFailed(false);
