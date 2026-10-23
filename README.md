@@ -89,6 +89,8 @@ Open `http://127.0.0.1:4173/FOT/`. Assets, the web app manifest, and the notific
 
 ## LIVEWIRE views
 
+In **Our Results**, expand **Record by sport** and select a sport to filter the picks feed to every published pick for that sport across all weeks, including pending picks. Win/loss records remain all-time totals. **Show all sports** clears the filter; empty sports show an explicit empty state. Individual pick grading and story links remain available in the filtered feed.
+
 ### Fantasy Start/Sit graphic creator
 
 Open **Analyst Desk → Fantasy → Start/Sit**. Admins and owners can create four-player **Must Start** or **Must Sit** graphics for QB, RB, WR, or TE using the approved 1080×1350 layout. Each slot searches ESPN active skill-player rosters and places the selected player's headshot/name above the opponent badge, with editable reasoning to the right. Opponents and home/away markers come from the selected week's loaded NFL games; missing schedules show **TBD**, never a guessed opponent or bye. Verify injuries and all editorial claims before publishing.

@@ -501,6 +501,14 @@ button { color: inherit; }
 .results-records td { font-weight: 700; font-variant-numeric: tabular-nums; }
 .results-record-wins { color: #75dfa6; }
 .results-record-losses { color: #ff8f98; }
+.results-records .results-sport-filter { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; border: 1px solid #35445b; border-radius: 5px; background: #151f2e; color: #e5eaf3; cursor: pointer; font-weight: 700; }
+.results-records .results-sport-filter[aria-pressed="true"] { background: #48212b; border-color: #cc2633; }
+.results-sport-filter:focus-visible { outline: 2px solid #9db9df; outline-offset: 3px; }
+.results-records .results-sport-selected { background: #1a2638; }
+.results-feed-filter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.results-feed-filter p { margin: 0; color: #bcc8da; font-size: 13px; }
+.results-feed-filter button { min-height: 44px; padding: 8px 12px; border: 1px solid #35445b; border-radius: 5px; color: #e5eaf3; background: #151f2e; cursor: pointer; }
+.results-feed-filter button:focus-visible { outline: 2px solid #9db9df; outline-offset: 3px; }
 .livewire-post .angle-pick { margin-bottom: 12px; }
 .livewire-post .angle-pick h4 { margin: 0 0 5px; color: #c1cce0; font: 600 11px var(--mono); }
 .livewire-post .angle-pick p { margin: 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }

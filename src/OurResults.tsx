@@ -3,7 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { Check, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { anglePicks, angleSport, angleSportRecords, publishedAnglePicks, readAngles } from './services/theAngle';
-import type { Angle, AnglePick } from './services/theAngle';
+import type { Angle, AnglePick, AngleSportKey } from './services/theAngle';
 import { PickResult } from './AnglePicks';
 
 const message = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -19,6 +19,7 @@ export default function OurResults({ user }: { user: User | null }) {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [selectedSport, setSelectedSport] = useState<AngleSportKey | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -69,6 +70,9 @@ export default function OurResults({ user }: { user: User | null }) {
     } finally { setBusy(false); }
   }
   const picks = publishedAnglePicks(rows);
+  const records = angleSportRecords(rows);
+  const sportLabel = records.find((sport) => sport.key === selectedSport)?.label;
+  const visiblePicks = selectedSport ? picks.filter(({ story }) => angleSport(story.game_id).key === selectedSport) : picks;
   return <section className="angle-panel results-panel" aria-label="Our Results">
     <p className="angle-disclaimer">Results are marked by admins. Editorial opinions, not betting recommendations.</p>
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
@@ -87,15 +91,20 @@ export default function OurResults({ user }: { user: User | null }) {
       <p>All published picks across all weeks. Hit counts as a win; Missed counts as a loss. Pending picks are excluded.</p>
       <table aria-label="Admin-reported wins and losses by sport">
         <thead><tr><th scope="col">Sport</th><th scope="col">Wins</th><th scope="col">Losses</th></tr></thead>
-        <tbody>{angleSportRecords(rows).map((sport) => <tr key={sport.key}>
-          <th scope="row"><span className="angle-sport-emoji" aria-hidden="true">{sport.emoji}</span>{sport.label}</th>
+        <tbody>{records.map((sport) => <tr key={sport.key} className={selectedSport === sport.key ? 'results-sport-selected' : undefined}>
+          <th scope="row"><button type="button" className="results-sport-filter" aria-pressed={selectedSport === sport.key} aria-controls="results-picks-feed" onClick={() => setSelectedSport(sport.key)}><span className="angle-sport-emoji" aria-hidden="true">{sport.emoji}</span>{sport.label}</button></th>
           <td className="results-record-wins">{sport.wins}</td>
           <td className="results-record-losses">{sport.losses}</td>
         </tr>)}</tbody>
       </table>
     </details>}
+    {loaded && <div className="results-feed-filter">
+      <p role="status">{sportLabel ? `${sportLabel} picks` : 'All sports'} · {visiblePicks.length} {visiblePicks.length === 1 ? 'pick' : 'picks'} · All weeks</p>
+      {selectedSport && <button type="button" onClick={() => setSelectedSport(null)}>Show all sports</button>}
+    </div>}
     {loaded && !picks.length && <p className="angle-empty">No published Admin picks yet. Picks added to The Angle will appear here individually.</p>}
-    <div className="results-stories">{picks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
+    {loaded && picks.length > 0 && !visiblePicks.length && <p className="angle-empty">No published {sportLabel} picks yet.</p>}
+    <div className="results-stories" id="results-picks-feed">{visiblePicks.map(({ story, pick }) => <article className="angle-card" key={`${story.id}:${pick.id}`}>
       <div className={`angle-pick results-pick-${pick.result}`}>
         <div className="angle-pick-heading"><span className="results-pick-label"><span className="angle-sport-emoji" aria-hidden="true">{angleSport(story.game_id).emoji}</span>Admin pick · Opinion</span><PickResult result={pick.result} /></div>
         <h3 className="results-pick-text">{pick.text}</h3>
