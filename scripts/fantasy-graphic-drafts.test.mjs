@@ -183,6 +183,31 @@ function setup(userId, options = {}) {
   };
 }
 
+test('Non-admin viewers see published artwork and player analysis without drafts or creation controls', async () => {
+  const published = graphics.emptyFantasyGraphic();
+  published.slots = published.slots.map((slot, index) => ({
+    ...slot, reason: `Published analysis ${index + 1}`, player: {
+      id: String(index + 1), name: `Published Player ${index + 1}`, position: 'QB',
+      teamId: '9', teamAbbr: 'GB', headshot: '', opponent: 'DET', opponentLogo: '', matchup: 'VS',
+    },
+  }));
+  const shared = { ...row(graphics.emptyFantasyGraphic()), published_content: published };
+  const app = setup('regular-member', { role: 'member', rows: [shared, { ...row(published), id: 'private-draft' }] });
+  await app.settle();
+  assert.equal(app.find((node) => node.props['aria-label'] === 'Shared Start/Sit drafts').length, 0);
+  assert.equal(app.find((node) => node.type === 'form').length, 0);
+  assert.equal(app.find((node) => node.type === 'x-publishing-status').length, 0);
+  assert.equal(app.find((node) => node.type === 'button' && node.props.children?.includes?.('Create graphic')).length, 0);
+  const previews = app.find((node) => node.type === 'graphic-preview');
+  assert.equal(previews.length, 1);
+  assert.deepEqual(previews[0].props.graphic, published);
+  assert.equal(previews[0].props.onDownload, true);
+  assert.equal(app.find((node) => node.type === 'summary' && node.props.children === 'Read player analysis').length, 1);
+  assert.equal(app.find((node) => node.type === 'p' && node.props.children === 'Published analysis 1').length, 1);
+  assert.equal(app.rosterCalls.length, 0);
+  app.unmount();
+});
+
 test('A phone page restart restores the latest keystroke before any effects or leave-page warning', async () => {
   const app = setup('phone');
   await app.settle();

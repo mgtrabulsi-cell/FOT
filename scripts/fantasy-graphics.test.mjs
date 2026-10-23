@@ -11,6 +11,15 @@ const player = (id) => ({ id: String(id), name: `Player ${id}`, position: 'QB', 
 const complete = () => ({ kind: 'start', position: 'QB',
   slots: [1, 2, 3, 4].map((id) => ({ player: player(id), reason: 'A verified matchup and an admin opinion.' })) });
 
+test('Fantasy opens to Start/Sit with its tab first while explicit news links retain their destination', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /const \[fantasyMode, setFantasyMode\] = useState<[^;]+>\('StartSit'\)/);
+  const tabs = app.slice(app.indexOf('aria-label="Fantasy view"'), app.indexOf("(['top', 'hate']"));
+  const order = [...tabs.matchAll(/onClick=\{\(\) => setFantasyMode\('([^']+)'\)\}/g)].map((match) => match[1]);
+  assert.deepEqual(order, ['StartSit', 'News', 'Matchups', 'Hate']);
+  assert.match(app, /if \(next === 'news'\) setFantasyMode\('News'\)/);
+});
+
 async function rosterLoader(fetchRoster) {
   const compiled = ts.transpileModule(readFileSync(new URL('../src/services/fantasyGraphicRoster.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
