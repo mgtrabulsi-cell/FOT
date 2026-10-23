@@ -57,6 +57,18 @@ test('Multiline parlay legs survive save/read as one pick, one grade and one rec
   assert.match(css, /textarea\.angle-parlay-input \{ min-height: 130px;/);
 });
 
+test('Pick editor keeps type and add controls compact while the play uses remaining desktop width', () => {
+  const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(source, /label className="angle-pick-type-field"/);
+  assert.match(source, /label className="angle-pick-play-field"/);
+  assert.match(css, /\.angle-pick-type-field \{ width: 132px; max-width: 100%; \}/);
+  assert.match(css, /grid-template-columns: 132px minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.angle-pick-play-field \{ grid-column: 2; grid-row: 1; \}/);
+  assert.match(css, /\.angle-parlay-help \{ grid-column: 2 \/ -1; \}/);
+  assert.match(css, /\.angle-pick-editor > button \{ justify-self: start; width: auto;/);
+});
+
 test('Non-NFL Angle stories cross weeks for exactly 168 hours, then stay in their original week', () => {
   const now = Date.parse('2026-11-04T12:00:00Z');
   const story = { season: 2026, week: 7, section: 'angle', status: 'published', game_id: 'NBA:0', published_at: new Date(now - 1000).toISOString() };
