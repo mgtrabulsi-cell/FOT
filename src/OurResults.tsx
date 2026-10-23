@@ -125,7 +125,7 @@ export default function OurResults({ user }: { user: User | null }) {
       <h4>{story.title}</h4><p className="angle-matchup">{angleSport(story.game_id).key === 'NFL' ? '' : `${angleSport(story.game_id).label} · `}{story.matchup} · {story.season} · Week {story.week}</p>
       <a href={`#analyst-desk/story/${story.id}`}>View story</a>
       {admin && <div className="angle-actions" role="group" aria-label={`Result for pick: ${pick.text}`}>
-        <label>Pick type<select aria-label={`Pick type for: ${pick.text}`} value={pickCategory(pick)} disabled={busy} onChange={(event) => {
+        <label>Pick type<select className="pick-type-select" aria-label={`Pick type for: ${pick.text}`} value={pickCategory(pick)} disabled={busy} onChange={(event) => {
           const category = pickCategories.find((value) => value === event.target.value);
           if (category) void updatePick(story, pick.id, { category });
         }}>{pickCategories.map((category) => <option key={category} value={category}>{pickCategoryLabels[category]}</option>)}</select></label>

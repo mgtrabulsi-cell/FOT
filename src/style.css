@@ -481,6 +481,11 @@ button { color: inherit; }
 .angle-pick-editor p { margin: 0; font-size: 12px; line-height: 1.6; }
 .results-panel .angle-actions { margin-top: 12px; }
 .results-panel .angle-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.results-panel .angle-actions label { display: grid; gap: 6px; min-width: 0; font-size: 12px; }
+.angle-panel .pick-type-select { color-scheme: dark; min-height: 44px; max-width: 100%; padding: 10px 12px; border: 1px solid #35445b; border-radius: 5px; background: #101a29; color: #e5eaf3; font: inherit; cursor: pointer; }
+.angle-panel .pick-type-select option { background: #101a29; color: #e5eaf3; }
+.angle-panel .pick-type-select:not(:disabled):hover { border-color: #8198bd; }
+.angle-panel .pick-type-select:disabled { opacity: .5; cursor: not-allowed; }
 .results-panel .grade-hit[aria-pressed="true"] { background: #163c2b; border-color: #75dfa6; color: #75dfa6; }
 .results-panel .grade-miss[aria-pressed="true"] { background: #48212b; border-color: #ff8f98; color: #ff8f98; }
 .results-records { min-width: 0; padding: 16px; border: 1px solid #35445b; border-radius: 6px; background: #101a29; }

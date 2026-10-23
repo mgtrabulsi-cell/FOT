@@ -437,7 +437,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         <div className="angle-pick-editor">
           <p>Admin picks (optional opinions). Add each bet separately.</p>
           {(form.picks ?? []).map((pick, index) => <div key={pick.id}>
-            <label>Pick {index + 1} type<select value={pickCategory(pick)} onChange={(event) => {
+            <label>Pick {index + 1} type<select className="pick-type-select" value={pickCategory(pick)} onChange={(event) => {
               const category = pickCategories.find((value) => value === event.target.value);
               if (category) change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, category } : item));
             }}>{pickCategories.map((category) => <option key={category} value={category}>{pickCategoryLabels[category]}</option>)}</select></label>
