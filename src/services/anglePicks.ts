@@ -20,6 +20,7 @@ export const angleSports = [
   { key: 'NHL', label: 'NHL', emoji: '🏒' },
   { key: 'UCL', label: 'UCL', emoji: '⚽' },
   { key: 'SOCCER', label: 'Soccer', emoji: '⚽' },
+  { key: 'COMBO', label: 'Combo', emoji: '🏆' },
 ] as const;
 export type AngleSportKey = 'NFL' | typeof angleSports[number]['key'];
 export const nflSport = { key: 'NFL', label: 'NFL', emoji: '🏈' } as const;

@@ -14,6 +14,12 @@ begin
   story.published_at := now() + interval '1 second';
   assert not public.angle_visible_in_week(story, 2200, 8), 'No future publication boost';
   story.published_at := now();
+  story.game_id := 'COMBO:0';
+  assert public.angle_visible_in_week(story, 2200, 8), 'Combo follows the seven-day cross-week rule';
+  story.published_at := now() - interval '168 hours';
+  assert not public.angle_visible_in_week(story, 2200, 8), 'Combo expires at 168 hours';
+  assert public.angle_visible_in_week(story, 2200, 7), 'Combo remains in its original week';
+  story.published_at := now();
   story.game_id := 'NFL:123';
   assert not public.angle_visible_in_week(story, 2200, 8), 'NFL remains week-specific';
   story.game_id := 'NHL:0';

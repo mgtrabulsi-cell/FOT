@@ -11,9 +11,15 @@ values (2200,18,'NFL:123','Test','team','','Other','NFL'),
  (2200,18,'NBA:0','Lakers @ Celtics','team','','Other','NBA'),
  (2200,18,'NHL:0','Rangers @ Bruins','team','','Other','NHL'),
  (2200,18,'UCL:0','Arsenal vs Inter','team','','Other','UCL'),
- (2200,18,'SOCCER:0','Inter Miami vs LAFC','team','','Other','Soccer');
+ (2200,18,'SOCCER:0','Inter Miami vs LAFC','team','','Other','Soccer'),
+ (2200,18,'COMBO:0','NBA + NFL + NHL','team','','Other','Combo');
 do $$
 begin
+  begin
+    insert into public.angles(season,week,game_id,matchup,kind,subject,category,title) values (2200,18,'COMBO:123','Test','team','','Other','Bad');
+    raise exception 'Combo event ID accepted';
+  exception when check_violation then null;
+  end;
   begin
     insert into public.angles(season,week,game_id,matchup,kind,subject,category,title) values (2200,18,'MLB:0','Test','team','','Other','Bad');
     raise exception 'Unsupported sport accepted';
@@ -27,5 +33,5 @@ begin
 end;
 $$;
 reset role;
-select 'Angle sports: general NFL/Fantasy, NFL games, NBA, NHL, UCL, and Soccer picks accepted; other leagues rejected' as result;
+select 'Angle sports: general NFL/Fantasy, NFL games, NBA, NHL, UCL, Soccer and Combo accepted; unsupported event IDs rejected' as result;
 rollback;

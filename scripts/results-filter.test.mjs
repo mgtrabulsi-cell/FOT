@@ -24,14 +24,14 @@ const rows = ['NFL', 'NBA', 'NHL', 'UCL'].flatMap((sport) => [6, 7].map((week) =
   picks: ['hit', 'miss', 'pending'].map((result) => ({ id: `${sport}-${week}-${result}`, text: `${sport} ${week} ${result}`, result })),
 })));
 test('Sport records filter all-week picks without changing records, losing pending picks, or dropping story links', () => {
-  for (const sport of [null, 'NFL', 'NBA', 'NHL', 'UCL', 'SOCCER']) {
+  for (const sport of [null, 'NFL', 'NBA', 'NHL', 'UCL', 'SOCCER', 'COMBO']) {
     fixture(rows, sport);
     const html = renderToStaticMarkup(createElement(Results, { user: null }));
     const feed = html.slice(html.indexOf('id="results-picks-feed"'));
-    assert.equal((feed.match(/<article /g) ?? []).length, sport === null ? 24 : sport === 'SOCCER' ? 0 : 6);
+    assert.equal((feed.match(/<article /g) ?? []).length, sport === null ? 24 : ['SOCCER', 'COMBO'].includes(sport) ? 0 : 6);
     assert.match(html, /8 Wins/);
     assert.match(html, /8 Losses/);
-    if (sport && sport !== 'SOCCER') {
+    if (sport && !['SOCCER', 'COMBO'].includes(sport)) {
       assert.match(feed, new RegExp(`${sport} 6 pending`));
       assert.match(feed, new RegExp(`${sport} 7 hit`));
       for (const other of ['NFL', 'NBA', 'NHL', 'UCL'].filter((value) => value !== sport)) assert.ok(!feed.includes(`${other} fixture`));
@@ -39,6 +39,7 @@ test('Sport records filter all-week picks without changing records, losing pendi
     }
     if (sport) assert.match(html, /Show all sports/);
     if (sport === 'SOCCER') assert.match(html, /No published Soccer picks yet/);
+    if (sport === 'COMBO') assert.match(html, /No published Combo picks yet/);
   }
 });
 
@@ -62,4 +63,18 @@ test('Separate Straight and Parlay records exclude Sprinkles while type and spor
     assert.equal((feed.match(/<article /g) ?? []).length, count);
     if (category === 'sprinkle') assert.match(feed, /Sprinkle win/);
   }
+});
+
+test('Combo sport filter displays multi-sport parlays with their own sport label and record row', () => {
+  const stories = [{ ...rows[0], game_id: 'COMBO:0', matchup: 'NBA + NFL + NHL',
+    picks: [{ id: 'combo', text: 'Multi-sport parlay', result: 'hit', category: 'parlay' }] }, rows[0]];
+  fixture(stories, 'COMBO', 'parlay');
+  const html = renderToStaticMarkup(createElement(Results, { user: null }));
+  assert.match(html, /Combo picks/);
+  assert.match(html, /Parlay record/);
+  const feed = html.slice(html.indexOf('id="results-picks-feed"'));
+  assert.equal((feed.match(/<article /g) ?? []).length, 1);
+  assert.match(feed, /Combo/);
+  assert.match(feed, /Multi-sport parlay/);
+  assert.doesNotMatch(feed, /NFL fixture/);
 });

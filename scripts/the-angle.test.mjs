@@ -205,8 +205,24 @@ test('Angle sports map game IDs to labels and emoji, defaulting to NFL', () => {
   assert.equal(angleSport('NHL:0').emoji, '\u{1F3D2}');
   assert.equal(angleSport('SOCCER:0').label, 'Soccer');
   assert.equal(angleSport('UCL:0').key, 'UCL');
+  assert.equal(angleSport(angleSportGameId('COMBO')).label, 'Combo');
   assert.equal(anglePublishError({ title: 'T', narrative: 'N', subject: '', evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: true, matchup: ' ' }), 'Add the matchup before saving.');
   assert.equal(angleWriteFields({ game_id: 'NBA:0', matchup: ' Lakers @ Celtics ', kind: 'team', subject: '', category: 'Other', title: 'T', narrative: 'N', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true }, 'draft').matchup, 'Lakers @ Celtics');
+});
+
+test('Combo parlays count only once in Combo parlay records and use the seven-day feed window', () => {
+  const now = Date.parse('2026-10-23T15:00:00Z');
+  const story = { id: 'combo', game_id: 'COMBO:0', season: 2026, week: 7, status: 'published',
+    section: 'angle', published_at: new Date(now - 1000).toISOString(), pick: '',
+    picks: [{ id: 'parlay', text: 'NBA + NFL + NHL three-leg parlay', category: 'parlay', result: 'hit' }] };
+  const records = angleSportRecords([story], 'parlay');
+  assert.equal(records.find((sport) => sport.key === 'COMBO').wins, 1);
+  assert.ok(records.filter((sport) => sport.key !== 'COMBO').every((sport) => sport.wins === 0 && sport.losses === 0));
+  assert.ok(angleSportRecords([story]).every((sport) => sport.wins === 0 && sport.losses === 0));
+  assert.equal(angleVisibleInWeek(story, 2026, 8, now), true);
+  story.published_at = new Date(now - 168 * 60 * 60 * 1000).toISOString();
+  assert.equal(angleVisibleInWeek(story, 2026, 8, now), false);
+  assert.equal(angleVisibleInWeek(story, 2026, 7, now), true);
 });
 
 test('Fantasy News posts require a type and keep tags out of angles', () => {
@@ -247,11 +263,12 @@ test('Sport records count individual published Hit and Missed picks across weeks
     { key: 'NHL', wins: 0, losses: 2 },
     { key: 'UCL', wins: 1, losses: 0 },
     { key: 'SOCCER', wins: 1, losses: 1 },
+    { key: 'COMBO', wins: 0, losses: 0 },
   ]);
   assert.equal(rows[0].picks[0].result, 'hit');
   assert.deepEqual(angleSportRecords(rows), records);
   assert.ok(angleSportRecords([]).every((sport) => sport.wins === 0 && sport.losses === 0));
-  assert.deepEqual(angleSportRecords([]).map((sport) => sport.label), ['NFL', 'NBA', 'NHL', 'UCL', 'Soccer']);
+  assert.deepEqual(angleSportRecords([]).map((sport) => sport.label), ['NFL', 'NBA', 'NHL', 'UCL', 'Soccer', 'Combo']);
 });
 
 test('Regrading, resetting, removing and unpublishing picks recompute records without double counting', () => {
