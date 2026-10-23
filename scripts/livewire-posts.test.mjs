@@ -30,6 +30,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/import PostGallery from [^;]+;/, 'const PostGallery = () => null;')
   .replace(/import AnglePicks from [^;]+;/, 'const AnglePicks = () => null;')
   .replace(/import XPublishingStatus from [^;]+;/, 'const XPublishingStatus = () => null;')
+  .replace(/import PostViewers from [^;]+;/, 'const PostViewers = () => null;')
   .replace(/import \{ usePublicDataRevision \} from [^;]+;/, 'const usePublicDataRevision = () => 0;')
   .replace(/import \{ publicSupabaseConfig, supabase \} from [^;]+;/, 'const publicSupabaseConfig = null; const supabase = null;')
   .replace(/import \{ observePostViews \} from [^;]+;/, 'const observePostViews = () => () => {};')
@@ -77,7 +78,7 @@ function livewireFixture() {
     document: { visibilityState: 'visible' },
     window: { setInterval: (callback) => { const id = timers.size + 1; timers.set(id, callback); return id; }, clearInterval: (id) => timers.delete(id) },
     postThemes: [{ value: 'news', label: 'News', color: 'tnf' }, { value: 'fantasy', label: 'Fantasy', color: 'snf' }],
-    PostGallery: 'gallery', AnglePicks: 'picks', XPublishingStatus: 'x-status', Plus: 'plus',
+    PostGallery: 'gallery', AnglePicks: 'picks', PostViewers: 'post-viewers', XPublishingStatus: 'x-status', Plus: 'plus',
     useRef(initial) { const index = cursor++; return hooks[index] ??= { current: initial }; },
     useState(initial) {
       const index = cursor++;

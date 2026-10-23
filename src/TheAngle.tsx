@@ -16,6 +16,7 @@ import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
 import { pickCategories, pickCategory, pickCategoryLabels } from './services/anglePicks';
 import XPublishingStatus from './XPublishingStatus';
+import PostViewers from './PostViewers';
 import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
 import { postThemes } from './services/postThemes';
 
@@ -502,7 +503,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       {angle.counterpoint && <div className="angle-counterpoint"><h4>The other side</h4><p>{angle.counterpoint}</p></div>}
       <AnglePicks picks={anglePicks(angle)} emoji={angleSport(angle.game_id).emoji} />
       <PostGallery paths={angle.image_paths ?? []} title={angle.title} />
-      {admin && <span className="livewire-views">{viewCounts[angle.id] === undefined ? 'Views unavailable' : `${new Intl.NumberFormat().format(viewCounts[angle.id])} ${viewCounts[angle.id] === 1 ? 'view' : 'views'}`}</span>}
+      {admin && <PostViewers surface="angle" postId={angle.id} count={viewCounts[angle.id]} />}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}
       {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>{news ? 'Edit news' : 'Edit angle'}</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
     </article>)}</div>
