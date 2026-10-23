@@ -60,14 +60,24 @@ export function fetchTeamComparisonRanks(feedPath: string, season: number): Prom
     if (ids.length !== 32 || new Set(ids).size !== 32) throw new Error('NFL ranking team list must contain all 32 teams.');
     const teams: NFLTeamSeasonAverages[] = [];
     for (let offset = 0; offset < ids.length; offset += 4) {
-      teams.push(...await Promise.all(ids.slice(offset, offset + 4).map((id) =>
-        fetchNFLTeamSeasonAverages(feedPath, id, season, AbortSignal.timeout(15_000)))));
+      teams.push(...await Promise.all(ids.slice(offset, offset + 4).map(async (id) => {
+        try {
+          return await fetchNFLTeamSeasonAverages(feedPath, id, season, AbortSignal.timeout(15_000), 'reload');
+        } catch (cause) {
+          console.warn(`Retrying NFL comparison statistics for team ${id}`, cause);
+          return fetchNFLTeamSeasonAverages(feedPath, id, season, AbortSignal.timeout(15_000), 'reload');
+        }
+      })));
     }
     return rankTeamAverages(teams, season);
   })();
   const entry = { request, expires: Number.POSITIVE_INFINITY };
   cache.set(key, entry);
-  void request.then(() => { entry.expires = Date.now() + 10 * 60_000; }, () => {
+  void request.then((data) => {
+    const complete = data.teams.every((team) => teamComparisonMetrics.every(({ key }) => team.ranks[key] !== null));
+    if (complete) entry.expires = Date.now() + 10 * 60_000;
+    else if (cache.get(key) === entry) cache.delete(key);
+  }, () => {
     if (cache.get(key) === entry) cache.delete(key);
   });
   return request;

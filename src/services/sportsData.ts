@@ -1040,8 +1040,9 @@ export async function fetchNFLTeamSeasonAverages(
   teamId: string,
   seasonYear: number,
   signal?: AbortSignal,
+  cache: RequestCache = 'default',
 ): Promise<NFLTeamSeasonAverages> {
-  const response = await fetch(`${apiBase}/${feedPath}/teams/${encodeURIComponent(teamId)}/statistics?season=${seasonYear}&seasontype=2`, { signal });
+  const response = await fetch(`${apiBase}/${feedPath}/teams/${encodeURIComponent(teamId)}/statistics?season=${seasonYear}&seasontype=2`, { signal, cache });
   if (!response.ok) throw new Error(`Team season averages returned HTTP ${response.status}`);
   const payload = asObject(await response.json());
   const results = asObject(payload.results);

@@ -451,13 +451,16 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
     : feedPath && seasonYear ? readRenderSnapshot('teamRanks', `${feedPath}:${seasonYear}`) : null;
 
   useEffect(() => {
-    if (!detailOpen || !isUpcoming || subTab !== 'teamStats' || !feedPath || !seasonYear) return;
+    if (!detailOpen || !isUpcoming || !feedPath || !seasonYear) return;
     let active = true;
     setRanksLoading(true); setRanksError('');
     void fetchTeamComparisonRanks(feedPath, seasonYear).then((data) => {
       if (!active) return;
       saveRenderSnapshot('teamRanks', `${feedPath}:${seasonYear}`, data);
       setLoadedRanks(data); setRanksLoading(false);
+      if (data.teams.some((team) => teamComparisonMetrics.some(({ key }) => team.ranks[key] === null))) {
+        setRanksError('Some NFL ranks are unavailable because ESPN has incomplete league statistics. Retry to check for updated data.');
+      }
     }).catch((cause: unknown) => {
       if (!active) return;
       console.error('Could not load NFL team comparison ranks', cause);
@@ -465,7 +468,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
       setRanksLoading(false);
     });
     return () => { active = false; };
-  }, [detailOpen, isUpcoming, subTab, feedPath, seasonYear, ranksRetry]);
+  }, [detailOpen, isUpcoming, feedPath, seasonYear, ranksRetry]);
 
   useEffect(() => {
     setAveragesFailed(false);
