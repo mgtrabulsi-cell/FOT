@@ -1,9 +1,11 @@
 begin;
 insert into auth.users(id,email,created_at) values
  ('f9503333-3333-4333-8333-333333333331','guest-owner@example.test',now()),
- ('f9503333-3333-4333-8333-333333333332','guest-member@example.test',now());
+ ('f9503333-3333-4333-8333-333333333332','guest-member@example.test',now()),
+ ('f9503333-3333-4333-8333-333333333333','guest-admin@example.test',now());
 insert into public.livewire_roles(user_id,role,display_name) values
- ('f9503333-3333-4333-8333-333333333331','owner','Guest test owner');
+ ('f9503333-3333-4333-8333-333333333331','owner','Guest test owner'),
+ ('f9503333-3333-4333-8333-333333333333','admin','Guest test admin');
 set local role anon;
 select public.record_guest_site_open('f9503333-3333-4333-8333-333333333339');
 select public.record_guest_site_open('f9503333-3333-4333-8333-333333333339');
@@ -29,7 +31,13 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub','f9503333-3333-4333-8333-333333333332',true);
 do $$ begin
   begin perform public.owner_guest_activity(); raise exception 'Member read aggregates';
-  exception when raise_exception then if sqlerrm <> 'Owner access is required' then raise; end if; end;
+  exception when raise_exception then if sqlerrm <> 'Admin access is required' then raise; end if; end;
+end; $$;
+select set_config('request.jwt.claim.sub','f9503333-3333-4333-8333-333333333333',true);
+do $$ begin
+  assert (select sessions>=1 and total_opens>=2 and active_week>=1 from public.owner_guest_activity()), 'Admin sees guest totals';
+  begin perform 1 from public.guest_site_opens; raise exception 'Admin read private guest table';
+  exception when insufficient_privilege then null; end;
 end; $$;
 select set_config('request.jwt.claim.sub','f9503333-3333-4333-8333-333333333331',true);
 do $$ begin

@@ -29,7 +29,7 @@ returns table(sessions bigint, total_opens bigint, active_week bigint, last_open
 language plpgsql stable security definer set search_path = ''
 as $$
 begin
-  if public.livewire_role() is distinct from 'owner' then raise exception 'Owner access is required'; end if;
+  if coalesce(public.livewire_role(), '') not in ('owner', 'admin') then raise exception 'Admin access is required'; end if;
   return query select count(*), coalesce(sum(opens.open_count),0)::bigint,
     count(*) filter (where opens.last_opened_at > now() - interval '7 days'), max(opens.last_opened_at)
   from public.guest_site_opens opens;

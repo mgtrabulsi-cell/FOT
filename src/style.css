@@ -1456,6 +1456,7 @@ td:first-child { color: #828c84; }
 .owner-users-notifications { color: #9fb0c8; font-size: 10px; overflow-wrap: anywhere; }
 .owner-users-opens { color: #edf2f8; font: 700 14px var(--mono); }
 .owner-users-last small, .owner-users-joined small { display: none; }
+.owner-users-signin { grid-column: 1 / -1; color: #aebdd1; font-size: 10px; overflow-wrap: anywhere; }
 .owner-users-empty, .owner-users-note { margin: 0; color: #93a3ba; font-size: 11px; }
 @media (max-width: 640px) {
   .owner-users-list .owner-users-head { display: none; }

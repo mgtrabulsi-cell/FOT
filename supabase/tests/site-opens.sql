@@ -43,7 +43,7 @@ begin
     perform public.owner_user_activity();
     raise exception 'Member listed users';
   exception when raise_exception then
-    if sqlerrm <> 'Owner access is required' then raise; end if;
+    if sqlerrm <> 'Admin access is required' then raise; end if;
   end;
 end;
 $$;
@@ -56,11 +56,14 @@ do $$ begin assert public.record_site_open() = 2, 'Later open counts again'; end
 select set_config('request.jwt.claim.sub', 'd9503333-3333-4333-8333-333333333332', true);
 do $$
 begin
+  assert exists(select 1 from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333333'
+    and a.open_count = 2 and a.email = 'opens-member@example.test'
+    and a.notification_devices = 2 and a.score_alert_devices = 1), 'Admin sees member activity and device status';
+  assert public.record_site_open() = 1, 'Admin opens are still counted';
   begin
-    perform public.owner_user_activity();
-    raise exception 'Admin listed users';
-  exception when raise_exception then
-    if sqlerrm <> 'Owner access is required' then raise; end if;
+    perform 1 from public.site_opens;
+    raise exception 'Admin read private table directly';
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;
@@ -73,7 +76,7 @@ begin
   assert member.open_count = 2 and member.email = 'opens-member@example.test' and member.display_name = 'Member', 'Owner sees member opens';
   assert member.notification_devices = 2 and member.score_alert_devices = 1, 'Count devices, not opens, and distinguish score preference';
   select * into admin from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333332';
-  assert admin.open_count = 0 and admin.last_opened_at is null and admin.display_name is null, 'Users without opens are listed with zero';
+  assert admin.open_count = 1 and admin.last_opened_at is not null and admin.display_name is null, 'Admin activity remains tracked';
   assert admin.notification_devices = 0 and admin.score_alert_devices = 0, 'No subscriptions means no registered devices';
   assert exists(select 1 from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333331'
     and a.notification_devices = 1 and a.score_alert_devices = 0), 'Owner devices still show without counting owner opens';
@@ -86,6 +89,21 @@ do $$
 begin
   assert exists(select 1 from public.owner_user_activity() a where a.user_id = 'd9503333-3333-4333-8333-333333333333'
     and a.notification_devices = 1 and a.score_alert_devices = 0), 'Removed subscriptions disappear from dashboard';
+end;
+$$;
+reset role;
+
+delete from public.livewire_roles where user_id = 'd9503333-3333-4333-8333-333333333332';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'd9503333-3333-4333-8333-333333333332', true);
+do $$
+begin
+  begin
+    perform public.owner_user_activity();
+    raise exception 'Revoked admin listed users';
+  exception when raise_exception then
+    if sqlerrm <> 'Admin access is required' then raise; end if;
+  end;
 end;
 $$;
 reset role;

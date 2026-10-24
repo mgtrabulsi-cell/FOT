@@ -36,7 +36,7 @@ language plpgsql stable security definer set search_path = ''
 as $$
 #variable_conflict use_column
 begin
-  if public.livewire_role() is distinct from 'owner' then raise exception 'Owner access is required'; end if;
+  if coalesce(public.livewire_role(), '') not in ('owner', 'admin') then raise exception 'Admin access is required'; end if;
   return query
     select u.id, u.email::text, nullif(btrim(u.raw_user_meta_data->>'display_name'), ''), u.created_at, u.last_sign_in_at,
       coalesce(o.open_count, 0)::bigint, o.last_opened_at
