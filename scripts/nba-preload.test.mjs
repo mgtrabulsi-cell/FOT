@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { nbaNearbyDates, preloadNBABoxes, preloadNBADates, saveNBASummary } from '../src/services/nbaPreload.ts';
+import { nbaNearbyDates, preloadNBABoxes, preloadNBADates, preloadNBAPregame, saveNBASummary } from '../src/services/nbaPreload.ts';
 import { gameSnapshotKey, readRenderSnapshot } from '../src/services/renderSnapshots.ts';
 
 function storage() {
@@ -54,6 +54,33 @@ test('next seven NBA dates and yesterday are saved for immediate selection, incl
     assert.deepEqual(await preloadNBADates('2026-10-31', new AbortController().signal), []);
     assert.equal(requests.length, 8);
     for (const date of nbaNearbyDates('2026-10-31')) assert.deepEqual(readRenderSnapshot('scoreboard', `NBA:${date}`).games, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
+  }
+});
+
+test('pregame rosters, comparisons and Stat Hub directories persist before opening and throttle repeat warming', async () => {
+  const originalFetch = globalThis.fetch, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage() });
+  const requests = [];
+  const teams = ['31', '32'].map((id) => ({ id, name: `Team ${id}`, abbr: id, color: '123456', score: 0, record: '' }));
+  const upcoming = { ...game, status: 'UPCOMING', away: teams[0], home: teams[1] };
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return Response.json(String(url).includes('/roster') ? { athletes: [{ id: '99', displayName: 'Saved player', position: { abbreviation: 'G' }, jersey: '0' }] }
+      : { results: { stats: { categories: [{ stats: [{ name: 'avgPoints', displayName: 'Points', displayValue: '110' }] }] } } });
+  };
+  try {
+    assert.deepEqual(await preloadNBAPregame([upcoming, upcoming], new AbortController().signal), []);
+    assert.equal(requests.length, 4, 'Only one roster and season request per unique team');
+    assert.equal(readRenderSnapshot('nbaRoster', 'roster:31:2027')[0].name, 'Saved player');
+    assert.ok(readRenderSnapshot('nbaComparison', 'comparison:31:32:2027'));
+    assert.equal(readRenderSnapshot('nbaDirectory', 'directory:31,32:2027').length, 2);
+    await preloadNBAPregame([upcoming], new AbortController().signal);
+    assert.equal(requests.length, 4, 'Repeated scoreboard polls do not fan out requests again');
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(preloadNBAPregame([upcoming], controller.signal), { name: 'AbortError' });
   } finally {
     globalThis.fetch = originalFetch;
     if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;

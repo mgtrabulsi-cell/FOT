@@ -12,7 +12,7 @@ const home = { id: '2', name: 'Boston Celtics', abbr: 'BOS', score: 99, record: 
 const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league: 'NBA', seasonYear: 2027,
   date: '2026-10-23T23:00:00Z', status: 'LIVE', period: 'Q4', clock: '1:00', away, home, venue: 'Arena' };
 
-function setup(mode = 'wire', snapshots = new Map(), component) {
+function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = {}) {
   let cursor = 0, changed = false, tree;
   const slots = [], effects = [], requests = [], timers = new Map();
   let timerId = 0;
@@ -52,6 +52,7 @@ function setup(mode = 'wire', snapshots = new Map(), component) {
     fetchNBAPlayerProfile: async () => ({ games: [], averages: {}, totals: {} }),
     nbaStatOptions: [{ key: 'points', label: 'Points' }, { key: 'rebounds', label: 'Rebounds' }],
   };
+  Object.assign(data, dataOverrides);
   const context = vm.createContext({
     exports: {}, AbortController, Error, HTMLElement: class {}, navigator: { onLine: true }, document: { visibilityState: 'visible' },
     window: { setInterval: (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; }, clearInterval: (id) => timers.delete(id) },
@@ -60,6 +61,10 @@ function setup(mode = 'wire', snapshots = new Map(), component) {
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name === './services/nbaData') return data;
       if (name === './services/renderSnapshots') return {
+        nbaResourceSnapshots: (kind) => ({
+          read: (key) => snapshots.get(`${kind}:${key}`) ?? null,
+          save: (key, value) => snapshots.set(`${kind}:${key}`, value),
+        }),
         gameSnapshotKey: (feed, event, season) => `${feed}:${event}:${season}`,
         readRenderSnapshot: (kind, key) => snapshots.get(`${kind}:${key}`) ?? null,
         saveRenderSnapshot: (kind, key, value) => snapshots.set(`${kind}:${key}`, value),
@@ -69,7 +74,7 @@ function setup(mode = 'wire', snapshots = new Map(), component) {
       return {};
     },
   });
-  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.LatestPlay = LatestPlay; exports.useDragScroll = useDragScroll; exports.NBADirectory = NBADirectory; exports.PlayerProfile = PlayerProfile;`, context);
+  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.LatestPlay = LatestPlay; exports.useDragScroll = useDragScroll; exports.NBADirectory = NBADirectory; exports.PlayerProfile = PlayerProfile; exports.PregameComparison = PregameComparison; exports.Roster = Roster; exports.TeamSeason = TeamSeason;`, context);
   function render() {
     let count = 0;
     do {
@@ -93,6 +98,47 @@ function setup(mode = 'wire', snapshots = new Map(), component) {
     unmount() { slots.forEach((slot) => slot?.cleanup?.()); },
   };
 }
+
+test('NBA pregame and Stat Hub resources render saved data synchronously and retain it after failed refresh', async () => {
+  const savedPlayer = { id: 'p1', name: 'Saved player', position: 'G', jersey: '1', teamId: away.id };
+  const cases = [
+    ['Roster', 'nbaRoster:roster:1:2027', [savedPlayer], { team: away, season: 2027, query: '', favorites: [], toggle() {}, open() {} }, 'fetchNBARoster'],
+    ['TeamSeason', 'nbaTeamSeason:season:1:2027', [{ name: 'points', label: 'Points', display: '110' }], { team: away, season: 2027 }, 'fetchNBATeamSeason'],
+    ['PregameComparison', 'nbaComparison:comparison:1:2:2027', { away: [], home: [] }, { game }, 'fetchNBATeamSeason'],
+    ['NBADirectory', 'nbaDirectory:directory:1,2:2027', [{ team: away, players: [savedPlayer] }, { team: home, players: [] }],
+      { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: false }, 'fetchNBARoster'],
+    ['PlayerProfile', 'nbaProfile:profile:p1:2027', { season: 2027, games: [], totals: {}, averages: { points: 24 } },
+      { player: savedPlayer, team: away, season: 2027, favorites: [], toggle() {}, close() {} }, 'fetchNBAPlayerProfile'],
+  ];
+  for (const [name, key, saved, props, fetcher] of cases) {
+    const app = setup('stats', new Map([[key, saved]]), { name, props }, {
+      [fetcher]: async () => { throw new Error('Offline test'); },
+    });
+
+    const resource = () => app.nodes().find((node) => node.type?.name === 'ResourceMessage');
+    assert.equal(resource().props.data, saved, `${name} has saved data on its first render before network completion`);
+    await app.settle();
+    assert.equal(resource().props.data, saved, `${name} retains saved content after a failed refresh`);
+    assert.equal(resource().props.error, 'Offline test');
+    app.unmount();
+  }
+});
+
+test('NBA Stat Hub reuses recent saved scoring order without another player-stat request burst', async () => {
+  const player = { id: 'p1', name: 'Saved scorer', position: 'G', jersey: '1', teamId: away.id };
+  const snapshots = new Map([
+    ['nbaDirectory:directory:1,2:2027', [{ team: away, players: [player] }, { team: home, players: [] }]],
+    ['nbaScoring:scoring:1,2:2027', { averages: { p1: 25 }, failed: [], updatedAt: Date.now() }],
+  ]);
+  let calls = 0;
+  const app = setup('stats', snapshots, { name: 'NBADirectory', props: {
+    teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: false,
+  } }, { fetchNBAPointsPerGame: async () => { calls++; return { averages: {}, failed: [] }; } });
+  await app.settle();
+  assert.equal(calls, 0);
+  assert.equal(app.nodes().filter((node) => node.type?.name === 'ResourceMessage')[1].props.data.averages.p1, 25);
+  app.unmount();
+});
 
 test('NBA dims only final losers on the board, wheel, names and individual scores, including fresh summary finals', async () => {
   for (const [status, awayScore, homeScore, expectedLoser] of [

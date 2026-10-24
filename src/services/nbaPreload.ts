@@ -1,8 +1,53 @@
 import type { Game } from './sportsData.ts';
 import { fetchNBAScoreboard } from './sportsData.ts';
-import { fetchNBASummary } from './nbaData.ts';
+import { fetchNBARoster, fetchNBASummary, fetchNBATeamSeason } from './nbaData.ts';
 import type { NBASummary } from './nbaData.ts';
 import { gameSnapshotKey, readRenderSnapshot, saveRenderSnapshot } from './renderSnapshots.ts';
+
+const warmedTeams = new Map<string, number>();
+export async function preloadNBAPregame(games: Game[], signal: AbortSignal): Promise<string[]> {
+  const failed: string[] = [];
+  const unique = [...new Map(games.flatMap((game) => [game.away, game.home].map((team) =>
+    [`${team.id}:${game.seasonYear}`, { team, season: game.seasonYear }] as const))).values()];
+  for (let start = 0; start < unique.length; start += 2) {
+    signal.throwIfAborted();
+    await Promise.all(unique.slice(start, start + 2).map(async ({ team, season }) => {
+      const key = `${team.id}:${season}`;
+      if (Date.now() - (warmedTeams.get(key) ?? 0) < 300_000
+        && readRenderSnapshot('nbaRoster', `roster:${key}`) && readRenderSnapshot('nbaTeamSeason', `season:${key}`)) return;
+      try {
+        await Promise.all([
+          fetchNBARoster(team.id, season, signal).then((players) => {
+            signal.throwIfAborted();
+            saveRenderSnapshot('nbaRoster', `roster:${key}`, players);
+          }),
+          fetchNBATeamSeason(team.id, season, signal).then((stats) => {
+            signal.throwIfAborted();
+            saveRenderSnapshot('nbaTeamSeason', `season:${key}`, stats);
+          }),
+        ]);
+        warmedTeams.set(key, Date.now());
+      } catch (error) {
+        if (signal.aborted) throw error;
+        console.error(`Could not preload NBA team ${key}`, error);
+        failed.push(key);
+      }
+    }));
+  }
+  for (const game of games) {
+    const season = game.seasonYear;
+    const teams = [game.away, game.home];
+    const away = readRenderSnapshot('nbaTeamSeason', `season:${game.away.id}:${season}`);
+    const home = readRenderSnapshot('nbaTeamSeason', `season:${game.home.id}:${season}`);
+    if (away && home) saveRenderSnapshot('nbaComparison', `comparison:${game.away.id}:${game.home.id}:${season}`, { away, home });
+    const groups = teams.map((team) => ({ team, players: readRenderSnapshot('nbaRoster', `roster:${team.id}:${season}`) }));
+    if (groups.every((group) => group.players !== null)) {
+      saveRenderSnapshot('nbaDirectory', `directory:${teams.map((team) => team.id).join(',')}:${season}`,
+        groups.flatMap((group) => group.players ? [{ team: group.team, players: group.players }] : []));
+    }
+  }
+  return failed;
+}
 
 export function saveNBASummary(key: string, summary: NBASummary) {
   const previous = readRenderSnapshot('nbaSummary', key);

@@ -4,7 +4,8 @@ import type { LivewireSnapshot } from './livewirePosts.ts';
 import type { TeamComparisonRanks } from './teamComparisonRanks.ts';
 import { readMatchupPicks } from './matchupBoard.ts';
 import type { MatchupPick } from './matchupBoard.ts';
-import type { NBASummary } from './nbaData.ts';
+import type { NBAPlayer, NBAPlayerProfile, NBASummary, NBATeamStat } from './nbaData.ts';
+import type { Team } from './sportsData.ts';
 
 type Snapshots = {
   scoreboard: { games: Game[]; failedLeagues: string[]; nflWeek: number | null };
@@ -12,6 +13,13 @@ type Snapshots = {
   players: { data: NFLPlayerSeasonBoxScore; players: NFLSkillPlayer[] };
   box: NFLBoxScoreData;
   nbaSummary: NBASummary;
+  nbaRoster: NBAPlayer[];
+  nbaTeamSeason: NBATeamStat[];
+  nbaProfile: NBAPlayerProfile;
+  nbaLeague: { teams: Team[]; season: number };
+  nbaDirectory: Array<{ team: Team; players: NBAPlayer[] }>;
+  nbaComparison: { away: NBATeamStat[]; home: NBATeamStat[] };
+  nbaScoring: { averages: Record<string, number>; failed: string[]; updatedAt?: number };
   team: NFLTeamSeasonAverages;
   posts: LivewireSnapshot;
   teamRanks: TeamComparisonRanks;
@@ -32,8 +40,32 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 
 function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snapshots[K] {
+  const players = (value: unknown) => Array.isArray(value) && value.every((player: unknown) =>
+    object(player) && typeof player.id === 'string' && typeof player.name === 'string'
+    && typeof player.teamId === 'string' && typeof player.position === 'string' && typeof player.jersey === 'string');
+  const stats = (value: unknown) => Array.isArray(value) && value.every((stat: unknown) =>
+    object(stat) && typeof stat.name === 'string' && typeof stat.label === 'string' && typeof stat.display === 'string');
+  const numbers = (value: unknown) => object(value) && Object.values(value).every((n) => typeof n === 'number' && Number.isFinite(n));
+  const team = (value: unknown) => object(value) && typeof value.id === 'string' && typeof value.name === 'string'
+    && typeof value.abbr === 'string' && typeof value.color === 'string' && typeof value.score === 'number' && typeof value.record === 'string';
+  if (kind === 'nbaRoster') return players(data);
+  if (kind === 'nbaTeamSeason') return stats(data);
+  if (kind === 'nbaDirectory') return Array.isArray(data) && data.every((group: unknown) =>
+    object(group) && team(group.team) && players(group.players));
   if (!object(data)) return false;
   switch (kind) {
+    case 'nbaLeague':
+      return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.every(team);
+    case 'nbaComparison':
+      return stats(data.away) && stats(data.home);
+    case 'nbaScoring':
+      return numbers(data.averages) && Array.isArray(data.failed) && data.failed.every((id: unknown) => typeof id === 'string');
+    case 'nbaProfile':
+      return Number.isInteger(data.season) && numbers(data.averages) && numbers(data.totals)
+        && Array.isArray(data.games) && data.games.every((game: unknown) =>
+          object(game) && typeof game.id === 'string' && typeof game.date === 'string' && typeof game.opponent === 'string'
+          && typeof game.result === 'string' && typeof game.score === 'string' && typeof game.seasonType === 'string'
+          && numbers(game.stats));
     case 'nbaSummary':
       return typeof data.eventId === 'string' && typeof data.clock === 'string' && typeof data.period === 'string'
         && typeof data.status === 'string' && Array.isArray(data.teams) && data.teams.every((team: unknown) =>
@@ -128,6 +160,13 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
 
 export function stopRenderSnapshots() {
   stopped = true;
+}
+
+export function nbaResourceSnapshots<K extends 'nbaRoster' | 'nbaTeamSeason' | 'nbaProfile' | 'nbaLeague' | 'nbaDirectory' | 'nbaComparison' | 'nbaScoring'>(kind: K) {
+  return {
+    read: (key: string) => readRenderSnapshot(kind, key),
+    save: (key: string, data: Snapshots[K]) => saveRenderSnapshot(kind, key, data),
+  };
 }
 
 export const gameSnapshotKey = (feed: string, event: string, season: number) => `${feed}:${event}:${season}`;

@@ -302,6 +302,28 @@ test('NBA summaries persist across reads and reject corrupted nested stats with 
   } finally { console.error = originalError; }
 }));
 
+test('NBA profiles, rankings and league snapshots survive reloads with isolated seasons and reject invalid data', () => withStorage((storage) => {
+  const entries = [
+    ['nbaProfile', 'profile:23:2027', { season: 2027, totals: { points: 0 }, averages: { points: 0 }, games: [
+      { id: '401', date: '2026-10-24', opponent: 'BOS', result: 'W', score: '110-100', seasonType: 'Regular season', stats: { points: 0 } },
+    ] }],
+    ['nbaScoring', 'scoring:1,2:2027', { averages: { '23': 0 }, failed: [], updatedAt: Date.now() }],
+    ['nbaLeague', 'nba-league', { teams: [{ id: '1', name: 'Team', abbr: 'TM', color: '123456', score: 0, record: '' }], season: 2027 }],
+  ];
+  for (const [kind, key, value] of entries) {
+    saveRenderSnapshot(kind, key, value);
+    assert.deepEqual(readRenderSnapshot(kind, key), value);
+    assert.equal(readRenderSnapshot(kind, `${key}:other`), null);
+  }
+  const originalError = console.error, errors = [];
+  console.error = (...args) => errors.push(args);
+  try {
+    storage.setItem('gamewire-render-v1:/:nbaProfile:bad', JSON.stringify({ version: 1, data: { season: 2027, averages: {}, totals: {}, games: [null] } }));
+    assert.equal(readRenderSnapshot('nbaProfile', 'bad'), null);
+    assert.equal(errors.length, 1);
+  } finally { console.error = originalError; }
+}));
+
 test('Account deletion stops late requests from recreating display snapshots', () => withStorage((storage) => {
   saveRenderSnapshot('players', 'before', players);
   stopRenderSnapshots();

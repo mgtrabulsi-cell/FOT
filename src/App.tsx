@@ -36,7 +36,7 @@ import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import NBAExperience from './NBAExperience';
 import DraggableTabs from './DraggableTabs';
-import { preloadNBABoxes, preloadNBADates } from './services/nbaPreload';
+import { preloadNBABoxes, preloadNBADates, preloadNBAPregame } from './services/nbaPreload';
 import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
 import LiveWire from './LiveWire';
@@ -512,8 +512,8 @@ function App() {
           setNBAGames(next); setNBAStatus('ready'); setNBAError('');
           if (!preloadingBoxes) {
             preloadingBoxes = true;
-            void preloadNBABoxes(next, controller.signal).then((failed) => {
-              if (active && failed.length) setNBAError('Some NBA box scores could not be saved yet. Automatic refresh will retry.');
+            void Promise.all([preloadNBABoxes(next, controller.signal), preloadNBAPregame(next, controller.signal)]).then((results) => {
+              if (active && results.some((failed) => failed.length)) setNBAError('Some NBA statistics could not be saved yet. Automatic refresh will retry.');
             }, (error: unknown) => {
               if (!controller.signal.aborted) console.error('NBA box-score preload failed', error);
             }).finally(() => { preloadingBoxes = false; });

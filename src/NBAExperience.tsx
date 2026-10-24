@@ -5,7 +5,7 @@ import OfflineImage from './OfflineImage';
 import DraggableTabs from './DraggableTabs';
 import type { FavoriteTarget, Game, Team } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
-import { gameSnapshotKey, readRenderSnapshot } from './services/renderSnapshots';
+import { gameSnapshotKey, readRenderSnapshot, nbaResourceSnapshots } from './services/renderSnapshots';
 import { saveNBASummary } from './services/nbaPreload';
 import {
   fetchNBALeague, fetchNBAPlayerProfile, fetchNBAPointsPerGame, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
@@ -32,6 +32,13 @@ const summarySnapshots = {
   read: (key: string) => readRenderSnapshot('nbaSummary', key),
   save: saveNBASummary,
 };
+const rosterSnapshots = nbaResourceSnapshots('nbaRoster');
+const seasonSnapshots = nbaResourceSnapshots('nbaTeamSeason');
+const profileSnapshots = nbaResourceSnapshots('nbaProfile');
+const leagueSnapshots = nbaResourceSnapshots('nbaLeague');
+const directorySnapshots = nbaResourceSnapshots('nbaDirectory');
+const comparisonSnapshots = nbaResourceSnapshots('nbaComparison');
+const scoringSnapshots = nbaResourceSnapshots('nbaScoring');
 
 function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0, snapshots?: { read: (key: string) => T | null; save: (key: string, data: T) => void }) {
   const saved = useMemo(() => snapshots?.read(key) ?? null, [key, snapshots, load]);
@@ -166,7 +173,7 @@ function LatestPlay({ play, game }: { play: NBAPlay; game: Game }) {
 }
 function Roster({ team, season, query, favorites, toggle, open }: { team: Team; season: number; query: string; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void }) {
   const load = useCallback((signal: AbortSignal) => fetchNBARoster(team.id, season, signal), [team.id, season]);
-  const roster = useNBAResource(`roster:${team.id}:${season}`, load);
+  const roster = useNBAResource(`roster:${team.id}:${season}`, load, 0, rosterSnapshots);
   const [position, setPosition] = useState('All');
   const players = roster.data?.filter((player) => (position === 'All' || player.position === position) && `${player.name} ${team.name} ${team.abbr} ${player.position}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [];
   const positions = [...new Set(roster.data?.map((player) => player.position).filter(Boolean))].sort();
@@ -178,7 +185,7 @@ function Roster({ team, season, query, favorites, toggle, open }: { team: Team; 
 }
 function TeamSeason({ team, season }: { team: Team; season: number }) {
   const load = useCallback((signal: AbortSignal) => fetchNBATeamSeason(team.id, season, signal), [team.id, season]);
-  const resource = useNBAResource(`season:${team.id}:${season}`, load);
+  const resource = useNBAResource(`season:${team.id}:${season}`, load, 0, seasonSnapshots);
   return <section><h4>{team.abbr} · {season - 1}–{String(season).slice(-2)} regular season</h4><ResourceMessage {...resource} />{resource.data && (resource.data.length ? <dl className="nba-season-grid">{resource.data.map((stat) => <div key={stat.name}><dt>{stat.label}</dt><dd>{stat.display}</dd></div>)}</dl> : <p>No season averages are available yet.</p>)}</section>;
 }
 function PregameComparison({ game }: { game: Game }) {
@@ -186,7 +193,7 @@ function PregameComparison({ game }: { game: Game }) {
     const [away, home] = await Promise.all([fetchNBATeamSeason(game.away.id, game.seasonYear, signal), fetchNBATeamSeason(game.home.id, game.seasonYear, signal)]);
     return { away, home };
   }, [game.away.id, game.home.id, game.seasonYear]);
-  const resource = useNBAResource(`comparison:${game.away.id}:${game.home.id}:${game.seasonYear}`, load);
+  const resource = useNBAResource(`comparison:${game.away.id}:${game.home.id}:${game.seasonYear}`, load, 0, comparisonSnapshots);
   return <><p className="nba-note">{game.seasonYear - 1}–{String(game.seasonYear).slice(-2)} regular-season team averages · not game projections.</p><ResourceMessage {...resource} />{resource.data && <Comparison away={game.away} home={game.home} awayStats={resource.data.away} homeStats={resource.data.home} />}</>;
 }
 function profileOptions(position: string) {
@@ -199,9 +206,16 @@ function StatsGrid({ stats, label }: { stats: NBAStats; label: string }) {
 function NBADirectory({ teams, season, query, favorites, toggle, open, live }: { teams: Team[]; season: number; query: string; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void; live: boolean }) {
   const teamKey = teams.map((team) => team.id).join(',');
   const load = useCallback((signal: AbortSignal) => Promise.all(teams.map(async (team) => ({ team, players: await fetchNBARoster(team.id, season, signal) }))), [teamKey, season]);
-  const resource = useNBAResource(`directory:${teamKey}:${season}`, load);
-  const loadScoring = useCallback((signal: AbortSignal) => fetchNBAPointsPerGame(resource.data?.flatMap((group) => group.players) ?? [], season, signal), [resource.data, season]);
-  const scoring = useNBAResource(`scoring:${teamKey}:${season}`, resource.data ? loadScoring : null);
+  const resource = useNBAResource(`directory:${teamKey}:${season}`, load, 0, directorySnapshots);
+  const playerIds = resource.data?.flatMap((group) => group.players.map((player) => player.id)).join(',') ?? '';
+  const scoringPlayers = useMemo(() => resource.data?.flatMap((group) => group.players) ?? [], [playerIds]);
+  const loadScoring = useCallback(async (signal: AbortSignal) => {
+    const saved = scoringSnapshots.read(`scoring:${teamKey}:${season}`);
+    if (saved?.updatedAt && !saved.failed.length && Date.now() - saved.updatedAt < 300_000) return saved;
+    const result = await fetchNBAPointsPerGame(scoringPlayers, season, signal);
+    return { ...result, averages: { ...saved?.averages, ...result.averages } };
+  }, [scoringPlayers, teamKey, season]);
+  const scoring = useNBAResource(`scoring:${teamKey}:${season}`, resource.data ? loadScoring : null, 0, scoringSnapshots);
   const [position, setPosition] = useState('All');
   const positions = [...new Set(resource.data?.flatMap((group) => group.players.map((player) => player.position)).filter(Boolean))].sort();
   useEffect(() => setPosition('All'), [teamKey, season]);
@@ -218,7 +232,7 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live }: {
 function PlayerProfile({ player, team, season, favorites, toggle, close }: { player: NBAPlayer; team: Team; season: number; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const load = useCallback((signal: AbortSignal) => fetchNBAPlayerProfile(player.id, season, signal), [player.id, season]);
-  const resource = useNBAResource(`profile:${player.id}:${season}`, load);
+  const resource = useNBAResource(`profile:${player.id}:${season}`, load, 0, profileSnapshots);
   const [stat, setStat] = useState<NBAPlayerStatKey>('points');
   const [seasonMode, setSeasonMode] = useState<'averages' | 'totals'>('averages');
   const [gameType, setGameType] = useState('All');
@@ -288,7 +302,7 @@ export default function NBAExperience({ mode, games, status, query, favorites, o
   }, [nbaGames, selectedId, initialGameId, firstFavoriteTeam]);
   useEffect(() => { setProfile(null); }, [game?.id, mode]);
   const loadLeague = useCallback((signal: AbortSignal) => fetchNBALeague(signal), []);
-  const league = useNBAResource('nba-league', mode === 'stats' && !game ? loadLeague : null);
+  const league = useNBAResource('nba-league', mode === 'stats' && !game ? loadLeague : null, 0, leagueSnapshots);
   const loadSummary = useCallback((signal: AbortSignal) => fetchNBASummary(game?.eventId ?? '', signal), [game?.eventId]);
   const summary = useNBAResource(gameSnapshotKey('basketball/nba', game?.eventId ?? '', game?.seasonYear ?? 0), game && mode === 'wire' && showingDetails ? loadSummary : null, game?.status === 'LIVE' ? 15000 : 0, summarySnapshots);
   const currentSummary = summary.data;

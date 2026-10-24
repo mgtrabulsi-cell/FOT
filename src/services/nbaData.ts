@@ -288,7 +288,7 @@ export async function fetchNBAPointsPerGame(players: NBAPlayer[], season: number
       }
     }));
   }
-  return { averages, failed };
+  return { averages, failed, updatedAt: Date.now() };
 }
 export async function fetchNBAPlayerProfile(playerId: string, season: number, signal?: AbortSignal): Promise<NBAPlayerProfile> {
   const path = `${athleteBase}/${encodeURIComponent(playerId)}`;
