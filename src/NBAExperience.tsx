@@ -7,7 +7,7 @@ import type { FavoriteTarget, Game, Team } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { gameSnapshotKey, readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import {
-  fetchNBALeague, fetchNBAPlayerProfile, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
+  fetchNBALeague, fetchNBAPlayerProfile, fetchNBAPointsPerGame, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
   nbaPlayerFavorite, nbaStatOptions, nbaTeamFavorite,
 } from './services/nbaData';
 import type { NBABoxTeam, NBAPlay, NBAPlayer, NBAPlayerStatKey, NBAStats, NBASummary, NBATeamStat } from './services/nbaData';
@@ -192,14 +192,19 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live }: {
   const teamKey = teams.map((team) => team.id).join(',');
   const load = useCallback((signal: AbortSignal) => Promise.all(teams.map(async (team) => ({ team, players: await fetchNBARoster(team.id, season, signal) }))), [teamKey, season]);
   const resource = useNBAResource(`directory:${teamKey}:${season}`, load);
+  const loadScoring = useCallback((signal: AbortSignal) => fetchNBAPointsPerGame(resource.data?.flatMap((group) => group.players) ?? [], season, signal), [resource.data, season]);
+  const scoring = useNBAResource(`scoring:${teamKey}:${season}`, resource.data ? loadScoring : null);
   const [position, setPosition] = useState('All');
   const positions = [...new Set(resource.data?.flatMap((group) => group.players.map((player) => player.position)).filter(Boolean))].sort();
   useEffect(() => setPosition('All'), [teamKey, season]);
   const groups = resource.data?.map((group) => ({ ...group, players: group.players.filter((player) =>
-    (position === 'All' || player.position === position) && `${player.name} ${group.team.name} ${group.team.abbr} ${player.position}`.toLowerCase().includes(query.trim().toLowerCase())) })) ?? [];
+    (position === 'All' || player.position === position) && `${player.name} ${group.team.name} ${group.team.abbr} ${player.position}`.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => (scoring.data?.averages[b.id] ?? -1) - (scoring.data?.averages[a.id] ?? -1) || a.name.localeCompare(b.name)) })) ?? [];
   return <><div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter NBA players by position">{['All', ...positions].map((item) => <button type="button" key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div><span>{live ? 'LIVE' : `${groups.reduce((total, group) => total + group.players.length, 0)} players`}</span></div>
-    <ResourceMessage {...resource} /><div className="nfl-directory-grid">{groups.map((group, index) => <section className="nfl-directory-team" key={group.team.id}><header><span className="team-mark">{group.team.logo ? <OfflineImage src={group.team.logo} alt="" /> : group.team.abbr}</span><span><b>{group.team.name}</b><small>{teams.length === 2 ? index === 0 ? 'AWAY TEAM' : 'HOME TEAM' : 'NBA TEAM'}{group.team.record ? ` · ${group.team.record}` : ''}</small></span><FavoriteButton target={nbaTeamFavorite(group.team)} favorites={favorites} toggle={toggle} /></header>
-      <div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button type="button" className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => open(player, group.team)}><span><b>{player.name}</b><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, group.team)} favorites={favorites} toggle={toggle} /></div>)}</div>{!group.players.length && <p className="nfl-empty-note">No players match these filters.</p>}
+    <ResourceMessage {...resource} /><ResourceMessage {...scoring} />
+    {scoring.data && <p className="nfl-data-note">Season PPG · highest to lowest · unavailable averages last.{scoring.data.failed.length > 0 && <> Some scoring averages could not be refreshed. <button type="button" onClick={scoring.retry}>Retry averages</button></>}</p>}
+    <div className="nfl-directory-grid">{groups.map((group, index) => <section className="nfl-directory-team" key={group.team.id}><header><span className="team-mark">{group.team.logo ? <OfflineImage src={group.team.logo} alt="" /> : group.team.abbr}</span><span><b>{group.team.name}</b><small>{teams.length === 2 ? index === 0 ? 'AWAY TEAM' : 'HOME TEAM' : 'NBA TEAM'}{group.team.record ? ` · ${group.team.record}` : ''}</small></span><FavoriteButton target={nbaTeamFavorite(group.team)} favorites={favorites} toggle={toggle} /></header>
+      <div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button type="button" className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => open(player, group.team)}><span><b>{player.name}</b><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}{scoring.data && ` · ${format(scoring.data.averages[player.id])} PPG`}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, group.team)} favorites={favorites} toggle={toggle} /></div>)}</div>{!group.players.length && <p className="nfl-empty-note">No players match these filters.</p>}
     </section>)}</div></>;
 }
 function PlayerProfile({ player, team, season, favorites, toggle, close }: { player: NBAPlayer; team: Team; season: number; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; close: () => void }) {

@@ -105,6 +105,7 @@
 .nba-stat-hub .nba-favorite:focus-visible, .nba-stat-dialog .nba-favorite:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }
 .nba-stat-hub .nfl-directory-team > header > .nba-favorite { margin-left: auto; }
 .nba-stat-hub .nfl-directory-player-main > span:last-child b { white-space: normal; overflow-wrap: anywhere; }
+.nba-stat-hub .nfl-directory-player-list { grid-template-columns: minmax(0, 1fr); }
 .nba-stat-hub .nfl-directory-position-bar { flex-wrap: wrap; }
 .nba-stat-hub .sport-filter { flex-wrap: wrap; }
 .nba-stat-dialog { color: #e5eaf3; box-sizing: border-box; }

@@ -3,8 +3,33 @@ import test from 'node:test';
 import {
   nbaNumber, parseNBAStatRow, parseNBARoster, parseNBATeams, parseNBAPlays, parseNBASummary,
   parseNBATeamSeason, parseNBAPlayerSeason, parseNBAPlayerGames, fetchNBAPlayerProfile,
-  fetchNBALivePlayerStats, fetchNBAFavoritePlays, nbaFavoritePlays, nbaTeamFavorite, nbaPlayerFavorite,
+  fetchNBALivePlayerStats, fetchNBAFavoritePlays, fetchNBAPointsPerGame, nbaFavoritePlays, nbaTeamFavorite, nbaPlayerFavorite,
 } from '../src/services/nbaData.ts';
+
+test('PPG ranking reads requested season averages only, deduplicates players and reports partial failures', async () => {
+  const originalFetch = globalThis.fetch, originalError = console.error;
+  const requests = [], errors = [];
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    if (String(url).includes('/failed/')) return { ok: false, status: 503 };
+    return { ok: true, json: async () => ({ categories: [{ name: 'averages', names: ['gamesPlayed', 'avgPoints'], statistics: [
+      { season: { year: 2026 }, stats: ['20', '99'] },
+      { season: { year: 2027 }, stats: ['2', String(url).includes('/zero/') ? '0' : '24.5'] },
+    ] }] }) };
+  };
+  console.error = (...args) => errors.push(args);
+  try {
+    const players = ['scorer', 'zero', 'failed', 'scorer'].map((id) => ({ id, name: id, teamId: '1', position: 'G', jersey: '' }));
+    const result = await fetchNBAPointsPerGame(players, 2027);
+    assert.deepEqual(result.averages, { scorer: 24.5, zero: 0 });
+    assert.deepEqual(result.failed, ['failed']);
+    assert.equal(requests.length, 3);
+    assert.ok(requests.every((url) => url.includes('/stats?season=2027&seasontype=2')));
+    assert.equal(errors.length, 1);
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(fetchNBAPointsPerGame(players, 2027, controller.signal), { name: 'AbortError' });
+  } finally { globalThis.fetch = originalFetch; console.error = originalError; }
+});
 
 const away = { id: '14', name: 'Miami Heat', abbr: 'MIA', score: 2, record: '', color: '98002e' };
 const home = { id: '12', name: 'LA Clippers', abbr: 'LAC', score: 0, record: '', color: 'c8102e' };

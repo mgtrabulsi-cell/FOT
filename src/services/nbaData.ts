@@ -260,10 +260,32 @@ export async function fetchNBALeague(signal?: AbortSignal): Promise<{ teams: Tea
 export async function fetchNBARoster(teamId: string, season: number, signal?: AbortSignal) { return parseNBARoster(await get(`${base}/teams/${encodeURIComponent(teamId)}/roster?season=${season}`, signal), teamId); }
 export async function fetchNBASummary(eventId: string, signal?: AbortSignal) { return parseNBASummary(await get(`${base}/summary?event=${encodeURIComponent(eventId)}`, signal), eventId); }
 export async function fetchNBATeamSeason(teamId: string, season: number, signal?: AbortSignal) { return parseNBATeamSeason(await get(`${base}/teams/${encodeURIComponent(teamId)}/statistics?season=${season}&seasontype=2`, signal)); }
+export async function fetchNBAPlayerSeason(playerId: string, season: number, signal?: AbortSignal) {
+  return parseNBAPlayerSeason(await get(`${athleteBase}/${encodeURIComponent(playerId)}/stats?season=${season}&seasontype=2`, signal), season);
+}
+export async function fetchNBAPointsPerGame(players: NBAPlayer[], season: number, signal?: AbortSignal) {
+  const averages: Record<string, number> = {};
+  const failed: string[] = [];
+  const unique = [...new Map(players.map((player) => [player.id, player])).values()];
+  for (let start = 0; start < unique.length; start += 4) {
+    signal?.throwIfAborted();
+    await Promise.all(unique.slice(start, start + 4).map(async (player) => {
+      try {
+        const value = (await fetchNBAPlayerSeason(player.id, season, signal)).averages.points;
+        if (value !== undefined) averages[player.id] = value;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        console.error(`Could not load NBA scoring average for ${player.id}`, error);
+        failed.push(player.id);
+      }
+    }));
+  }
+  return { averages, failed };
+}
 export async function fetchNBAPlayerProfile(playerId: string, season: number, signal?: AbortSignal): Promise<NBAPlayerProfile> {
   const path = `${athleteBase}/${encodeURIComponent(playerId)}`;
-  const [stats, games] = await Promise.all([get(`${path}/stats?season=${season}&seasontype=2`, signal), get(`${path}/gamelog?season=${season}`, signal)]);
-  return { ...parseNBAPlayerSeason(stats, season), games: parseNBAPlayerGames(games) };
+  const [stats, games] = await Promise.all([fetchNBAPlayerSeason(playerId, season, signal), get(`${path}/gamelog?season=${season}`, signal)]);
+  return { ...stats, games: parseNBAPlayerGames(games) };
 }
 export async function fetchNBALivePlayerStats(eventId: string, players: Array<{ teamId: string; id: string }>, signal?: AbortSignal): Promise<Record<string, Partial<Record<NBAPlayerStatKey, number>>>> {
   const summary = await fetchNBASummary(eventId, signal), result: Record<string, NBAStats> = {};

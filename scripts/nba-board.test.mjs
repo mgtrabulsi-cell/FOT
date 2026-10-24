@@ -48,6 +48,7 @@ function setup(mode = 'wire', snapshots = new Map(), component) {
     fetchNBASummary: async (id) => { requests.push(id); return { status: 'in', teams: [], plays: [] }; },
     fetchNBALeague: async () => ({ teams: [away, home], season: 2027 }),
     fetchNBARoster: async () => [],
+    fetchNBAPointsPerGame: async () => ({ averages: {}, failed: [] }),
     fetchNBAPlayerProfile: async () => ({ games: [], averages: {}, totals: {} }),
     nbaStatOptions: [{ key: 'points', label: 'Points' }, { key: 'rebounds', label: 'Rebounds' }],
   };
@@ -344,6 +345,22 @@ test('NBA selected-player window leads with NFL stat tabs and per-game chart, ke
   app.nodes().find((node) => node.props?.className === 'nfl-player-stat-tabs').props.onSelect('rebounds'); app.render();
   assert.deepEqual(app.nodes().filter((node) => node.props?.className === 'nfl-game-bar-value').map((node) => node.props.children), ['3', '2']);
   assert.ok(app.nodes().find((node) => node.type === 'details'));
+  app.unmount();
+});
+
+test('NBA directory orders each team top-to-bottom by season PPG, with zeros before missing and stable name ties', async () => {
+  const props = { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: false };
+  const app = setup('stats', new Map(), { name: 'NBADirectory', props });
+  app.data.fetchNBARoster = async (teamId) => ['missing', 'zero', 'second', 'first', 'tie'].map((id) => ({ id: `${teamId}-${id}`, name: id, position: 'G', jersey: '' }));
+  app.data.fetchNBAPointsPerGame = async () => ({ averages: Object.fromEntries([away, home].flatMap((team) => [
+    [`${team.id}-zero`, 0], [`${team.id}-second`, 12], [`${team.id}-first`, 24], [`${team.id}-tie`, 12],
+  ])), failed: [] });
+  app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.retry(); app.render(); await app.settle();
+  const panels = app.nodes().filter((node) => node.props?.className === 'nfl-directory-team');
+  for (const panel of panels) {
+    const names = descendants(panel).filter((node) => node.props?.className === 'nfl-directory-player-main').map((node) => node.props.children.props.children[0].props.children);
+    assert.deepEqual(names, ['first', 'second', 'tie', 'zero', 'missing']);
+  }
   app.unmount();
 });
 
