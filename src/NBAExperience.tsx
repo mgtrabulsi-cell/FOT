@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Star, X } from 'lucide-react';
 import OfflineImage from './OfflineImage';
 import type { FavoriteTarget, Game, Team } from './services/sportsData';
@@ -137,6 +137,14 @@ function PlayByPlay({ plays, game, upcoming }: { plays: NBAPlay[]; game: Game; u
     </section>)}
   </section>;
 }
+function LatestPlay({ play, game }: { play: NBAPlay; game: Game }) {
+  const team = play.teamId === game.away.id ? game.away : play.teamId === game.home.id ? game.home : null;
+  return <section className={`wire-latest-play${play.scoring ? ' is-scoring' : ''}`} aria-label="Latest play" aria-live="polite" aria-atomic="true">
+    <div className="wire-latest-play-head"><span className="wire-latest-play-label"><i aria-hidden="true" />Latest play</span><span className="wire-latest-play-type">{play.periodLabel || (play.period > 4 ? `OT${play.period - 4}` : play.period > 0 ? `Q${play.period}` : 'Period unavailable')}{play.clock ? ` · ${play.clock}` : ''}</span></div>
+    <div className="wire-latest-play-body" key={play.id}>{team && <span className="team-mark wire-latest-play-team" style={{ '--team-color': team.color } as CSSProperties} title={team.name}>{team.logo ? <OfflineImage src={team.logo} alt="" /> : team.abbr}</span>}<p>{play.text}</p></div>
+    <small className="wire-latest-play-drive">{game.away.abbr} {play.awayScore ?? '—'} – {play.homeScore ?? '—'} {game.home.abbr}</small>
+  </section>;
+}
 function Roster({ team, season, query, favorites, toggle, open }: { team: Team; season: number; query: string; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void }) {
   const load = useCallback((signal: AbortSignal) => fetchNBARoster(team.id, season, signal), [team.id, season]);
   const roster = useNBAResource(`roster:${team.id}:${season}`, load);
@@ -272,10 +280,11 @@ export default function NBAExperience({ mode, games, status, query, favorites, o
       {game.venue && <p className="nba-note">{game.venue}</p>}
     </>}
     {mode === 'wire' && game && showingDetails && <>
+      <ResourceMessage {...summary} />
+      {currentSummary?.plays.length ? <LatestPlay play={currentSummary.plays[currentSummary.plays.length - 1]} game={game} /> : <p className="nba-note" role="status">{upcoming ? 'Latest play will appear when the game starts.' : summary.loading ? 'Loading latest play…' : 'No recent play is available from ESPN yet.'}</p>}
       {onOpenStatHub && <button type="button" className="nba-open-stats" onClick={() => onOpenStatHub(game.id)}>Open matchup in Stat Hub</button>}
       <div className="nba-segments" role="group" aria-label="NBA game detail views">{([{ key: 'players', label: 'Player Box Score' }, { key: 'teams', label: 'Team Comparison' }, { key: 'plays', label: 'Play-by-Play' }] as const).map((item) => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}</div>
-      <ResourceMessage {...summary} />
-      {tab === 'players' && boxTeam && <><div className="nba-segments nba-team-toggle" role="group" aria-label="Box score team">{[game.away, game.home].map((side) => <button type="button" key={side.id} aria-pressed={boxTeam.id === side.id} onClick={() => setBoxTeamId(side.id)}>{side.logo && <OfflineImage src={side.logo} alt="" />}{side.name}</button>)}</div>
+      {tab === 'players' && boxTeam && <><div className="nba-segments nba-team-toggle" role="group" aria-label="Box score team">{[game.away, game.home].map((side) => <button type="button" key={side.id} style={{ '--team-bar-color': side.color ? `#${side.color.replace(/^#/, '')}` : '#4a6385' } as CSSProperties} aria-pressed={boxTeam.id === side.id} onClick={() => setBoxTeamId(side.id)}>{side.logo && <OfflineImage src={side.logo} alt="" />}{side.name}</button>)}</div>
         {upcoming ? <><p className="nba-note">Pregame rosters · open a player for actual season statistics. Starters are not confirmed.</p><Roster key={`${boxTeam.id}:${game.seasonYear}`} team={boxTeam} season={game.seasonYear} query={query} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} /></> : <PlayerBox key={boxTeam.id} team={boxTeam} box={currentSummary?.teams.find((item) => item.id === boxTeam.id)} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} />}
       </>}
       {tab === 'teams' && (upcoming ? <PregameComparison game={game} /> : <Comparison away={game.away} home={game.home} awayStats={currentSummary?.teams.find((item) => item.id === game.away.id)?.stats ?? []} homeStats={currentSummary?.teams.find((item) => item.id === game.home.id)?.stats ?? []} />)}

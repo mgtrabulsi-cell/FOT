@@ -14,7 +14,8 @@ const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league
 
 function setup(mode = 'wire') {
   let cursor = 0, changed = false, tree;
-  const slots = [], effects = [], requests = [];
+  const slots = [], effects = [], requests = [], timers = new Map();
+  let timerId = 0;
   const props = { mode, games: [game], status: 'ready', query: '', favorites: [], onToggleFavorite() {}, onRetry() {},
     initialGameId: game.id, onSelectGame(id) { props.initialGameId = id; } };
   const react = {
@@ -48,8 +49,8 @@ function setup(mode = 'wire') {
     fetchNBALeague: async () => ({ teams: [away, home], season: 2027 }),
   };
   const context = vm.createContext({
-    exports: {}, AbortController, navigator: { onLine: true }, document: { visibilityState: 'visible' },
-    window: { setInterval: () => 1, clearInterval() {} },
+    exports: {}, AbortController, Error, navigator: { onLine: true }, document: { visibilityState: 'visible' },
+    window: { setInterval: (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; }, clearInterval: (id) => timers.delete(id) },
     require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
@@ -58,7 +59,7 @@ function setup(mode = 'wire') {
       return {};
     },
   });
-  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.useDragScroll = useDragScroll;`, context);
+  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.LatestPlay = LatestPlay; exports.useDragScroll = useDragScroll;`, context);
   function render() {
     let count = 0;
     do {
@@ -77,7 +78,7 @@ function setup(mode = 'wire') {
     visit(tree); return result;
   };
   render();
-  return { props, requests, render, nodes, components: context.exports,
+  return { props, requests, render, nodes, components: context.exports, data, timers,
     async settle() { for (let i = 0; i < 5; i++) { await new Promise(setImmediate); render(); } },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()); },
   };
@@ -107,6 +108,35 @@ test('NBA Wire starts as an NFL-style vertical board and requests full details o
   assert.equal(app.requests.length, 1, 'Returning does not request a hidden matchup');
   app.props.query = 'does not match'; app.render();
   assert.equal(app.nodes().some((node) => node.props?.['data-game-id']), false);
+  app.unmount();
+});
+
+test('Latest NBA play follows live summary polling, highlights scores and retains the last play on failure', async () => {
+  const app = setup();
+  let plays = [{ id: 'first', period: 4, clock: '1:00', text: 'Reported basket', scoring: true, teamId: away.id, awayScore: 100, homeScore: 99 }];
+  app.data.fetchNBASummary = async () => ({ status: 'in', teams: [], plays });
+  app.nodes().find((node) => node.props?.['data-game-id']).props.onClick();
+  app.render(); await app.settle();
+  const latest = () => app.nodes().find((node) => node.type?.name === 'LatestPlay');
+  assert.equal(latest().props.play.id, 'first');
+  const card = app.components.LatestPlay(latest().props);
+  assert.equal(card.props.className, 'wire-latest-play is-scoring');
+  assert.equal(card.props['aria-live'], 'polite');
+  assert.equal(card.props['aria-atomic'], 'true');
+  assert.ok(descendants(card).some((node) => node.type === 'p' && node.props.children === 'Reported basket'));
+  const poll = [...app.timers.values()].find((timer) => timer.delay === 15000);
+  assert.ok(poll, 'Live matchup checks latest play every 15 seconds');
+  plays = [...plays, { ...plays[0], id: 'second', text: 'Reported timeout', scoring: false }];
+  poll.callback(); await app.settle();
+  assert.equal(latest().props.play.id, 'second');
+  app.data.fetchNBASummary = async () => { throw new Error('Feed temporarily unavailable'); };
+  poll.callback(); await app.settle();
+  assert.equal(latest().props.play.id, 'second', 'Failed refresh does not clear the latest play');
+  assert.ok(app.nodes().some((node) => node.type?.name === 'ResourceMessage' && node.props.error.includes('Feed temporarily unavailable')));
+  app.nodes().find((node) => node.props?.className === 'nba-detail-navigation').props.children.props.onClick();
+  app.render(); await app.settle();
+  assert.equal(app.timers.size, 0, 'Hidden matchup stops live polling');
+  assert.equal(latest(), undefined);
   app.unmount();
 });
 
