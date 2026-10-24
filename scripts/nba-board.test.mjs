@@ -130,7 +130,8 @@ test('NBA player box stably places all reported starters ahead of bench, retaini
   const players = [bench, ...starters, dnp];
   const tree = app.components.PlayerBox({ team: away, box: { players }, favorites: [], toggle() {}, open() {} });
   const nodes = descendants(tree);
-  const rows = nodes.filter((node) => node.type === 'tbody')[0].props.children;
+  const rows = nodes.filter((node) => node.type === 'tr' && node.props?.className !== 'nba-box-group'
+    && descendants(node).some((child) => child.props?.className === 'nba-player-link'));
   const identities = rows.map((row) => descendants(row).find((node) => node.props?.className === 'nba-player-link').props.children[1].props.children[0]);
   assert.deepEqual(Array.from(identities), [...starters, bench, dnp].map((item) => item.name));
   assert.equal(players[0], bench, 'Sorting never mutates incoming feed data');
@@ -138,6 +139,11 @@ test('NBA player box stably places all reported starters ahead of bench, retaini
   assert.equal(points.length, 6);
   assert.ok(points.every((node) => node.props.children === '0'));
   assert.equal(nodes.filter((node) => node.props?.className === 'nba-dnp').length, 1);
+  assert.deepEqual(nodes.filter((node) => node.type === 'tbody').map((node) => node.props['aria-label']), ['Starting five', 'Bench']);
+  const firstStats = descendants(rows[0]).filter((node) => node.props?.['data-label']).slice(0, 6).map((node) => node.props['data-label']);
+  assert.deepEqual(firstStats, ['MIN', 'PTS', 'FG', '3PT', 'REB', 'AST']);
+  const identity = descendants(rows[0]).find((node) => node.props?.className === 'nba-box-identity');
+  assert.ok(identity.props.children.some((node) => node.type?.name === 'FavoriteButton'));
   app.unmount();
 });
 

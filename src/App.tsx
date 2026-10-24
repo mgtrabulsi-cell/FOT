@@ -1265,7 +1265,7 @@ function App() {
             {(['NFL', 'NBA'] as const).map((league) => <button key={league} type="button" aria-pressed={sportLeague === league} onClick={() => {
               setSportLeague(league); setWireSearchQuery(''); setPlayerSearchQuery(''); setWirePlayerCard(null);
             }}>{league}</button>)}
-            {sportLeague === 'NBA' && <><label>NBA date (Eastern)<input type="date" aria-label="NBA date" value={selectedNBADate} min="2000-01-01" max="2200-12-31" onChange={(event) => {
+            {sportLeague === 'NBA' && <><label><span className="league-date-label">NBA date (Eastern)</span><input type="date" aria-label="NBA date (Eastern)" title="NBA date (Eastern)" value={selectedNBADate} min="2000-01-01" max="2200-12-31" onChange={(event) => {
               if (!event.target.value) return;
               setNBADateOverride(true); setSelectedNBADate(event.target.value); setNBASelectedGameId(null);
             }} /></label><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}

@@ -51,6 +51,7 @@
 .nba-experience .nba-box-identity .nba-favorite { width: 32px; min-width: 32px; padding: 4px; }
 .nba-box tbody tr:hover > * { background: #172538; }
 .nba-box .nba-dnp { color: #bbc7d9; font-size: 12px; white-space: normal; }
+.nba-box tr.nba-box-group th { width: auto; max-width: none; padding: 10px 12px; background: #1c293d; color: #fff; text-align: left; font: 600 14px var(--display); letter-spacing: .7px; text-transform: uppercase; border-top: 2px solid #526b90; }
 .nba-team-toggle button { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--display); font-size: 18px; }
 .nba-team-toggle img { width: 28px; height: 28px; object-fit: contain; }
 .nba-play-quarter h4 { padding-bottom: 10px; border-bottom: 1px solid var(--nba-line); font: 600 21px var(--display); color: #fff; }
@@ -87,7 +88,8 @@
 .nba-chart-column small { color: var(--nba-muted); font-size: 10px; }
 .nba-chart-track { height: 120px; width: 27px; position: relative; background: #19273d; border-radius: 5px; }
 .nba-chart-track i { display: block; position: absolute; bottom: 0; width: 100%; background: #87baff; border-radius: 5px; }
-@media (max-width: 600px) {
+@media (max-width: 760px) {
+  .nba-wire .nba-game-wheel { display: none; }
   .nba-experience { padding: 10px 2px; }
   .nba-matchup { gap: 8px; padding: 15px 7px; }
   .nba-matchup > div:not(.nba-score) { flex-direction: column; font-size: 12px; }
@@ -101,12 +103,13 @@
   .nba-box, .nba-box tbody { display: block; }
   .nba-box thead { display: none; }
   .nba-box tbody tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--nba-line); padding: 8px 0; }
+  .nba-box tbody tr.nba-box-group { display: block; padding: 0; }
   .nba-box th:first-child { display: block; grid-column: 1 / -1; width: auto; max-width: none; min-width: 0; border: 0; padding: 4px 10px 10px; }
   .nba-box-identity { width: 100%; }
   .nba-box-identity .nba-player-link { font-size: 20px; }
-  .nba-box td { display: flex; flex-direction: column; justify-content: center; padding: 8px 2px; border: 0; font-size: 15px; }
+  .nba-table th, .nba-table td { padding: 10px 8px; }
+  .nba-box td { display: flex; min-width: 0; flex-direction: column; justify-content: center; padding: 8px 2px; border: 0; font-size: clamp(12px, 3.8vw, 15px); }
   .nba-box td[data-label]::before { content: attr(data-label); color: #bbc7d9; font: 500 9px var(--mono); margin-bottom: 5px; }
   .nba-box td.nba-dnp { grid-column: 1 / -1; padding-inline: 12px; }
-  .nba-table th, .nba-table td { padding: 10px 8px; }
   .nba-filter { flex-wrap: wrap; }
 }

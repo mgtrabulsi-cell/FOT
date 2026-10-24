@@ -110,17 +110,22 @@ function Comparison({ away, home, awayStats, homeStats }: { away: Team; home: Te
 }
 const boxColumns: Array<{ label: string; key: NBAPlayerStatKey; display?: string }> = [
   { label: 'MIN', key: 'minutes', display: 'MIN' }, { label: 'PTS', key: 'points' },
-  { label: 'FG', key: 'fieldGoalsMade', display: 'FG' }, { label: '3PT', key: 'threePointersMade', display: '3PT' }, { label: 'FT', key: 'freeThrowsMade', display: 'FT' },
-  { label: 'REB', key: 'rebounds' }, { label: 'AST', key: 'assists' }, { label: 'STL', key: 'steals' }, { label: 'BLK', key: 'blocks' },
+  { label: 'FG', key: 'fieldGoalsMade', display: 'FG' }, { label: '3PT', key: 'threePointersMade', display: '3PT' },
+  { label: 'REB', key: 'rebounds' }, { label: 'AST', key: 'assists' }, { label: 'FT', key: 'freeThrowsMade', display: 'FT' }, { label: 'STL', key: 'steals' }, { label: 'BLK', key: 'blocks' },
   { label: 'TO', key: 'turnovers' }, { label: 'PF', key: 'fouls' }, { label: '+/−', key: 'plusMinus', display: '+/-' },
 ];
 function PlayerBox({ team, box, favorites, toggle, open }: { team: Team; box?: NBABoxTeam; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void }) {
   const players = [...box?.players ?? []].sort((a, b) => Number(b.starter) - Number(a.starter));
   return <section><TeamHeading team={team} favorites={favorites} toggle={toggle} />
-    {!players.length ? <p>Player box scores are not available yet.</p> : <TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box"><thead><tr><th scope="col">Player</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{players.map((player) => <tr key={player.id}>
+    {!players.length ? <p>Player box scores are not available yet.</p> : <TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box"><thead><tr><th scope="col">Player</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead>{[true, false].map((starter) => {
+      const group = players.filter((player) => player.starter === starter);
+      if (!group.length) return null;
+      const label = starter ? group.length === 5 ? 'Starting five' : 'Reported starters' : 'Bench';
+      return <tbody key={String(starter)} aria-label={label}><tr className="nba-box-group"><th colSpan={boxColumns.length + 1}>{label}</th></tr>{group.map((player) => <tr key={player.id}>
       <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" onClick={() => open(player, team)}>{player.headshot && <OfflineImage src={player.headshot} alt="" />}<span>{player.name}<small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
       {player.didNotPlay ? <td className="nba-dnp" colSpan={boxColumns.length}>DNP{player.reason ? ` · ${player.reason}` : ''}</td> : boxColumns.map((column) => <td data-label={column.label} key={column.key}>{column.display ? player.display[column.display] ?? '—' : format(player.stats[column.key])}</td>)}
-    </tr>)}</tbody></table></TableScroll>}
+    </tr>)}</tbody>;
+    })}</table></TableScroll>}
   </section>;
 }
 function PlayByPlay({ plays, game, upcoming }: { plays: NBAPlay[]; game: Game; upcoming: boolean }) {
@@ -238,7 +243,7 @@ export default function NBAExperience({ mode, games, status, query, favorites, o
   const upcoming = game?.status === 'UPCOMING' && currentSummary?.status !== 'in' && currentSummary?.status !== 'post';
   const boxTeam = game && (game.home.id === boxTeamId ? game.home : game.away);
   const selectGame = (item: Game) => { setSelectedId(item.id); setOpenedGameId(item.id); setTab('players'); setTeamId(''); setBoxTeamId(''); setProfile(null); onSelectGame?.(item.id); };
-  return <section className="nba-experience" aria-label={mode === 'wire' ? 'NBA Wire' : 'NBA Stat Hub'}>
+  return <section className={`nba-experience nba-${mode}`} aria-label={mode === 'wire' ? 'NBA Wire' : 'NBA Stat Hub'}>
     <header className="nba-heading"><div><span className="eyebrow">NBA · ESPN</span><h2>{mode === 'wire' ? 'The Wire' : 'Stat Hub'}</h2></div><button type="button" onClick={() => { onRetry(); summary.retry(); league.retry(); }}>Refresh</button></header>
     {status === 'loading' && !nbaGames.length && <p role="status">Loading NBA games…</p>}
     {status === 'error' && <div className="nba-warning" role="status"><span>NBA scoreboard could not be refreshed.{nbaGames.length ? ' Showing the last available games.' : ''}</span><button type="button" onClick={onRetry}>Retry scoreboard</button></div>}
