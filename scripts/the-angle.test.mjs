@@ -2,7 +2,66 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { pendingAnglesFirst } from '../src/services/theAngle.ts';
+import { angleReviewKey, readAngleReviews, settledAngleReviews } from '../src/services/angleReviews.ts';
+import { readLivewirePosts } from '../src/services/livewirePosts.ts';
 import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleThemes, angleVisibleInWeek, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+
+const reviewOriginal = {
+  id: 'a8541111-1111-4111-8111-111111111121', season: 2026, week: 7, game_id: 'NBA:123', matchup: 'Away @ Home',
+  kind: 'team', subject: '', category: 'Other', title: 'Original pick', narrative: 'Original analysis', evidence: '', counterpoint: '',
+  pick: '', source_url: '', source_label: '', reviewed: true, revision: 1, status: 'published',
+  picks: [
+    { id: 'a8541111-1111-4111-8111-111111111131', text: 'Player over 25 points', category: 'straight', result: 'hit' },
+    { id: 'a8541111-1111-4111-8111-111111111132', text: 'Team ML\nPlayer assists', category: 'parlay', result: 'miss' },
+    { id: 'a8541111-1111-4111-8111-111111111133', text: 'Pending pick', category: 'sprinkle', result: 'pending' },
+  ],
+};
+
+test('Review candidates include only existing published settled picks across weeks/sports, never self references', () => {
+  const older = { ...reviewOriginal, id: 'a8541111-1111-4111-8111-111111111122', season: 2025, week: 2, game_id: 'NFL:456' };
+  const reviews = settledAngleReviews([reviewOriginal, older, { ...older, status: 'draft' }], reviewOriginal.id);
+  assert.equal(reviews.length, 2);
+  assert.ok(reviews.every((pick) => pick.story_id === older.id && pick.week === 2 && pick.game_id === 'NFL:456'));
+  assert.equal(reviews[1].text, 'Team ML\nPlayer assists');
+  assert.equal(reviews[1].category, 'parlay');
+  assert.equal(reviews[1].result, 'miss');
+  assert.equal(reviewOriginal.picks.length, 3);
+});
+
+test('Review snapshots survive write/read and LIVEWIRE, without new picks or record entries', () => {
+  const reviews = settledAngleReviews([reviewOriginal]);
+  const review = { ...reviewOriginal, id: 'a8541111-1111-4111-8111-111111111122', pick: '', picks: [], review_picks: reviews };
+  const fields = angleWriteFields(review, 'published');
+  assert.deepEqual(fields.review_picks, reviews);
+  assert.deepEqual(fields.picks, []);
+  assert.equal(fields.pick, '');
+  const [saved] = readAngles([{ ...review, ...fields }]);
+  assert.deepEqual(saved.review_picks, reviews);
+  assert.deepEqual(publishedAnglePicks([saved]), []);
+  for (const category of ['straight', 'parlay', 'sprinkle']) {
+    assert.deepEqual(angleSportRecords([reviewOriginal, saved], category), angleSportRecords([reviewOriginal], category));
+  }
+  const [post] = readLivewirePosts([{ id: 'mirror', author_id: null, author_name: 'Analyst', title: 'Review',
+    body: 'Review analysis', source_url: null, angle_id: review.id, admin_picks: [], review_picks: reviews,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }]);
+  assert.deepEqual(post.review_picks, reviews);
+});
+
+test('Malformed, pending, duplicate and oversized review snapshots fail explicitly', () => {
+  const [pick] = settledAngleReviews([reviewOriginal]);
+  assert.deepEqual(readAngleReviews([pick]), [pick]);
+  const twenty = Array.from({ length: 20 }, (_, index) => ({ ...pick,
+    pick_id: `a8541111-1111-4111-8111-${String(index).padStart(12, '0')}` }));
+  assert.equal(readAngleReviews(twenty).length, 20);
+  assert.throws(() => readAngleReviews([...twenty, { ...pick, pick_id: 'a8541111-1111-4111-8111-999999999999' }]), /settled-pick reviews/);
+  assert.equal(angleReviewKey({ ...pick, story_id: pick.story_id.toUpperCase() }), angleReviewKey(pick));
+  for (const invalid of [null, {}, [{ ...pick, result: 'pending' }], [{ ...pick, text: '' }],
+    [{ ...pick, text: 'x'.repeat(501) }], [{ ...pick, story_id: 'invalid' }], [{ ...pick, category: 'invalid' }],
+    [pick, { ...pick, story_id: pick.story_id.toUpperCase() }], Array(21).fill(pick)]) {
+    assert.throws(() => readAngleReviews(invalid), /settled-pick reviews/);
+    assert.throws(() => readAngles([{ ...reviewOriginal, review_picks: invalid }]), /settled-pick reviews/);
+  }
+});
 
 test('Pending bets lead the Angle feed, preserving order and treating mixed, legacy and sprinkle picks correctly', () => {
   const story = (id, picks) => ({ id, pick: '', picks });

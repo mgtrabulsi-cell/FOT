@@ -3,6 +3,8 @@ import { postThemes } from './postThemes.ts';
 import type { PostTheme } from './postThemes.ts';
 import { anglePicks, angleSport, angleSports, nflSport, pickCategory, readAnglePicks } from './anglePicks.ts';
 import type { AnglePick, PickCategory } from './anglePicks.ts';
+import { readAngleReviews } from './angleReviews.ts';
+import type { AngleReviewPick } from './angleReviews.ts';
 export { anglePicks, angleSport, angleSports, readAnglePicks } from './anglePicks.ts';
 export type { AnglePick, AngleSportKey } from './anglePicks.ts';
 
@@ -23,6 +25,7 @@ export type Angle = {
   counterpoint: string;
   pick: string;
   picks?: AnglePick[];
+  review_picks?: AngleReviewPick[];
   published_at?: string | null;
   source_url: string;
   source_label: string;
@@ -92,6 +95,7 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
     category: angle.category, title: angle.title.trim(), narrative: angle.narrative, evidence: angle.evidence,
     counterpoint: angle.counterpoint, pick: angle.picks?.[0]?.text ?? (angle.picks ? '' : angle.pick),
     ...(angle.picks ? { picks: angle.picks.filter((pick) => pick.text.trim()).map((pick) => ({ ...pick, text: pick.text.trim() })) } : {}),
+    ...(angle.review_picks ? { review_picks: angle.review_picks } : {}),
     source_url: angle.source_url.trim(),
     source_label: angle.source_label.trim(), reviewed: angle.reviewed, status, image_paths: angle.image_paths ?? [],
     news_types: angleSection(angle) === 'news' ? [...new Set(angle.news_types ?? [])] : [],
@@ -126,6 +130,7 @@ export function readAngles(value: unknown): Angle[] {
   if (!Array.isArray(value) || !value.every(isAngle)) throw new Error('The server returned invalid angle data. Please reload.');
   value.forEach((angle) => {
     if ('picks' in angle) readAnglePicks(angle.picks);
+    if ('review_picks' in angle) readAngleReviews(angle.review_picks);
     if ('published_at' in angle && angle.published_at !== null
       && (typeof angle.published_at !== 'string' || !Number.isFinite(Date.parse(angle.published_at)))) throw new Error('The server returned an invalid publication date. Please reload.');
   });

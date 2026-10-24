@@ -1,4 +1,5 @@
 import { anglePicks, angleSport, readAnglePicks } from '../../../src/services/anglePicks.ts';
+import { readAngleReviews } from '../../../src/services/angleReviews.ts';
 
 export type XCredentials = { apiKey: string; apiSecret: string; accessToken: string; accessSecret: string };
 export type XPostSource = {
@@ -30,10 +31,14 @@ export function xSource(row: Record<string, unknown>, angle: boolean, id: string
   const narrative = text('narrative');
   const evidence = text('evidence');
   const counterpoint = text('counterpoint');
+  const reviews = row.review_picks === undefined ? [] : readAngleReviews(row.review_picks);
   return {
     title, subject: text('subject'), gameId: text('game_id'),
     picks: anglePicks({ id, pick: text('pick'), picks }),
-    analysis: [narrative, evidence.trim() ? `Evidence\n${evidence}` : '', counterpoint.trim() ? `Counterpoint\n${counterpoint}` : ''].filter(Boolean).join('\n\n'),
+    analysis: [narrative, evidence.trim() ? `Evidence\n${evidence}` : '', counterpoint.trim() ? `Counterpoint\n${counterpoint}` : '',
+      reviews.length ? `Past picks - Review only (results when attached; not counted again)\n${reviews.map((pick) =>
+        `${angleSport(pick.game_id).label} - ${pick.result === 'hit' ? 'Hit' : 'Miss'} - ${pick.text}\n${pick.title} - ${pick.matchup} - ${pick.season}, Week ${pick.week}`).join('\n\n')}` : '',
+    ].filter(Boolean).join('\n\n'),
   };
 }
 

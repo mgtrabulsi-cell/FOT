@@ -9,6 +9,7 @@ import { observePostViews } from './services/livewireViews';
 import { loadLivewireDraft, saveLivewireDraft } from './services/livewireDrafts';
 import PostGallery from './PostGallery';
 import AnglePicks from './AnglePicks';
+import { AngleReviewList } from './AngleReviewPicks';
 import XPublishingStatus from './XPublishingStatus';
 import { anglePicks } from './services/theAngle';
 import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
@@ -377,6 +378,7 @@ export default function LiveWire({ user, active: isActive = true, postId = null,
         {post.title && <h3>{post.title}</h3>}
         {post.body && <p>{post.body}</p>}
         {post.angle_id && <AnglePicks picks={post.admin_picks ?? anglePicks({ id: post.angle_id, pick: post.admin_pick ?? '' })} />}
+        {post.angle_id && <AngleReviewList picks={post.review_picks ?? []} />}
         {(role === 'owner' || role === 'admin') && <PostViewers surface="livewire" postId={post.id} count={post.view_count === undefined && viewCounts[post.id] === undefined ? undefined : Math.max(post.view_count ?? 0, viewCounts[post.id] ?? 0)} />}
         <PostGallery paths={post.image_paths ?? []} title={post.title ?? 'LIVEWIRE post'} />
         {post.source_url && safeNewsLink(post.source_url) && <a href={safeNewsLink(post.source_url)!} target="_blank" rel="noopener noreferrer">Read source</a>}

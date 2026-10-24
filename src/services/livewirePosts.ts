@@ -1,5 +1,7 @@
 import { readAnglePicks } from './theAngle.ts';
 import type { AnglePick } from './theAngle.ts';
+import { readAngleReviews } from './angleReviews.ts';
+import type { AngleReviewPick } from './angleReviews.ts';
 
 import type { PostTheme } from './postThemes';
 export type { PostTheme } from './postThemes';
@@ -7,6 +9,7 @@ export type LivewirePost = {
   id: string; author_id: string | null; author_name: string; angle_id?: string | null;
   fantasy_graphic_id?: string | null;
   admin_pick?: string; admin_picks?: AnglePick[]; title: string | null; body: string;
+  review_picks?: AngleReviewPick[];
   themes?: PostTheme[]; image_paths?: string[]; source_url: string | null;
   created_at: string; updated_at: string; view_count?: number;
 };
@@ -29,7 +32,10 @@ export function readLivewirePosts(value: unknown): LivewirePost[] {
     && (post.view_count === undefined || (Number.isSafeInteger(post.view_count) && post.view_count >= 0)))) {
     throw new Error('The server returned invalid LIVEWIRE posts. Please retry.');
   }
-  value.forEach((post) => { if (post.admin_picks !== undefined) readAnglePicks(post.admin_picks); });
+  value.forEach((post) => {
+    if (post.admin_picks !== undefined) readAnglePicks(post.admin_picks);
+    if (post.review_picks !== undefined) readAngleReviews(post.review_picks);
+  });
   return value;
 }
 

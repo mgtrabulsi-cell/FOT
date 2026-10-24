@@ -124,6 +124,18 @@ const angle = {
 };
 const angleDraft = { form: angle, photos: draft.photos };
 
+test('Past settled review picks survive offline draft restoration without becoming new bets', async () => {
+  const review = { story_id: 'a8541111-1111-4111-8111-111111111121', pick_id: 'a8541111-1111-4111-8111-111111111131',
+    text: 'Previous team ML', result: 'hit', category: 'straight', title: 'Previous pick',
+    matchup: 'Away @ Home', game_id: 'NFL:123', season: 2025, week: 4 };
+  await saveAngleDraft('angle-review', 'angle', { ...angleDraft, form: { ...angle, review_picks: [review] } });
+  const restored = await loadAngleDraft('angle-review', 'angle');
+  assert.deepEqual(restored.form.review_picks, [review]);
+  assert.deepEqual(restored.form.picks, angle.picks);
+  records.set('bad-review:angle', { ...angleDraft, form: { ...angle, review_picks: [{ ...review, result: 'pending' }] } });
+  await assert.rejects(loadAngleDraft('bad-review', 'angle'), /invalid settled-pick reviews/i);
+});
+
 test('Angle editors restore new stories, empty pick lines, review state, week and photo bytes', async () => {
   await saveAngleDraft('angle-author', 'angle', angleDraft);
   const restored = await loadAngleDraft('angle-author', 'angle');

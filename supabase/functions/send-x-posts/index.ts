@@ -53,7 +53,7 @@ Deno.serve(async (request: Request) => {
         const angle = delivery.source_type === 'angle';
         const loadSource = async () => {
           if (angle) {
-            const { data, error } = await admin.from('angles').select('title,subject,narrative,evidence,counterpoint,pick,picks,game_id,status').eq('id', delivery.source_id).maybeSingle();
+            const { data, error } = await admin.from('angles').select('title,subject,narrative,evidence,counterpoint,pick,picks,review_picks,game_id,status').eq('id', delivery.source_id).maybeSingle();
             if (error) throw error;
             return data && data.status === 'published' ? xSource(data, true, delivery.source_id) : null;
           }

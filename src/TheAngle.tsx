@@ -14,6 +14,7 @@ import { observePostViews } from './services/livewireViews';
 import PostGallery, { postPhotoUrl } from './PostGallery';
 import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
+import AngleReviewPicker, { AngleReviewList } from './AngleReviewPicks';
 import { pickCategories, pickCategory, pickCategoryLabels } from './services/anglePicks';
 import XPublishingStatus from './XPublishingStatus';
 import PostViewers from './PostViewers';
@@ -450,6 +451,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending', category: 'straight' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
           <p>Straights and parlays have separate records. Sprinkles are shown but excluded from records. Enter each parlay as one pick, not one pick per leg.</p>
         </div>
+        <AngleReviewPicker picks={form.review_picks ?? []} storyId={form.id} onChange={(picks) => change('review_picks', picks)} />
         <label htmlFor={`angle-${section}-photos`}>Photos (optional, up to four)</label>
         <input id={`angle-${section}-photos`} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = '';
@@ -502,6 +504,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       {angle.evidence && <div className="angle-context"><h4>The supporting context</h4><p>{angle.evidence}</p></div>}
       {angle.counterpoint && <div className="angle-counterpoint"><h4>The other side</h4><p>{angle.counterpoint}</p></div>}
       <AnglePicks picks={anglePicks(angle)} emoji={angleSport(angle.game_id).emoji} />
+      <AngleReviewList picks={angle.review_picks ?? []} />
       <PostGallery paths={angle.image_paths ?? []} title={angle.title} />
       {admin && <PostViewers surface="angle" postId={angle.id} count={viewCounts[angle.id]} />}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}

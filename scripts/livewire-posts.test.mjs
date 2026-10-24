@@ -29,6 +29,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/import OfflineImage from [^;]+;/, 'const OfflineImage = () => null;')
   .replace(/import PostGallery from [^;]+;/, 'const PostGallery = () => null;')
   .replace(/import AnglePicks from [^;]+;/, 'const AnglePicks = () => null;')
+  .replace(/import \{ AngleReviewList \} from [^;]+;/, 'const AngleReviewList = () => null;')
   .replace(/import XPublishingStatus from [^;]+;/, 'const XPublishingStatus = () => null;')
   .replace(/import PostViewers from [^;]+;/, 'const PostViewers = () => null;')
   .replace(/import \{ usePublicDataRevision \} from [^;]+;/, 'const usePublicDataRevision = () => 0;')
