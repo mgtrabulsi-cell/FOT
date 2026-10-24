@@ -24,6 +24,7 @@ import { useSiteOpenTracking } from './useSiteOpenTracking';
 import NotificationOnboarding from './NotificationOnboarding';
 import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory } from './useLockerRoomHistory';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
+import AccountRequired from './AccountRequired';
 import SplashScreen from './SplashScreen';
 import PullToRefresh from './PullToRefresh';
 import BannerSearch from './BannerSearch';
@@ -475,7 +476,7 @@ function App() {
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [savedGuestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
   const guestMode = savedGuestMode || !online;
-  const livewireUnread = useLivewireUnread(authUser?.id ?? null, deletedAccount === null && !authLoading && (!supabase || !!authUser || guestMode));
+  const livewireUnread = useLivewireUnread(authUser?.id ?? null, deletedAccount === null && !authLoading && !!authUser);
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [storyOpenKey, setStoryOpenKey] = useState(0);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
@@ -543,7 +544,7 @@ function App() {
     return () => controller.abort();
   }, [selectedNBADate, nbaRetry]);
   useEffect(() => {
-    if (!publicSupabaseConfig || authLoading || deletedAccount !== null || (!authUser && !guestMode)) return;
+    if (!publicSupabaseConfig || authLoading || deletedAccount !== null || !authUser) return;
     const controller = new AbortController();
     void fetchLivewirePosts(publicSupabaseConfig, { limit: 20, themes: [] }, controller.signal)
       .then((posts) => {
@@ -553,7 +554,7 @@ function App() {
         if (!controller.signal.aborted) console.error('Could not preload LIVEWIRE; opening the feed will retry', error);
       });
     return () => controller.abort();
-  }, [authLoading, authUser?.id, guestMode, deletedAccount]);
+  }, [authLoading, authUser?.id, deletedAccount]);
   const previousView = useRef(view);
   useEffect(() => connectMedianNavigation(), []);
   useEffect(() => {
@@ -1080,7 +1081,7 @@ function App() {
     ?? now.getFullYear() - (now.getMonth() < 2 ? 1 : 0);
   const lockerRoomWeek = selectedNFLWeek ?? currentNFLWeek;
   const analystUnread = useAnalystUnread(authUser?.id ?? null,
-    deletedAccount === null && !authLoading && (!supabase || !!authUser || guestMode), lockerRoomSeason, lockerRoomWeek ?? 0);
+    deletedAccount === null && !authLoading && !!authUser, lockerRoomSeason, lockerRoomWeek ?? 0);
   const lockerRoomReady = loadedNFLWeek !== null && loadedNFLWeek === (selectedNFLWeek ?? currentNFLWeek);
   const lockerRoomHistory = useLockerRoomHistory({
     userId: authUser?.id ?? null, season: lockerRoomSeason, week: lockerRoomWeek,
@@ -1179,7 +1180,7 @@ function App() {
             </>}
           </div>
           <div className="heading-actions">
-            {view !== 'Profile' && view !== 'LiveWire' && (
+            {view !== 'Profile' && view !== 'LiveWire' && (view !== 'Analyst' || !!sessionUser) && (
               <>
                 {(view !== 'Wire' || displayedFeedFailure) && <span className={`feed-status${displayedFeedFailure ? ' feed-status-warning' : ''}`}>
                   <i />
@@ -1209,6 +1210,7 @@ function App() {
           </div>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
+        <AccountRequired hasAccount={!!sessionUser} section={view === 'Analyst' ? 'Analyst Desk' : view === 'LiveWire' ? 'LIVEWIRE' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>
         {view === 'Analyst' && <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
           <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={analystMode === 'Fantasy'} aria-label={analystUnread.news || analystUnread.picks || analystUnread.hate ? 'Fantasy, unread updates' : 'Fantasy'} className={analystMode === 'Fantasy' ? 'active' : ''} onClick={() => setAnalystMode('Fantasy')}>Fantasy{(analystUnread.news || analystUnread.picks || analystUnread.hate) && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
@@ -1243,8 +1245,10 @@ function App() {
         <div hidden={view !== 'LiveWire'}>
           <LiveWire key={authUser?.id ?? 'guest'} active={view === 'LiveWire'} user={authUser} onPostSeen={livewireUnread.markRead} postId={/^#livewire\/post\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
         </div>
+        {view === 'Analyst' && analystMode === 'Results' && <OurResults key={authUser?.id ?? 'guest'} user={authUser} />}
+        </AccountRequired>
         {view === 'Profile' ? (
-          authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Public saved browsing is available in The Wire, Stat Hub, and LIVEWIRE.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
+          authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Guest saved browsing is available in The Wire and Stat Hub.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' && sportLeague === 'NBA' ? (
           <NBAExperience mode="wire" games={nbaGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
         ) : view === 'Wire' ? (
@@ -1281,13 +1285,7 @@ function App() {
           sportLeague === 'NBA'
             ? <NBAExperience mode="stats" games={nbaGames} status={nbaStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} onSelectGame={setNBASelectedGameId} />
             : <NFLPlayersDirectory games={games} scoreboardStatus={scoreboardStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
-        ) : (
-          <>
-            {analystMode === 'Results' ? (
-              <OurResults key={authUser?.id ?? 'guest'} user={authUser} />
-            ) : null}
-          </>
-        )}
+        ) : null}
         <footer className="page-footer"><span>GAMEWIRE <i>·</i> NFL + NBA</span><span>NFL and NBA scores, player stats, and matchups from ESPN public feeds.</span></footer>
       </main>
     </div>
