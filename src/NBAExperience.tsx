@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
-import { Star, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, X } from 'lucide-react';
 import OfflineImage from './OfflineImage';
 import type { FavoriteTarget, Game, Team } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
@@ -184,10 +184,24 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
 export default function NBAExperience({ mode, games, status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, onSelectGame }: Props) {
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
   const [selectedId, setSelectedId] = useState(initialGameId ?? '');
+  const [openedGameId, setOpenedGameId] = useState<string | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef<string | null>(null);
   const [tab, setTab] = useState<'players' | 'teams' | 'plays'>('players');
   const [teamId, setTeamId] = useState('');
   const [profile, setProfile] = useState<{ player: NBAPlayer; team: Team } | null>(null);
   const game = nbaGames.find((item) => item.id === selectedId) ?? nbaGames[0];
+  const showingDetails = mode === 'stats' || nbaGames.some((item) => item.id === openedGameId);
+  useEffect(() => {
+    if (mode !== 'wire') return;
+    if (showingDetails) detailRef.current?.focus();
+    else if (returnFocus.current) {
+      const buttons = boardRef.current?.querySelectorAll<HTMLButtonElement>('button[data-game-id]');
+      [...buttons ?? []].find((button) => button.dataset.gameId === returnFocus.current)?.focus();
+      returnFocus.current = null;
+    }
+  }, [mode, showingDetails]);
   const openPlayer = (player: NBAPlayer, team: Team) => setProfile({ player, team });
   useEffect(() => { if (initialGameId) { setSelectedId(initialGameId); setTeamId(''); setProfile(null); } }, [initialGameId]);
   const firstFavoriteTeam = favorites.find((favorite) => favorite.feedPath === 'basketball/nba' && favorite.type === 'team')?.id;
@@ -201,27 +215,43 @@ export default function NBAExperience({ mode, games, status, query, favorites, o
   const loadLeague = useCallback((signal: AbortSignal) => fetchNBALeague(signal), []);
   const league = useNBAResource('nba-league', mode === 'stats' ? loadLeague : null);
   const loadSummary = useCallback((signal: AbortSignal) => fetchNBASummary(game?.eventId ?? '', signal), [game?.eventId]);
-  const summary = useNBAResource(`summary:${game?.eventId ?? ''}`, game && mode === 'wire' ? loadSummary : null, game?.status === 'LIVE' ? 15000 : 0);
+  const summary = useNBAResource(`summary:${game?.eventId ?? ''}`, game && mode === 'wire' && showingDetails ? loadSummary : null, game?.status === 'LIVE' ? 15000 : 0);
   const currentSummary = summary.data;
   const season = game?.seasonYear ?? league.data?.season;
   const allTeams = league.data?.teams ?? (game ? [game.away, game.home] : []);
   const team = allTeams.find((entry) => entry.id === teamId) ?? (game ? allTeams.find((entry) => entry.id === game.away.id) : undefined) ?? allTeams[0];
   const visibleGames = nbaGames.filter((item) => !query.trim() || `${item.away.name} ${item.away.abbr} ${item.home.name} ${item.home.abbr}`.toLowerCase().includes(query.trim().toLowerCase()));
   const upcoming = game?.status === 'UPCOMING' && currentSummary?.status !== 'in' && currentSummary?.status !== 'post';
-  const selectGame = (item: Game) => { setSelectedId(item.id); setTeamId(''); setProfile(null); onSelectGame?.(item.id); };
+  const selectGame = (item: Game) => { setSelectedId(item.id); setOpenedGameId(item.id); setTab('players'); setTeamId(''); setProfile(null); onSelectGame?.(item.id); };
   return <section className="nba-experience" aria-label={mode === 'wire' ? 'NBA Wire' : 'NBA Stat Hub'}>
     <header className="nba-heading"><div><span className="eyebrow">NBA · ESPN</span><h2>{mode === 'wire' ? 'The Wire' : 'Stat Hub'}</h2></div><button type="button" onClick={() => { onRetry(); summary.retry(); league.retry(); }}>Refresh</button></header>
     {status === 'loading' && !nbaGames.length && <p role="status">Loading NBA games…</p>}
     {status === 'error' && <div className="nba-warning" role="status"><span>NBA scoreboard could not be refreshed.{nbaGames.length ? ' Showing the last available games.' : ''}</span><button type="button" onClick={onRetry}>Retry scoreboard</button></div>}
     {!nbaGames.length && status === 'ready' && <p>No NBA games on this date.{mode === 'stats' ? ' Browse every NBA team and roster below.' : ' Choose another date to browse matchups.'}</p>}
-    {!!nbaGames.length && <><ScrollRow label="NBA games · drag or scroll to choose a matchup" className="nba-game-wheel">{visibleGames.map((item) => <button type="button" key={item.id} className={`nba-game-option${game?.id === item.id ? ' is-selected' : ''}`} aria-pressed={game?.id === item.id} onClick={() => selectGame(item)}>
+    {mode === 'wire' && !showingDetails && !!nbaGames.length && <div className="wire-board" ref={boardRef}>
+      <header className="wire-board-header"><span className="eyebrow">NBA GAMES · SELECT A MATCHUP</span></header>
+      <ol className="wire-board-list">{visibleGames.map((item) => <li key={item.id}>
+        <button type="button" className={`wire-board-card${item.status === 'LIVE' ? ' is-live' : ''}`} data-game-id={item.id} onClick={() => selectGame(item)} aria-label={`${item.away.name} at ${item.home.name}, ${item.status === 'LIVE' ? `live ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'final' : gameDate(item.date, true)}. Open ${item.status === 'UPCOMING' ? 'pregame stats' : 'box score'}`}>
+          <span className="wire-board-status">{item.status === 'LIVE' ? <><span className="live-pill"><i />LIVE</span><small>{item.period} {item.clock}</small></> : item.status === 'FINAL' ? <span className="wire-board-final">FINAL</span> : <small>{gameDate(item.date, true)}</small>}</span>
+          <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className="wire-board-team" key={side.id}>
+            <span className="team-mark wire-board-mark">{side.logo ? <OfflineImage src={side.logo} alt="" /> : side.abbr}</span>
+            <span className="wire-board-team-name"><b><span className="wire-board-team-label">{side.name}</span></b><small>{side.abbr}{side.record ? ` · ${side.record}` : ''}</small></span>
+            <strong className="wire-board-score">{item.status === 'UPCOMING' ? '' : side.score}</strong>
+          </span>)}</span>
+          <span className="wire-board-footer"><span className="wire-board-meta">{item.venue}</span><span className="wire-board-open">{item.status === 'UPCOMING' ? 'Pregame stats' : 'Box score'}<ChevronRight size={14} aria-hidden="true" /></span></span>
+        </button>
+      </li>)}</ol>
+      {!visibleGames.length && <p role="status">No NBA games match your search.</p>}
+    </div>}
+    {mode === 'wire' && showingDetails && <div ref={detailRef} tabIndex={-1} className="nba-detail-navigation"><button type="button" onClick={() => { returnFocus.current = game?.id ?? null; setOpenedGameId(null); setProfile(null); }}><ChevronLeft size={16} aria-hidden="true" />All games</button></div>}
+    {!!nbaGames.length && showingDetails && <><ScrollRow label="NBA games · drag or scroll to choose a matchup" className="nba-game-wheel">{visibleGames.map((item) => <button type="button" key={item.id} className={`nba-game-option${game?.id === item.id ? ' is-selected' : ''}`} aria-pressed={game?.id === item.id} onClick={() => selectGame(item)}>
       <small>{item.status === 'LIVE' ? `LIVE · ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'FINAL' : gameDate(item.date, true)}</small>
       {[item.away, item.home].map((side) => <span key={side.id}>{side.logo && <OfflineImage src={side.logo} alt="" />}<b>{side.abbr}</b><strong>{item.status === 'UPCOMING' ? '—' : side.score}</strong></span>)}
     </button>)}</ScrollRow>{!visibleGames.length && <p>No matchups match your search. Player searches apply to the roster below.</p>}</>}
-    {game && <><div className="nba-matchup"><div>{game.away.logo && <OfflineImage src={game.away.logo} alt="" />}<strong>{game.away.name}</strong><FavoriteButton target={nbaTeamFavorite(game.away)} favorites={favorites} toggle={onToggleFavorite} /></div><div className="nba-score" aria-live="polite"><b>{upcoming ? 'vs' : `${currentSummary?.awayScore ?? game.away.score} – ${currentSummary?.homeScore ?? game.home.score}`}</b><small>{currentSummary?.status === 'post' || game.status === 'FINAL' ? 'FINAL' : upcoming ? gameDate(game.date, true) : `${currentSummary?.period || game.period} · ${currentSummary?.clock || game.clock}`}</small></div><div>{game.home.logo && <OfflineImage src={game.home.logo} alt="" />}<strong>{game.home.name}</strong><FavoriteButton target={nbaTeamFavorite(game.home)} favorites={favorites} toggle={onToggleFavorite} /></div></div>
+    {game && showingDetails && <><div className="nba-matchup"><div>{game.away.logo && <OfflineImage src={game.away.logo} alt="" />}<strong>{game.away.name}</strong><FavoriteButton target={nbaTeamFavorite(game.away)} favorites={favorites} toggle={onToggleFavorite} /></div><div className="nba-score" aria-live="polite"><b>{upcoming ? 'vs' : `${currentSummary?.awayScore ?? game.away.score} – ${currentSummary?.homeScore ?? game.home.score}`}</b><small>{currentSummary?.status === 'post' || game.status === 'FINAL' ? 'FINAL' : upcoming ? gameDate(game.date, true) : `${currentSummary?.period || game.period} · ${currentSummary?.clock || game.clock}`}</small></div><div>{game.home.logo && <OfflineImage src={game.home.logo} alt="" />}<strong>{game.home.name}</strong><FavoriteButton target={nbaTeamFavorite(game.home)} favorites={favorites} toggle={onToggleFavorite} /></div></div>
       {game.venue && <p className="nba-note">{game.venue}</p>}
     </>}
-    {mode === 'wire' && game && <>
+    {mode === 'wire' && game && showingDetails && <>
       {onOpenStatHub && <button type="button" className="nba-open-stats" onClick={() => onOpenStatHub(game.id)}>Open matchup in Stat Hub</button>}
       <div className="nba-segments" role="group" aria-label="NBA game detail views">{([{ key: 'players', label: 'Player Box Score' }, { key: 'teams', label: 'Team Comparison' }, { key: 'plays', label: 'Play-by-Play' }] as const).map((item) => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}</div>
       <ResourceMessage {...summary} />

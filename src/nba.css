@@ -8,6 +8,8 @@
 .nba-heading, .nba-team-heading, .nba-profile-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .nba-heading > div, .nba-team-heading > div, .nba-profile-header > div { flex: 1; min-width: 0; }
 .nba-heading h2 { margin-top: 5px; }
+.nba-detail-navigation { margin: 12px 0; }
+.nba-detail-navigation button { display: inline-flex; align-items: center; gap: 6px; }
 .nba-scroll { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: thin; overscroll-behavior-x: contain; padding: 5px 3px 14px; cursor: grab; touch-action: pan-x pan-y; }
 .nba-scroll:active { cursor: grabbing; }
 .nba-game-wheel button.nba-game-option { flex: 0 0 190px; display: grid; text-align: left; gap: 7px; background: #111b2b; padding: 12px; user-select: none; }
