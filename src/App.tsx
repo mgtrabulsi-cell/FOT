@@ -34,6 +34,7 @@ import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import NBAExperience from './NBAExperience';
 import DraggableTabs from './DraggableTabs';
+import { preloadNBABoxes, preloadNBADates } from './services/nbaPreload';
 import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, nbaCalendarDate } from './services/sportsData';
 import LiveWire from './LiveWire';
@@ -482,7 +483,10 @@ function App() {
   const [selectedNBADate, setSelectedNBADate] = useState(nbaCalendarDate);
   const [nbaDateOverride, setNBADateOverride] = useState(false);
   const [nbaSelectedGameId, setNBASelectedGameId] = useState<string | null>(null);
-  const [nbaGames, setNBAGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', `NBA:${nbaCalendarDate()}`)?.games ?? []);
+  const [loadedNBAGames, setNBAGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', `NBA:${nbaCalendarDate()}`)?.games ?? []);
+  const [nbaGamesDate, setNBAGamesDate] = useState(nbaCalendarDate);
+  const savedNBADateGames = useMemo(() => readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [], [selectedNBADate]);
+  const nbaGames = nbaGamesDate === selectedNBADate ? loadedNBAGames : savedNBADateGames;
   const [nbaStatus, setNBAStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [nbaError, setNBAError] = useState('');
   const [nbaRetry, setNBARetry] = useState(0);
@@ -494,14 +498,25 @@ function App() {
     const controller = new AbortController();
     let active = true;
     let refreshing = false;
+    let preloadingBoxes = false;
     const saved = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [];
-    setNBAGames(saved); setNBAStatus('loading'); setNBAError('');
+    setNBAGames(saved); setNBAGamesDate(selectedNBADate); setNBAStatus('loading'); setNBAError('');
     const refresh = async () => {
       if (refreshing) return;
       refreshing = true;
       try {
         const next = await fetchNBAScoreboard(selectedNBADate, controller.signal);
-        if (active) { setNBAGames(next); setNBAStatus('ready'); setNBAError(''); }
+        if (active) {
+          setNBAGames(next); setNBAStatus('ready'); setNBAError('');
+          if (!preloadingBoxes) {
+            preloadingBoxes = true;
+            void preloadNBABoxes(next, controller.signal).then((failed) => {
+              if (active && failed.length) setNBAError('Some NBA box scores could not be saved yet. Automatic refresh will retry.');
+            }, (error: unknown) => {
+              if (!controller.signal.aborted) console.error('NBA box-score preload failed', error);
+            }).finally(() => { preloadingBoxes = false; });
+          }
+        }
       } catch (cause) {
         if (active && !controller.signal.aborted) {
           console.error('Could not refresh NBA scoreboard', cause);
@@ -518,6 +533,15 @@ function App() {
     }, 30_000);
     return () => { active = false; controller.abort(); window.clearInterval(timer); };
   }, [selectedNBADate, nbaDateOverride, nbaRetry]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void preloadNBADates(selectedNBADate, controller.signal).then((failed) => {
+      if (!controller.signal.aborted && failed.length) setNBAError('Some nearby NBA dates could not be preloaded. Selecting a date will retry.');
+    }, (error: unknown) => {
+      if (!controller.signal.aborted) console.error('NBA date preload failed', error);
+    });
+    return () => controller.abort();
+  }, [selectedNBADate, nbaRetry]);
   useEffect(() => {
     if (!publicSupabaseConfig || authLoading || deletedAccount !== null || (!authUser && !guestMode)) return;
     const controller = new AbortController();

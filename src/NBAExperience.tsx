@@ -5,12 +5,13 @@ import OfflineImage from './OfflineImage';
 import DraggableTabs from './DraggableTabs';
 import type { FavoriteTarget, Game, Team } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
-import { gameSnapshotKey, readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
+import { gameSnapshotKey, readRenderSnapshot } from './services/renderSnapshots';
+import { saveNBASummary } from './services/nbaPreload';
 import {
   fetchNBALeague, fetchNBAPlayerProfile, fetchNBAPointsPerGame, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
   nbaPlayerFavorite, nbaStatOptions, nbaTeamFavorite,
 } from './services/nbaData';
-import type { NBABoxTeam, NBAPlay, NBAPlayer, NBAPlayerStatKey, NBAStats, NBASummary, NBATeamStat } from './services/nbaData';
+import type { NBABoxTeam, NBAPlay, NBAPlayer, NBAPlayerStatKey, NBAStats, NBATeamStat } from './services/nbaData';
 import './nba.css';
 
 type Props = {
@@ -28,11 +29,11 @@ type Props = {
 type Resource<T> = { key: string; data: T | null; loading: boolean; error: string };
 const summarySnapshots = {
   read: (key: string) => readRenderSnapshot('nbaSummary', key),
-  save: (key: string, data: NBASummary) => saveRenderSnapshot('nbaSummary', key, data),
+  save: saveNBASummary,
 };
 
 function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0, snapshots?: { read: (key: string) => T | null; save: (key: string, data: T) => void }) {
-  const saved = useMemo(() => snapshots?.read(key) ?? null, [key, snapshots]);
+  const saved = useMemo(() => snapshots?.read(key) ?? null, [key, snapshots, load]);
   const [state, setState] = useState<Resource<T>>(() => ({ key, data: saved, loading: !!load, error: '' }));
   const [revision, setRevision] = useState(0);
   const retry = useCallback(() => setRevision((value) => value + 1), []);
@@ -47,7 +48,13 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
       setState((previous) => ({ key, data: previous.key === key ? previous.data ?? saved : saved, loading: true, error: '' }));
       void load(controller.signal).then((data) => {
         if (!disposed && !controller.signal.aborted) {
-          snapshots?.save(key, data);
+          try { snapshots?.save(key, data); }
+          catch (error) {
+            console.error('Could not update NBA display snapshot', error);
+            setState((previous) => ({ key, data: previous.key === key ? previous.data ?? saved : saved, loading: false,
+              error: error instanceof Error ? error.message : 'Could not update saved NBA statistics.' }));
+            return;
+          }
           setState({ key, data, loading: false, error: '' });
         }
       }, (error: unknown) => {
@@ -62,7 +69,7 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
     const unsubscribe = subscribeForegroundRefresh(refresh);
     return () => { disposed = true; request?.abort(); if (timer !== undefined) window.clearInterval(timer); unsubscribe(); };
   }, [key, load, poll, revision, saved, snapshots]);
-  return { ...(state.key === key ? state : { key, data: saved, loading: !!load, error: '' }), retry };
+  return { ...(state.key === key ? { ...state, data: state.data ?? saved } : { key, data: saved, loading: !!load, error: '' }), retry };
 }
 
 function useDragScroll() {

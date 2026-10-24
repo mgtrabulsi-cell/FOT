@@ -64,6 +64,7 @@ function setup(mode = 'wire', snapshots = new Map(), component) {
         readRenderSnapshot: (kind, key) => snapshots.get(`${kind}:${key}`) ?? null,
         saveRenderSnapshot: (kind, key, value) => snapshots.set(`${kind}:${key}`, value),
       };
+      if (name === './services/nbaPreload') return { saveNBASummary: (key, value) => snapshots.set(`nbaSummary:${key}`, value) };
       if (name === './services/foregroundRefresh') return { subscribeForegroundRefresh: () => () => {} };
       return {};
     },
@@ -190,6 +191,16 @@ test('NBA reopens a saved box synchronously before refresh, isolates games/seaso
     assert.equal(box(), undefined, 'No snapshot leaks to another season or event');
   }
   reopened.unmount();
+});
+
+test('NBA opens a background-preloaded box on its first detail render without requiring a previous game visit', () => {
+  const snapshots = new Map();
+  const app = setup('wire', snapshots);
+  snapshots.set('nbaSummary:basketball/nba:401:2027', { teams: [{ id: away.id, players: [{ id: 'preloaded' }] }], plays: [] });
+  app.data.fetchNBASummary = () => new Promise(() => {});
+  app.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); app.render();
+  assert.equal(app.nodes().find((node) => node.type?.name === 'PlayerBox').props.box.players[0].id, 'preloaded');
+  app.unmount();
 });
 
 function descendants(tree) {
