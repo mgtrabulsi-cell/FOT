@@ -4,12 +4,14 @@ import type { LivewireSnapshot } from './livewirePosts.ts';
 import type { TeamComparisonRanks } from './teamComparisonRanks.ts';
 import { readMatchupPicks } from './matchupBoard.ts';
 import type { MatchupPick } from './matchupBoard.ts';
+import type { NBASummary } from './nbaData.ts';
 
 type Snapshots = {
   scoreboard: { games: Game[]; failedLeagues: string[]; nflWeek: number | null };
   details: NFLGameDetails;
   players: { data: NFLPlayerSeasonBoxScore; players: NFLSkillPlayer[] };
   box: NFLBoxScoreData;
+  nbaSummary: NBASummary;
   team: NFLTeamSeasonAverages;
   posts: LivewireSnapshot;
   teamRanks: TeamComparisonRanks;
@@ -32,6 +34,19 @@ function object(value: unknown): value is Record<string, unknown> {
 function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snapshots[K] {
   if (!object(data)) return false;
   switch (kind) {
+    case 'nbaSummary':
+      return typeof data.eventId === 'string' && typeof data.clock === 'string' && typeof data.period === 'string'
+        && typeof data.status === 'string' && Array.isArray(data.teams) && data.teams.every((team: unknown) =>
+          object(team) && typeof team.id === 'string' && Array.isArray(team.stats) && team.stats.every((stat: unknown) =>
+            object(stat) && typeof stat.name === 'string' && typeof stat.label === 'string' && typeof stat.display === 'string')
+          && Array.isArray(team.players) && team.players.every((player: unknown) =>
+            object(player) && typeof player.id === 'string' && typeof player.name === 'string' && typeof player.position === 'string'
+            && object(player.stats) && Object.values(player.stats).every((value) => typeof value === 'number' && Number.isFinite(value))
+            && object(player.display) && Object.values(player.display).every((value) => typeof value === 'string')
+            && typeof player.starter === 'boolean' && typeof player.didNotPlay === 'boolean' && typeof player.reason === 'string'))
+        && Array.isArray(data.plays) && data.plays.every((play: unknown) =>
+          object(play) && typeof play.id === 'string' && typeof play.text === 'string' && typeof play.period === 'number'
+          && typeof play.clock === 'string' && typeof play.scoring === 'boolean');
     case 'fantasyBoard':
       return Number.isInteger(data.revision) && Number(data.revision) >= 0 && readMatchupPicks(data.picks).length <= 16;
     case 'fantasyAverages':

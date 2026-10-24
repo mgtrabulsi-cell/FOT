@@ -47,7 +47,6 @@
 .nba-table tbody tr:last-child > * { border-bottom: 0; }
 .nba-box th:first-child { text-align: left; background: #131c2b; min-width: 232px; width: 232px; max-width: 232px; white-space: normal; }
 .nba-box-identity { display: flex; align-items: center; gap: 4px; width: 212px; }
-.nba-box-short-name { display: none; }
 .nba-experience .nba-box-scroll-hint { margin: 10px 0 0; color: #bbc7d9; font: 500 11px var(--mono); }
 .nba-box-identity .nba-player-link { flex: 1; font: 600 18px/1.2 var(--display); color: #fff; }
 .nba-box-identity .nba-player-link small { font: 500 12px var(--mono); color: #bbc7d9; }
@@ -116,11 +115,13 @@
   .nba-box th, .nba-box td { min-width: 30px; padding: 6px 4px; font-size: 12px; }
   .nba-box th:first-child { position: sticky; left: 0; z-index: 1; width: clamp(128px, 37vw, 160px); min-width: clamp(128px, 37vw, 160px); max-width: clamp(128px, 37vw, 160px); padding: 6px 4px; box-shadow: 2px 0 #2c3d55; }
   .nba-box-identity { width: 100%; gap: 2px; }
-  .nba-experience .nba-box-identity .nba-player-link { gap: 3px; font: 600 12px/1.2 'DM Sans', 'Segoe UI', sans-serif; }
+  .nba-experience button, .nba-profile button { min-height: 34px; padding-block: 6px; }
+  .nba-team-toggle button { padding-block: 9px; font-size: 16px; }
+  .nba-experience button.nba-favorite, .nba-profile button.nba-favorite, .nba-profile button.nba-close,
+  .nba-experience .nba-box-identity .nba-favorite { width: 34px; min-width: 34px; min-height: 34px; padding: 5px; }
+  .nba-experience .nba-box-identity .nba-player-link { gap: 0; font: 600 10px/1.25 'DM Sans', 'Segoe UI', sans-serif; }
   .nba-box-identity .nba-player-link > span { min-width: 0; }
-  .nba-box-identity .nba-player-link img { width: 24px; height: 28px; }
-  .nba-box-full-name { display: none; }
-  .nba-box-short-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nba-box-full-name { display: block; white-space: normal; overflow-wrap: normal; }
   .nba-box-identity .nba-player-link small { margin-top: 3px; font-size: 9px; }
   .nba-box td:is([data-label="FG"], [data-label="FT"], [data-label="3PT"]) { min-width: 40px; }
   .nba-box tr.nba-box-group th { padding: 14px 4px; font-size: 10px; }

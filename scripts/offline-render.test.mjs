@@ -264,6 +264,25 @@ test('Invalid saved displays are rejected and reported instead of crashing a pla
   } finally { console.error = originalError; }
 }));
 
+test('NBA summaries persist across reads and reject corrupted nested stats with an explicit error', () => withStorage((storage) => {
+  const key = 'basketball/nba:401:2027';
+  const summary = { eventId: '401', status: 'in', clock: '1:00', period: 'Q4', teams: [{ id: '1', stats: [],
+    players: [{ id: '23', name: 'Saved NBA Player', position: 'G', stats: { points: 0 }, display: { MIN: '10' },
+      starter: true, didNotPlay: false, reason: '' }] }], plays: [] };
+  saveRenderSnapshot('nbaSummary', key, summary);
+  assert.deepEqual(readRenderSnapshot('nbaSummary', key), summary);
+  assert.equal(readRenderSnapshot('nbaSummary', 'basketball/nba:402:2027'), null);
+  assert.equal(readRenderSnapshot('nbaSummary', 'basketball/nba:401:2028'), null);
+  const errors = [], originalError = console.error;
+  console.error = (...args) => errors.push(args);
+  try {
+    summary.teams[0].players[0].display = null;
+    storage.setItem(`gamewire-render-v1:/:nbaSummary:${key}`, JSON.stringify({ version: 1, data: summary }));
+    assert.equal(readRenderSnapshot('nbaSummary', key), null);
+    assert.equal(errors.length, 1);
+  } finally { console.error = originalError; }
+}));
+
 test('Account deletion stops late requests from recreating display snapshots', () => withStorage((storage) => {
   saveRenderSnapshot('players', 'before', players);
   stopRenderSnapshots();

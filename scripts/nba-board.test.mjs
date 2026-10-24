@@ -12,7 +12,7 @@ const home = { id: '2', name: 'Boston Celtics', abbr: 'BOS', score: 99, record: 
 const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league: 'NBA', seasonYear: 2027,
   date: '2026-10-23T23:00:00Z', status: 'LIVE', period: 'Q4', clock: '1:00', away, home, venue: 'Arena' };
 
-function setup(mode = 'wire') {
+function setup(mode = 'wire', snapshots = new Map()) {
   let cursor = 0, changed = false, tree;
   const slots = [], effects = [], requests = [], timers = new Map();
   let timerId = 0;
@@ -55,6 +55,11 @@ function setup(mode = 'wire') {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name === './services/nbaData') return data;
+      if (name === './services/renderSnapshots') return {
+        gameSnapshotKey: (feed, event, season) => `${feed}:${event}:${season}`,
+        readRenderSnapshot: (kind, key) => snapshots.get(`${kind}:${key}`) ?? null,
+        saveRenderSnapshot: (kind, key, value) => snapshots.set(`${kind}:${key}`, value),
+      };
       if (name === './services/foregroundRefresh') return { subscribeForegroundRefresh: () => () => {} };
       return {};
     },
@@ -140,6 +145,33 @@ test('Latest NBA play follows live summary polling, highlights scores and retain
   app.unmount();
 });
 
+test('NBA reopens a saved box synchronously before refresh, isolates games/seasons and retains it offline', async () => {
+  const snapshots = new Map();
+  const first = setup('wire', snapshots);
+  first.data.fetchNBASummary = async () => ({ eventId: '401', teams: [{ id: away.id, players: [{ id: 'saved' }] }], plays: [] });
+  first.nodes().find((node) => node.props?.['data-game-id']).props.onClick();
+  first.render(); await first.settle(); first.unmount();
+  const reopened = setup('wire', snapshots);
+  let complete;
+  reopened.data.fetchNBASummary = () => new Promise((resolve) => { complete = resolve; });
+  const box = () => reopened.nodes().find((node) => node.type?.name === 'PlayerBox')?.props.box;
+  reopened.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); reopened.render();
+  assert.equal(box().players[0].id, 'saved', 'Saved stats render before the network resolves');
+  complete({ eventId: '401', teams: [{ id: away.id, players: [{ id: 'fresh' }] }], plays: [] });
+  await reopened.settle();
+  assert.equal(box().players[0].id, 'fresh');
+  reopened.data.fetchNBASummary = async () => { throw new Error('Offline'); };
+  reopened.timers.values().next().value.callback(); await reopened.settle();
+  assert.equal(box().players[0].id, 'fresh');
+  assert.match(reopened.nodes().find((node) => node.type?.name === 'ResourceMessage').props.error, /Offline/);
+  for (const next of [{ ...game, seasonYear: 2028 }, { ...game, id: 'NBA:402', eventId: '402' }]) {
+    reopened.props.games = [next]; reopened.props.initialGameId = next.id;
+    reopened.render();
+    assert.equal(box(), undefined, 'No snapshot leaks to another season or event');
+  }
+  reopened.unmount();
+});
+
 function descendants(tree) {
   const found = [];
   function visit(node) {
@@ -177,6 +209,8 @@ test('NBA player box stably places all reported starters ahead of bench, retaini
   assert.ok(rows.every((row) => descendants(row).filter((node) => node.type === 'td').length === (row === rows.at(-1) ? 1 : 12)), 'Each player has a single table row, with one spanning DNP cell when needed');
   const identity = descendants(rows[0]).find((node) => node.props?.className === 'nba-box-identity');
   assert.ok(identity.props.children.some((node) => node.type?.name === 'FavoriteButton'));
+  assert.equal(descendants(identity).some((node) => node.type?.name === 'OfflineImage'), false);
+  assert.equal(nodes.some((node) => node.props?.className === 'nba-box-short-name'), false, 'Full names only, without abbreviations');
   app.unmount();
 });
 

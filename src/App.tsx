@@ -1248,15 +1248,15 @@ function App() {
                   <i />
                   {displayedFeedFailure ? 'FEED ISSUE' : view === 'Den' ? 'LIVE FEED' : 'LIVE STATS'}
                 </span>}
-                {(sportLeague === 'NFL' || (view !== 'Wire' && view !== 'Players' && view !== 'Den')) && <label className="date-button">
+                <label className={`date-button${sportLeague !== 'NFL' && (view === 'Wire' || view === 'Players' || view === 'Den') ? ' sport-week-placeholder' : ''}`} aria-hidden={sportLeague !== 'NFL' && (view === 'Wire' || view === 'Players' || view === 'Den') || undefined}>
                   <Clock3 size={15} />
                   <span aria-hidden="true">{selectedNFLWeek === null ? (currentNFLWeek ? `Current · Week ${currentNFLWeek}` : 'Current NFL week') : `Week ${selectedNFLWeek}`}</span>
-                  <select aria-label="NFL week" value={selectedNFLWeek ?? 'current'} onChange={(event) => setSelectedNFLWeek(event.target.value === 'current' ? null : Number(event.target.value))}>
+                  <select aria-label="NFL week" disabled={sportLeague !== 'NFL' && (view === 'Wire' || view === 'Players' || view === 'Den')} value={selectedNFLWeek ?? 'current'} onChange={(event) => setSelectedNFLWeek(event.target.value === 'current' ? null : Number(event.target.value))}>
                     <option value="current">{currentNFLWeek ? `Current · Week ${currentNFLWeek}` : 'Current NFL week'}</option>
                     {Array.from({ length: 18 }, (_, index) => index + 1).map((week) => <option key={week} value={week}>Week {week}</option>)}
                   </select>
                   <ChevronRight size={14} />
-                </label>}
+                </label>
               </>
             )}
           </div>

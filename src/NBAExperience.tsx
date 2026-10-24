@@ -4,11 +4,12 @@ import { ChevronLeft, ChevronRight, Star, X } from 'lucide-react';
 import OfflineImage from './OfflineImage';
 import type { FavoriteTarget, Game, Team } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
+import { gameSnapshotKey, readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import {
   fetchNBALeague, fetchNBAPlayerProfile, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
   nbaPlayerFavorite, nbaStatOptions, nbaTeamFavorite,
 } from './services/nbaData';
-import type { NBABoxTeam, NBAPlay, NBAPlayer, NBAPlayerStatKey, NBAStats, NBATeamStat } from './services/nbaData';
+import type { NBABoxTeam, NBAPlay, NBAPlayer, NBAPlayerStatKey, NBAStats, NBASummary, NBATeamStat } from './services/nbaData';
 import './nba.css';
 
 type Props = {
@@ -24,9 +25,14 @@ type Props = {
   onSelectGame?: (id: string) => void;
 };
 type Resource<T> = { key: string; data: T | null; loading: boolean; error: string };
+const summarySnapshots = {
+  read: (key: string) => readRenderSnapshot('nbaSummary', key),
+  save: (key: string, data: NBASummary) => saveRenderSnapshot('nbaSummary', key, data),
+};
 
-function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0) {
-  const [state, setState] = useState<Resource<T>>({ key, data: null, loading: !!load, error: '' });
+function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0, snapshots?: { read: (key: string) => T | null; save: (key: string, data: T) => void }) {
+  const saved = useMemo(() => snapshots?.read(key) ?? null, [key, snapshots]);
+  const [state, setState] = useState<Resource<T>>(() => ({ key, data: saved, loading: !!load, error: '' }));
   const [revision, setRevision] = useState(0);
   const retry = useCallback(() => setRevision((value) => value + 1), []);
   useEffect(() => {
@@ -37,12 +43,15 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
       request?.abort();
       const controller = new AbortController();
       request = controller;
-      setState((previous) => ({ key, data: previous.key === key ? previous.data : null, loading: true, error: '' }));
+      setState((previous) => ({ key, data: previous.key === key ? previous.data ?? saved : saved, loading: true, error: '' }));
       void load(controller.signal).then((data) => {
-        if (!disposed && !controller.signal.aborted) setState({ key, data, loading: false, error: '' });
+        if (!disposed && !controller.signal.aborted) {
+          snapshots?.save(key, data);
+          setState({ key, data, loading: false, error: '' });
+        }
       }, (error: unknown) => {
         if (!disposed && !controller.signal.aborted) setState((previous) => ({
-          key, data: previous.key === key ? previous.data : null, loading: false,
+          key, data: previous.key === key ? previous.data ?? saved : saved, loading: false,
           error: error instanceof Error ? error.message : 'Unable to load ESPN NBA data.',
         }));
       });
@@ -51,8 +60,8 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
     const timer = poll ? window.setInterval(() => { if (document.visibilityState !== 'hidden' && navigator.onLine) refresh(); }, poll) : undefined;
     const unsubscribe = subscribeForegroundRefresh(refresh);
     return () => { disposed = true; request?.abort(); if (timer !== undefined) window.clearInterval(timer); unsubscribe(); };
-  }, [key, load, poll, revision]);
-  return { ...(state.key === key ? state : { key, data: null, loading: !!load, error: '' }), retry };
+  }, [key, load, poll, revision, saved, snapshots]);
+  return { ...(state.key === key ? state : { key, data: saved, loading: !!load, error: '' }), retry };
 }
 
 function useDragScroll() {
@@ -123,7 +132,7 @@ function PlayerBox({ team, box, favorites, toggle, open }: { team: Team; box?: N
       if (!group.length) return null;
       const label = starter ? group.length === 5 ? 'Starting five' : 'Reported starters' : 'Bench';
       return <tbody key={String(starter)} aria-label={label}><tr className="nba-box-group"><th scope="col">{label}</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr>{group.map((player) => <tr key={player.id}>
-      <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" aria-label={`${player.name}, ${player.position}, player details`} onClick={() => open(player, team)}>{player.headshot && <OfflineImage src={player.headshot} alt="" />}<span><span className="nba-box-full-name">{player.name}</span><span className="nba-box-short-name" aria-hidden="true">{player.name.replace(/^(\S)\S*\s+/, '$1. ')}</span><small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
+      <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" aria-label={`${player.name}, ${player.position}, player details`} onClick={() => open(player, team)}><span><span className="nba-box-full-name">{player.name}</span><small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
       {player.didNotPlay ? <td className="nba-dnp" colSpan={boxColumns.length}>DNP{player.reason ? ` · ${player.reason}` : ''}</td> : boxColumns.map((column) => <td data-label={column.label} key={column.key}>{column.display ? player.display[column.display] ?? '—' : format(player.stats[column.key])}</td>)}
     </tr>)}</tbody>;
     })}</table></TableScroll></>}
@@ -243,7 +252,7 @@ export default function NBAExperience({ mode, games, status, query, favorites, o
   const loadLeague = useCallback((signal: AbortSignal) => fetchNBALeague(signal), []);
   const league = useNBAResource('nba-league', mode === 'stats' ? loadLeague : null);
   const loadSummary = useCallback((signal: AbortSignal) => fetchNBASummary(game?.eventId ?? '', signal), [game?.eventId]);
-  const summary = useNBAResource(`summary:${game?.eventId ?? ''}`, game && mode === 'wire' && showingDetails ? loadSummary : null, game?.status === 'LIVE' ? 15000 : 0);
+  const summary = useNBAResource(gameSnapshotKey('basketball/nba', game?.eventId ?? '', game?.seasonYear ?? 0), game && mode === 'wire' && showingDetails ? loadSummary : null, game?.status === 'LIVE' ? 15000 : 0, summarySnapshots);
   const currentSummary = summary.data;
   const season = game?.seasonYear ?? league.data?.season;
   const allTeams = league.data?.teams ?? (game ? [game.away, game.home] : []);

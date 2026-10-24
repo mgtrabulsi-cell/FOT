@@ -441,9 +441,11 @@ button { color: inherit; }
 .league-banner button[aria-pressed="true"] { background: #8198bd; color: #101a29; border-color: #9db9df; }
 .league-banner label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; }
 .league-banner :is(button,input):focus-visible { outline: 2px solid #9db9df; outline-offset: 3px; }
+.sport-week-placeholder { visibility: hidden; pointer-events: none; }
 @media (max-width: 760px) {
   .league-banner { flex-wrap: nowrap; gap: 6px; }
-  .league-banner button { flex: 0 0 auto; min-width: 44px; padding: 8px; font-size: 12px; }
+  .league-banner button { flex: 0 0 auto; min-width: 44px; padding: 6px 8px; font-size: 12px; }
+  .league-banner :is(button,input) { height: 34px; min-height: 34px; box-sizing: border-box; }
   .league-banner label { flex: 1 1 0; min-width: 0; margin-left: 0; }
   .league-date-label { display: none; }
   .league-banner input { width: 100%; min-width: 0; max-width: 160px; padding: 8px 4px; font-size: 12px; }
@@ -1564,7 +1566,7 @@ td:first-child { color: #828c84; }
   .wire-board-mark { width: 26px; height: 26px; }
   .wire-board-team-name b { font-size: 14px; }
   .wire-board-score { font-size: 19px; }
-  .wire-back-button { min-height: 44px; }
+  .wire-back-button { min-height: 34px; }
   .page-heading { align-items: stretch; flex-direction: column; gap: 14px; }
   .page-heading p { max-width: none; font-size: 13px; line-height: 1.5; }
   .date-line { flex-wrap: wrap; font-size: 9px; }
@@ -1641,7 +1643,7 @@ td:first-child { color: #828c84; }
   .wire-team-half .wire-badge-active { display: none; }
   .wire-subtabs-bar { flex-direction: column; align-items: stretch; gap: 10px; }
   .wire-subtabs { width: 100%; }
-  .wire-subtabs button { flex: 1; text-align: center; }
+  .wire-subtabs button { flex: 1; min-height: 34px; padding-block: 6px; text-align: center; }
   .wire-linescore-wrapper { padding-top: 8px; }
   .wire-linescore-table th, .wire-linescore-table td { padding-block: 5px; }
   .wire-linescore-table { table-layout: fixed; }
