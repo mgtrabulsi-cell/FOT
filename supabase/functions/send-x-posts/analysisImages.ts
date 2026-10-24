@@ -57,7 +57,7 @@ export function wrapAnalysis(text: string, size: number, maxWidth: number, fonts
   }
   return lines;
 }
-function svgText(text: string, y: number, size: number, fonts: Font[], color: string): string {
+function svgText(text: string, y: number, size: number, fonts: Font[], color: string, x = 64): string {
   let runs = '';
   let current = '';
   let index = 0;
@@ -68,10 +68,26 @@ function svgText(text: string, y: number, size: number, fonts: Font[], color: st
     current += character;
   }
   if (current) runs += `<tspan font-family="${index ? 'Noto Emoji' : 'Noto Sans'}">${xml(current)}</tspan>`;
-  return `<text x="64" y="${y}" font-size="${size}" fill="${color}" xml:space="preserve">${runs}</text>`;
+  return `<text x="${x}" y="${y}" font-size="${size}" fill="${color}" xml:space="preserve">${runs}</text>`;
+}
+type ImageLine = { text: string; result?: 'hit' | 'miss'; inset?: boolean };
+export function reviewImageLines(source: XPostSource, fonts: Font[]): ImageLine[] {
+  if (!source.reviews?.length) return [];
+  const lines: ImageLine[] = [];
+  for (const review of source.reviews) {
+    wrapAnalysis(review.text, 30, 1024, fonts).forEach((text, index) =>
+      lines.push({ text, inset: true, ...(index === 0 ? { result: review.result } : {}) }));
+    lines.push({ text: '' });
+  }
+  return lines;
+}
+export function reviewResultMark(result: 'hit' | 'miss', y: number): string {
+  const color = result === 'hit' ? '#38d986' : '#ff6474';
+  const path = result === 'hit' ? `M72 ${y - 12}l7 7 13-16` : `M73 ${y - 22}l17 17m0-17l-17 17`;
+  return `<circle cx="82" cy="${y - 12}" r="18" fill="${color}" fill-opacity=".14"/><path d="${path}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
 }
 export async function analysisImages(source: XPostSource): Promise<Array<{ png: Uint8Array; alt: string }>> {
-  if (!source.analysis.trim()) throw new Error('Cannot attach an empty analysis image.');
+  if (!source.analysis.trim() && !source.reviews?.length) throw new Error('Cannot attach an empty analysis image.');
   const { buffers, fonts, brandUri, brandWidth } = await loadAssets();
   const heading = wrapAnalysis(source.title, 42, 1072, fonts);
   if (heading.length > 3) throw new Error('Headline is too long for a readable analysis image.');
@@ -79,7 +95,10 @@ export async function analysisImages(source: XPostSource): Promise<Array<{ png: 
   const perPage = Math.floor((1390 - start) / 44);
   const picks = xPickLines(source);
   const content = picks.length ? `Admin picks · Opinion\n${picks.join('\n')}\n\nAnalysis\n${source.analysis}` : source.analysis;
-  const lines = wrapAnalysis(content, 30, 1072, fonts, perPage * 4);
+  const lines: ImageLine[] = [
+    ...reviewImageLines(source, fonts),
+    ...wrapAnalysis(content, 30, 1072, fonts, perPage * 4).map((text) => ({ text })),
+  ];
   const count = Math.ceil(lines.length / perPage);
   if (count > 4) throw new Error('Full analysis exceeds X’s four-image limit. Shorten the analysis or post manually; no tweet was sent.');
   const images = [];
@@ -92,7 +111,10 @@ export async function analysisImages(source: XPostSource): Promise<Array<{ png: 
       <text x="1136" y="76" text-anchor="end" font-family="Noto Sans" font-size="20" fill="#a7b7cd">ANALYSIS · ${page + 1}/${count}</text>
       <path d="M64 110H1136" stroke="#314159"/>
       ${heading.map((line, index) => svgText(line, 177 + index * 56, 42, fonts, '#f1f5f9')).join('')}
-      ${pageLines.map((line, index) => svgText(line, start + index * 44, 30, fonts, '#d7e2ef')).join('')}
+      ${pageLines.map((line, index) => {
+        const y = start + index * 44;
+        return `${line.result ? reviewResultMark(line.result, y) : ''}${svgText(line.text, y, 30, fonts, '#d7e2ef', line.inset ? 112 : 64)}`;
+      }).join('')}
       <path d="M64 ${height - 80}H1136" stroke="#314159"/>
       <text x="64" y="${height - 38}" font-family="Noto Sans" font-size="22" fill="#a7b7cd">gamewire.us · Admin analysis / Opinion</text></svg>`;
     const renderer = new Resvg(svg, { font: { fontBuffers: buffers, defaultFontFamily: 'Noto Sans' } });
@@ -101,7 +123,7 @@ export async function analysisImages(source: XPostSource): Promise<Array<{ png: 
       try {
         const png = rendered.asPng().slice();
         if (png.length > 5_000_000) throw new Error('Analysis PNG exceeds X’s image upload size limit.');
-        const description = `${source.title} — analysis ${page + 1}/${count}\n${pageLines.join('\n')}`;
+        const description = `${source.title} — analysis ${page + 1}/${count}\n${pageLines.map((line) => `${line.result ? line.result === 'hit' ? 'HIT: ' : 'MISS: ' : ''}${line.text}`).join('\n')}`;
         const alt = [...description].length <= 1000 ? description : `${[...description].slice(0, 940).join('')}… Full text is in the linked GameWire post.`;
         images.push({ png, alt });
       } finally { rendered.free(); }

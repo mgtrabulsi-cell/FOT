@@ -5,6 +5,7 @@ export type XCredentials = { apiKey: string; apiSecret: string; accessToken: str
 export type XPostSource = {
   title: string; subject: string; analysis: string; gameId: string;
   picks: ReturnType<typeof readAnglePicks>;
+  reviews?: ReturnType<typeof readAngleReviews>;
   graphicImage?: string;
 };
 
@@ -34,10 +35,8 @@ export function xSource(row: Record<string, unknown>, angle: boolean, id: string
   const reviews = row.review_picks === undefined ? [] : readAngleReviews(row.review_picks);
   return {
     title, subject: text('subject'), gameId: text('game_id'),
-    picks: anglePicks({ id, pick: text('pick'), picks }),
+    picks: anglePicks({ id, pick: text('pick'), picks }), reviews,
     analysis: [narrative, evidence.trim() ? `Evidence\n${evidence}` : '', counterpoint.trim() ? `Counterpoint\n${counterpoint}` : '',
-      reviews.length ? `Past picks - Review only (results when attached; not counted again)\n${reviews.map((pick) =>
-        `${angleSport(pick.game_id).label} - ${pick.result === 'hit' ? 'Hit' : 'Miss'} - ${pick.text}\n${pick.title} - ${pick.matchup} - ${pick.season}, Week ${pick.week}`).join('\n\n')}` : '',
     ].filter(Boolean).join('\n\n'),
   };
 }

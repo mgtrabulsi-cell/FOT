@@ -54,16 +54,15 @@ test('Source normalization includes all analysis sections, legacy picks and no i
   assert.deepEqual(xSource({ title: null, body: 'News body' }, false, 'id'), { title: 'GameWire update', subject: '', analysis: 'News body', gameId: '', picks: [] });
 });
 
-test('Review attachments go into labeled analysis images, not the new-pick caption', () => {
+test('Review attachments stay structured for image result marks, not the new-pick caption', () => {
   const review = { story_id: 'a8541111-1111-4111-8111-111111111121', pick_id: 'a8541111-1111-4111-8111-111111111131',
     text: 'Previous team ML', result: 'miss', category: 'straight', title: 'Previous pick',
     matchup: 'Away @ Home', game_id: 'NBA:123', season: 2025, week: 4 };
   const source = xSource({ title: 'Review', subject: '', game_id: 'NBA:123', narrative: 'What happened',
     evidence: '', counterpoint: '', pick: '', picks: [], review_picks: [review] }, true, 'id');
   assert.deepEqual(source.picks, []);
-  assert.match(source.analysis, /Past picks - Review only/);
-  assert.match(source.analysis, /NBA - Miss - Previous team ML/);
-  assert.match(source.analysis, /2025, Week 4/);
+  assert.deepEqual(source.reviews, [review]);
+  assert.equal(source.analysis, 'What happened');
   assert.equal(xImagePostText(source, 'https://gamewire.us'), 'Review\n\nhttps://gamewire.us');
 });
 

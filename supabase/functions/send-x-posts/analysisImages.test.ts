@@ -1,4 +1,4 @@
-import { analysisImages, wrapAnalysis } from './analysisImages.ts';
+import { analysisImages, reviewImageLines, reviewResultMark, wrapAnalysis } from './analysisImages.ts';
 import type { XPostSource } from '../_shared/xPosting.ts';
 
 function assert(value: unknown, message: string): void {
@@ -13,6 +13,24 @@ Deno.test('Wrapping preserves all text, paragraph boundaries and long unbroken w
     assert(lines.every(line => [...line].length <= 20), 'Every line fits');
     assert(lines.join('').replace(/\s/g, '') === text.replace(/\s/g, ''), 'Every non-whitespace character preserved');
   }
+});
+
+Deno.test('Settled picks render only the pick and a vector green check or red X, without archive explanations', async () => {
+  const reviews = (['hit', 'miss'] as const).map((result, index) => ({
+    story_id: 'a8541111-1111-4111-8111-111111111121', pick_id: `a8541111-1111-4111-8111-11111111113${index}`,
+    text: index ? 'Opponent under 20.5 points' : 'Tatum over 25.5 points', result, category: 'straight' as const,
+    title: 'Original story metadata', matchup: 'Away @ Home', game_id: 'NBA:123', season: 2027, week: 7,
+  }));
+  const lines = reviewImageLines({ ...source, reviews }, [mono]);
+  assert(lines.filter(line => line.result).map(line => line.result).join(',') === 'hit,miss', 'One result mark per pick, not per wrapped line');
+  assert(lines.every(line => line.text === '' || reviews.some(review => review.text.includes(line.text))), 'Only pick text, no explanation or original metadata');
+  const hit = reviewResultMark('hit', 200), miss = reviewResultMark('miss', 200);
+  assert(hit.includes('stroke="#38d986"') && miss.includes('stroke="#ff6474"'), 'Marks have explicit green/red colors');
+  assert(!hit.includes('<text') && !miss.includes('<text'), 'Marks are paths, never unreliable emoji glyphs');
+  const images = await analysisImages({ ...source, reviews });
+  const alt = images.map(image => image.alt).join('\n');
+  assert(alt.includes('HIT: Tatum over 25.5 points') && alt.includes('MISS: Opponent under 20.5 points'), 'Both picks and outcomes preserved');
+  assert(!alt.includes('Review only') && !alt.includes('Original story metadata') && !alt.includes('Away @ Home'), 'No past-pick explanation');
 });
 
 Deno.test('Analysis PNG pages are real bounded PNGs, support emoji, and never cut off overflowing analysis', async () => {
