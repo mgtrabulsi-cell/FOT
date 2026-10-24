@@ -24,6 +24,7 @@ type Props = {
   onRetry: () => void;
   onOpenStatHub?: (gameId: string) => void;
   initialGameId?: string | null;
+  openGameId?: string | null;
   onSelectGame?: (id: string) => void;
 };
 type Resource<T> = { key: string; data: T | null; loading: boolean; error: string };
@@ -251,10 +252,13 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
   </dialog>;
 }
 
-export default function NBAExperience({ mode, games, status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, onSelectGame }: Props) {
+export default function NBAExperience({ mode, games, status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, openGameId, onSelectGame }: Props) {
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
   const [selectedId, setSelectedId] = useState(initialGameId ?? '');
   const [openedGameId, setOpenedGameId] = useState<string | null>(null);
+  useEffect(() => {
+    if (openGameId) { setSelectedId(openGameId); setOpenedGameId(openGameId); }
+  }, [openGameId]);
   const boardRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<string | null>(null);
@@ -301,7 +305,7 @@ export default function NBAExperience({ mode, games, status, query, favorites, o
     {!game && <><ResourceMessage {...league} />{!!allTeams.length && <label className="nba-filter">NBA team <select value={team?.id ?? ''} onChange={(event) => { setTeamId(event.target.value); setProfile(null); }}>{allTeams.map((side) => <option value={side.id} key={side.id}>{side.name}</option>)}</select></label>}</>}
     {season !== undefined && (game || team) && <NBADirectory key={game?.id ?? team?.id} teams={game ? [game.away, game.home] : team ? [team] : []} season={season} query={query} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} live={game?.status === 'LIVE'} />}
     {!game && team && season !== undefined && <TeamSeason team={team} season={season} />}
-    <p className="nfl-data-note">Actual ESPN NBA rosters and game logs. Rosters are not confirmed starters. NBA favorites save to your Locker Room without NBA notifications.</p>
+    <p className="nfl-data-note">Actual ESPN NBA rosters and game logs. Rosters are not confirmed starters. Favorite NBA teams receive quarter updates when game notifications are enabled.</p>
     {profile && season !== undefined && <PlayerProfile key={`${profile.player.id}:${season}`} {...profile} season={season} favorites={favorites} toggle={onToggleFavorite} close={() => setProfile(null)} />}
   </div>;
   return <section className={`nba-experience nba-${mode}`} aria-label={mode === 'wire' ? 'NBA Wire' : 'NBA Stat Hub'}>

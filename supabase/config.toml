@@ -14,6 +14,9 @@ verify_jwt = false
 [functions.poll-live-games]
 verify_jwt = false
 
+[functions.poll-nba-games]
+verify_jwt = false
+
 [functions.send-livewire-push]
 verify_jwt = false
 

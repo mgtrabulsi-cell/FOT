@@ -307,7 +307,23 @@ NBA Stat Hub uses NFL's shared draggable game/stat tabs, compact game-wheel dime
 
 NBA team/player favorites use the same account-backed favorites collection (and local guest favorites) with sport-qualified keys, so matching NFL/NBA team IDs cannot collide. The Locker Room has the same NFL/NBA selector: NBA favorites collect matching ESPN news, completed-quarter/final scores, reported scoring plays, and actual player points/rebounds/assists. NBA activity is archived by selected NBA date; NFL history remains archived by NFL season/week. Apply [`supabase/nba-locker-room.sql`](supabase/nba-locker-room.sql) for private account-backed daily history; guest daily history stays local. The table uses per-account read isolation and cascades on account deletion. Rollback checks are in [`supabase/tests/nba-locker-room.sql`](supabase/tests/nba-locker-room.sql).
 
-**NBA favorite push notifications are intentionally disabled.** The existing server polling/notification dispatcher remains NFL-only; NBA in-app updates and saved favorites do not enroll anyone in NBA alerts. Editorial Angle/LIVEWIRE notifications are unchanged. NBA uses the same ESPN network/cache plumbing, not a Real app integration. Public feed access does not itself confer commercial redistribution rights.
+### NBA push notifications
+
+NBA alerts use the existing per-device **Game updates** (`notify_scores`) preference. An enabled device receives:
+
+- **Favorite NBA teams only:** cumulative scores at completed quarters, halftime, overtime boundaries and Final. Favoriting a player alone does not enable team quarter alerts. Missing quarter linescores are retried, not replaced with zeros; after missed polls, only the latest completed boundary is reported rather than a backlog.
+- **Any NBA player, regardless of favorites:** one alert at each crossed threshold of **35, 40, 50 and 60 points**. A poll that crosses multiple thresholds queues each one; corrections below an already-reported threshold do not trigger it again.
+- **35+ points at Final:** one reported **PTS / REB / AST** line per qualifying player, including exactly 35. Missing rebounds/assists delay this alert rather than inventing values.
+- **Halftime buzzer-beaters:** reported made two-/three-point field goals at exactly 0:00 of Q2 once halftime is confirmed. Free throws, misses, unconfirmed clocks and other quarter-ending shots do not qualify.
+- **Game-winning buzzer-beaters:** reported made two-/three-point field goals at exactly 0:00 of the final regulation/overtime period, only after Final confirms the shot turned a tie/deficit into the winning final score. Tying shots, shots that merely extend a lead, and plays inconsistent with the final score are excluded. ESPN must supply enough play/score data to confirm the event; unavailable plays are not guessed.
+
+Deploy `supabase/functions/poll-nba-games` and apply [`supabase/nba-notifications.sql`](supabase/nba-notifications.sql) after the favorites/push schema. A separate one-minute cron polls NBA today/yesterday in Eastern time, including late games and delayed final stats, without modifying NFL or editorial dispatchers. Alerts may lag the play by a polling interval plus ESPN/provider delays. First observations establish baselines: deployment/restarts do not send old thresholds or previously finished-game alerts. The NBA job needs the existing Supabase service-role, cron, VAPID and site URL secrets; no new browser credentials are required.
+
+The service-role-only NBA state/outbox tables atomically commit state with per-event/key/endpoint deduplication and compare-and-swap revisions. Claims lease pending deliveries, transient push failures retry with backoff for up to 30 minutes, and expired subscriptions are removed. Delivery rechecks device preferences and quarter-alert team favorites. Successful deliveries are recorded; stable notification tags reduce duplicate presentation if a provider accepted a send before an acknowledgement was lost. Seven-day-old state/delivery history is cleaned daily. Account/subscription deletion cascades queued deliveries. NBA notification taps open the exact NBA date/game box, including cold starts; they never use NFL event routing.
+
+Run `node --test scripts/nba-notifications.test.mjs scripts/notification-routing.test.mjs scripts/nba-board.test.mjs`, `npx deno test --no-lock --allow-env supabase/functions/poll-nba-games/index.test.ts`, and the rollback-only [`supabase/tests/nba-notifications.sql`](supabase/tests/nba-notifications.sql). The SQL test never claims/sends real production deliveries.
+
+NBA uses the same ESPN network/cache plumbing, not a Real app integration. Public feed access does not itself confer commercial redistribution rights.
 
 Run `node --test scripts/nba-*.test.mjs scripts/locker-room-scores.test.mjs scripts/foreground-refresh.test.mjs` and `npm run build` for focused validation.
 

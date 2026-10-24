@@ -121,6 +121,25 @@ test('NBA Wire starts as an NFL-style vertical board and requests full details o
   app.unmount();
 });
 
+test('NBA push deep link opens the requested box once the date schedule arrives without affecting normal board entry', async () => {
+  const app = setup();
+  app.props.games = [];
+  app.props.openGameId = game.id;
+  app.render();
+  await app.settle();
+  assert.equal(app.requests.length, 0);
+  app.props.games = [game];
+  app.render();
+  await app.settle();
+  assert.ok(app.nodes().some((node) => node.props?.className === 'nba-matchup'));
+  assert.ok(app.requests.includes(game.eventId));
+  app.nodes().find((node) => node.type === 'button' && Array.isArray(node.props.children) && node.props.children.includes('All games')).props.onClick();
+  app.render();
+  await app.settle();
+  assert.ok(app.nodes().some((node) => node.props?.className === 'wire-board'), 'All games remains usable after a notification open');
+  app.unmount();
+});
+
 test('Latest NBA play follows live summary polling, highlights scores and retains the last play on failure', async () => {
   const app = setup();
   let plays = [{ id: 'first', period: 4, clock: '1:00', text: 'Reported basket', scoring: true, teamId: away.id, awayScore: 100, homeScore: 99 }];

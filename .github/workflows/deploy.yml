@@ -39,6 +39,8 @@ jobs:
         run: node --test scripts/foreground-refresh.test.mjs scripts/site-opens*.test.mjs scripts/post-viewers.test.mjs scripts/notification-onboarding.test.mjs
       - name: Test NBA scores, stats and Locker Room
         run: node --test scripts/nba-*.test.mjs scripts/locker-room-scores.test.mjs
+      - name: Test NBA notification dispatcher
+        run: npx --yes deno test --no-lock --allow-env supabase/functions/poll-nba-games/index.test.ts
       - name: Test Start/Sit roster gateway
         run: npx --yes deno test --config supabase/functions/send-x-posts/deno.json supabase/functions/fantasy-roster/index.test.ts
       - name: Test X dispatcher

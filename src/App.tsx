@@ -50,7 +50,7 @@ import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { publicSupabaseConfig, supabase } from './services/supabaseClient';
 import { nflFieldPosition } from './services/nflSituation.ts';
-import { connectMedianNavigation, hashForView, viewFromHash } from './services/medianNavigation';
+import { connectMedianNavigation, hashForView, nbaNotificationFromHash, viewFromHash } from './services/medianNavigation';
 import type { AppView } from './services/medianNavigation';
 
 
@@ -452,7 +452,7 @@ function TheDen({ favorites, games, items, plays, playerHistory, week, season, h
         {visiblePlays.length ? <div className="den-play-list">{visiblePlays.map((play) => <article className="den-play-item" key={play.id}>
           <span className="den-play-avatar">{play.headshot ? <OfflineImage src={play.headshot} alt="" /> : play.teamLogo ? <OfflineImage src={play.teamLogo} alt="" /> : play.favoriteName.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span>
           <div className="den-play-copy"><header><b>{play.favoriteName}</b><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(play.timestamp))}</time><span className="den-feed-type">{league === 'NBA' ? 'SCORING PLAY' : play.isDefensive ? 'DEFENSE' : play.isTouchdown ? 'TOUCHDOWN' : 'BIG PLAY'}</span></header><strong>{play.playLabel}</strong><p>{play.teamAbbr} vs {play.opponentAbbr} · {play.description}</p></div>
-        </article>)}</div> : <div className="den-plays-empty"><b>{hasNFLFavorite ? (livePlayerGames ? 'No qualifying plays yet' : 'No qualifying plays for your favorites in this period yet') : `Favorite an ${league} team or player to follow their plays`}</b><p>{league === 'NBA' ? 'Tracks reported NBA scoring plays for favorite teams and players. Updates are saved by NBA date. NBA favorite notifications are not enabled.' : 'Tracks offensive big plays and scores, plus defensive turnovers and scoring plays. Updates are saved by NFL week.'}</p></div>}
+        </article>)}</div> : <div className="den-plays-empty"><b>{hasNFLFavorite ? (livePlayerGames ? 'No qualifying plays yet' : 'No qualifying plays for your favorites in this period yet') : `Favorite an ${league} team or player to follow their plays`}</b><p>{league === 'NBA' ? '        Tracks reported NBA scoring plays for favorite teams and players. Updates are saved by NBA date. Push quarter updates follow favorite NBA teams only; NBA highlights cover any player.' : 'Tracks offensive big plays and scores, plus defensive turnovers and scoring plays. Updates are saved by NFL week.'}</p></div>}
       </section> : <section className="den-timeline den-tab-panel" id="den-updates-panel" role="tabpanel" aria-labelledby="den-updates-tab"><div className="den-timeline-heading"><div><span className="eyebrow">YOUR LOCKER ROOM</span><h2>Latest updates</h2></div><span className="den-refresh">{league === 'NBA' ? 'Live game stats every 15 sec · Saved by date' : 'Scores check every 30 sec · Saved by week'}</span></div>{favorites.length === 0 && visibleItems.length === 0 ? <div className="den-empty-main"><span className="den-empty-mark"><Star size={20} /></span><b>Your favorites live here</b><p>Follow a team or player and their score updates and related headlines will collect in this feed.</p></div> : visibleItems.length === 0 ? <div className="den-empty-main"><span className="live-indicator"><i /></span><b>{loadingNews ? 'Checking your favorite news…' : 'You’re all caught up'}</b><p>Score changes and matching headlines collected for this period appear here. Saved updates remain available when you revisit the period.</p></div> : <div className="den-feed-list">{visibleItems.map((item) => <article className="den-feed-item" key={`${item.id}:${item.favoriteKey}`}>
         <div className="den-feed-marker">{item.kind === 'score' ? <Activity size={15} /> : <Star size={14} />}</div><div className="den-feed-content"><header><span>{item.favoriteName}</span><time>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(item.kind === 'news' ? item.published : item.timestamp))}</time><span className="den-feed-type">{item.kind === 'score' ? 'SCORE UPDATE' : 'NEWS'}</span></header>
           {item.kind === 'score' ? <div className="den-score-update"><div><TeamMark team={item.away} /><b>{item.away.abbr} {item.away.score}</b><TeamMark team={item.home} /><b>{item.home.abbr} {item.home.score}</b></div><p>{item.league} · {item.status === 'LIVE' ? `${item.period} ${item.clock}` : item.status === 'FINAL' ? 'Final' : 'Game update'}</p></div> : <div className="den-news-update">{item.image && <OfflineImage src={item.image} alt="" />}{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.headline}</a> : <b>{item.headline}</b>}{item.description && <p>{item.description}</p>}</div>}
@@ -571,8 +571,17 @@ function App() {
       if (window.location.hash.startsWith('#livewire')) {
         setView('LiveWire');
         window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else if (window.location.hash === '#wire' || window.location.hash.startsWith('#wire/game/')) {
+      } else if (window.location.hash === '#wire' || window.location.hash.startsWith('#wire/game/') || nbaNotificationFromHash(window.location.hash)) {
         setView('Wire');
+        const nbaLink = nbaNotificationFromHash(window.location.hash);
+        if (nbaLink) {
+          setSportLeague('NBA');
+          setNBADateOverride(true);
+          setSelectedNBADate(nbaLink.date);
+          setNBASelectedGameId(`NBA:${nbaLink.eventId}`);
+          setWireSearchQuery('');
+          setWirePlayerCard(null);
+        }
         const eventId = /^#wire\/game\/(\d+)$/.exec(window.location.hash)?.[1];
         if (eventId) {
           setSportLeague('NFL');
@@ -628,6 +637,16 @@ function App() {
   useSiteOpenTracking(authUser?.id, deletedAccount === null && !authLoading && (!!authUser || guestMode));
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;
+  const nbaNotification = nbaNotificationFromHash(notificationHash);
+  useEffect(() => {
+    if (!nbaNotification) return;
+    setView('Wire');
+    setSportLeague('NBA');
+    setNBADateOverride(true);
+    setSelectedNBADate(nbaNotification.date);
+    setNBASelectedGameId(`NBA:${nbaNotification.eventId}`);
+    setWireSearchQuery('');
+  }, [nbaNotification?.date, nbaNotification?.eventId]);
   const notificationEventRef = useRef(notificationEventId);
   notificationEventRef.current = notificationEventId;
   const [notificationGame, setNotificationGame] = useState<Game | null>(null);
@@ -1115,7 +1134,7 @@ function App() {
       setSelectedGameId(auto.id);
     }
     setWireBoardKey((value) => value + 1);
-    if (/^#wire\/game\//i.test(window.location.hash)) {
+    if (/^#wire\/(?:game|nba)\//i.test(window.location.hash)) {
       window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#wire`);
       setNotificationHash('#wire');
     }
@@ -1250,7 +1269,7 @@ function App() {
         {view === 'Profile' ? (
           authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Guest saved browsing is available in The Wire and Stat Hub.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' && sportLeague === 'NBA' ? (
-          <NBAExperience mode="wire" games={nbaGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
+          <NBAExperience mode="wire" games={nbaGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
         ) : view === 'Wire' ? (
           <>
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}

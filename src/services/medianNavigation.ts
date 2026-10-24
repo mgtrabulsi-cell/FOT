@@ -5,10 +5,18 @@ const routes: Record<AppView, string> = {
 };
 
 export function viewFromHash(hash: string): AppView | null {
-  if (hash === '#wire' || /^#wire\/game\/\d+$/.test(hash)) return 'Wire';
+  if (hash === '#wire' || /^#wire\/game\/\d+$/.test(hash) || nbaNotificationFromHash(hash)) return 'Wire';
   if (hash === '#livewire' || /^#livewire\/post\/[0-9a-f-]{36}$/i.test(hash)) return 'LiveWire';
   if (/^#analyst-desk\/story\/[0-9a-f-]{36}$/i.test(hash)) return 'Analyst';
   return (Object.keys(routes) as AppView[]).find((view) => routes[view] === hash) ?? null;
+}
+
+export function nbaNotificationFromHash(hash: string): { date: string; eventId: string } | null {
+  const match = /^#wire\/nba\/(\d{4}-\d{2}-\d{2})\/(\d+)$/.exec(hash);
+  if (!match) return null;
+  const date = new Date(`${match[1]}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== match[1]) return null;
+  return { date: match[1], eventId: match[2] };
 }
 
 export function hashForView(view: AppView, currentHash: string): string {

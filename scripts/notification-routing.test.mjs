@@ -13,6 +13,7 @@ const cases = [
   { tag: 'gamewire-401872980', url: '/#wire', hash: '#wire/game/401872980' },
   { tag: 'gamewire-test', url: `${scope}#wire`, hash: '#wire' },
   { tag: 'gamewire-update', url: `${scope}#wire/game/401872980`, hash: '#wire/game/401872980' },
+  { tag: 'gamewire-nba-401-points:p1:35', url: `${scope}#wire/nba/2026-10-23/401`, hash: '#wire/nba/2026-10-23/401' },
 ];
 
 for (const existing of [false, true]) {
