@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
 import { connectMedianNavigation, hashForView, viewFromHash } from '../src/services/medianNavigation.ts';
 
 test('section routes and nested notification links preserve their destination', () => {
@@ -12,6 +15,44 @@ test('section routes and nested notification links preserve their destination', 
     assert.equal(hashForView(view, hash), hash);
   }
   assert.equal(viewFromHash('#stat-hub-invalid'), null);
+});
+
+test('mobile navigation stays outside scaled app content and tracks visible viewport changes with cleanup', () => {
+  const source = ts.transpileModule(readFileSync(new URL('../src/PrimaryNavigation.tsx', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  const listeners = new Map(), viewportListeners = new Map(), effects = [], cleanups = [], styles = new Map();
+  const viewport = { height: 800, offsetTop: 0, addEventListener: (type, fn) => viewportListeners.set(type, fn), removeEventListener: (type) => viewportListeners.delete(type) };
+  const window = { innerHeight: 800, visualViewport: viewport,
+    matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }),
+    addEventListener: (type, fn) => { const set = listeners.get(type) ?? new Set(); set.add(fn); listeners.set(type, set); },
+    removeEventListener: (type, fn) => { listeners.get(type)?.delete(fn); },
+  };
+  const body = {};
+  const element = { style: { setProperty: (key, value) => styles.set(key, value), removeProperty: (key) => styles.delete(key) } };
+  const jsx = (type, props) => { if (props.ref) props.ref.current = element; return { type, props }; };
+  const context = vm.createContext({ exports: {}, window, document: { body }, require(name) {
+    if (name === 'react') return { useRef: () => ({ current: null }), useState: (fn) => [fn(), () => {}], useEffect: (fn) => effects.push(fn) };
+    if (name === 'react/jsx-runtime') return { jsx };
+    if (name === 'react-dom') return { createPortal: (node, target) => ({ node, target }) };
+    return {};
+  } });
+  vm.runInContext(source, context);
+  const portal = context.exports.default({ children: 'tabs' });
+  assert.equal(portal.target, body);
+  assert.match(portal.node.props.className, /primary-nav-mobile/);
+  effects.forEach((fn) => cleanups.push(fn()));
+  assert.equal(styles.get('--navigation-bottom'), '0px');
+  viewport.height = 650; viewportListeners.get('resize')();
+  assert.equal(styles.get('--navigation-bottom'), '150px');
+  viewport.offsetTop = 50; viewportListeners.get('scroll')();
+  assert.equal(styles.get('--navigation-bottom'), '100px');
+  viewport.height = 850; listeners.get('pageshow').forEach((fn) => fn());
+  assert.equal(styles.get('--navigation-bottom'), '0px', 'Overscroll never produces a negative bottom inset');
+  cleanups.forEach((fn) => fn());
+  assert.equal(viewportListeners.size, 0);
+  assert.ok([...listeners.values()].every((set) => set.size === 0));
+  assert.equal(styles.size, 0);
 });
 
 test('native tabs stay disabled on immediate and delayed bridge readiness; browsers are unchanged', () => {
