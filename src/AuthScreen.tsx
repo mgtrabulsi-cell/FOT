@@ -65,7 +65,7 @@ export default function AuthScreen({ onContinueGuest }: { onContinueGuest?: () =
         const { data, error: authError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { display_name: displayName.trim() } },
+          options: { data: { display_name: displayName.trim(), notification_onboarding_pending: true } },
         });
         if (authError) throw authError;
         if (!data.session) setNotice('Check your email to confirm your account, then sign in.');

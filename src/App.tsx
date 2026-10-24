@@ -21,6 +21,7 @@ import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
 import { useSiteOpenTracking } from './useSiteOpenTracking';
+import NotificationOnboarding from './NotificationOnboarding';
 import type { DenItem, DenNewsFeedItem, DenPlayItem, DenScoreItem, PlayerHistory } from './useLockerRoomHistory';
 import AuthScreen, { ResetPasswordScreen } from './AuthScreen';
 import SplashScreen from './SplashScreen';
@@ -1120,6 +1121,7 @@ function App() {
   return (
     <div className="app-shell">
       {online && showSplash && <SplashScreen />}
+      {authUser && !authLoading && !showSplash && online && <NotificationOnboarding key={authUser.id} user={authUser} />}
       <header className="topbar">
         <a className="brand" href="#wire" onClick={openWireTab}>
           <OfflineImage className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" />
