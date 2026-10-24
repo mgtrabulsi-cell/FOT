@@ -4,7 +4,53 @@ import { readFileSync } from 'node:fs';
 import { pendingAnglesFirst } from '../src/services/theAngle.ts';
 import { angleReviewKey, readAngleReviews, settledAngleReviews } from '../src/services/angleReviews.ts';
 import { readLivewirePosts } from '../src/services/livewirePosts.ts';
+import { angleMediaAccept, angleMediaError, isPostVideo, postMediaExtensions } from '../src/services/postMedia.ts';
+import ts from 'typescript';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleThemes, angleVisibleInWeek, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
+
+test('Angle media accepts supported photos/videos with exact size limits and rejects empty/unsupported files', () => {
+  for (const type of ['video/mp4', 'video/webm', 'video/quicktime']) {
+    assert.ok(angleMediaAccept.includes(type));
+    assert.equal(angleMediaError({ type, size: 50 * 1024 * 1024 }), '');
+    assert.match(angleMediaError({ type, size: 50 * 1024 * 1024 + 1 }), /50 MB/);
+    assert.ok(isPostVideo(`author/file.${postMediaExtensions[type]}`));
+  }
+  for (const type of ['image/jpeg', 'image/png', 'image/webp', 'image/gif']) {
+    assert.equal(angleMediaError({ type, size: 5 * 1024 * 1024 }), '');
+    assert.match(angleMediaError({ type, size: 5 * 1024 * 1024 + 1 }), /5 MB/);
+    assert.equal(isPostVideo(`author/file.${postMediaExtensions[type]}`), false);
+  }
+  assert.equal(isPostVideo('author/video.MP4'), true);
+  assert.match(angleMediaError({ type: 'video/mp4', size: 0 }), /empty/);
+  assert.match(angleMediaError({ type: 'text/html', size: 100 }), /Use JPG/);
+  assert.match(angleMediaError({ type: 'video/avi', size: 100 }), /Use JPG/);
+});
+
+test('Mixed published galleries render controlled inline videos and retain photo enlargement', async () => {
+  const transpile = (name) => ts.transpileModule(readFileSync(new URL(`../src/${name}.tsx`, import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText.replace(/from ['"]react['"]/g, `from '${import.meta.resolve('react')}'`)
+    .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`);
+  const videoCode = transpile('PostVideo');
+  const videoUrl = `data:text/javascript;base64,${Buffer.from(videoCode).toString('base64')}`;
+  const galleryCode = transpile('PostGallery')
+    .replace(/import OfflineImage from [^;]+;/, `const OfflineImage = (props) => _jsx('img', props);`)
+    .replace(/import PostPhotoViewer from [^;]+;/, 'const PostPhotoViewer = () => null;')
+    .replace(/from ['"]\.\/PostVideo['"]/g, `from '${videoUrl}'`)
+    .replace(/from ['"]\.\/services\/postMedia['"]/g, `from '${new URL('../src/services/postMedia.ts', import.meta.url)}'`)
+    .replace(/import \{ supabase \} from [^;]+;/, `const supabase = { storage: { from: () => ({ getPublicUrl: (path) => ({ data: { publicUrl: 'https://example.test/' + path } }) }) } };`);
+  const { default: Gallery } = await import(`data:text/javascript;base64,${Buffer.from(galleryCode).toString('base64')}`);
+  const html = renderToStaticMarkup(createElement(Gallery, { paths: ['user/a.mp4', 'user/b.png', 'user/c.mov', 'user/d.webm'], title: 'Analysis' }));
+  assert.equal((html.match(/<video /g) ?? []).length, 3);
+  assert.equal((html.match(/controls=""/g) ?? []).length, 3);
+  assert.equal((html.match(/playsinline=""/g) ?? []).length, 3);
+  assert.equal((html.match(/preload="metadata"/g) ?? []).length, 3);
+  assert.equal((html.match(/Open original video/g) ?? []).length, 3);
+  assert.match(html, /Enlarge photo 2 for Analysis/);
+  assert.doesNotMatch(html, /autoplay/);
+});
 
 const reviewOriginal = {
   id: 'a8541111-1111-4111-8111-111111111121', season: 2026, week: 7, game_id: 'NBA:123', matchup: 'Away @ Home',

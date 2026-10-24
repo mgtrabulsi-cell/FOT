@@ -149,6 +149,20 @@ test('Angle editors restore new stories, empty pick lines, review state, week an
   assert.equal(mobile.photos[0].file.type, 'image/jpeg');
 });
 
+test('Angle video drafts preserve original file bytes, MIME type, extension and existing attachment paths', async () => {
+  for (const [type, extension] of [['video/mp4', 'mp4'], ['video/webm', 'webm'], ['video/quicktime', 'mov']]) {
+    await saveAngleDraft('angle-video', 'angle', { form: angle, photos: [
+      { file: new Blob(['saved video bytes'], { type }) }, { path: 'author/existing.mp4' },
+    ] });
+    const restored = await loadAngleDraft('angle-video', 'angle');
+    assert.ok(restored.photos[0].file instanceof File);
+    assert.equal(restored.photos[0].file.type, type);
+    assert.equal(await restored.photos[0].file.text(), 'saved video bytes');
+    assert.ok(restored.photos[0].file.name.endsWith(`.${extension}`));
+    assert.equal(restored.photos[1].path, 'author/existing.mp4');
+  }
+});
+
 test('Angle and Fantasy News drafts are isolated by section and account; edits retain their revision', async () => {
   const edited = { ...angle, id: 'server-story-id', revision: 4, reviewed: true, status: 'published' };
   await saveAngleDraft('angle-author', 'angle', { ...angleDraft, form: edited });

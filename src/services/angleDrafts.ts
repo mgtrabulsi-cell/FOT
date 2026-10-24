@@ -1,6 +1,7 @@
 import { createDraftStorage } from './draftStorage.ts';
 import { angleSection, readAngles } from './theAngle.ts';
 import type { Angle, AngleSection } from './theAngle.ts';
+import { postMediaExtensions } from './postMedia.ts';
 
 export type AngleDraft = { form: Angle; photos: Array<{ path?: string; file?: File }> };
 const storage = createDraftStorage('gamewire-angle-drafts');
@@ -29,7 +30,7 @@ export async function loadAngleDraft(userId: string, section: AngleSection): Pro
     if (file === undefined) return { path: photo.path as string };
     if (!(file instanceof Blob)) throw new Error('The saved storyline photo is invalid.');
     if (file instanceof File) return { file };
-    const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[file.type] ?? 'bin';
+    const extension = postMediaExtensions[file.type] ?? 'bin';
     return { file: new File([file], `restored-photo-${index + 1}.${extension}`, { type: file.type }) };
   });
   return { form: { ...form, revision, ...(picks ? { picks } : {}) }, photos };

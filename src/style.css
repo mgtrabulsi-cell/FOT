@@ -194,8 +194,11 @@ button { color: inherit; }
 .livewire-post .livewire-gallery > button, .angle-panel .livewire-gallery > button { display: block; justify-self: start; align-self: start; width: fit-content; max-width: 100%; padding: 0; border: 0; cursor: zoom-in; margin: 0; min-width: 0; min-height: 0; overflow: hidden; border-radius: 4px; background: transparent; }
 .livewire-gallery img { display: block; width: auto; height: auto; max-width: 100%; max-height: 480px; }
 .livewire-gallery-1 { grid-template-columns: minmax(0, 1fr); }
+.post-video { min-width: 0; max-width: 100%; align-self: start; }
+.post-video video { display: block; width: 100%; max-width: 100%; max-height: 480px; border-radius: 4px; background: #000; }
+.post-video a, .post-video p { font-size: 12px; overflow-wrap: anywhere; }
 .livewire-gallery-1 img { max-height: 480px; }
-.livewire-gallery-3 > button:first-child { grid-column: 1 / -1; }
+.livewire-gallery-3 > :first-child { grid-column: 1 / -1; }
 .livewire-photo-dialog { border: 0; border-radius: 10px; padding: 0; width: fit-content; max-width: calc(100vw - 24px); max-height: 92dvh; background: transparent; color: #edf2f8; }
 .livewire-photo-dialog::backdrop { background: rgb(0 0 0 / 80%); }
 .livewire-photo-dialog-content { position: relative; display: flex; }

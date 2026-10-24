@@ -12,6 +12,8 @@ import { useAnalystReadObserver } from './useAnalystReadObserver';
 import type { AnalystSeen } from './useAnalystReadObserver';
 import { observePostViews } from './services/livewireViews';
 import PostGallery, { postPhotoUrl } from './PostGallery';
+import PostVideo from './PostVideo';
+import { angleMediaAccept, angleMediaError, isPostVideo, isVideoFile, postMediaExtensions } from './services/postMedia';
 import OfflineImage from './OfflineImage';
 import AnglePicks from './AnglePicks';
 import AngleReviewPicker, { AngleReviewList } from './AngleReviewPicks';
@@ -266,13 +268,14 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     const uploaded: string[] = [];
     let persisted = false;
     try {
-      if (!user) throw new Error('Sign in to upload storyline photos.');
+      if (!user) throw new Error('Sign in to upload storyline attachments.');
       const paths: string[] = [];
       for (const photo of photos) {
         if (photo.path) { paths.push(photo.path); continue; }
-        if (!photo.file) throw new Error('Photo file is missing. Select it again.');
-        const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[photo.file.type];
-        if (!extension || !photo.file.size || photo.file.size > 5 * 1024 * 1024) throw new Error('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.');
+        if (!photo.file) throw new Error('Attachment file is missing. Select it again.');
+        const validation = angleMediaError(photo.file);
+        if (validation) throw new Error(validation);
+        const extension = postMediaExtensions[photo.file.type];
         const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
         const upload = await supabase.storage.from('livewire-photos').upload(path, photo.file, { contentType: photo.file.type, upsert: false });
         if (upload.error) throw upload.error;
@@ -307,7 +310,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       let message = errorMessage(cause);
       if (!persisted && uploaded.length) {
         const cleanup = await supabase.storage.from('livewire-photos').remove(uploaded);
-        if (cleanup.error) message += ` Unused photo cleanup failed: ${cleanup.error.message}`;
+        if (cleanup.error) message += ` Unused attachment cleanup failed: ${cleanup.error.message}`;
       }
       setActionError(message);
     }
@@ -452,26 +455,25 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           <p>Straights and parlays have separate records. Sprinkles are shown but excluded from records. Enter each parlay as one pick, not one pick per leg.</p>
         </div>
         <AngleReviewPicker picks={form.review_picks ?? []} storyId={form.id} onChange={(picks) => change('review_picks', picks)} />
-        <label htmlFor={`angle-${section}-photos`}>Photos (optional, up to four)</label>
-        <input id={`angle-${section}-photos`} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={photos.length >= 4} onChange={(event) => {
+        <label htmlFor={`angle-${section}-photos`}>Photos and videos (optional, up to four total)</label>
+        <input id={`angle-${section}-photos`} type="file" accept={angleMediaAccept} multiple disabled={photos.length >= 4} onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = '';
-          if (photos.length + files.length > 4) { setActionError('Attach at most four photos.'); return; }
-          if (files.some((file) => !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024)) {
-            setActionError('Use JPG, PNG, WebP, or GIF photos up to 5 MB each.'); return;
-          }
+          if (photos.length + files.length > 4) { setActionError('Attach at most four photos or videos total.'); return; }
+          const validation = files.map(angleMediaError).find(Boolean);
+          if (validation) { setActionError(validation); return; }
           setActionError(''); setDirty(true); change('reviewed', false);
           setPhotos((current) => [...current, ...files.map((file) => { const preview = URL.createObjectURL(file); previews.current.add(preview); return { file, preview }; })]);
         }} />
-        <small className="livewire-photo-help">JPG, PNG, WebP or GIF · 5 MB each · Photo URLs are public, even in drafts.</small>
-        {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}><OfflineImage src={photo.preview} alt={`Attachment preview ${index + 1}`} /><button type="button" onClick={() => {
+        <small className="livewire-photo-help">Photos: JPG, PNG, WebP or GIF · 5 MB each. Videos: MP4, WebM or MOV · 50 MB each. MP4 is recommended for compatibility. Uploaded attachment URLs are public, even in drafts. Videos stream online; selected files are kept in your local draft.</small>
+        {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}>{(photo.file ? isVideoFile(photo.file) : isPostVideo(photo.path ?? '')) ? <PostVideo src={photo.preview} label={`Video attachment preview ${index + 1}`} /> : <OfflineImage src={photo.preview} alt={`Attachment preview ${index + 1}`} />}<button type="button" onClick={() => {
           if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
           setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
-        }}>Remove photo {index + 1}</button></div>)}</div>}
+        }}>Remove attachment {index + 1}</button></div>)}</div>}
         <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
         <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button>
           <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? false} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
         </div>
-        <p>Requires a connected X account. Edits and republishing do not create another tweet.</p>
+        <p>Requires a connected X account. Edits and republishing do not create another tweet. Attached videos play on GameWire and LIVEWIRE; X keeps the existing headline, story link, and analysis-image format.</p>
       </fieldset>
     </form>}
     {draftError && <p className="feed-warning" role="alert">{draftError} <button disabled={busy} onClick={() => {
