@@ -8,7 +8,9 @@
 .nba-heading, .nba-team-heading, .nba-profile-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .nba-heading > div, .nba-team-heading > div, .nba-profile-header > div { flex: 1; min-width: 0; }
 .nba-heading h2 { margin-top: 5px; }
-.nba-detail-navigation { margin: 12px 0; }
+.nba-detail-navigation { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+.nba-detail-navigation > button { min-width: 0; }
+.nba-detail-navigation .nba-open-stats { flex: 0 1 auto; }
 .nba-detail-navigation button { display: inline-flex; align-items: center; gap: 6px; }
 .nba-detail-navigation button, .nba-experience button.nba-open-stats { border-color: #334863; background: #162335; color: #dbe4f2; font-family: var(--mono); }
 .nba-scroll { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; padding: 5px 3px 14px; cursor: grab; touch-action: pan-x pan-y; }

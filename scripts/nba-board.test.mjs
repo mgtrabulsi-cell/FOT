@@ -107,7 +107,7 @@ test('NBA Wire starts as an NFL-style vertical board and requests full details o
   app.nodes().find((node) => node.props?.className === 'nba-segments nba-team-toggle').props.children[1].props.onClick();
   app.render();
   assert.equal(app.nodes().find((node) => node.type?.name === 'PlayerBox').props.team.id, home.id);
-  app.nodes().find((node) => node.props?.className === 'nba-detail-navigation').props.children.props.onClick();
+  app.nodes().find((node) => node.props?.className === 'nba-detail-navigation').props.children[0].props.onClick();
   app.render(); await app.settle();
   assert.ok(board());
   assert.equal(app.requests.length, 1, 'Returning does not request a hidden matchup');
@@ -138,10 +138,26 @@ test('Latest NBA play follows live summary polling, highlights scores and retain
   poll.callback(); await app.settle();
   assert.equal(latest().props.play.id, 'second', 'Failed refresh does not clear the latest play');
   assert.ok(app.nodes().some((node) => node.type?.name === 'ResourceMessage' && node.props.error.includes('Feed temporarily unavailable')));
-  app.nodes().find((node) => node.props?.className === 'nba-detail-navigation').props.children.props.onClick();
+  app.nodes().find((node) => node.props?.className === 'nba-detail-navigation').props.children[0].props.onClick();
   app.render(); await app.settle();
   assert.equal(app.timers.size, 0, 'Hidden matchup stops live polling');
   assert.equal(latest(), undefined);
+  app.unmount();
+});
+
+test('NBA Stat Hub navigation sits beside All games above the scoreboard and opens the selected game', async () => {
+  const app = setup();
+  let opened;
+  app.props.onOpenStatHub = (id) => { opened = id; };
+  app.nodes().find((node) => node.props?.['data-game-id']).props.onClick();
+  app.render(); await app.settle();
+  const navigation = app.nodes().find((node) => node.props?.className === 'nba-detail-navigation');
+  const button = navigation.props.children[1];
+  assert.equal(button.props.className, 'nba-open-stats');
+  assert.equal(app.nodes().filter((node) => node.props?.className === 'nba-open-stats').length, 1);
+  assert.ok(app.nodes().indexOf(navigation) < app.nodes().findIndex((node) => node.props?.className === 'nba-matchup'));
+  button.props.onClick();
+  assert.equal(opened, game.id);
   app.unmount();
 });
 
