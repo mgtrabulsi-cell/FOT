@@ -65,6 +65,25 @@ test('Separate Straight and Parlay records exclude Sprinkles while type and spor
   }
 });
 
+test('CFB and UFC retain independent results and selectable record filters', () => {
+  const stories = ['CFB', 'UFC'].map((sport) => ({ ...rows[0], id: `${sport}-story`, game_id: `${sport}:0`,
+    title: `${sport} bet`, matchup: `${sport} matchup`, picks: [
+      { id: `${sport}-win`, text: `${sport} winning pick`, result: 'hit', category: 'straight' },
+      { id: `${sport}-loss`, text: `${sport} losing parlay`, result: 'miss', category: 'parlay' },
+    ] }));
+  for (const sport of ['CFB', 'UFC']) {
+    fixture(stories, sport);
+    const html = renderToStaticMarkup(createElement(Results, { user: null }));
+    const feed = html.slice(html.indexOf('id="results-picks-feed"'));
+    assert.equal((feed.match(/<article /g) ?? []).length, 2);
+    assert.match(feed, new RegExp(`${sport} winning pick`));
+    assert.match(feed, new RegExp(`${sport} losing parlay`));
+    assert.ok(!feed.includes(`${sport === 'CFB' ? 'UFC' : 'CFB'} matchup`));
+    assert.equal((html.match(/2 Wins/g) ?? []).length, 1);
+    assert.equal((html.match(/2 Losses/g) ?? []).length, 1);
+  }
+});
+
 test('Combo sport filter displays multi-sport parlays with their own sport label and record row', () => {
   const stories = [{ ...rows[0], game_id: 'COMBO:0', matchup: 'NBA + NFL + NHL',
     picks: [{ id: 'combo', text: 'Multi-sport parlay', result: 'hit', category: 'parlay' }] }, rows[0]];

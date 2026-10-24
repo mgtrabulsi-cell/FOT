@@ -414,7 +414,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           <optgroup label="NFL">{weeklyGames.map((game) => <option key={game.id} value={game.id}>{game.away.name} @ {game.home.name}</option>)}</optgroup>
           <optgroup label="Other sports">{angleSports.map((sport) => <option key={sport.key} value={angleSportGameId(sport.key)}>{sport.emoji} {sport.label}</option>)}</optgroup>
         </select></label>
-        {angleSport(form.game_id).key !== 'NFL' && <label>{angleSport(form.game_id).label} matchup<input type="text" maxLength={200} placeholder={angleSport(form.game_id).key === 'COMBO' ? 'e.g. NBA + NFL + NHL' : 'e.g. Lakers @ Celtics'} value={form.matchup} onChange={(event) => change('matchup', event.target.value)} /></label>}
+        {angleSport(form.game_id).key !== 'NFL' && <label>{angleSport(form.game_id).label} matchup<input type="text" maxLength={200} placeholder={angleSport(form.game_id).key === 'COMBO' ? 'e.g. NBA + NFL + NHL' : angleSport(form.game_id).key === 'UFC' ? 'e.g. Fighter vs. Fighter · UFC event' : angleSport(form.game_id).key === 'CFB' ? 'e.g. Alabama @ Georgia' : 'e.g. Lakers @ Celtics'} value={form.matchup} onChange={(event) => change('matchup', event.target.value)} /></label>}
         {!news && angleSport(form.game_id).key !== 'NFL' && <p>Visible across all weeks for 7 days after first publication, then archived in {form.season} Week {form.week}. Edits do not restart the 7 days.</p>}
         <p>{form.subject || form.matchup || angleSport(form.game_id).label} · {form.category} · {form.season} · Week {form.week}</p>
         <fieldset className="livewire-themes"><legend>Theme (choose one or more)</legend>

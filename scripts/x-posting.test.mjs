@@ -28,7 +28,7 @@ test('Image tweet keeps headline, subject, every emoji pick and the canonical li
   assert.ok(text.includes('🏀 Player 6+ assists\n🏀 ✅ Player 7+ assists\n🏀 ❌ Player 8+ assists'));
   assert.ok(text.endsWith(link));
   assert.ok(!text.includes(source.analysis));
-  for (const [gameId, emoji] of [['NFL:1','🏈'],['NHL:1','🏒'],['UCL:1','⚽'],['SOCCER:1','⚽']]) {
+  for (const [gameId, emoji] of [['NFL:1','🏈'],['NHL:1','🏒'],['UCL:1','⚽'],['SOCCER:1','⚽'],['CFB:0','🏈'],['UFC:0','🥊']]) {
     assert.ok(xImagePostText({ ...source, gameId }, link).includes(emoji));
   }
   assert.ok(!xImagePostText({ ...source, picks: [] }, link).includes('Admin picks'));

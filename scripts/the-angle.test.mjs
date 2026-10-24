@@ -132,7 +132,7 @@ test('Non-NFL Angle stories cross weeks for exactly 168 hours, then stay in thei
   const now = Date.parse('2026-11-04T12:00:00Z');
   const story = { season: 2026, week: 7, section: 'angle', status: 'published', game_id: 'NBA:0', published_at: new Date(now - 1000).toISOString() };
   const visible = (changes = {}, season = 2026, week = 8) => angleVisibleInWeek({ ...story, ...changes }, season, week, now);
-  for (const sport of ['NBA', 'NHL', 'UCL', 'SOCCER']) assert.equal(visible({ game_id: `${sport}:0` }), true);
+  for (const sport of ['NBA', 'NHL', 'UCL', 'SOCCER', 'CFB', 'UFC']) assert.equal(visible({ game_id: `${sport}:0` }), true);
   assert.equal(visible({}, 2025, 1), true, 'Includes other selected seasons');
   assert.equal(visible({ published_at: new Date(now).toISOString() }), true);
   assert.equal(visible({ published_at: new Date(now - 168 * 3600000 + 1).toISOString() }), true);
@@ -332,6 +332,8 @@ test('Angle sports map game IDs to labels and emoji, defaulting to NFL', () => {
   assert.equal(angleSport('SOCCER:0').label, 'Soccer');
   assert.equal(angleSport('UCL:0').key, 'UCL');
   assert.equal(angleSport(angleSportGameId('COMBO')).label, 'Combo');
+  assert.equal(angleSport(angleSportGameId('CFB')).label, 'CFB');
+  assert.equal(angleSport(angleSportGameId('UFC')).label, 'UFC');
   assert.equal(anglePublishError({ title: 'T', narrative: 'N', subject: '', evidence: '', counterpoint: '', source_url: '', source_label: '', reviewed: true, matchup: ' ' }), 'Add the matchup before saving.');
   assert.equal(angleWriteFields({ game_id: 'NBA:0', matchup: ' Lakers @ Celtics ', kind: 'team', subject: '', category: 'Other', title: 'T', narrative: 'N', evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true }, 'draft').matchup, 'Lakers @ Celtics');
 });
@@ -389,12 +391,14 @@ test('Sport records count individual published Hit and Missed picks across weeks
     { key: 'NHL', wins: 0, losses: 2 },
     { key: 'UCL', wins: 1, losses: 0 },
     { key: 'SOCCER', wins: 1, losses: 1 },
+    { key: 'CFB', wins: 0, losses: 0 },
+    { key: 'UFC', wins: 0, losses: 0 },
     { key: 'COMBO', wins: 0, losses: 0 },
   ]);
   assert.equal(rows[0].picks[0].result, 'hit');
   assert.deepEqual(angleSportRecords(rows), records);
   assert.ok(angleSportRecords([]).every((sport) => sport.wins === 0 && sport.losses === 0));
-  assert.deepEqual(angleSportRecords([]).map((sport) => sport.label), ['NFL', 'NBA', 'NHL', 'UCL', 'Soccer', 'Combo']);
+  assert.deepEqual(angleSportRecords([]).map((sport) => sport.label), ['NFL', 'NBA', 'NHL', 'UCL', 'Soccer', 'CFB', 'UFC', 'Combo']);
 });
 
 test('Regrading, resetting, removing and unpublishing picks recompute records without double counting', () => {
