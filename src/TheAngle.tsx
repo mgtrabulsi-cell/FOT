@@ -256,7 +256,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       kind: suggestion.playerName ? 'player' : 'team',
       subject: suggestion.playerName ?? suggestion.subject ?? `${suggestion.game.away.abbr} @ ${suggestion.game.home.abbr}`,
       evidence: suggestion.history?.evidence ?? '',
-      source_url: suggestion.article.url ?? '', source_label: suggestion.sourceLabel ?? 'ESPN', title: '' });
+      source_url: suggestion.article.url ?? '', source_label: suggestion.sourceLabel ?? 'News source', title: '' });
   }
   async function save(status: Angle['status']) {
     if (!form || !supabase || !admin || busy) return;
@@ -531,7 +531,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         return <section className="angle-lead-group" id="angle-selected-leads" aria-label={`${group} leads`} key={group}>
           <header><h4>{group}</h4><span>{leads.length} {leads.length === 1 ? 'LEAD' : 'LEADS'}</span></header>
           {!leads.length && <p>{scanning ? 'Checking available sources...' : 'No qualifying leads in the available coverage.'}</p>}
-          <div className="angle-suggestions">{leads.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small>{suggestion.history && <><p>{suggestion.article.description}</p><details><summary>Record, window, and game sources</summary><p>{suggestion.history.evidence}</p><ul>{suggestion.history.meetings.map((meeting) => <li key={meeting.url}><a href={meeting.url} target="_blank" rel="noopener noreferrer">{meeting.label}</a></li>)}</ul></details></>}<a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">Read {suggestion.sourceLabel ?? 'ESPN'} source</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
+          <div className="angle-suggestions">{leads.map((suggestion) => <article key={suggestion.key}><span>{suggestion.category} · Unverified lead</span><b>{suggestion.article.headline}</b><small>{suggestion.game.away.abbr} @ {suggestion.game.home.abbr} · {new Date(suggestion.article.published).toLocaleDateString()}</small>{suggestion.history && <><p>{suggestion.article.description}</p><details><summary>Record, window, and game sources</summary><p>{suggestion.history.evidence}</p><ul>{suggestion.history.meetings.map((meeting) => <li key={meeting.url}><a href={meeting.url} target="_blank" rel="noopener noreferrer">{meeting.label}</a></li>)}</ul></details></>}<a href={suggestion.article.url} target="_blank" rel="noopener noreferrer">{suggestion.sourceLabel ? `Read ${suggestion.sourceLabel} source` : 'Read source'}</a><button disabled={busy} onClick={() => reviewSuggestion(suggestion)}>Review this lead</button></article>)}</div>
         </section>;
       })}</>}
       <h4>Saved drafts ({drafts.length})</h4>

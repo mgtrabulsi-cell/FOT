@@ -1305,7 +1305,7 @@ function readNFLActiveRoster(value: unknown): NFLRosterSkillPlayer[] {
 
 export function readNFLActiveSkillRoster(value: unknown): NFLRosterSkillPlayer[] {
   const payload = asObject(value);
-  if (!Array.isArray(payload.athletes)) throw new Error('ESPN returned an invalid team roster.');
+  if (!Array.isArray(payload.athletes)) throw new Error('The data feed returned an invalid team roster.');
   return readNFLActiveRoster(value).filter((player) => nflSkillPositions.has(player.position));
 }
 

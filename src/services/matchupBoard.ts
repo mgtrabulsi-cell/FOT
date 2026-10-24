@@ -59,7 +59,7 @@ function object(value: unknown): Record<string, unknown> {
 export function readPlayerAverage(payload: unknown, position: MatchupPosition, game: Game) {
   const data = object(payload);
   if (!Array.isArray(data.names) || !Array.isArray(data.seasonTypes) || !data.events) {
-    throw new Error('ESPN returned an invalid player game log.');
+    throw new Error('The data feed returned an invalid player game log.');
   }
   const index = data.names.indexOf(matchupStats[position].key);
   if (index < 0) return { average: null, games: 0 };
@@ -118,7 +118,7 @@ export function readPPRActuals(payload: unknown, season: number, week: number): 
 function readPPRPoints(payload: unknown, season: number, week: number, statSourceId: 0 | 1): Map<string, number> {
   const players = object(payload).players;
   const result = new Map<string, number>();
-  if (!Array.isArray(players)) throw new Error('ESPN returned an invalid fantasy player feed.');
+  if (!Array.isArray(players)) throw new Error('The data feed returned invalid fantasy player data.');
   for (const entry of players) {
     const player = object(object(entry).player);
     if (!Array.isArray(player.stats)) continue;
@@ -146,11 +146,11 @@ export async function fetchPPRWeek(season: number, week: number, playerIds: read
       }),
     },
   });
-  if (!response.ok) throw new Error(`ESPN fantasy projections returned HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(`Fantasy projection data returned HTTP ${response.status}.`);
   const payload: unknown = await response.json();
   const scoring = object(object(object(payload).settings).scoringSettings).scoringItems;
   if (!Array.isArray(scoring) || !scoring.some((item) => object(item).statId === 53 && object(item).points === 1)) {
-    throw new Error('ESPN PPR scoring could not be verified.');
+    throw new Error('PPR scoring could not be verified.');
   }
   return { projections: readPPRProjections(payload, season, week), actuals: readPPRActuals(payload, season, week) };
 }

@@ -212,7 +212,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
         if (!draft) saveRenderSnapshot('fantasyPPR', snapshotKey, { projections: Object.fromEntries(data.projections), actuals: Object.fromEntries(data.actuals) });
       }
     }).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setProjectionError(`ESPN weekly PPR projections are unavailable. ${message(cause)}`);
+      if (!controller.signal.aborted) setProjectionError(`Weekly PPR projections are unavailable. ${message(cause)}`);
     });
     return () => controller.abort();
   }, [season, week, pickPlayerKey, refresh, publicRevision]);
@@ -316,7 +316,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
             })}><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{pick.headshot ? <OfflineImage src={pick.headshot} alt="" /> : pick.name.slice(0, 1)}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small><small className="matchup-breakdown-toggle">{expanded ? 'Hide breakdown' : admin ? 'Write / edit breakdown' : 'Read breakdown'} {expanded ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}</small></span></button>
             <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? averageLoading ? 'Loading...' : averageError ? 'Retrying game log' : 'No recorded games' : `last ${average.games} games`}</small></div>
               <div><b>{rank === null || rank === undefined ? '—' : `#${rank}`}</b><span>{position === 'QB' ? 'Pass' : position === 'RB' ? 'Rush' : 'Receiving'} defense rank</span><small>{opponent?.abbr ?? 'Unavailable'} · yards</small></div>
-              <div><b>{projection?.toFixed(1) ?? '—'}</b><span>Projected PPR</span><small>{projection === undefined ? 'Unavailable' : `ESPN · Week ${week}`}</small></div>
+              <div><b>{projection?.toFixed(1) ?? '—'}</b><span>Projected PPR</span><small>{projection === undefined ? 'Unavailable' : `Week ${week}`}</small></div>
               <div><b className={`favorable-matchup-actual${actualTone}`}>{actual?.toFixed(1) ?? '—'}</b><span>Actual PPR</span><small>{game?.status === 'UPCOMING' ? 'Not started' : actual === undefined ? 'Unavailable' : final ? 'Final' : 'Live'}</small></div></div>
             {admin && <div className="matchup-rank-actions">
               <button aria-label={`Move ${pick.name} up`} disabled={busy || index === 0} onClick={() => edit(moveMatchupPick(picks, pick.id, -1))}><ChevronUp size={16} /></button>
@@ -338,6 +338,6 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
       </section>;
     })}</div>}
     </div>
-    <p className="nfl-data-note">Averages use each player's regular-season game log before the selected matchup, with up to five recent games and the reported sample count shown. Preseason games are excluded; missing statistics are not treated as zero. Defense ranks are season-to-date yards ranks, not fantasy points allowed by position. ESPN projections and actual points use PPR scoring for the exact season and week; actual points are colored green above or red below the projection once the game is final. Unavailable projections are not estimated. Selections are editorial, not confirmed starters.</p>
+    <p className="nfl-data-note">Averages use each player's regular-season game log before the selected matchup, with up to five recent games and the reported sample count shown. Preseason games are excluded; missing statistics are not treated as zero. Defense ranks are season-to-date yards ranks, not fantasy points allowed by position. Projections and actual points use PPR scoring for the exact season and week; actual points are colored green above or red below the projection once the game is final. Unavailable projections are not estimated. Selections are editorial, not confirmed starters.</p>
   </section>;
 }

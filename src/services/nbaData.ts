@@ -84,7 +84,7 @@ function readPlayer(value: unknown, teamId: string): NBAPlayer | null {
 }
 export function parseNBARoster(value: unknown, teamId: string): NBAPlayer[] {
   const data = obj(value);
-  if (!Array.isArray(data.athletes)) throw new Error('ESPN NBA roster is unavailable or malformed.');
+  if (!Array.isArray(data.athletes)) throw new Error('NBA roster data is unavailable or malformed.');
   const players = data.athletes.flatMap((entry) => {
     const group = obj(entry);
     return Array.isArray(group.items) ? group.items : [entry];
@@ -94,7 +94,7 @@ export function parseNBARoster(value: unknown, teamId: string): NBAPlayer[] {
 export function parseNBATeams(value: unknown): Team[] {
   const sports = list(obj(value).sports);
   const entries = list(obj(list(obj(sports[0]).leagues)[0]).teams);
-  if (!Array.isArray(obj(list(obj(sports[0]).leagues)[0]).teams)) throw new Error('ESPN NBA teams are unavailable or malformed.');
+  if (!Array.isArray(obj(list(obj(sports[0]).leagues)[0]).teams)) throw new Error('NBA team data is unavailable or malformed.');
   return entries.flatMap((entry): Team[] => {
     const team = obj(obj(entry).team);
     if (!str(team.id) || !str(team.displayName)) return [];
@@ -134,7 +134,7 @@ export function parseNBAPlays(value: unknown): NBAPlay[] {
 }
 export function parseNBASummary(value: unknown, eventId: string): NBASummary {
   const data = obj(value);
-  if (!isObject(data.header) && !isObject(data.boxscore)) throw new Error('ESPN NBA game details are unavailable or malformed.');
+  if (!isObject(data.header) && !isObject(data.boxscore)) throw new Error('NBA game details are unavailable or malformed.');
   const box = obj(data.boxscore);
   const teams = new Map<string, NBABoxTeam>();
   for (const raw of list(box.teams)) {
@@ -172,7 +172,7 @@ export function parseNBASummary(value: unknown, eventId: string): NBASummary {
 }
 export function parseNBATeamSeason(value: unknown): NBATeamStat[] {
   const data = obj(value), stats = obj(obj(data.results).stats);
-  if (!Array.isArray(stats.categories)) throw new Error('ESPN NBA team season statistics are unavailable or malformed.');
+  if (!Array.isArray(stats.categories)) throw new Error('NBA team season statistics are unavailable or malformed.');
   const wanted = new Set(['gamesPlayed', 'avgPoints', 'avgRebounds', 'avgAssists', 'avgSteals', 'avgBlocks', 'avgTurnovers', 'fieldGoalPct', 'threePointFieldGoalPct', 'freeThrowPct']);
   return list(stats.categories).flatMap((category) => list(obj(category).stats)).flatMap((entry): NBATeamStat[] => {
     const stat = obj(entry), name = str(stat.name);
@@ -181,7 +181,7 @@ export function parseNBATeamSeason(value: unknown): NBATeamStat[] {
 }
 export function parseNBAPlayerSeason(value: unknown, season: number): Omit<NBAPlayerProfile, 'games'> {
   const data = obj(value);
-  if (!Array.isArray(data.categories)) throw new Error('ESPN NBA player season statistics are unavailable or malformed.');
+  if (!Array.isArray(data.categories)) throw new Error('NBA player season statistics are unavailable or malformed.');
   let totals: NBAStats = {}, averages: NBAStats = {}, gamesPlayed: number | undefined;
   for (const raw of data.categories) {
     const category = obj(raw);
@@ -228,7 +228,7 @@ export function parseNBAPlayerSeason(value: unknown, season: number): Omit<NBAPl
 }
 export function parseNBAPlayerGames(value: unknown): NBAPlayerGame[] {
   const data = obj(value);
-  if (!Array.isArray(data.seasonTypes) || !isObject(data.events)) throw new Error('ESPN NBA player game logs are unavailable or malformed.');
+  if (!Array.isArray(data.seasonTypes) || !isObject(data.events)) throw new Error('NBA player game logs are unavailable or malformed.');
   const events = data.events, result: NBAPlayerGame[] = [], seen = new Set<string>();
   for (const seasonType of data.seasonTypes) {
     for (const category of list(obj(seasonType).categories)) {
@@ -252,9 +252,9 @@ export function parseNBAPlayerGames(value: unknown): NBAPlayerGame[] {
 }
 async function get(url: string, signal?: AbortSignal): Promise<unknown> {
   const response = await fetch(url, { signal, cache: 'no-store' });
-  if (!response.ok) throw new Error(`ESPN NBA feed returned HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(`NBA data feed returned HTTP ${response.status}.`);
   const data: unknown = await response.json();
-  if (!isObject(data)) throw new Error('ESPN NBA returned a malformed response.');
+  if (!isObject(data)) throw new Error('NBA data feed returned a malformed response.');
   return data;
 }
 export async function fetchNBATeams(signal?: AbortSignal) { return parseNBATeams(await get(`${base}/teams?limit=100`, signal)); }
@@ -262,7 +262,7 @@ export async function fetchNBALeague(signal?: AbortSignal): Promise<{ teams: Tea
   const data = await get(`${base}/teams?limit=100`, signal);
   const league = obj(list(obj(list(obj(data).sports)[0]).leagues)[0]);
   const season = nbaNumber(obj(league.season).year) ?? nbaNumber(league.year);
-  if (season === undefined) throw new Error('ESPN NBA season is unavailable.');
+  if (season === undefined) throw new Error('NBA season data is unavailable.');
   return { teams: parseNBATeams(data), season };
 }
 export async function fetchNBARoster(teamId: string, season: number, signal?: AbortSignal) { return parseNBARoster(await get(`${base}/teams/${encodeURIComponent(teamId)}/roster?season=${season}`, signal), teamId); }

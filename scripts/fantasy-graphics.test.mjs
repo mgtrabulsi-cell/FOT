@@ -112,7 +112,7 @@ test('Incomplete, duplicate, wrong-position, unsafe image, and oversized graphic
   const oversized = complete(); oversized.slots[0].reason = 'x'.repeat(651);
   assert.throws(() => readFantasyGraphic(oversized), /650/);
   const noPhoto = complete(); noPhoto.slots[0].player.headshot = '';
-  assert.match(fantasyGraphicPublishError(noPhoto), /no ESPN headshot/);
+  assert.match(fantasyGraphicPublishError(noPhoto), /no headshot/);
   const noReason = complete(); noReason.slots[0].reason = '  ';
   assert.match(fantasyGraphicPublishError(noReason), /reasoning/);
   assert.throws(() => readFantasyGraphic({ ...complete(), slots: [] }), /layout/);

@@ -2,6 +2,8 @@
 
 A responsive NFL hub with live scoreboards, weekly matchups, player statistics, and a favorite-centered feed called Your Locker Room.
 
+Site interface copy uses provider-neutral data labels (including "Loading data...") rather than naming the feed provider. Feed URLs, source links, caching, and refresh behavior are unchanged.
+
 Scores refresh immediately when returning to a visible app/tab, restoring a page, or reconnecting; open game box scores and Locker Room plays also refresh on return rather than waiting for their polling timers. Web and native score/box-score requests explicitly asking for fresh data wait for the network read instead of returning a saved-first response. Saved data remains available on connection failures. Regular scoreboard polling remains every 30 seconds, with live box scores and favorite plays every 15 seconds. Closed or OS-suspended apps cannot guarantee background polling.
 
 NBA pregame comparisons, team season statistics, rosters, Stat Hub directories/scoring order, league browsing, and opened player profiles/game logs also save locally. Saved views render immediately while ESPN refreshes in the background and remain visible offline or after a failed refresh. The selected date's matchup rosters and team averages warm automatically without opening each game; successful team preloads and scoring averages are reused for five minutes to avoid repeated request bursts. First-time uncached data still requires ESPN, and missing pregame box-score values are never invented.

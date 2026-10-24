@@ -50,7 +50,7 @@ export function readFantasyGraphic(value: unknown): FantasyGraphic {
 export function fantasyGraphicPublishError(graphic: FantasyGraphic) {
   try { readFantasyGraphic(graphic); } catch (cause) { return cause instanceof Error ? cause.message : 'Invalid graphic.'; }
   if (graphic.slots.some((slot) => !slot.player || !slot.reason.trim())) return 'Select all four players and add reasoning for each before publishing or downloading.';
-  if (graphic.slots.some((slot) => !slot.player?.headshot)) return 'A selected player has no ESPN headshot. Choose a player with a photo before publishing or downloading.';
+  if (graphic.slots.some((slot) => !slot.player?.headshot)) return 'A selected player has no headshot. Choose a player with a photo before publishing or downloading.';
   return '';
 }
 export function readFantasyGraphicRows(value: unknown): FantasyGraphicRow[] {

@@ -58,7 +58,7 @@ export async function fetchBirthdaySuggestions(games: Game[], signal: AbortSigna
         id: `birthday:${player.id}:${nearby.date}`, favoriteKey: `player:${game.feedPath}:${player.id}`,
         favoriteName: player.name, favoriteType: 'player', published: `${nearby.date}T12:00:00Z`,
         headline: `${player.name} (${team}) · ${nearby.onGameDay ? 'Birthday on game day' : 'Birthday near game day'} · ${nearby.date}`,
-        description: 'Birth date matched by ESPN player ID in Wikidata. Verify the biography and current roster before publishing; a birthday is not a performance signal.',
+        description: 'Birth date matched by player ID in Wikidata. Verify the biography and current roster before publishing; a birthday is not a performance signal.',
         url: birthday.sourceUrl,
       },
     });

@@ -23,22 +23,22 @@ export function historyWindow(gameDate: string) {
 export function readHistoryYear(value: unknown, year: number): HistoryMeeting[] {
   const data = object(value);
   if (!Array.isArray(data.events) || !data.events.length || data.events.length >= 1000) {
-    throw new Error(`ESPN ${year} history is missing or may be truncated.`);
+    throw new Error(`${year} game history is missing or may be truncated.`);
   }
   return data.events.flatMap((raw) => {
     const event = object(raw);
     const type = object(event.season).type;
     if (type === 1) return [];
-    if (type !== 2 && type !== 3) throw new Error(`ESPN ${year} history has an unknown season type.`);
+    if (type !== 2 && type !== 3) throw new Error(`${year} game history has an unknown season type.`);
     const date = typeof event.date === 'string' ? event.date : '';
     if (!Number.isFinite(Date.parse(date)) || calendarYear(Date.parse(date)) !== year) {
-      throw new Error(`ESPN ${year} history returned an invalid or wrong-year date.`);
+      throw new Error(`${year} game history returned an invalid or wrong-year date.`);
     }
     const competitions = Array.isArray(event.competitions) ? event.competitions : [];
     const competition = object(competitions[0]);
     const status = object(object(competition.status ?? event.status).type);
     if (typeof status.completed !== 'boolean' || typeof status.state !== 'string') {
-      throw new Error(`ESPN ${year} history is missing game completion status.`);
+      throw new Error(`${year} game history is missing game completion status.`);
     }
     if (!status.completed || status.state !== 'post' || typeof status.name !== 'string' || !/^STATUS_FINAL(?:_|$)/.test(status.name)) return [];
     const entries = Array.isArray(competition.competitors) ? competition.competitors.map(object) : [];
@@ -57,7 +57,7 @@ export function readHistoryYear(value: unknown, year: number): HistoryMeeting[] 
     if (typeof event.id !== 'string' || !/^\d+$/.test(event.id) || typeof homeId !== 'string' || !/^\d+$/.test(homeId)
       || typeof awayId !== 'string' || !/^\d+$/.test(awayId) || homeId === awayId || entries.length !== 2
       || !Number.isInteger(homeScore) || homeScore < 0 || !Number.isInteger(awayScore) || awayScore < 0) {
-      throw new Error(`ESPN ${year} history has an invalid final score or team identity.`);
+      throw new Error(`${year} game history has an invalid final score or team identity.`);
     }
     return [{
       id: event.id, date, homeId, awayId, homeScore, awayScore,
@@ -74,7 +74,7 @@ export function matchupHistorySuggestions(game: Game, meetings: HistoryMeeting[]
     if (meeting.id === game.eventId || time < start || time >= end || time > asOf
       || ![meeting.homeId, meeting.awayId].includes(game.home.id) || ![meeting.homeId, meeting.awayId].includes(game.away.id)) continue;
     const previous = unique.get(meeting.id);
-    if (previous && JSON.stringify(previous) !== JSON.stringify(meeting)) throw new Error(`Conflicting scores or identities for ESPN game ${meeting.id}. Matchup leads were skipped.`);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(meeting)) throw new Error(`Conflicting scores or identities for game ${meeting.id}. Matchup leads were skipped.`);
     unique.set(meeting.id, meeting);
   }
   const history = [...unique.values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
@@ -94,7 +94,7 @@ export function matchupHistorySuggestions(game: Game, meetings: HistoryMeeting[]
     const evidence = `${context} Window: ${range}. Regular season + playoffs; preseason excluded. Wins / all meetings; ties are not wins.\n${links.map((link) => link.label).join('\n')}`;
     suggestions.push({
       key: `${game.id}:history:${team.id}:${key}`, game, category: 'Head-to-head history', subject: team.name,
-      sourceLabel: 'ESPN game history', history: { evidence, meetings: links },
+      sourceLabel: 'Game history', history: { evidence, meetings: links },
       article: {
         id: `history:${game.eventId}:${team.id}:${key}`, favoriteKey: `team:${game.feedPath}:${team.id}`,
         favoriteName: team.name, favoriteType: 'team', published: sample[0].date, headline, description: context, url: links[0].url,
@@ -143,7 +143,7 @@ async function fetchHistoryYear(year: number, signal: AbortSignal) {
   try {
     if (signal.aborted) throw new Error('Matchup history scan cancelled.');
     const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${year}&limit=1000`, { signal: request.signal, cache: 'no-store' });
-    if (!response.ok) throw new Error(`ESPN ${year} history returned HTTP ${response.status}.`);
+    if (!response.ok) throw new Error(`${year} game history returned HTTP ${response.status}.`);
     const meetings = readHistoryYear(await response.json(), year);
     if (!signal.aborted) {
       yearCache.delete(year);
@@ -173,7 +173,7 @@ export async function fetchMatchupHistorySuggestions(games: Game[], signal: Abor
     await Promise.all(ordered.slice(offset, offset + 3).map(async (year) => {
       try { loaded.set(year, await fetchHistoryYear(year, signal)); }
       catch (cause) {
-        if (!signal.aborted) errors.push(`ESPN ${year} history: ${cause instanceof Error ? cause.message : 'History unavailable.'} Matchups needing this year were skipped, not calculated from partial history.`);
+        if (!signal.aborted) errors.push(`${year} game history: ${cause instanceof Error ? cause.message : 'History unavailable.'} Matchups needing this year were skipped, not calculated from partial history.`);
       }
     }));
     if (signal.aborted) return { suggestions: [], errors: [] };

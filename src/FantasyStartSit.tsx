@@ -283,7 +283,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
           change({ ...emptyFantasyGraphic(), kind: activeForm.kind, position }, ['', '', '', '']);
         }}>{graphicPositions.map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
       </fieldset>
-      <p>Search ESPN active skill-player rosters. Matchups come from the selected week's schedule; unavailable opponents show TBD, not an invented matchup. Verify injuries, opponents, and claims before publishing.</p>
+      <p>Search active skill-player rosters. Matchups come from the selected week's schedule; unavailable opponents show TBD, not an invented matchup. Verify injuries, opponents, and claims before publishing.</p>
       {rosterLoading && <p role="status">Loading player search...</p>}
       {rosterError && <p className="feed-warning" role="alert">{rosterError} <button type="button" onClick={() => setRosterRetry((value) => value + 1)}>Retry player search</button></p>}
       <fieldset disabled={busy} className="fantasy-graphic-slots">

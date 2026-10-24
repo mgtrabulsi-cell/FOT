@@ -185,7 +185,7 @@ export function readPlayerBirthdays(value: unknown, reportConflict?: (message: s
     unique.set(row.playerId, row);
   });
   if (ambiguous.size) {
-    const message = `Conflicting birthday identities or dates for ${ambiguous.size} player${ambiguous.size === 1 ? '' : 's'} (ESPN IDs: ${[...ambiguous].join(', ')}). Those players were skipped; verify their biographies manually.`;
+    const message = `Conflicting birthday identities or dates for ${ambiguous.size} player${ambiguous.size === 1 ? '' : 's'} (player IDs: ${[...ambiguous].join(', ')}). Those players were skipped; verify their biographies manually.`;
     if (!reportConflict) throw new Error(message);
     reportConflict(message);
   }

@@ -459,7 +459,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
       saveRenderSnapshot('teamRanks', `${feedPath}:${seasonYear}`, data);
       setLoadedRanks(data); setRanksLoading(false);
       if (data.teams.some((team) => teamComparisonMetrics.some(({ key }) => team.ranks[key] === null))) {
-        setRanksError('Some NFL ranks are unavailable because ESPN has incomplete league statistics. Retry to check for updated data.');
+        setRanksError('Some NFL ranks are unavailable because league statistics are incomplete. Retry to check for updated data.');
       }
     }).catch((cause: unknown) => {
       if (!active) return;
@@ -1371,7 +1371,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     <p className="nfl-empty-note" role="status">Loading team season averages…</p>
                   ) : isUpcoming && averagesFailed && !seasonAverages ? (
                     <div className="wire-comparison-error" role="alert">
-                      <p>Unable to load team season averages from ESPN.</p>
+                      <p>Unable to load team season averages.</p>
                       <button className="wire-stathub-link" onClick={() => setAveragesRetry((retry) => retry + 1)}>Retry team averages</button>
                     </div>
                   ) : comparisonStats.map((item, index) => (
@@ -1406,7 +1406,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                   )}
                 </div>
                 {isUpcoming && ranksError && <div className="wire-comparison-error" role="alert"><p>{ranksError}</p><button className="wire-stathub-link" onClick={() => setRanksRetry((value) => value + 1)}>Retry NFL ranks</button></div>}
-                {isUpcoming && <p className="nfl-data-note wire-comparison-note">Season-to-date regular-season averages from ESPN, not projections. NFL ranks compare all 32 teams: higher offense and lower allowed values rank better; T- denotes a tie. Missing values or incomplete league coverage leave ranks unavailable.</p>}
+                {isUpcoming && <p className="nfl-data-note wire-comparison-note">Season-to-date regular-season averages, not projections. NFL ranks compare all 32 teams: higher offense and lower allowed values rank better; T- denotes a tie. Missing values or incomplete league coverage leave ranks unavailable.</p>}
               </div>
             </div>
           ) : (
@@ -1422,7 +1422,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                 <div className="panel empty-games" role="status">Loading player season totals…</div>
               ) : isUpcoming && playerAveragesFailed && !currentPlayerAverages ? (
                 <div className="wire-comparison-error" role="alert">
-                  <p>Unable to load player season totals from ESPN.</p>
+                  <p>Unable to load player season totals.</p>
                   <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player totals</button>
                 </div>
               ) : categoriesToDisplay.length > 0 ? (
@@ -1514,7 +1514,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
           )}
 
           <p className="nfl-data-note">
-            {isUpcoming ? `${subTab === 'teamStats' ? 'Team averages' : playerStatMode === 'total' ? 'Player totals' : 'Player per-game averages'} are pulled from ESPN public regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics are pulled live from ESPN public game feeds. Updates reflect in real time.'}
+            {isUpcoming ? `${subTab === 'teamStats' ? 'Team averages' : playerStatMode === 'total' ? 'Player totals' : 'Player per-game averages'} use regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics update live from public game feeds.'}
           </p>
         </div>
       )}
