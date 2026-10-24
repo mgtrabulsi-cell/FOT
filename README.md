@@ -285,6 +285,8 @@ The score poller uses ESPN's undocumented public scoreboard feed, so alert timin
 
 ### NFL and NBA navigation
 
+NBA Stat Hub shows ESPN player headshots beside directory names and in the selected player's Recent Performance header when provided by the feed. Directory photos load lazily through the existing offline-image cache; players without a supplied image remain name-only. The Wire's compact NBA box-score rows remain name-only.
+
 NBA's date picker has previous/next arrows to browse one Eastern calendar day at a time in The Wire, Stat Hub, and Locker Room. The calendar and Today shortcut remain available. Arrows respect the picker's 2000-2200 date bounds and use the same saved/preloaded schedules as calendar selection.
 
 Final-game scoreboards mute the losing team's name and score in gray across the game list, matchup wheel, and open matchup. NFL team tabs and final-score totals use the same treatment. Winners remain highlighted by contrast; live games, upcoming games, and ties are not dimmed. Favorites and team-selection controls stay fully interactive.
