@@ -100,6 +100,26 @@
 .nba-chart-column small { color: var(--nba-muted); font-size: 10px; }
 .nba-chart-track { height: 120px; width: 27px; position: relative; background: #19273d; border-radius: 5px; }
 .nba-chart-track i { display: block; position: absolute; bottom: 0; width: 100%; background: #cc2633; border-radius: 5px; }
+.nba-stat-hub .nba-favorite, .nba-stat-dialog .nba-favorite { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 3px; border: 1px solid #3b4b63; border-radius: 50%; color: #9eadc4; background: #182438; cursor: pointer; }
+.nba-stat-hub .nba-favorite:is(.is-favorite,:hover), .nba-stat-dialog .nba-favorite:is(.is-favorite,:hover) { color: #fff; border-color: #cc2633; background: #a51c28; }
+.nba-stat-hub .nba-favorite:focus-visible, .nba-stat-dialog .nba-favorite:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }
+.nba-stat-hub .nfl-directory-team > header > .nba-favorite { margin-left: auto; }
+.nba-stat-hub .nfl-directory-player-main > span:last-child b { white-space: normal; overflow-wrap: anywhere; }
+.nba-stat-hub .nfl-directory-position-bar { flex-wrap: wrap; }
+.nba-stat-hub .sport-filter { flex-wrap: wrap; }
+.nba-stat-dialog { color: #e5eaf3; box-sizing: border-box; }
+.nba-stat-dialog::backdrop { background: #070d18cc; }
+.nba-stat-dialog .nfl-player-dialog-heading > div { flex: 1; }
+.nba-stat-dialog .nfl-player-game-chart { scrollbar-width: none; }
+.nba-stat-dialog .nfl-player-game-chart::-webkit-scrollbar { display: none; }
+.nba-season-details { margin-top: 15px; }
+.nba-season-details summary { cursor: pointer; font: 11px var(--mono); color: #bbc7d9; padding: 10px 0; }
+.nba-stat-dialog .nba-season-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.nba-stat-dialog .nba-season-grid > div { min-width: 0; padding: 8px; }
+.nba-stat-dialog .nba-season-grid dt { font-size: 10px; }
+.nba-stat-dialog .nba-season-grid dd { font-size: 16px; }
+.nba-stat-dialog .nba-segments button, .nba-stat-dialog select, .nba-stat-hub select { min-height: 34px; padding: 6px 10px; border: 1px solid #34445b; border-radius: 6px; background: #182438; color: #bbc7d9; cursor: pointer; }
+.nba-stat-dialog .nba-segments button[aria-pressed=true] { background: #344968; color: #fff; }
 @media (max-width: 760px) {
   .nba-wire .nba-game-wheel { display: none; }
   .nba-experience { padding: 10px 2px; }

@@ -12,7 +12,7 @@ const home = { id: '2', name: 'Boston Celtics', abbr: 'BOS', score: 99, record: 
 const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league: 'NBA', seasonYear: 2027,
   date: '2026-10-23T23:00:00Z', status: 'LIVE', period: 'Q4', clock: '1:00', away, home, venue: 'Arena' };
 
-function setup(mode = 'wire', snapshots = new Map()) {
+function setup(mode = 'wire', snapshots = new Map(), component) {
   let cursor = 0, changed = false, tree;
   const slots = [], effects = [], requests = [], timers = new Map();
   let timerId = 0;
@@ -47,9 +47,12 @@ function setup(mode = 'wire', snapshots = new Map()) {
     nbaPlayerFavorite: (player) => ({ ...player, key: `player:basketball/nba:${player.id}`, type: 'player' }),
     fetchNBASummary: async (id) => { requests.push(id); return { status: 'in', teams: [], plays: [] }; },
     fetchNBALeague: async () => ({ teams: [away, home], season: 2027 }),
+    fetchNBARoster: async () => [],
+    fetchNBAPlayerProfile: async () => ({ games: [], averages: {}, totals: {} }),
+    nbaStatOptions: [{ key: 'points', label: 'Points' }, { key: 'rebounds', label: 'Rebounds' }],
   };
   const context = vm.createContext({
-    exports: {}, AbortController, Error, navigator: { onLine: true }, document: { visibilityState: 'visible' },
+    exports: {}, AbortController, Error, HTMLElement: class {}, navigator: { onLine: true }, document: { visibilityState: 'visible' },
     window: { setInterval: (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; }, clearInterval: (id) => timers.delete(id) },
     require(name) {
       if (name === 'react') return react;
@@ -64,12 +67,12 @@ function setup(mode = 'wire', snapshots = new Map()) {
       return {};
     },
   });
-  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.LatestPlay = LatestPlay; exports.useDragScroll = useDragScroll;`, context);
+  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.LatestPlay = LatestPlay; exports.useDragScroll = useDragScroll; exports.NBADirectory = NBADirectory; exports.PlayerProfile = PlayerProfile;`, context);
   function render() {
     let count = 0;
     do {
       assert.ok(++count < 30, 'Render settles');
-      cursor = 0; changed = false; tree = context.exports.default(props);
+      cursor = 0; changed = false; tree = component ? context.exports[component.name](component.props) : context.exports.default(props);
       effects.splice(0).forEach((effect) => effect());
     } while (changed);
   }
@@ -277,8 +280,100 @@ test('A changed NBA date returns to the board; Stat Hub keeps its wheel and rost
   const stats = setup('stats');
   await stats.settle();
   assert.equal(stats.nodes().some((node) => node.props?.className === 'wire-board'), false);
-  assert.ok(stats.nodes().find((node) => node.props?.className === 'nba-game-wheel'));
-  assert.ok(stats.nodes().find((node) => node.type?.name === 'Roster'));
+  assert.ok(stats.nodes().find((node) => node.props?.className === 'nfl-game-wheel-tabs'));
+  assert.ok(stats.nodes().find((node) => node.type?.name === 'NBADirectory'));
   assert.equal(stats.requests.length, 0);
   stats.unmount();
+});
+
+test('NBA Stat Hub matches NFL wheel markup and shows both matchup teams without the Wire scoreboard', async () => {
+  const app = setup('stats');
+  await app.settle();
+  const wheel = app.nodes().find((node) => node.props?.className === 'nfl-game-wheel-tabs');
+  assert.equal(wheel.props.selected, game.id);
+  assert.equal(wheel.props.options[0].label, 'ATL @ BOS');
+  assert.equal(app.nodes().some((node) => node.props?.className === 'nba-matchup'), false);
+  const directory = app.nodes().find((node) => node.type?.name === 'NBADirectory');
+  assert.deepEqual(Array.from(directory.props.teams, (team) => team.id), [away.id, home.id]);
+  assert.equal(directory.props.live, true);
+  app.unmount();
+});
+
+test('NBA Stat Hub retains all-team browsing when the selected date has no games', async () => {
+  const app = setup('stats');
+  app.props.games = []; app.render(); await app.settle();
+  const select = app.nodes().find((node) => node.type === 'select');
+  assert.ok(select);
+  select.props.onChange({ target: { value: home.id } }); app.render();
+  const directory = app.nodes().find((node) => node.type?.name === 'NBADirectory');
+  assert.deepEqual(Array.from(directory.props.teams, (team) => team.id), [home.id]);
+  assert.equal(directory.props.season, 2027);
+  app.unmount();
+});
+
+test('NBA directory uses paired NFL team panels with actual positions, search, player and favorite actions', async () => {
+  let opened;
+  const props = { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open(player, team) { opened = [player.id, team.id]; }, live: true };
+  const app = setup('stats', new Map(), { name: 'NBADirectory', props });
+  app.data.fetchNBARoster = async (id) => [{ id: `player-${id}`, name: `Full Player ${id}`, position: id === away.id ? 'G' : 'C', jersey: '2' }];
+  // Retry the initial empty response using the resource's standard retry action.
+  app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.retry(); app.render(); await app.settle();
+  assert.equal(app.nodes().filter((node) => node.props?.className === 'nfl-directory-team').length, 2);
+  const player = app.nodes().find((node) => node.props?.className === 'nfl-directory-player-main');
+  player.props.onClick(); assert.deepEqual(opened, ['player-1', away.id]);
+  const filter = app.nodes().find((node) => node.props?.role === 'tab' && node.props.children === 'C');
+  filter.props.onClick(); app.render();
+  assert.equal(app.nodes().filter((node) => node.props?.className === 'nfl-directory-player').length, 1);
+  props.query = 'missing'; app.render();
+  assert.equal(app.nodes().filter((node) => node.props?.className === 'nfl-directory-player').length, 0);
+  assert.equal(app.nodes().filter((node) => node.type?.name === 'FavoriteButton').length, 2);
+  app.unmount();
+});
+
+test('NBA selected-player window leads with NFL stat tabs and per-game chart, keeping zeros and missing values distinct', async () => {
+  const props = { player: { id: '23', name: 'Actual Player', position: 'G', jersey: '23' }, team: away, season: 2027, favorites: [], toggle() {}, close() {} };
+  const app = setup('stats', new Map(), { name: 'PlayerProfile', props });
+  app.data.fetchNBAPlayerProfile = async () => ({ games: [
+    { id: '1', date: '2026-10-20', opponent: 'BOS', result: 'W', seasonType: 'Regular Season', stats: { points: 0, rebounds: 2 } },
+    { id: '2', date: '2026-10-21', opponent: 'NY', result: 'L', seasonType: 'Regular Season', stats: { rebounds: 3 } },
+  ], totals: {}, averages: {} });
+  app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.retry(); app.render(); await app.settle();
+  assert.ok(app.nodes().find((node) => node.props?.className === 'nfl-player-dialog nba-stat-dialog'));
+  assert.ok(app.nodes().find((node) => node.props?.className === 'nfl-player-stat-tabs'));
+  assert.deepEqual(app.nodes().filter((node) => node.props?.className === 'nfl-game-bar-value').map((node) => node.props.children), ['—', '0']);
+  app.nodes().find((node) => node.props?.className === 'nfl-player-stat-tabs').props.onSelect('rebounds'); app.render();
+  assert.deepEqual(app.nodes().filter((node) => node.props?.className === 'nfl-game-bar-value').map((node) => node.props.children), ['3', '2']);
+  assert.ok(app.nodes().find((node) => node.type === 'details'));
+  app.unmount();
+});
+
+test('Shared NFL/NBA tabs preserve scale-aware dragging, click selection and keyboard click behavior', () => {
+  const source = ts.transpileModule(readFileSync(new URL('../src/DraggableTabs.tsx', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  const jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, window: { setTimeout() {} }, require(name) {
+    if (name === 'react') return { useRef: (value) => ({ current: value }), useEffect() {} };
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name === './uiScale') return { getInterfaceScale: () => .5 };
+    return {};
+  } });
+  vm.runInContext(source, context);
+  const selected = [];
+  const tree = context.exports.default({ options: [{ key: 'nba', label: 'NY @ BOS' }], selected: 'nba', onSelect: (key) => selected.push(key) });
+  const strip = { scrollLeft: 0, classList: { add() {}, remove() {} }, setPointerCapture() {}, hasPointerCapture() { return false; } };
+  const event = { pointerType: 'mouse', button: 0, pointerId: 1, clientX: 100, currentTarget: strip,
+    target: { closest: () => ({ dataset: { tabKey: 'nba' } }) }, preventDefault() {} };
+  tree.props.onPointerDown(event);
+  tree.props.onPointerMove({ ...event, clientX: 50 });
+  assert.equal(strip.scrollLeft, 100, 'Dragging accounts for Stat Hub interface scale');
+  tree.props.onPointerUp(event);
+  let suppressed = false;
+  tree.props.onClickCapture({ preventDefault() { suppressed = true; }, stopPropagation() {} });
+  assert.equal(suppressed, true);
+  assert.deepEqual(selected, [], 'Dragging does not change the selected game');
+  tree.props.onPointerDown(event); tree.props.onPointerUp(event);
+  assert.deepEqual(selected, ['nba']);
+  tree.props.children[0].props.onClick();
+  assert.deepEqual(selected, ['nba', 'nba'], 'Keyboard-generated click retains selection');
 });

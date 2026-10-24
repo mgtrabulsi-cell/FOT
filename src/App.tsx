@@ -15,10 +15,10 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeFullTitle, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
+import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
 import { readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
-import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, PrimetimeType, Team } from './services/sportsData';
+import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
 import { useSiteOpenTracking } from './useSiteOpenTracking';
 import NotificationOnboarding from './NotificationOnboarding';
@@ -33,6 +33,7 @@ import { useAnalystUnread } from './useAnalystUnread';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import NBAExperience from './NBAExperience';
+import DraggableTabs from './DraggableTabs';
 import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, nbaCalendarDate } from './services/sportsData';
 import LiveWire from './LiveWire';
@@ -46,7 +47,6 @@ import { usePublicDataRevision } from './usePublicDataRevision';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { completedScoreUpdates } from './services/lockerRoomScores';
 import { publicSupabaseConfig, supabase } from './services/supabaseClient';
-import { getInterfaceScale } from './uiScale';
 import { nflFieldPosition } from './services/nflSituation.ts';
 import { connectMedianNavigation, hashForView, viewFromHash } from './services/medianNavigation';
 import type { AppView } from './services/medianNavigation';
@@ -164,93 +164,6 @@ function getNFLGamePlayerPools(game: Game | undefined, details: NFLGameDetails |
     });
     return { team, players };
   });
-}
-
-function DraggableTabs<T extends string>({
-  options,
-  ariaLabel,
-  className,
-  selected,
-  onSelect,
-}: {
-  options: Array<{ key: T; label: string; secondary?: string; primetime?: PrimetimeType | null }>;
-  ariaLabel: string;
-  className: string;
-  selected: T;
-  onSelect: (key: T) => void;
-}) {
-  const dragState = useRef({ pointerId: null as number | null, startX: 0, startScrollLeft: 0, moved: false, suppressClick: false, pressedKey: undefined as T | undefined });
-
-  const stripRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const strip = stripRef.current;
-    if (!strip) return undefined;
-    const onWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || strip.scrollWidth <= strip.clientWidth) return;
-      event.preventDefault();
-      strip.scrollLeft += event.deltaY;
-    };
-    strip.addEventListener('wheel', onWheel, { passive: false });
-    return () => strip.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== 'mouse' || event.button !== 0) return;
-    dragState.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startScrollLeft: event.currentTarget.scrollLeft,
-      moved: false,
-      suppressClick: false,
-      pressedKey: (event.target as HTMLElement).closest<HTMLButtonElement>('[data-tab-key]')?.dataset.tabKey as T | undefined,
-    };
-    event.currentTarget.classList.add('is-dragging');
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragState.current;
-    if (drag.pointerId !== event.pointerId) return;
-    const distance = event.clientX - drag.startX;
-    if (Math.abs(distance) > 4) drag.moved = true;
-    if (drag.moved) {
-      const strip = event.currentTarget;
-      const scale = getInterfaceScale(strip);
-      strip.scrollLeft = drag.startScrollLeft - distance / scale;
-      event.preventDefault();
-    }
-  };
-
-  const finishPointer = (event: React.PointerEvent<HTMLDivElement>, cancelled = false) => {
-    const drag = dragState.current;
-    if (drag.pointerId !== event.pointerId) return;
-    drag.suppressClick = drag.moved;
-    if (drag.moved) window.setTimeout(() => { dragState.current.suppressClick = false; }, 0);
-    if (!cancelled && !drag.moved && drag.pressedKey) onSelect(drag.pressedKey);
-    drag.pointerId = null;
-    drag.pressedKey = undefined;
-    event.currentTarget.classList.remove('is-dragging');
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  return <div
-    ref={stripRef}
-    className={className}
-    role="tablist"
-    aria-label={ariaLabel}
-    onPointerDown={onPointerDown}
-    onPointerMove={onPointerMove}
-    onPointerUp={(event) => finishPointer(event)}
-    onPointerCancel={(event) => finishPointer(event, true)}
-    onLostPointerCapture={(event) => { dragState.current.pointerId = null; event.currentTarget.classList.remove('is-dragging'); }}
-    onClickCapture={(event) => {
-      if (!dragState.current.suppressClick) return;
-      event.preventDefault();
-      event.stopPropagation();
-      dragState.current.suppressClick = false;
-    }}
-  >{options.map((option) => <button key={option.key} data-tab-key={option.key} role="tab" aria-selected={selected === option.key} className={selected === option.key ? 'active' : ''} onClick={() => onSelect(option.key)}><b>{option.label}</b>{option.secondary && <small>{option.secondary}{option.primetime && <span className={`wire-primetime-tag tag-${option.primetime.toLowerCase()}`} title={getPrimetimeFullTitle(option.primetime)}>{option.primetime}</span>}</small>}</button>)}</div>;
 }
 
 function NFLGameWheel({ games, selectedGame, onSelect }: { games: Game[]; selectedGame: Game; onSelect: (gameId: string) => void }) {
