@@ -47,13 +47,17 @@
 .nba-table tbody tr:last-child > * { border-bottom: 0; }
 .nba-box th:first-child { text-align: left; background: #131c2b; min-width: 232px; width: 232px; max-width: 232px; white-space: normal; }
 .nba-box-identity { display: flex; align-items: center; gap: 4px; width: 212px; }
+.nba-box-short-name { display: none; }
+.nba-experience .nba-box-scroll-hint { margin: 10px 0 0; color: #bbc7d9; font: 500 11px var(--mono); }
 .nba-box-identity .nba-player-link { flex: 1; font: 600 18px/1.2 var(--display); color: #fff; }
 .nba-box-identity .nba-player-link small { font: 500 12px var(--mono); color: #bbc7d9; }
 .nba-box-identity .nba-player-link img { width: 58px; height: 58px; }
 .nba-experience .nba-box-identity .nba-favorite { width: 44px; min-width: 44px; padding: 10px; }
 .nba-box tbody tr:hover > * { background: #172538; }
 .nba-box .nba-dnp { color: #bbc7d9; font-size: 12px; white-space: normal; }
-.nba-box tr.nba-box-group th { width: auto; max-width: none; padding: 10px 12px; background: #1c293d; color: #fff; text-align: left; font: 600 14px var(--display); letter-spacing: .7px; text-transform: uppercase; border-top: 2px solid #526b90; }
+.nba-box tr.nba-box-group th { padding: 14px 10px; background: #1c293d; color: #fff; font: 600 11px var(--mono); border-top: 2px solid #526b90; border-bottom: 1px solid #526b90; }
+.nba-box tr.nba-box-group th:first-child { text-align: left; font: 600 14px var(--display); letter-spacing: .7px; text-transform: uppercase; }
+.nba-box tbody + tbody .nba-box-group th { border-top-width: 10px; border-top-color: #0b111c; }
 .nba-segments.nba-team-toggle { flex-wrap: nowrap; gap: 12px; }
 .nba-team-toggle button { position: relative; overflow: hidden; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 18px; border: 2px solid #25364c; border-radius: 8px; background: color-mix(in srgb, var(--team-bar-color) 16%, #131c2b); color: #dce5f2; font-family: var(--display); font-size: 18px; }
 .nba-team-toggle button::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--team-bar-color); }
@@ -107,16 +111,20 @@
   .nba-profile-header { top: -14px; gap: 6px; }
   .nba-profile-header > img { width: 45px; height: 45px; }
   .nba-profile h2 { font-size: 17px; }
-  .nba-box, .nba-box tbody { display: block; }
-  .nba-box thead { display: none; }
-  .nba-box tbody tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--nba-line); padding: 8px 0; }
-  .nba-box tbody tr.nba-box-group { display: block; padding: 0; }
-  .nba-box th:first-child { display: block; grid-column: 1 / -1; width: auto; max-width: none; min-width: 0; border: 0; padding: 4px 10px 10px; }
-  .nba-box-identity { width: 100%; }
-  .nba-box-identity .nba-player-link { font-size: 20px; }
   .nba-table th, .nba-table td { padding: 10px 8px; }
-  .nba-box td { display: flex; min-width: 0; flex-direction: column; justify-content: center; padding: 8px 2px; border: 0; font-size: clamp(12px, 3.8vw, 15px); }
-  .nba-box td[data-label]::before { content: attr(data-label); color: #bbc7d9; font: 500 9px var(--mono); margin-bottom: 5px; }
-  .nba-box td.nba-dnp { grid-column: 1 / -1; padding-inline: 12px; }
+  .nba-box { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; }
+  .nba-box th, .nba-box td { min-width: 30px; padding: 6px 4px; font-size: 12px; }
+  .nba-box th:first-child { position: sticky; left: 0; z-index: 1; width: clamp(128px, 37vw, 160px); min-width: clamp(128px, 37vw, 160px); max-width: clamp(128px, 37vw, 160px); padding: 6px 4px; box-shadow: 2px 0 #2c3d55; }
+  .nba-box-identity { width: 100%; gap: 2px; }
+  .nba-experience .nba-box-identity .nba-player-link { gap: 3px; font: 600 12px/1.2 'DM Sans', 'Segoe UI', sans-serif; }
+  .nba-box-identity .nba-player-link > span { min-width: 0; }
+  .nba-box-identity .nba-player-link img { width: 24px; height: 28px; }
+  .nba-box-full-name { display: none; }
+  .nba-box-short-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nba-box-identity .nba-player-link small { margin-top: 3px; font-size: 9px; }
+  .nba-box td:is([data-label="FG"], [data-label="FT"], [data-label="3PT"]) { min-width: 40px; }
+  .nba-box tr.nba-box-group th { padding: 14px 4px; font-size: 10px; }
+  .nba-box tr.nba-box-group th:first-child { font-size: 13px; }
+  .nba-box td.nba-dnp { text-align: left; white-space: nowrap; padding-inline: 12px; }
   .nba-filter { flex-wrap: wrap; }
 }

@@ -162,7 +162,7 @@ test('NBA player box stably places all reported starters ahead of bench, retaini
   const nodes = descendants(tree);
   const rows = nodes.filter((node) => node.type === 'tr' && node.props?.className !== 'nba-box-group'
     && descendants(node).some((child) => child.props?.className === 'nba-player-link'));
-  const identities = rows.map((row) => descendants(row).find((node) => node.props?.className === 'nba-player-link').props.children[1].props.children[0]);
+  const identities = rows.map((row) => descendants(row).find((node) => node.props?.className === 'nba-box-full-name').props.children);
   assert.deepEqual(Array.from(identities), [...starters, bench, dnp].map((item) => item.name));
   assert.equal(players[0], bench, 'Sorting never mutates incoming feed data');
   const points = nodes.filter((node) => node.props?.['data-label'] === 'PTS');
@@ -171,7 +171,10 @@ test('NBA player box stably places all reported starters ahead of bench, retaini
   assert.equal(nodes.filter((node) => node.props?.className === 'nba-dnp').length, 1);
   assert.deepEqual(nodes.filter((node) => node.type === 'tbody').map((node) => node.props['aria-label']), ['Starting five', 'Bench']);
   const firstStats = descendants(rows[0]).filter((node) => node.props?.['data-label']).slice(0, 6).map((node) => node.props['data-label']);
-  assert.deepEqual(firstStats, ['MIN', 'PTS', 'FG', '3PT', 'REB', 'AST']);
+  assert.deepEqual(firstStats, ['MIN', 'PTS', 'REB', 'AST', 'FG', 'FT']);
+  const headers = nodes.filter((node) => node.props?.className === 'nba-box-group');
+  assert.ok(headers.every((header) => descendants(header).filter((node) => node.type === 'th').length === 13), 'Both sections repeat aligned stat headers');
+  assert.ok(rows.every((row) => descendants(row).filter((node) => node.type === 'td').length === (row === rows.at(-1) ? 1 : 12)), 'Each player has a single table row, with one spanning DNP cell when needed');
   const identity = descendants(rows[0]).find((node) => node.props?.className === 'nba-box-identity');
   assert.ok(identity.props.children.some((node) => node.type?.name === 'FavoriteButton'));
   app.unmount();

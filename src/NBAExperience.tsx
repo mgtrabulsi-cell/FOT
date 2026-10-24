@@ -110,22 +110,23 @@ function Comparison({ away, home, awayStats, homeStats }: { away: Team; home: Te
 }
 const boxColumns: Array<{ label: string; key: NBAPlayerStatKey; display?: string }> = [
   { label: 'MIN', key: 'minutes', display: 'MIN' }, { label: 'PTS', key: 'points' },
-  { label: 'FG', key: 'fieldGoalsMade', display: 'FG' }, { label: '3PT', key: 'threePointersMade', display: '3PT' },
-  { label: 'REB', key: 'rebounds' }, { label: 'AST', key: 'assists' }, { label: 'FT', key: 'freeThrowsMade', display: 'FT' }, { label: 'STL', key: 'steals' }, { label: 'BLK', key: 'blocks' },
+  { label: 'REB', key: 'rebounds' }, { label: 'AST', key: 'assists' },
+  { label: 'FG', key: 'fieldGoalsMade', display: 'FG' }, { label: 'FT', key: 'freeThrowsMade', display: 'FT' },
+  { label: '3PT', key: 'threePointersMade', display: '3PT' }, { label: 'STL', key: 'steals' }, { label: 'BLK', key: 'blocks' },
   { label: 'TO', key: 'turnovers' }, { label: 'PF', key: 'fouls' }, { label: '+/−', key: 'plusMinus', display: '+/-' },
 ];
 function PlayerBox({ team, box, favorites, toggle, open }: { team: Team; box?: NBABoxTeam; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void }) {
   const players = [...box?.players ?? []].sort((a, b) => Number(b.starter) - Number(a.starter));
   return <section><TeamHeading team={team} favorites={favorites} toggle={toggle} />
-    {!players.length ? <p>Player box scores are not available yet.</p> : <TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box"><thead><tr><th scope="col">Player</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead>{[true, false].map((starter) => {
+    {!players.length ? <p>Player box scores are not available yet.</p> : <><p className="nba-box-scroll-hint">Swipe or drag for more stats. Select a player for details.</p><TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box">{[true, false].map((starter) => {
       const group = players.filter((player) => player.starter === starter);
       if (!group.length) return null;
       const label = starter ? group.length === 5 ? 'Starting five' : 'Reported starters' : 'Bench';
-      return <tbody key={String(starter)} aria-label={label}><tr className="nba-box-group"><th colSpan={boxColumns.length + 1}>{label}</th></tr>{group.map((player) => <tr key={player.id}>
-      <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" onClick={() => open(player, team)}>{player.headshot && <OfflineImage src={player.headshot} alt="" />}<span>{player.name}<small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
+      return <tbody key={String(starter)} aria-label={label}><tr className="nba-box-group"><th scope="col">{label}</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr>{group.map((player) => <tr key={player.id}>
+      <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" aria-label={`${player.name}, ${player.position}, player details`} onClick={() => open(player, team)}>{player.headshot && <OfflineImage src={player.headshot} alt="" />}<span><span className="nba-box-full-name">{player.name}</span><span className="nba-box-short-name" aria-hidden="true">{player.name.replace(/^(\S)\S*\s+/, '$1. ')}</span><small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
       {player.didNotPlay ? <td className="nba-dnp" colSpan={boxColumns.length}>DNP{player.reason ? ` · ${player.reason}` : ''}</td> : boxColumns.map((column) => <td data-label={column.label} key={column.key}>{column.display ? player.display[column.display] ?? '—' : format(player.stats[column.key])}</td>)}
     </tr>)}</tbody>;
-    })}</table></TableScroll>}
+    })}</table></TableScroll></>}
   </section>;
 }
 function PlayByPlay({ plays, game, upcoming }: { plays: NBAPlay[]; game: Game; upcoming: boolean }) {
