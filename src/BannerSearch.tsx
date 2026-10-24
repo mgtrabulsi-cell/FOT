@@ -5,14 +5,15 @@ interface BannerSearchProps {
   kind: 'games' | 'players';
   query: string;
   onQueryChange: (query: string) => void;
+  league?: 'NFL' | 'NBA';
 }
 
-export default function BannerSearch({ kind, query, onQueryChange }: BannerSearchProps) {
+export default function BannerSearch({ kind, query, onQueryChange, league = 'NFL' }: BannerSearchProps) {
   const [text, setText] = useState('');
   const [expanded, setExpanded] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const games = kind === 'games';
-  const label = games ? 'Search NFL games' : 'Search NFL players or teams';
+  const label = games ? `Search ${league} games` : `Search ${league} players or teams`;
   const close = () => {
     detailsRef.current?.querySelector('input')?.blur();
     if (detailsRef.current) detailsRef.current.open = false;
@@ -58,7 +59,7 @@ export default function BannerSearch({ kind, query, onQueryChange }: BannerSearc
     {expanded && <div className="banner-search-panel">
       <label className="search-field">
         <input
-          aria-label={games ? 'Search NFL games by team' : label}
+          aria-label={games ? `Search ${league} games by team` : label}
           value={text}
           onChange={(event) => {
             setText(event.target.value);

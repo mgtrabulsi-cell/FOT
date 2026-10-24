@@ -3,6 +3,10 @@ import { supabase } from './services/supabaseClient';
 import { fetchNFLFavoritePlays, fetchNFLLivePlayerStats } from './services/sportsData';
 import type { DenNewsItem, FavoriteTarget, Game, NFLFavoritePlay, NFLPlayerStatKey, Team } from './services/sportsData';
 import { completedScoreUpdates } from './services/lockerRoomScores';
+import { fetchNBAFavoritePlays, fetchNBALivePlayerStats } from './services/nbaData';
+import type { NBAPlayerStatKey } from './services/nbaData';
+import { nbaCalendarDate } from './services/sportsData';
+import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
 export type DenScoreItem = {
   checkpoint?: boolean;
@@ -13,7 +17,7 @@ export type DenNewsFeedItem = DenNewsItem & { kind: 'news' };
 export type DenPlayItem = NFLFavoritePlay & { kind: 'play' };
 export type DenItem = DenNewsFeedItem | DenScoreItem;
 export type PlayerHistory = {
-  kind: 'player'; favorite: FavoriteTarget; game: Game; stats: Partial<Record<NFLPlayerStatKey, number>>;
+  kind: 'player'; favorite: FavoriteTarget; game: Game; stats: Partial<Record<NFLPlayerStatKey | NBAPlayerStatKey, number>>;
 };
 type HistoryPayload = DenItem | DenPlayItem | PlayerHistory;
 type HistoryEntry = { key: string; payload: HistoryPayload; observed_at: string };
@@ -75,11 +79,11 @@ function weekStart(timestamp: number): number {
   return local.getTime() + (local.getTime() - easternTime(local.getTime()));
 }
 
-export function useLockerRoomHistory({ userId, season, week, games, favorites, items, plays, enabled }: {
+export function useLockerRoomHistory({ userId, season, week, games, favorites, items, plays, enabled, archiveDate }: {
   userId: string | null; season: number | null; week: number | null; games: Game[]; favorites: FavoriteTarget[];
-  items: DenItem[]; plays: DenPlayItem[]; enabled: boolean;
+  items: DenItem[]; plays: DenPlayItem[]; enabled: boolean; archiveDate?: string;
 }) {
-  const scope = season && week ? `${userId ?? 'guest'}:${season}:${week}` : '';
+  const scope = archiveDate ? `${userId ?? 'guest'}:NBA:${archiveDate}` : season && week ? `${userId ?? 'guest'}:${season}:${week}` : '';
   const [state, setState] = useState<HistoryState>({ scope: '', entries: [], loaded: false, error: '' });
   const [fetchError, setFetchError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -99,23 +103,25 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
     observed.current.clear();
     setFetchError('');
     setState({ scope, entries: [], loaded: false, error: '' });
-    if (!scope || !season || !week) return;
+    if (!scope || (!archiveDate && (!season || !week))) return;
     const load = async () => {
       try {
         const entries: HistoryEntry[] = [];
         if (userId && supabase) {
           for (let offset = 0; ; offset += 500) {
-            const { data, error } = await supabase.from('locker_room_history').select('entry_key,payload,observed_at')
-              .eq('user_id', userId).eq('season', season).eq('week', week).order('entry_key').range(offset, offset + 499);
+            const request = archiveDate
+              ? supabase.from('locker_room_daily_history').select('entry_key,payload,observed_at').eq('user_id', userId).eq('activity_date', archiveDate)
+              : supabase.from('locker_room_history').select('entry_key,payload,observed_at').eq('user_id', userId).eq('season', season!).eq('week', week!);
+            const { data, error } = await request.order('entry_key').range(offset, offset + 499);
             if (error) throw error;
             const page = (data ?? []).map((row) => ({ key: row.entry_key, payload: row.payload, observed_at: row.observed_at }));
-            if (!page.every(isHistoryEntry)) throw new Error('Saved weekly history has an invalid format.');
+            if (!page.every(isHistoryEntry)) throw new Error('Saved history has an invalid format.');
             entries.push(...page);
             if (page.length < 500) break;
           }
         } else {
           const stored: unknown = JSON.parse(localStorage.getItem(`gamewire:locker:week:${scope}`) ?? '[]');
-          if (!Array.isArray(stored) || !stored.every(isHistoryEntry)) throw new Error('Saved weekly history has an invalid format.');
+          if (!Array.isArray(stored) || !stored.every(isHistoryEntry)) throw new Error('Saved history has an invalid format.');
           entries.push(...stored);
         }
         if (active) {
@@ -124,19 +130,23 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
           setState({ scope, entries: merged, loaded: true, error: '' });
         }
       } catch (error) {
-        console.error('Locker Room weekly history could not load', error);
-        if (active) setState({ scope, entries: [], loaded: false, error: 'Weekly history could not load. Check your connection and retry.' });
+        console.error('Locker Room history could not load', error);
+        if (active) setState({ scope, entries: [], loaded: false, error: 'Locker Room history could not load. Check your connection and retry.' });
       }
     };
     void load();
     return () => { active = false; };
-  }, [scope, userId, season, week, revision]);
+  }, [scope, userId, season, week, archiveDate, revision]);
 
   const loaded = state.scope === scope && state.loaded;
   const incomingKey = JSON.stringify({ items, plays });
   useEffect(() => {
     if (!loaded) return;
-    const incoming = activityForWeek([...context.current.items, ...context.current.plays], context.current.games);
+    const incoming = archiveDate
+      ? [...context.current.items, ...context.current.plays].filter((item) => item.kind === 'news'
+        ? Number.isFinite(Date.parse(item.published)) && nbaCalendarDate(new Date(item.published)) === archiveDate
+        : context.current.games.some((game) => item.kind === 'score' ? item.id.startsWith(`score:${game.id}:`) : item.id.startsWith(`${game.id}:`)))
+      : activityForWeek([...context.current.items, ...context.current.plays], context.current.games);
     const entries = incoming.flatMap((payload): HistoryEntry[] => {
       const key = `${payload.kind}:${payload.id}:${payload.favoriteKey}`;
       if (observed.current.has(key)) return [];
@@ -165,10 +175,13 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
         const entries: HistoryEntry[] = [];
         const results = await Promise.allSettled(relevant.map(async (game) => {
           const players = context.current.favorites.filter((favorite) => favorite.type === 'player' && favorite.feedPath === game.feedPath
-            && (favorite.teamId === game.away.id || favorite.teamId === game.home.id) && ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? ''));
+            && (favorite.teamId === game.away.id || favorite.teamId === game.home.id)
+            && (game.league === 'NBA' || ['QB', 'RB', 'WR', 'TE'].includes(favorite.position ?? '')));
           if (players.length) {
-            const result = await fetchNFLLivePlayerStats(game.feedPath, game.eventId,
-              players.flatMap((favorite) => favorite.teamId ? [{ id: favorite.id, teamId: favorite.teamId }] : []), controller.signal);
+            const targets = players.flatMap((favorite) => favorite.teamId ? [{ id: favorite.id, teamId: favorite.teamId }] : []);
+            const result = game.league === 'NBA'
+              ? await fetchNBALivePlayerStats(game.eventId, targets, controller.signal)
+              : await fetchNFLLivePlayerStats(game.feedPath, game.eventId, targets, controller.signal);
             players.forEach((favorite) => {
               const stats = result[favorite.id];
               if (!stats || !Object.keys(stats).length) return;
@@ -180,7 +193,9 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
           const gameFavorites = context.current.favorites.filter((favorite) => favorite.feedPath === game.feedPath
             && ((favorite.type === 'team' ? favorite.id : favorite.teamId) === game.away.id
               || (favorite.type === 'team' ? favorite.id : favorite.teamId) === game.home.id));
-          const result = await fetchNFLFavoritePlays([game], gameFavorites, controller.signal, true);
+          const result = game.league === 'NBA'
+            ? await fetchNBAFavoritePlays([game], gameFavorites, controller.signal)
+            : await fetchNFLFavoritePlays([game], gameFavorites, controller.signal, true);
           result.forEach((play) => {
             const payload: DenPlayItem = { ...play, kind: 'play' };
             const key = `play:${play.id}:${play.favoriteKey}`;
@@ -198,12 +213,12 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
         if (entries.length) setState((previous) => ({ ...previous, entries: mergeHistory(previous.entries, entries) }));
         const failure = results.find((result) => result.status === 'rejected');
         if (failure?.status === 'rejected') {
-          console.error('Locker Room weekly game data could not refresh', failure.reason);
+          console.error('Locker Room game data could not refresh', failure.reason);
           setFetchError('Some game stats or plays could not refresh. Saved history is still shown. Retry to load missing data.');
         } else setFetchError('');
       } catch (error) {
         if (!controller.signal.aborted) {
-          console.error('Locker Room weekly game data could not refresh', error);
+          console.error('Locker Room game data could not refresh', error);
           setFetchError('Game stats or plays could not refresh. Saved history is still shown. Retry to load missing data.');
         }
       } finally {
@@ -211,14 +226,15 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
       }
     };
     void refresh();
+    const stopForeground = subscribeForegroundRefresh(() => void refresh());
     const timer = window.setInterval(() => {
       if (context.current.games.some((game) => game.status === 'LIVE')) void refresh();
     }, 15_000);
-    return () => { controller.abort(); window.clearInterval(timer); };
+    return () => { controller.abort(); window.clearInterval(timer); stopForeground(); };
   }, [scope, loaded, enabled, pollKey, favoriteKey, revision]);
 
   useEffect(() => {
-    if (!loaded || !season || !week || !pending.current.size) return;
+    if (!loaded || (!archiveDate && (!season || !week)) || !pending.current.size) return;
     const queue = pending.current;
     const batch = [...pending.current.values()];
     let active = true;
@@ -226,9 +242,11 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
       try {
         if (userId && supabase) {
           for (let start = 0; start < batch.length; start += 500) {
-            const { error } = await supabase.rpc('save_locker_room_history', {
-              archive_season: season, archive_week: week, archive_owner: userId, entries: batch.slice(start, start + 500),
-            });
+            const { error } = archiveDate
+              ? await supabase.rpc('save_locker_room_daily_history', { archive_date: archiveDate, archive_owner: userId, entries: batch.slice(start, start + 500) })
+              : await supabase.rpc('save_locker_room_history', {
+                archive_season: season, archive_week: week, archive_owner: userId, entries: batch.slice(start, start + 500),
+              });
             if (error) throw error;
           }
         } else {
@@ -237,16 +255,16 @@ export function useLockerRoomHistory({ userId, season, week, games, favorites, i
         batch.forEach((entry) => {
           if (queue.get(entry.key) === entry) queue.delete(entry.key);
         });
-        if (active && sessionScope.current === scope) setState((previous) => previous.error.startsWith('Weekly history could not save')
+        if (active && sessionScope.current === scope) setState((previous) => previous.error.startsWith('Locker Room history could not save')
           ? { ...previous, error: '' } : previous);
       } catch (error) {
-        console.error('Locker Room weekly history could not save', error);
-        if (active && sessionScope.current === scope) setState((previous) => ({ ...previous, error: 'Weekly history could not save. Keep this page open and retry.' }));
+        console.error('Locker Room history could not save', error);
+        if (active && sessionScope.current === scope) setState((previous) => ({ ...previous, error: 'Locker Room history could not save. Keep this page open and retry.' }));
       }
     };
     void save();
     return () => { active = false; };
-  }, [scope, loaded, state.entries, userId, season, week]);
+  }, [scope, loaded, state.entries, userId, season, week, archiveDate]);
 
   const entries = state.scope === scope ? state.entries : [];
   return {

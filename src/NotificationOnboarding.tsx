@@ -41,7 +41,7 @@ export default function NotificationOnboarding({ user }: { user: User }) {
     if (!busy) void finish(false);
   }}>
     <h2 id="notification-welcome-title">Stay in the GameWire loop</h2>
-    <p id="notification-welcome-description">Would you like to turn on notifications for new LIVEWIRE posts, Angle updates, and your favorite teams' scores?</p>
+    <p id="notification-welcome-description">Would you like to turn on notifications for new LIVEWIRE posts, Angle updates, and     your favorite NFL teams' scores?</p>
     {!available && <p>Notifications are not available in this app or browser right now. On supported iPhones and iPads, add GameWire to your Home Screen and open it there. You can enable notifications later in your Profile on a supported device.</p>}
     {enabled && <p role="status">Notifications are enabled. Save your choice below to finish.</p>}
     {error && <p className="auth-error" role="alert">{error}</p>}

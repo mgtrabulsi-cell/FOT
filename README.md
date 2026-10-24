@@ -277,6 +277,18 @@ The score poller uses ESPN's undocumented public scoreboard feed, so alert timin
 
 ## Score coverage
 
+### NFL and NBA navigation
+
+The Wire and Stat Hub have an NFL/NBA banner. The selection carries between both screens and the Locker Room; NFL remains the initial sport. NFL keeps its weekly board and existing player/box-score workflows. NBA uses a calendar date in Eastern time (with a Today shortcut), not NFL week numbers. Today's NBA date rolls over while the app is open or on foreground return unless a historical date was explicitly selected.
+
+NBA scores come from ESPN's public basketball feed and refresh every 30 seconds, with immediate foreground refresh and saved scoreboard display on repeat openings. Matchups expose the game clock, quarter/overtime, player box scores, team comparisons, and play-by-play. Stat Hub supplies NBA rosters and player statistics rather than NFL-specific positions; ESPN's season year is retained across the NBA's calendar-year boundary. Missing statistics, absent play-by-play, and failed feeds must be shown as unavailable rather than invented zeros. NBA forecasts and unofficial starter claims are not provided.
+
+NBA team/player favorites use the same account-backed favorites collection (and local guest favorites) with sport-qualified keys, so matching NFL/NBA team IDs cannot collide. The Locker Room has the same NFL/NBA selector: NBA favorites collect matching ESPN news, completed-quarter/final scores, reported scoring plays, and actual player points/rebounds/assists. NBA activity is archived by selected NBA date; NFL history remains archived by NFL season/week. Apply [`supabase/nba-locker-room.sql`](supabase/nba-locker-room.sql) for private account-backed daily history; guest daily history stays local. The table uses per-account read isolation and cascades on account deletion. Rollback checks are in [`supabase/tests/nba-locker-room.sql`](supabase/tests/nba-locker-room.sql).
+
+**NBA favorite push notifications are intentionally disabled.** The existing server polling/notification dispatcher remains NFL-only; NBA in-app updates and saved favorites do not enroll anyone in NBA alerts. Editorial Angle/LIVEWIRE notifications are unchanged. NBA uses the same ESPN network/cache plumbing, not a Real app integration. Public feed access does not itself confer commercial redistribution rights.
+
+Run `node --test scripts/nba-*.test.mjs scripts/locker-room-scores.test.mjs scripts/foreground-refresh.test.mjs` and `npm run build` for focused validation.
+
 ### Admin-curated favorable matchups
 
 New signups receive a one-time notification welcome dialog after their first authenticated session (including after email confirmation, if enabled). **Turn on notifications** uses the existing device subscription flow with score alerts enabled; permission is requested only from that explicit click. **Not now** dismisses the invitation without requesting OS permission. The completed choice is saved in account metadata, so it does not repeat across devices; existing accounts and guests are not prompted. Unsupported browsers/native wrappers explain availability without claiming native push support. Notification settings remain available in Profile, and failed permission/subscription or metadata saves show an error and allow retry.

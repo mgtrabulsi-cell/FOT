@@ -371,12 +371,13 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
   const periodNumber = Number(status.period ?? statusType.period ?? 0);
   const clockValue = text(status.displayClock, text(statusType.shortDetail));
   const shortDetail = text(statusType.shortDetail);
-  const periodLabel = feed.league === 'NFL' && periodNumber > 0
+  const periodLabel = (feed.league === 'NFL' || feed.league === 'NBA') && periodNumber > 0
     ? periodNumber <= 4 ? `Q${periodNumber}` : periodNumber === 5 ? 'OT' : `OT${periodNumber - 4}`
     : feed.sport === 'Soccer' && periodNumber > 0 ? `${periodNumber === 1 ? '1ST' : '2ND'} HALF` : periodNumber ? `PERIOD ${periodNumber}` : shortDetail;
   const teamA = readTeam(awayEntry);
   const teamH = readTeam(homeEntry);
-  const atPeriodEnd = state === 'post' || /END_PERIOD|HALFTIME/.test(text(statusType.name)) || clockValue === '0:00';
+  const atPeriodEnd = state === 'post' || /END_PERIOD|HALFTIME/.test(text(statusType.name)) || clockValue === '0:00'
+    || (feed.league === 'NBA' && /^(0\.0|0:00\.0)$/.test(clockValue));
   const completedPeriods: NonNullable<Game['completedPeriods']> = [];
   let awayTotal = 0;
   let homeTotal = 0;
@@ -514,6 +515,34 @@ export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): 
   const result = { games, failedLeagues, nflWeek: currentNFLWeek };
   if (!signal?.aborted && games.length && !failedLeagues.length) saveRenderSnapshot('scoreboard', String(nflWeek ?? 'current'), result);
   return result;
+}
+
+export function nbaCalendarDate(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const part = (name: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === name)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+export function readNBAScoreboard(payload: unknown): Game[] {
+  const data = asObject(payload);
+  if (!Array.isArray(data.events)) throw new Error('NBA scoreboard returned an invalid game list.');
+  const feed = { sport: 'Basketball' as const, league: 'NBA', path: 'basketball/nba' };
+  return data.events.map((event) => {
+    const game = mapEvent(event, feed);
+    if (!game || !/^\d+$/.test(game.eventId) || !Number.isFinite(Date.parse(game.date))) {
+      throw new Error('NBA scoreboard returned an invalid matchup.');
+    }
+    return { ...game, seasonYear: Number(asObject(data.season).year) || game.seasonYear };
+  }).sort((first, second) => Date.parse(first.date) - Date.parse(second.date));
+}
+
+export async function fetchNBAScoreboard(date: string, signal?: AbortSignal): Promise<Game[]> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T12:00:00Z`))
+    || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error('Choose a valid NBA calendar date.');
+  const { payload } = await fetchScoreboardJSON(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal, 'NBA');
+  const games = readNBAScoreboard(payload);
+  if (!signal?.aborted) saveRenderSnapshot('scoreboard', `NBA:${date}`, { games, nflWeek: null, failedLeagues: [] });
+  return games;
 }
 
 function articleMatchesFavorite(article: Record<string, unknown>, favorite: FavoriteTarget): boolean {
