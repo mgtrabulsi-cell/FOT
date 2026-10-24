@@ -108,7 +108,8 @@
 .nba-stat-hub .nfl-directory-player-list { grid-template-columns: minmax(0, 1fr); }
 .nba-stat-hub .nfl-directory-position-bar { flex-wrap: wrap; }
 .nba-stat-hub .sport-filter { flex-wrap: wrap; }
-.nba-stat-dialog { color: #e5eaf3; box-sizing: border-box; }
+.nba-stat-dialog { color: #e5eaf3; box-sizing: border-box; scrollbar-width: none; }
+.nba-stat-dialog::-webkit-scrollbar { display: none; }
 .nba-stat-dialog::backdrop { background: #070d18cc; }
 .nba-stat-dialog .nfl-player-dialog-heading > div { flex: 1; }
 .nba-stat-dialog .nfl-player-game-chart { scrollbar-width: none; }
