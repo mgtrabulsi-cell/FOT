@@ -43,6 +43,7 @@ function setup(mode = 'wire') {
   const jsx = (type, props) => ({ type, props });
   const data = {
     nbaTeamFavorite: (team) => ({ ...team, key: `team:basketball/nba:${team.id}`, type: 'team' }),
+    nbaPlayerFavorite: (player) => ({ ...player, key: `player:basketball/nba:${player.id}`, type: 'player' }),
     fetchNBASummary: async (id) => { requests.push(id); return { status: 'in', teams: [], plays: [] }; },
     fetchNBALeague: async () => ({ teams: [away, home], season: 2027 }),
   };
@@ -57,7 +58,7 @@ function setup(mode = 'wire') {
       return {};
     },
   });
-  vm.runInContext(code, context);
+  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.useDragScroll = useDragScroll;`, context);
   function render() {
     let count = 0;
     do {
@@ -76,7 +77,7 @@ function setup(mode = 'wire') {
     visit(tree); return result;
   };
   render();
-  return { props, requests, render, nodes,
+  return { props, requests, render, nodes, components: context.exports,
     async settle() { for (let i = 0; i < 5; i++) { await new Promise(setImmediate); render(); } },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()); },
   };
@@ -95,13 +96,82 @@ test('NBA Wire starts as an NFL-style vertical board and requests full details o
   assert.deepEqual(app.requests, ['401']);
   assert.equal(board(), undefined);
   assert.ok(app.nodes().find((node) => node.props?.className === 'nba-matchup'));
-  assert.equal(app.nodes().filter((node) => node.type?.name === 'PlayerBox').length, 2);
+  assert.equal(app.nodes().filter((node) => node.type?.name === 'PlayerBox').length, 1);
+  assert.equal(app.nodes().find((node) => node.type?.name === 'PlayerBox').props.team.id, away.id);
+  app.nodes().find((node) => node.props?.className === 'nba-segments nba-team-toggle').props.children[1].props.onClick();
+  app.render();
+  assert.equal(app.nodes().find((node) => node.type?.name === 'PlayerBox').props.team.id, home.id);
   app.nodes().find((node) => node.props?.className === 'nba-detail-navigation').props.children.props.onClick();
   app.render(); await app.settle();
   assert.ok(board());
   assert.equal(app.requests.length, 1, 'Returning does not request a hidden matchup');
   app.props.query = 'does not match'; app.render();
   assert.equal(app.nodes().some((node) => node.props?.['data-game-id']), false);
+  app.unmount();
+});
+
+function descendants(tree) {
+  const found = [];
+  function visit(node) {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!node || typeof node !== 'object') return;
+    found.push(node); visit(node.props?.children);
+  }
+  visit(tree); return found;
+}
+
+test('NBA player box stably places all reported starters ahead of bench, retaining DNP and real zeros', () => {
+  const app = setup();
+  const player = (id, starter, extra = {}) => ({ id, name: `Player ${id}`, position: 'G', starter, stats: { points: 0 },
+    display: {}, didNotPlay: false, ...extra });
+  const bench = player('bench', false);
+  const starters = Array.from({ length: 5 }, (_, i) => player(`starter-${i}`, true));
+  const dnp = player('dnp', false, { didNotPlay: true, reason: "Coach's decision" });
+  const players = [bench, ...starters, dnp];
+  const tree = app.components.PlayerBox({ team: away, box: { players }, favorites: [], toggle() {}, open() {} });
+  const nodes = descendants(tree);
+  const rows = nodes.filter((node) => node.type === 'tbody')[0].props.children;
+  const identities = rows.map((row) => descendants(row).find((node) => node.props?.className === 'nba-player-link').props.children[1].props.children[0]);
+  assert.deepEqual(Array.from(identities), [...starters, bench, dnp].map((item) => item.name));
+  assert.equal(players[0], bench, 'Sorting never mutates incoming feed data');
+  const points = nodes.filter((node) => node.props?.['data-label'] === 'PTS');
+  assert.equal(points.length, 6);
+  assert.ok(points.every((node) => node.props.children === '0'));
+  assert.equal(nodes.filter((node) => node.props?.className === 'nba-dnp').length, 1);
+  app.unmount();
+});
+
+test('Play-by-play groups newest quarters and overtime first, reverses plays without changing source data', () => {
+  const app = setup();
+  const play = (id, period, clock) => ({ id, period, clock, text: id, scoring: false });
+  const plays = [play('q1-start', 1, '12:00'), play('q1-end', 1, '0.0'), play('q4-start', 4, '12:00'),
+    play('q4-end', 4, '0.0'), play('ot-start', 5, '5:00'), play('ot-latest', 5, '1:00')];
+  const nodes = descendants(app.components.PlayByPlay({ plays, game, upcoming: false }));
+  const quarters = nodes.filter((node) => node.props?.className === 'nba-play-quarter');
+  assert.deepEqual(quarters.map((node) => node.props['aria-label']), ['Overtime 1', 'Quarter 4', 'Quarter 1']);
+  const text = nodes.filter((node) => node.type === 'p' && typeof node.props.children === 'string').map((node) => node.props.children);
+  assert.deepEqual(text, ['ot-latest', 'ot-start', 'q4-end', 'q4-start', 'q1-end', 'q1-start']);
+  assert.equal(plays[0].id, 'q1-start');
+  app.unmount();
+});
+
+test('Horizontal dragging scrolls, suppresses accidental clicks, and preserves ordinary clicks and touch', () => {
+  const app = setup();
+  const drag = app.components.useDragScroll();
+  drag.ref.current = { scrollLeft: 100 };
+  let prevented = false, stopped = false;
+  drag.onPointerDown({ pointerType: 'mouse', button: 0, clientX: 150 });
+  drag.onPointerMove({ buttons: 1, clientX: 100, preventDefault() { prevented = true; } });
+  assert.equal(drag.ref.current.scrollLeft, 150);
+  drag.onClickCapture({ preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
+  assert.ok(prevented && stopped);
+  prevented = false;
+  drag.onPointerDown({ pointerType: 'mouse', button: 0, clientX: 100 });
+  drag.onClickCapture({ preventDefault() { prevented = true; }, stopPropagation() {} });
+  assert.equal(prevented, false);
+  drag.onPointerDown({ pointerType: 'touch', button: 0, clientX: 100 });
+  drag.onPointerMove({ buttons: 1, clientX: 50, preventDefault() {} });
+  assert.equal(drag.ref.current.scrollLeft, 150, 'Touch scrolling remains browser-native');
   app.unmount();
 });
 

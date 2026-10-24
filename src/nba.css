@@ -1,4 +1,4 @@
-.nba-experience { --nba-line: rgba(145, 165, 195, .22); --nba-muted: #a5b5cc; --nba-accent: #87baff; color: inherit; min-width: 0; padding: 16px; }
+.nba-experience { --nba-line: #2c3d55; --nba-muted: #bbc7d9; --nba-accent: #cc2633; color: #e5eaf3; min-width: 0; padding: 16px; }
 .nba-experience *, .nba-profile * { box-sizing: border-box; }
 .nba-experience h2, .nba-experience h3, .nba-profile h2 { margin: 0; }
 .nba-experience section { margin-top: 22px; min-width: 0; }
@@ -10,10 +10,10 @@
 .nba-heading h2 { margin-top: 5px; }
 .nba-detail-navigation { margin: 12px 0; }
 .nba-detail-navigation button { display: inline-flex; align-items: center; gap: 6px; }
-.nba-scroll { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: thin; overscroll-behavior-x: contain; padding: 5px 3px 14px; cursor: grab; touch-action: pan-x pan-y; }
+.nba-scroll { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; padding: 5px 3px 14px; cursor: grab; touch-action: pan-x pan-y; }
 .nba-scroll:active { cursor: grabbing; }
 .nba-game-wheel button.nba-game-option { flex: 0 0 190px; display: grid; text-align: left; gap: 7px; background: #111b2b; padding: 12px; user-select: none; }
-.nba-game-wheel button.is-selected, .nba-segments button[aria-pressed=true], .nba-stat-picker button[aria-pressed=true] { border-color: #87baff; background: #203e66; }
+.nba-game-wheel button.is-selected, .nba-segments button[aria-pressed=true], .nba-stat-picker button[aria-pressed=true] { border-color: #7389a9; background: #3b5274; color: #fff; }
 .nba-game-option > small { color: var(--nba-muted); min-height: 17px; font-size: 11px; }
 .nba-game-option > span { display: flex; align-items: center; gap: 9px; }
 .nba-game-option img { width: 25px; height: 25px; object-fit: contain; pointer-events: none; }
@@ -33,14 +33,27 @@
 .nba-segments { display: flex; gap: 7px; margin: 18px 0; flex-wrap: wrap; }
 .nba-segments > button { flex: 1 1 130px; }
 .nba-warning { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px; margin: 14px 0; background: #3a2b16; border: 1px solid #987944; border-radius: 10px; }
-.nba-table-scroll { overflow-x: auto; overscroll-behavior-x: contain; margin-top: 14px; border: 1px solid var(--nba-line, #48536a); border-radius: 10px; }
-.nba-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-.nba-table th, .nba-table td { padding: 11px 12px; border-bottom: 1px solid var(--nba-line, #48536a); text-align: center; white-space: nowrap; }
-.nba-table thead { background: #162237; }
+.nba-table-scroll { overflow-x: auto; overscroll-behavior-x: contain; margin-top: 14px; border: 1px solid var(--nba-line, #48536a); border-radius: 8px; scrollbar-width: none; cursor: grab; touch-action: pan-x pan-y; }
+.nba-table-scroll:active { cursor: grabbing; }
+.nba-scroll::-webkit-scrollbar, .nba-table-scroll::-webkit-scrollbar, .nba-chart::-webkit-scrollbar { display: none; }
+.nba-table { width: 100%; border-collapse: collapse; font: 600 16px var(--mono); color: #fff; font-variant-numeric: tabular-nums; }
+.nba-table th, .nba-table td { padding: 9px 10px; border-bottom: 1px solid #1c2a3d; text-align: center; white-space: nowrap; }
+.nba-table td { font: 600 16px var(--mono); color: #fff; }
+.nba-table th { font-family: var(--mono); color: #bbc7d9; background: #0f1724; }
+.nba-table thead { background: #0f1724; color: #bbc7d9; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .5px; }
 .nba-table th { font-weight: 600; }
 .nba-table tbody tr:last-child > * { border-bottom: 0; }
-.nba-box th:first-child { text-align: left; position: sticky; left: 0; background: #111b2b; z-index: 1; }
-.nba-box th:first-child { min-width: 190px; max-width: 230px; white-space: normal; }
+.nba-box th:first-child { text-align: left; background: #131c2b; min-width: 220px; width: 220px; max-width: 220px; white-space: normal; }
+.nba-box-identity { display: flex; align-items: center; gap: 4px; width: 200px; }
+.nba-box-identity .nba-player-link { flex: 1; font: 600 18px/1.2 var(--display); color: #fff; }
+.nba-box-identity .nba-player-link small { font: 500 12px var(--mono); color: #bbc7d9; }
+.nba-box-identity .nba-player-link img { width: 58px; height: 58px; }
+.nba-experience .nba-box-identity .nba-favorite { width: 32px; min-width: 32px; padding: 4px; }
+.nba-box tbody tr:hover > * { background: #172538; }
+.nba-box .nba-dnp { color: #bbc7d9; font-size: 12px; white-space: normal; }
+.nba-team-toggle button { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--display); font-size: 18px; }
+.nba-team-toggle img { width: 28px; height: 28px; object-fit: contain; }
+.nba-play-quarter h4 { padding-bottom: 10px; border-bottom: 1px solid var(--nba-line); font: 600 21px var(--display); color: #fff; }
 .nba-experience button.nba-player-link { border: 0; padding: 0; display: flex; align-items: center; gap: 10px; background: transparent; text-align: left; min-width: 0; }
 .nba-player-link img { width: 47px; height: 47px; object-fit: contain; flex-shrink: 0; pointer-events: none; }
 .nba-player-link span { overflow-wrap: anywhere; }
@@ -57,11 +70,11 @@
 .nba-note { font-size: 12px; line-height: 1.6; color: var(--nba-muted, #a5b5cc); margin: 14px 0; }
 .nba-plays { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .nba-plays li { border: 1px solid var(--nba-line); border-left: 3px solid #40516d; border-radius: 10px; padding: 13px; background: #111b2b; }
-.nba-plays li.is-scoring { border-left-color: #87baff; }
+.nba-plays li.is-scoring { border-left-color: #cc2633; }
 .nba-plays li > div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; }
 .nba-plays time, .nba-plays small { color: var(--nba-muted); }
 .nba-plays li > div span { color: #b8d6ff; }
-.nba-plays p { margin: 8px 0; line-height: 1.5; }
+.nba-plays p { margin: 8px 0; line-height: 1.5; color: #fff; font-size: 15px; }
 .nba-profile { --nba-muted: #a5b5cc; --nba-line: rgba(145, 165, 195, .22); background: #0c1524; color: #eef4ff; width: min(850px, calc(100vw - 24px)); max-height: calc(100dvh - 30px); border: 1px solid #506586; border-radius: 18px; padding: 22px; overflow-y: auto; overscroll-behavior: contain; }
 .nba-profile::backdrop { background: rgba(0, 0, 0, .78); }
 .nba-profile-header { position: sticky; top: -22px; z-index: 2; background: #0c1524; padding: 12px 0; }
@@ -69,7 +82,7 @@
 .nba-profile h2 { font-size: 21px; }
 .nba-profile h3 { font-size: 16px; }
 .nba-stat-picker button { flex: 0 0 auto; white-space: nowrap; }
-.nba-chart { display: flex; align-items: stretch; overflow-x: auto; min-height: 200px; gap: 10px; padding: 10px 3px; }
+.nba-chart { display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: none; min-height: 200px; gap: 10px; padding: 10px 3px; }
 .nba-chart-column { display: flex; flex: 1 0 54px; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; text-align: center; }
 .nba-chart-column small { color: var(--nba-muted); font-size: 10px; }
 .nba-chart-track { height: 120px; width: 27px; position: relative; background: #19273d; border-radius: 5px; }
@@ -85,8 +98,15 @@
   .nba-profile-header { top: -14px; gap: 6px; }
   .nba-profile-header > img { width: 45px; height: 45px; }
   .nba-profile h2 { font-size: 17px; }
-  .nba-box th:first-child { min-width: 145px; max-width: 170px; }
-  .nba-box .nba-player-link img { display: none; }
+  .nba-box, .nba-box tbody { display: block; }
+  .nba-box thead { display: none; }
+  .nba-box tbody tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--nba-line); padding: 8px 0; }
+  .nba-box th:first-child { display: block; grid-column: 1 / -1; width: auto; max-width: none; min-width: 0; border: 0; padding: 4px 10px 10px; }
+  .nba-box-identity { width: 100%; }
+  .nba-box-identity .nba-player-link { font-size: 20px; }
+  .nba-box td { display: flex; flex-direction: column; justify-content: center; padding: 8px 2px; border: 0; font-size: 15px; }
+  .nba-box td[data-label]::before { content: attr(data-label); color: #bbc7d9; font: 500 9px var(--mono); margin-bottom: 5px; }
+  .nba-box td.nba-dnp { grid-column: 1 / -1; padding-inline: 12px; }
   .nba-table th, .nba-table td { padding: 10px 8px; }
   .nba-filter { flex-wrap: wrap; }
 }
