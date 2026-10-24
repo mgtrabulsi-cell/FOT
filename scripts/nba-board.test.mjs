@@ -94,6 +94,40 @@ function setup(mode = 'wire', snapshots = new Map(), component) {
   };
 }
 
+test('NBA dims only final losers on the board, wheel, names and individual scores, including fresh summary finals', async () => {
+  for (const [status, awayScore, homeScore, expectedLoser] of [
+    ['FINAL', 100, 99, home.id], ['FINAL', 0, 99, away.id], ['FINAL', 99, 99, null],
+    ['LIVE', 100, 99, null], ['UPCOMING', 0, 0, null],
+  ]) {
+    const app = setup();
+    app.props.games = [{ ...game, status, away: { ...away, score: awayScore }, home: { ...home, score: homeScore } }];
+    app.data.fetchNBASummary = async () => ({ status: status === 'FINAL' ? 'post' : status === 'LIVE' ? 'in' : 'pre',
+      awayScore, homeScore, teams: [], plays: [] });
+    app.render(); await app.settle();
+    const boardLosers = app.nodes().filter((node) => node.props?.className === 'wire-board-team is-loser');
+    assert.equal(boardLosers.length, expectedLoser ? 1 : 0);
+    if (expectedLoser) assert.equal(boardLosers[0].props.children[2].props.children, expectedLoser === away.id ? awayScore : homeScore);
+    app.nodes().find((node) => node.props?.['data-game-id']).props.onClick();
+    app.render(); await app.settle();
+    const matchup = app.nodes().find((node) => node.props?.className === 'nba-matchup');
+    assert.equal(matchup.props.children[0].props.className === 'is-loser', expectedLoser === away.id);
+    assert.equal(matchup.props.children[2].props.className === 'is-loser', expectedLoser === home.id);
+    const scoreSpans = app.nodes().filter((node) => node.type === 'span' && typeof node.props.children === 'number' && node.props.className === 'is-loser');
+    assert.equal(scoreSpans.length, expectedLoser ? 1 : 0, 'Only the losing half of the combined score is muted');
+    const wheel = app.nodes().find((node) => node.props?.className?.startsWith('nba-game-option'));
+    assert.equal(wheel.props.children[1].filter((node) => node.props.className === 'is-loser').length, expectedLoser ? 1 : 0);
+    app.unmount();
+  }
+  const app = setup();
+  app.data.fetchNBASummary = async () => ({ status: 'post', awayScore: 110, homeScore: 112, teams: [], plays: [] });
+  app.nodes().find((node) => node.props?.['data-game-id']).props.onClick();
+  app.render(); await app.settle();
+  const matchup = app.nodes().find((node) => node.props?.className === 'nba-matchup');
+  assert.equal(matchup.props.children[0].props.className, 'is-loser', 'New final summary overrides older live scoreboard scores');
+  assert.notEqual(matchup.props.children[2].props.className, 'is-loser');
+  app.unmount();
+});
+
 test('NBA Wire starts as an NFL-style vertical board and requests full details only after a game click', async () => {
   const app = setup();
   await app.settle();

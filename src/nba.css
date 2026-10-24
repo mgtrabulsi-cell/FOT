@@ -27,6 +27,8 @@
 .nba-score { display: grid; text-align: center; gap: 7px; max-width: 200px; }
 .nba-score b { font-size: clamp(19px, 3.5vw, 32px); white-space: nowrap; }
 .nba-score small { color: var(--nba-muted); font-size: 12px; }
+.nba-game-option > .is-loser b, .nba-game-option > .is-loser strong,
+.nba-matchup > .is-loser > strong, .nba-score b > .is-loser { color: #9aa7b8; }
 .nba-experience button.nba-favorite, .nba-profile button.nba-favorite, .nba-profile button.nba-close { width: 44px; min-width: 44px; padding: 10px; display: inline-flex; align-items: center; justify-content: center; }
 .nba-experience button.nba-favorite, .nba-profile button.nba-favorite { border-radius: 50%; color: #9eadc4; background: #182438; border-color: #3b4b63; }
 .nba-experience button.nba-favorite:is(.is-favorite,:hover), .nba-profile button.nba-favorite:is(.is-favorite,:hover) { color: #fff; border-color: #cc2633; background: #a51c28; }

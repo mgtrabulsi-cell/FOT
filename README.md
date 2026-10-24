@@ -285,6 +285,8 @@ The score poller uses ESPN's undocumented public scoreboard feed, so alert timin
 
 ### NFL and NBA navigation
 
+Final-game scoreboards mute the losing team's name and score in gray across the game list, matchup wheel, and open matchup. NFL team tabs and final-score totals use the same treatment. Winners remain highlighted by contrast; live games, upcoming games, and ties are not dimmed. Favorites and team-selection controls stay fully interactive.
+
 The Wire and Stat Hub have an NFL/NBA banner. The selection carries between both screens and the Locker Room; NFL remains the initial sport. NFL keeps its weekly board and existing player/box-score workflows. NBA uses a calendar date in Eastern time (with a Today shortcut), not NFL week numbers. Today's NBA date rolls over while the app is open or on foreground return unless a historical date was explicitly selected.
 
 NBA scores come from ESPN's public basketball feed and refresh every 30 seconds, with immediate foreground refresh and saved scoreboard display on repeat openings. Matchups expose the game clock, quarter/overtime, player box scores, team comparisons, and play-by-play. Stat Hub supplies NBA rosters and player statistics rather than NFL-specific positions; ESPN's season year is retained across the NBA's calendar-year boundary. Missing statistics, absent play-by-play, and failed feeds must be shown as unavailable rather than invented zeros. NBA forecasts and unofficial starter claims are not provided.

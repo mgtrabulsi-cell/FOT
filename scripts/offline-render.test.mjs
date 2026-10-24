@@ -65,6 +65,25 @@ const categories = [{
 const players = { data: { teamId: away.id, categories, failedPlayers: 0 }, players: [player] };
 const props = { games: [game], query: '', favorites: [], featuredFavoriteTeamId: null, onToggleFavorite() {}, onOpenPlayer() {}, openGameId: game.id };
 
+test('NFL dims only a final loser across the board, wheel, matchup and team tabs, leaving live games and ties unchanged', () => withStorage(() => {
+  for (const [status, awayScore, homeScore, losingSide] of [
+    ['FINAL', 10, 24, 'away'], ['FINAL', 31, 0, 'home'], ['FINAL', 17, 17, null],
+    ['LIVE', 10, 24, null], ['UPCOMING', 0, 0, null],
+  ]) {
+    const matchup = { ...game, status, away: { ...away, score: awayScore }, home: { ...home, score: homeScore } };
+    const board = renderToStaticMarkup(createElement(TheWire, { ...props, games: [matchup], openGameId: null }));
+    assert.equal((board.match(/wire-board-team is-loser/g) ?? []).length, losingSide ? 1 : 0);
+    const html = renderToStaticMarkup(createElement(TheWire, { ...props, games: [matchup] }));
+    assert.equal((html.match(/wire-wheel-row is-loser/g) ?? []).length, losingSide ? 1 : 0);
+    assert.equal((html.match(/wire-matchup-team wire-team-(?:left|right) is-loser/g) ?? []).length, losingSide ? 1 : 0);
+    assert.equal((html.match(/wire-team-half wire-team-half-(?:away|home)[^"]* is-loser/g) ?? []).length, losingSide ? 1 : 0);
+    if (losingSide) {
+      assert.match(html, new RegExp(`wire-matchup-team wire-team-${losingSide === 'away' ? 'left' : 'right'} is-loser`));
+      assert.match(html, new RegExp(`wire-team-half-${losingSide}[^"]* is-loser`));
+    }
+  }
+}));
+
 test('The Wire opens to a kickoff-ordered game board grouped TNF to MNF, with no stats until a game is opened', () => withStorage(() => {
   const at = (id, date, status = 'UPCOMING', extra = {}) => ({ ...game, ...extra, id: `NFL:${id}`, eventId: id, date, status });
   const games = [

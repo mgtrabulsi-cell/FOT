@@ -625,6 +625,11 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
 
   const awayBoxTeam: NFLBoxScoreTeam | undefined = boxScore?.teams.find((team) => team.id === awayTeamId);
   const homeBoxTeam: NFLBoxScoreTeam | undefined = boxScore?.teams.find((team) => team.id === homeTeamId);
+  const finalScore = selectedGame?.status === 'FINAL' || boxScore?.isFinal === true;
+  const awayScore = awayBoxTeam?.score ?? selectedGame?.away.score;
+  const homeScore = homeBoxTeam?.score ?? selectedGame?.home.score;
+  const awayLost = finalScore && awayScore !== undefined && homeScore !== undefined && awayScore < homeScore;
+  const homeLost = finalScore && awayScore !== undefined && homeScore !== undefined && homeScore < awayScore;
   const activeBoxTeam = selectedTeamSide === 'away' ? awayBoxTeam : homeBoxTeam;
   const activeGameTeam: Team | undefined = selectedGame ? (selectedTeamSide === 'away' ? selectedGame.away : selectedGame.home) : undefined;
 
@@ -977,11 +982,11 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                       {live && <small className="wire-wheel-clock">{game.clock}</small>}
                     </div>
                     <div className="wire-wheel-teams">
-                      <div className="wire-wheel-row">
+                      <div className={`wire-wheel-row${game.status === 'FINAL' && game.away.score < game.home.score ? ' is-loser' : ''}`}>
                         <span className="wire-wheel-team-abbr">{game.away.abbr}{live && game.situation?.possessionTeamId === game.away.id && <span className="possession-football" role="img" aria-label={`${game.away.name} has possession`}>🏈</span>}</span>
                         <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : <ScoreTicker value={game.away.score} gameKey={`${game.id}:away`} />}</strong>
                       </div>
-                      <div className="wire-wheel-row">
+                      <div className={`wire-wheel-row${game.status === 'FINAL' && game.home.score < game.away.score ? ' is-loser' : ''}`}>
                         <span className="wire-wheel-team-abbr">{game.home.abbr}{live && game.situation?.possessionTeamId === game.home.id && <span className="possession-football" role="img" aria-label={`${game.home.name} has possession`}>🏈</span>}</span>
                         <strong className="wire-wheel-score">{game.status === 'UPCOMING' ? '–' : <ScoreTicker value={game.home.score} gameKey={`${game.id}:home`} />}</strong>
                       </div>
@@ -1027,7 +1032,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
           <section className="wire-hero-banner">
             <div className="wire-matchup-grid">
               {/* Away Team */}
-              <div className="wire-matchup-team wire-team-left">
+              <div className={`wire-matchup-team wire-team-left${awayLost ? ' is-loser' : ''}`}>
                 <div className="wire-matchup-mark-wrapper">
                   <span
                     className="team-mark team-mark-large"
@@ -1106,7 +1111,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               </div>
 
               {/* Home Team */}
-              <div className="wire-matchup-team wire-team-right">
+              <div className={`wire-matchup-team wire-team-right${homeLost ? ' is-loser' : ''}`}>
                 <div className="wire-matchup-score">
                   {selectedGame.status === 'UPCOMING' ? '–' : <ScoreTicker value={homeBoxTeam?.score ?? selectedGame.home.score} gameKey={`${selectedGame.id}:home`} />}
                 </div>
@@ -1157,7 +1162,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className={selectedTeamSide === 'away' ? 'active-team-row' : ''}>
+                    <tr className={`${selectedTeamSide === 'away' ? 'active-team-row' : ''}${awayLost ? ' is-loser' : ''}`}>
                       <td className="wire-col-team">
                         <div className="wire-team-inline">
                           {awayBoxTeam?.logo && <OfflineImage src={awayBoxTeam.logo} alt="" />}
@@ -1173,7 +1178,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                         <strong>{awayBoxTeam?.score ?? selectedGame.away.score}</strong>
                       </td>
                     </tr>
-                    <tr className={selectedTeamSide === 'home' ? 'active-team-row' : ''}>
+                    <tr className={`${selectedTeamSide === 'home' ? 'active-team-row' : ''}${homeLost ? ' is-loser' : ''}`}>
                       <td className="wire-col-team">
                         <div className="wire-team-inline">
                           {homeBoxTeam?.logo && <OfflineImage src={homeBoxTeam.logo} alt="" />}
@@ -1201,7 +1206,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               <button
                 role="tab"
                 aria-selected={selectedTeamSide === 'away'}
-                className={`wire-team-half wire-team-half-away${selectedTeamSide === 'away' ? ' active' : ''}`}
+                className={`wire-team-half wire-team-half-away${selectedTeamSide === 'away' ? ' active' : ''}${awayLost ? ' is-loser' : ''}`}
                 onClick={() => setSelectedTeamSide('away')}
                 style={{
                   '--team-bar-color': awayBoxTeam?.color || selectedGame.away.color || '#3b82f6',
@@ -1240,7 +1245,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               <button
                 role="tab"
                 aria-selected={selectedTeamSide === 'home'}
-                className={`wire-team-half wire-team-half-home${selectedTeamSide === 'home' ? ' active' : ''}`}
+                className={`wire-team-half wire-team-half-home${selectedTeamSide === 'home' ? ' active' : ''}${homeLost ? ' is-loser' : ''}`}
                 onClick={() => setSelectedTeamSide('home')}
                 style={{
                   '--team-bar-color': homeBoxTeam?.color || selectedGame.home.color || '#ef4444',
