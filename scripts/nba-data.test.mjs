@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   nbaNumber, parseNBAStatRow, parseNBARoster, parseNBATeams, parseNBAPlays, parseNBASummary,
   parseNBATeamSeason, parseNBAPlayerSeason, parseNBAPlayerGames, fetchNBAPlayerProfile,
-  fetchNBALivePlayerStats, fetchNBAFavoritePlays, fetchNBAPointsPerGame, nbaFavoritePlays, nbaTeamFavorite, nbaPlayerFavorite,
+  fetchNBALivePlayerStats, fetchNBAFavoritePlays, fetchNBAPointsPerGame, fetchNBARoster, nbaFavoritePlays, nbaTeamFavorite, nbaPlayerFavorite,
 } from '../src/services/nbaData.ts';
 
 test('PPG ranking reads requested season averages only, deduplicates players and reports partial failures', async () => {
@@ -239,7 +239,8 @@ test('Public fetch adapters supply signal and requested season; Locker Room live
   const controller = new AbortController();
   const calls = [];
   globalThis.fetch = async (address, options) => {
-    assert.equal(options.signal, controller.signal);
+    assert.ok(options.signal instanceof AbortSignal);
+    assert.equal(options.signal.aborted, false);
     calls.push(String(address));
     if (String(address).includes('/summary?')) return Response.json(summaryFixture());
     if (String(address).includes('/gamelog?')) return Response.json(logsFixture());
@@ -269,4 +270,77 @@ test('HTTP, malformed JSON and abort failures propagate instead of silent guesse
     globalThis.fetch = async () => { throw new DOMException('Aborted', 'AbortError'); };
     await assert.rejects(fetchNBALivePlayerStats('bad', []), { name: 'AbortError' });
   } finally { globalThis.fetch = original; }
+});
+
+test('Concurrent NBA roster consumers share one request and cancel independently, then reuse local data', async () => {
+  const originalFetch = globalThis.fetch, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const entries = new Map();
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    get length() { return entries.size; }, key: i => [...entries.keys()][i] ?? null,
+    getItem: key => entries.get(key) ?? null, setItem: (key, value) => entries.set(key, value), removeItem: key => entries.delete(key),
+  } });
+  let resolve, requests = 0, sharedSignal;
+  globalThis.fetch = (_url, options) => {
+    requests++; sharedSignal = options.signal;
+    return new Promise(done => { resolve = done; });
+  };
+  const a = new AbortController(), b = new AbortController();
+  try {
+    const first = fetchNBARoster('shared-test', 2027, a.signal);
+    const second = fetchNBARoster('shared-test', 2027, b.signal);
+    await new Promise(setImmediate);
+    assert.equal(requests, 1);
+    a.abort();
+    await assert.rejects(first, { name: 'AbortError' });
+    assert.equal(sharedSignal.aborted, false, 'Canceling one screen leaves the preload alive');
+    resolve(Response.json({ athletes: [athlete('p', 'Saved player')] }));
+    assert.equal((await second)[0].name, 'Saved player');
+    assert.equal((await fetchNBARoster('shared-test', 2027))[0].name, 'Saved player');
+    assert.equal(requests, 1, 'Fresh persisted roster is reused without a network wait');
+    await assert.rejects(fetchNBARoster('shared-test', 2027, a.signal), { name: 'AbortError' });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
+  }
+});
+
+test('NBA scoring publishes available averages before the rest of a batch finishes', async () => {
+  const originalFetch = globalThis.fetch;
+  let release;
+  globalThis.fetch = async url => {
+    if (String(url).includes('/slow-player/')) await new Promise(resolve => { release = resolve; });
+    return Response.json(seasonFixture());
+  };
+  const progress = [];
+  try {
+    const players = ['fast-player', 'slow-player'].map(id => ({ id, name: id, teamId: '1', position: 'G', jersey: '' }));
+    const result = fetchNBAPointsPerGame(players, 2027, undefined, averages => progress.push(averages));
+    await new Promise(setImmediate);
+    assert.equal(progress[0]['fast-player'], 30);
+    assert.equal(progress[0]['slow-player'], undefined);
+    release();
+    assert.equal((await result).averages['slow-player'], 30);
+  } finally { release?.(); globalThis.fetch = originalFetch; }
+});
+
+test('An unresponsive NBA request times out after ten seconds and a retry can fetch again', async () => {
+  const originalFetch = globalThis.fetch, originalSetTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout;
+  let timeout, duration;
+  globalThis.setTimeout = (callback, ms) => { timeout = callback; duration = ms; return 123; };
+  globalThis.clearTimeout = () => {};
+  globalThis.fetch = (_url, { signal }) => new Promise((_resolve, reject) =>
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  try {
+    const request = fetchNBALivePlayerStats('timeout-test', []);
+    await new Promise(setImmediate);
+    assert.equal(duration, 10_000);
+    timeout();
+    await assert.rejects(request, /timed out/);
+    globalThis.fetch = async () => Response.json(summaryFixture());
+    assert.deepEqual(await fetchNBALivePlayerStats('timeout-test', []), {});
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
 });

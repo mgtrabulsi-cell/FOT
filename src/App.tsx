@@ -503,6 +503,16 @@ function App() {
     let preloadingBoxes = false;
     const saved = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [];
     setNBAGames(saved); setNBAGamesDate(selectedNBADate); setNBAStatus('loading'); setNBAError('');
+    const preload = (next: Game[]) => {
+      if (preloadingBoxes || !next.length) return;
+      preloadingBoxes = true;
+      void Promise.all([preloadNBABoxes(next, controller.signal), preloadNBAPregame(next, controller.signal)]).then((results) => {
+        if (active && results.some((failed) => failed.length)) setNBAError('Some NBA statistics could not be saved yet. Automatic refresh will retry.');
+      }, (error: unknown) => {
+        if (!controller.signal.aborted) console.error('NBA box-score preload failed', error);
+      }).finally(() => { preloadingBoxes = false; });
+    };
+    preload(saved);
     const refresh = async () => {
       if (refreshing) return;
       refreshing = true;
@@ -510,14 +520,7 @@ function App() {
         const next = await fetchNBAScoreboard(selectedNBADate, controller.signal);
         if (active) {
           setNBAGames(next); setNBAStatus('ready'); setNBAError('');
-          if (!preloadingBoxes) {
-            preloadingBoxes = true;
-            void Promise.all([preloadNBABoxes(next, controller.signal), preloadNBAPregame(next, controller.signal)]).then((results) => {
-              if (active && results.some((failed) => failed.length)) setNBAError('Some NBA statistics could not be saved yet. Automatic refresh will retry.');
-            }, (error: unknown) => {
-              if (!controller.signal.aborted) console.error('NBA box-score preload failed', error);
-            }).finally(() => { preloadingBoxes = false; });
-          }
+          preload(next);
         }
       } catch (cause) {
         if (active && !controller.signal.aborted) {

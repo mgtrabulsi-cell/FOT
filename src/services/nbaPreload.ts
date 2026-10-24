@@ -17,14 +17,8 @@ export async function preloadNBAPregame(games: Game[], signal: AbortSignal): Pro
         && readRenderSnapshot('nbaRoster', `roster:${key}`) && readRenderSnapshot('nbaTeamSeason', `season:${key}`)) return;
       try {
         await Promise.all([
-          fetchNBARoster(team.id, season, signal).then((players) => {
-            signal.throwIfAborted();
-            saveRenderSnapshot('nbaRoster', `roster:${key}`, players);
-          }),
-          fetchNBATeamSeason(team.id, season, signal).then((stats) => {
-            signal.throwIfAborted();
-            saveRenderSnapshot('nbaTeamSeason', `season:${key}`, stats);
-          }),
+          fetchNBARoster(team.id, season, signal),
+          fetchNBATeamSeason(team.id, season, signal),
         ]);
         warmedTeams.set(key, Date.now());
       } catch (error) {

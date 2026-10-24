@@ -15,6 +15,11 @@ const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league
 function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = {}) {
   let cursor = 0, changed = false, tree;
   const slots = [], effects = [], requests = [], timers = new Map();
+  const snapshotListeners = new Set();
+  const saveSnapshot = (kind, key, value) => {
+    snapshots.set(`${kind}:${key}`, value);
+    snapshotListeners.forEach(listener => listener());
+  };
   let timerId = 0;
   const props = { mode, games: [game], status: 'ready', query: '', favorites: [], onToggleFavorite() {}, onRetry() {},
     initialGameId: game.id, onSelectGame(id) { props.initialGameId = id; } };
@@ -61,9 +66,24 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name === './services/nbaData') return data;
       if (name === './services/renderSnapshots') return {
+        subscribeRenderSnapshots: (listener) => { snapshotListeners.add(listener); return () => snapshotListeners.delete(listener); },
+        readNBAComparisonSnapshot: (away, home, season) => {
+          const combined = snapshots.get(`nbaComparison:comparison:${away}:${home}:${season}`);
+          const a = snapshots.get(`nbaTeamSeason:season:${away}:${season}`) ?? combined?.away;
+          const b = snapshots.get(`nbaTeamSeason:season:${home}:${season}`) ?? combined?.home;
+          return a && b ? { away: a, home: b } : null;
+        },
+        readNBADirectorySnapshot: (teams, season) => {
+          const combined = snapshots.get(`nbaDirectory:directory:${teams.map(team => team.id).join(',')}:${season}`);
+          const groups = teams.flatMap(team => {
+            const players = snapshots.get(`nbaRoster:roster:${team.id}:${season}`) ?? combined?.find(group => group.team.id === team.id)?.players;
+            return players ? [{ team, players }] : [];
+          });
+          return groups.length ? groups : null;
+        },
         nbaResourceSnapshots: (kind) => ({
           read: (key) => snapshots.get(`${kind}:${key}`) ?? null,
-          save: (key, value) => snapshots.set(`${kind}:${key}`, value),
+          save: (key, value) => saveSnapshot(kind, key, value),
         }),
         gameSnapshotKey: (feed, event, season) => `${feed}:${event}:${season}`,
         readRenderSnapshot: (kind, key) => snapshots.get(`${kind}:${key}`) ?? null,
@@ -93,7 +113,7 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
     visit(tree); return result;
   };
   render();
-  return { props, requests, render, nodes, components: context.exports, data, timers,
+  return { props, requests, render, nodes, components: context.exports, data, timers, saveSnapshot,
     async settle() { for (let i = 0; i < 5; i++) { await new Promise(setImmediate); render(); } },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()); },
   };
@@ -116,12 +136,32 @@ test('NBA pregame and Stat Hub resources render saved data synchronously and ret
     });
 
     const resource = () => app.nodes().find((node) => node.type?.name === 'ResourceMessage');
-    assert.equal(resource().props.data, saved, `${name} has saved data on its first render before network completion`);
+    assert.deepEqual(JSON.parse(JSON.stringify(resource().props.data)), saved, `${name} has saved data on its first render before network completion`);
     await app.settle();
-    assert.equal(resource().props.data, saved, `${name} retains saved content after a failed refresh`);
+    assert.deepEqual(JSON.parse(JSON.stringify(resource().props.data)), saved, `${name} retains saved content after a failed refresh`);
     assert.equal(resource().props.error, 'Offline test');
     app.unmount();
   }
+});
+
+test('NBA directory renders individual saved teams immediately and notices preloads while its request is pending', async () => {
+  const player = { id: 'p1', name: 'Instant player', position: 'G', jersey: '1', teamId: away.id };
+  let rosterRequests = 0;
+  const props = { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: false };
+  const app = setup('stats', new Map([['nbaRoster:roster:1:2027', [player]]]), { name: 'NBADirectory', props }, {
+    fetchNBARoster: () => { rosterRequests++; return new Promise(() => {}); },
+    fetchNBAPointsPerGame: () => new Promise(() => {}),
+  });
+  const panels = () => app.nodes().filter(node => node.props?.className === 'nfl-directory-team');
+  assert.equal(panels().length, 1, 'A missing combined snapshot does not hide saved players');
+  app.saveSnapshot('nbaRoster', 'roster:2:2027', [{ ...player, id: 'p2', teamId: home.id }]);
+  app.render();
+  assert.equal(panels().length, 2, 'Background-saved second team becomes visible without finishing the pending request');
+  assert.equal(rosterRequests, 2, 'Cache notifications do not restart roster requests');
+  app.saveSnapshot('nbaScoring', 'scoring:1,2:2027', { averages: { p1: 24 }, failed: [] });
+  app.render();
+  assert.equal(app.nodes().filter(node => node.type?.name === 'ResourceMessage')[1].props.data.averages.p1, 24);
+  app.unmount();
 });
 
 test('NBA Stat Hub reuses recent saved scoring order without another player-stat request burst', async () => {

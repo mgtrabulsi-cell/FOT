@@ -1,4 +1,5 @@
 import type { FavoriteTarget, Game, NFLFavoritePlay, Team } from './sportsData.ts';
+import { readRenderSnapshot, saveRenderSnapshot } from './renderSnapshots.ts';
 
 export type NBAPlayerStatKey = 'points' | 'rebounds' | 'assists' | 'steals' | 'blocks' | 'turnovers' | 'minutes' | 'offensiveRebounds' | 'defensiveRebounds' | 'fouls' | 'threePointersMade' | 'fieldGoalsMade' | 'fieldGoalsAttempted' | 'threePointersAttempted' | 'freeThrowsMade' | 'freeThrowsAttempted' | 'fieldGoalPct' | 'threePointPct' | 'freeThrowPct' | 'plusMinus';
 export type NBAStats = Partial<Record<NBAPlayerStatKey, number>>;
@@ -250,12 +251,46 @@ export function parseNBAPlayerGames(value: unknown): NBAPlayerGame[] {
   }
   return result.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 }
+const pending = new Map<string, { controller: AbortController; promise: Promise<unknown>; users: number }>();
 async function get(url: string, signal?: AbortSignal): Promise<unknown> {
-  const response = await fetch(url, { signal, cache: 'no-store' });
-  if (!response.ok) throw new Error(`NBA data feed returned HTTP ${response.status}.`);
-  const data: unknown = await response.json();
-  if (!isObject(data)) throw new Error('NBA data feed returned a malformed response.');
-  return data;
+  signal?.throwIfAborted();
+  let request = pending.get(url);
+  if (!request || request.controller.signal.aborted) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    const promise = Promise.resolve().then(async () => {
+      try {
+        const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error(`NBA data feed returned HTTP ${response.status}.`);
+        const data: unknown = await response.json();
+        if (!isObject(data)) throw new Error('NBA data feed returned a malformed response.');
+        return data;
+      } catch (error) {
+        if (controller.signal.aborted) throw new Error('NBA data request timed out. Retry to refresh.');
+        throw error;
+      } finally {
+        clearTimeout(timer);
+        if (pending.get(url)?.controller === controller) pending.delete(url);
+      }
+    });
+    request = { controller, promise, users: 0 };
+    pending.set(url, request);
+  }
+  const shared = request;
+  shared.users++;
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return false;
+      finished = true;
+      signal?.removeEventListener('abort', abort);
+      if (--shared.users === 0) shared.controller.abort();
+      return true;
+    };
+    const abort = () => { if (finish()) reject(signal?.reason ?? new DOMException('Aborted', 'AbortError')); };
+    signal?.addEventListener('abort', abort, { once: true });
+    shared.promise.then((data) => { if (finish()) resolve(data); }, (error: unknown) => { if (finish()) reject(error); });
+  });
 }
 export async function fetchNBATeams(signal?: AbortSignal) { return parseNBATeams(await get(`${base}/teams?limit=100`, signal)); }
 export async function fetchNBALeague(signal?: AbortSignal): Promise<{ teams: Team[]; season: number }> {
@@ -265,13 +300,38 @@ export async function fetchNBALeague(signal?: AbortSignal): Promise<{ teams: Tea
   if (season === undefined) throw new Error('NBA season data is unavailable.');
   return { teams: parseNBATeams(data), season };
 }
-export async function fetchNBARoster(teamId: string, season: number, signal?: AbortSignal) { return parseNBARoster(await get(`${base}/teams/${encodeURIComponent(teamId)}/roster?season=${season}`, signal), teamId); }
-export async function fetchNBASummary(eventId: string, signal?: AbortSignal) { return parseNBASummary(await get(`${base}/summary?event=${encodeURIComponent(eventId)}`, signal), eventId); }
-export async function fetchNBATeamSeason(teamId: string, season: number, signal?: AbortSignal) { return parseNBATeamSeason(await get(`${base}/teams/${encodeURIComponent(teamId)}/statistics?season=${season}&seasontype=2`, signal)); }
-export async function fetchNBAPlayerSeason(playerId: string, season: number, signal?: AbortSignal) {
-  return parseNBAPlayerSeason(await get(`${athleteBase}/${encodeURIComponent(playerId)}/stats?season=${season}&seasontype=2`, signal), season);
+export async function fetchNBARoster(teamId: string, season: number, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const key = `roster:${teamId}:${season}`;
+  const saved = readRenderSnapshot('nbaRoster', key, 300_000);
+  if (saved) return saved;
+  const players = parseNBARoster(await get(`${base}/teams/${encodeURIComponent(teamId)}/roster?season=${season}`, signal), teamId);
+  signal?.throwIfAborted();
+  saveRenderSnapshot('nbaRoster', key, players);
+  return players;
 }
-export async function fetchNBAPointsPerGame(players: NBAPlayer[], season: number, signal?: AbortSignal) {
+export async function fetchNBASummary(eventId: string, signal?: AbortSignal) { return parseNBASummary(await get(`${base}/summary?event=${encodeURIComponent(eventId)}`, signal), eventId); }
+export async function fetchNBATeamSeason(teamId: string, season: number, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const key = `season:${teamId}:${season}`;
+  const saved = readRenderSnapshot('nbaTeamSeason', key, 300_000);
+  if (saved) return saved;
+  const stats = parseNBATeamSeason(await get(`${base}/teams/${encodeURIComponent(teamId)}/statistics?season=${season}&seasontype=2`, signal));
+  signal?.throwIfAborted();
+  saveRenderSnapshot('nbaTeamSeason', key, stats);
+  return stats;
+}
+export async function fetchNBAPlayerSeason(playerId: string, season: number, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const key = `player-season:${playerId}:${season}`;
+  const saved = readRenderSnapshot('nbaPlayerSeason', key, 300_000);
+  if (saved) return saved;
+  const stats = parseNBAPlayerSeason(await get(`${athleteBase}/${encodeURIComponent(playerId)}/stats?season=${season}&seasontype=2`, signal), season);
+  signal?.throwIfAborted();
+  saveRenderSnapshot('nbaPlayerSeason', key, stats);
+  return stats;
+}
+export async function fetchNBAPointsPerGame(players: NBAPlayer[], season: number, signal?: AbortSignal, onProgress?: (averages: Record<string, number>) => void) {
   const averages: Record<string, number> = {};
   const failed: string[] = [];
   const unique = [...new Map(players.map((player) => [player.id, player])).values()];
@@ -280,7 +340,10 @@ export async function fetchNBAPointsPerGame(players: NBAPlayer[], season: number
     await Promise.all(unique.slice(start, start + 4).map(async (player) => {
       try {
         const value = (await fetchNBAPlayerSeason(player.id, season, signal)).averages.points;
-        if (value !== undefined) averages[player.id] = value;
+        if (value !== undefined) {
+          averages[player.id] = value;
+          onProgress?.({ ...averages });
+        }
       } catch (error) {
         if (signal?.aborted) throw error;
         console.error(`Could not load NBA scoring average for ${player.id}`, error);
@@ -291,9 +354,16 @@ export async function fetchNBAPointsPerGame(players: NBAPlayer[], season: number
   return { averages, failed, updatedAt: Date.now() };
 }
 export async function fetchNBAPlayerProfile(playerId: string, season: number, signal?: AbortSignal): Promise<NBAPlayerProfile> {
+  signal?.throwIfAborted();
+  const key = `profile:${playerId}:${season}`;
+  const saved = readRenderSnapshot('nbaProfile', key, 60_000);
+  if (saved) return saved;
   const path = `${athleteBase}/${encodeURIComponent(playerId)}`;
   const [stats, games] = await Promise.all([fetchNBAPlayerSeason(playerId, season, signal), get(`${path}/gamelog?season=${season}`, signal)]);
-  return { ...stats, games: parseNBAPlayerGames(games) };
+  signal?.throwIfAborted();
+  const profile = { ...stats, games: parseNBAPlayerGames(games) };
+  saveRenderSnapshot('nbaProfile', key, profile);
+  return profile;
 }
 export async function fetchNBALivePlayerStats(eventId: string, players: Array<{ teamId: string; id: string }>, signal?: AbortSignal): Promise<Record<string, Partial<Record<NBAPlayerStatKey, number>>>> {
   const summary = await fetchNBASummary(eventId, signal), result: Record<string, NBAStats> = {};

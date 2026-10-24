@@ -16,6 +16,7 @@ type Snapshots = {
   nbaRoster: NBAPlayer[];
   nbaTeamSeason: NBATeamStat[];
   nbaProfile: NBAPlayerProfile;
+  nbaPlayerSeason: Omit<NBAPlayerProfile, 'games'>;
   nbaLeague: { teams: Team[]; season: number };
   nbaDirectory: Array<{ team: Team; players: NBAPlayer[] }>;
   nbaComparison: { away: NBATeamStat[]; home: NBATeamStat[] };
@@ -30,6 +31,12 @@ type Snapshots = {
 
 const prefix = `gamewire-render-v1:${import.meta.env?.BASE_URL ?? '/'}:`;
 let stopped = false;
+const listeners = new Set<() => void>();
+
+export function subscribeRenderSnapshots(listener: () => void) {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 function storage() {
   return typeof localStorage === 'undefined' ? null : localStorage;
@@ -66,6 +73,8 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
           object(game) && typeof game.id === 'string' && typeof game.date === 'string' && typeof game.opponent === 'string'
           && typeof game.result === 'string' && typeof game.score === 'string' && typeof game.seasonType === 'string'
           && numbers(game.stats));
+    case 'nbaPlayerSeason':
+      return Number.isInteger(data.season) && numbers(data.averages) && numbers(data.totals);
     case 'nbaSummary':
       return typeof data.eventId === 'string' && typeof data.clock === 'string' && typeof data.period === 'string'
         && typeof data.status === 'string' && Array.isArray(data.teams) && data.teams.every((team: unknown) =>
@@ -120,13 +129,14 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
   return false;
 }
 
-export function readRenderSnapshot<K extends keyof Snapshots>(kind: K, key: string): Snapshots[K] | null {
+export function readRenderSnapshot<K extends keyof Snapshots>(kind: K, key: string, maxAge = Infinity): Snapshots[K] | null {
   if (stopped) return null;
   try {
     const raw = storage()?.getItem(`${prefix}${kind}:${key}`);
     if (!raw) return null;
     const entry: unknown = JSON.parse(raw);
     if (!object(entry) || entry.version !== 1 || !valid(kind, entry.data)) throw new Error('Invalid saved display snapshot');
+    if (maxAge !== Infinity && (typeof entry.savedAt !== 'number' || Date.now() - entry.savedAt >= maxAge)) return null;
     return entry.data;
   } catch (error) {
     console.error('Could not read saved public display', error);
@@ -140,7 +150,7 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
     const target = storage();
     if (!target) return;
     const name = `${prefix}${kind}:${key}`;
-    const raw = JSON.stringify({ version: 1, data });
+    const raw = JSON.stringify({ version: 1, data, savedAt: Date.now() });
     if (raw.length > 256_000) throw new Error('Public display snapshot exceeds its storage limit');
     if (target.getItem(name) === raw) return;
     const entries = Array.from({ length: target.length }, (_, index) => target.key(index))
@@ -153,6 +163,7 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
       else { size += length; count++; }
     }
     target.setItem(name, raw);
+    listeners.forEach((listener) => listener());
   } catch (error) {
     console.error('Could not save public display for immediate reopening', error);
   }
@@ -165,8 +176,28 @@ export function stopRenderSnapshots() {
 export function nbaResourceSnapshots<K extends 'nbaRoster' | 'nbaTeamSeason' | 'nbaProfile' | 'nbaLeague' | 'nbaDirectory' | 'nbaComparison' | 'nbaScoring'>(kind: K) {
   return {
     read: (key: string) => readRenderSnapshot(kind, key),
-    save: (key: string, data: Snapshots[K]) => saveRenderSnapshot(kind, key, data),
+    save: (key: string, data: Snapshots[K]) => {
+      if (JSON.stringify(readRenderSnapshot(kind, key)) !== JSON.stringify(data)) saveRenderSnapshot(kind, key, data);
+    },
   };
+}
+
+export function readNBADirectorySnapshot(teams: Team[], season: number) {
+  const combined = readRenderSnapshot('nbaDirectory', `directory:${teams.map((team) => team.id).join(',')}:${season}`);
+  const groups = teams.map((team) => ({
+    team,
+    players: readRenderSnapshot('nbaRoster', `roster:${team.id}:${season}`)
+      ?? combined?.find((group) => group.team.id === team.id)?.players ?? null,
+  }));
+  if (!groups.some((group) => group.players !== null)) return null;
+  return groups.flatMap((group) => group.players !== null ? [{ team: group.team, players: group.players }] : []);
+}
+
+export function readNBAComparisonSnapshot(away: string, home: string, season: number) {
+  const combined = readRenderSnapshot('nbaComparison', `comparison:${away}:${home}:${season}`);
+  const awayStats = readRenderSnapshot('nbaTeamSeason', `season:${away}:${season}`) ?? combined?.away;
+  const homeStats = readRenderSnapshot('nbaTeamSeason', `season:${home}:${season}`) ?? combined?.home;
+  return awayStats && homeStats ? { away: awayStats, home: homeStats } : null;
 }
 
 export const gameSnapshotKey = (feed: string, event: string, season: number) => `${feed}:${event}:${season}`;

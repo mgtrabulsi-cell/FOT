@@ -5,7 +5,7 @@ import OfflineImage from './OfflineImage';
 import DraggableTabs from './DraggableTabs';
 import type { FavoriteTarget, Game, Team } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
-import { gameSnapshotKey, readRenderSnapshot, nbaResourceSnapshots } from './services/renderSnapshots';
+import { gameSnapshotKey, readRenderSnapshot, nbaResourceSnapshots, readNBADirectorySnapshot, readNBAComparisonSnapshot, subscribeRenderSnapshots } from './services/renderSnapshots';
 import { saveNBASummary } from './services/nbaPreload';
 import {
   fetchNBALeague, fetchNBAPlayerProfile, fetchNBAPointsPerGame, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
@@ -49,6 +49,13 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
     if (!load) return;
     let disposed = false;
     let request: AbortController | undefined;
+    const unsubscribeSnapshots = subscribeRenderSnapshots(() => {
+      const data = snapshots?.read(key);
+      if (!disposed && data !== null && data !== undefined) {
+        setState((previous) => ({ key, data, loading: previous.key === key ? previous.loading : !!load,
+          error: previous.key === key ? previous.error : '' }));
+      }
+    });
     const refresh = () => {
       request?.abort();
       const controller = new AbortController();
@@ -75,7 +82,7 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
     refresh();
     const timer = poll ? window.setInterval(() => { if (document.visibilityState !== 'hidden' && navigator.onLine) refresh(); }, poll) : undefined;
     const unsubscribe = subscribeForegroundRefresh(refresh);
-    return () => { disposed = true; request?.abort(); if (timer !== undefined) window.clearInterval(timer); unsubscribe(); };
+    return () => { disposed = true; request?.abort(); if (timer !== undefined) window.clearInterval(timer); unsubscribe(); unsubscribeSnapshots(); };
   }, [key, load, poll, revision, saved, snapshots]);
   return { ...(state.key === key ? { ...state, data: state.data ?? saved } : { key, data: saved, loading: !!load, error: '' }), retry };
 }
@@ -189,11 +196,15 @@ function TeamSeason({ team, season }: { team: Team; season: number }) {
   return <section><h4>{team.abbr} · {season - 1}–{String(season).slice(-2)} regular season</h4><ResourceMessage {...resource} />{resource.data && (resource.data.length ? <dl className="nba-season-grid">{resource.data.map((stat) => <div key={stat.name}><dt>{stat.label}</dt><dd>{stat.display}</dd></div>)}</dl> : <p>No season averages are available yet.</p>)}</section>;
 }
 function PregameComparison({ game }: { game: Game }) {
+  const snapshots = useMemo(() => ({
+    ...comparisonSnapshots,
+    read: () => readNBAComparisonSnapshot(game.away.id, game.home.id, game.seasonYear),
+  }), [game.away.id, game.home.id, game.seasonYear]);
   const load = useCallback(async (signal: AbortSignal) => {
     const [away, home] = await Promise.all([fetchNBATeamSeason(game.away.id, game.seasonYear, signal), fetchNBATeamSeason(game.home.id, game.seasonYear, signal)]);
     return { away, home };
   }, [game.away.id, game.home.id, game.seasonYear]);
-  const resource = useNBAResource(`comparison:${game.away.id}:${game.home.id}:${game.seasonYear}`, load, 0, comparisonSnapshots);
+  const resource = useNBAResource(`comparison:${game.away.id}:${game.home.id}:${game.seasonYear}`, load, 0, snapshots);
   return <><p className="nba-note">{game.seasonYear - 1}–{String(game.seasonYear).slice(-2)} regular-season team averages · not game projections.</p><ResourceMessage {...resource} />{resource.data && <Comparison away={game.away} home={game.home} awayStats={resource.data.away} homeStats={resource.data.home} />}</>;
 }
 function profileOptions(position: string) {
@@ -205,14 +216,20 @@ function StatsGrid({ stats, label }: { stats: NBAStats; label: string }) {
 }
 function NBADirectory({ teams, season, query, favorites, toggle, open, live }: { teams: Team[]; season: number; query: string; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void; live: boolean }) {
   const teamKey = teams.map((team) => team.id).join(',');
+  const snapshots = useMemo(() => ({
+    ...directorySnapshots,
+    read: () => readNBADirectorySnapshot(teams, season),
+  }), [teamKey, season]);
   const load = useCallback((signal: AbortSignal) => Promise.all(teams.map(async (team) => ({ team, players: await fetchNBARoster(team.id, season, signal) }))), [teamKey, season]);
-  const resource = useNBAResource(`directory:${teamKey}:${season}`, load, 0, directorySnapshots);
+  const resource = useNBAResource(`directory:${teamKey}:${season}`, load, 0, snapshots);
   const playerIds = resource.data?.flatMap((group) => group.players.map((player) => player.id)).join(',') ?? '';
   const scoringPlayers = useMemo(() => resource.data?.flatMap((group) => group.players) ?? [], [playerIds]);
   const loadScoring = useCallback(async (signal: AbortSignal) => {
     const saved = scoringSnapshots.read(`scoring:${teamKey}:${season}`);
     if (saved?.updatedAt && !saved.failed.length && Date.now() - saved.updatedAt < 300_000) return saved;
-    const result = await fetchNBAPointsPerGame(scoringPlayers, season, signal);
+    const result = await fetchNBAPointsPerGame(scoringPlayers, season, signal, (partial) => {
+      scoringSnapshots.save(`scoring:${teamKey}:${season}`, { averages: { ...saved?.averages, ...partial }, failed: [] });
+    });
     return { ...result, averages: { ...saved?.averages, ...result.averages } };
   }, [scoringPlayers, teamKey, season]);
   const scoring = useNBAResource(`scoring:${teamKey}:${season}`, resource.data ? loadScoring : null, 0, scoringSnapshots);
@@ -223,7 +240,8 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live }: {
     (position === 'All' || player.position === position) && `${player.name} ${group.team.name} ${group.team.abbr} ${player.position}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => (scoring.data?.averages[b.id] ?? -1) - (scoring.data?.averages[a.id] ?? -1) || a.name.localeCompare(b.name)) })) ?? [];
   return <><div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter NBA players by position">{['All', ...positions].map((item) => <button type="button" key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div><span>{live ? 'LIVE' : `${groups.reduce((total, group) => total + group.players.length, 0)} players`}</span></div>
-    <ResourceMessage {...resource} /><ResourceMessage {...scoring} />
+    <ResourceMessage {...resource} /><ResourceMessage {...scoring} loading={false} />
+    {scoring.loading && !scoring.data && resource.data && <p className="nfl-data-note" role="status">Updating scoring averages… Players are ready to open.</p>}
     {scoring.data && <p className="nfl-data-note">Season PPG · highest to lowest · unavailable averages last.{scoring.data.failed.length > 0 && <> Some scoring averages could not be refreshed. <button type="button" onClick={scoring.retry}>Retry averages</button></>}</p>}
     <div className="nfl-directory-grid">{groups.map((group, index) => <section className="nfl-directory-team" key={group.team.id}><header><span className="team-mark">{group.team.logo ? <OfflineImage src={group.team.logo} alt="" /> : group.team.abbr}</span><span><b>{group.team.name}</b><small>{teams.length === 2 ? index === 0 ? 'AWAY TEAM' : 'HOME TEAM' : 'NBA TEAM'}{group.team.record ? ` · ${group.team.record}` : ''}</small></span><FavoriteButton target={nbaTeamFavorite(group.team)} favorites={favorites} toggle={toggle} /></header>
       <div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button type="button" className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => open(player, group.team)}>{player.headshot && <OfflineImage className="nba-directory-headshot" src={player.headshot} alt="" loading="lazy" />}<span><b>{player.name}</b><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}{scoring.data && ` · ${format(scoring.data.averages[player.id])} PPG`}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, group.team)} favorites={favorites} toggle={toggle} /></div>)}</div>{!group.players.length && <p className="nfl-empty-note">No players match these filters.</p>}

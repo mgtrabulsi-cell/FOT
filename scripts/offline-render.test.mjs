@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 // Board day grouping follows the viewer's local clock; pin it so CI (UTC) matches US viewers.
 process.env.TZ = 'America/New_York';
-import { detailsSnapshotKey, readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, stopRenderSnapshots, teamSnapshotKey } from '../src/services/renderSnapshots.ts';
+import { detailsSnapshotKey, readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, stopRenderSnapshots, teamSnapshotKey, readNBADirectorySnapshot, readNBAComparisonSnapshot, subscribeRenderSnapshots } from '../src/services/renderSnapshots.ts';
 import { rankTeamAverages, teamComparisonMetrics } from '../src/services/teamComparisonRanks.ts';
 
 const source = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
@@ -322,6 +322,28 @@ test('NBA profiles, rankings and league snapshots survive reloads with isolated 
     assert.equal(readRenderSnapshot('nbaProfile', 'bad'), null);
     assert.equal(errors.length, 1);
   } finally { console.error = originalError; }
+}));
+
+test('NBA views compose team caches without a combined snapshot and notify already-open displays', () => withStorage(() => {
+  const teams = ['a', 'b'].map(id => ({ id, name: id, abbr: id, color: '123456', score: 0, record: '' }));
+  const players = [{ id: 'p1', name: 'Player', position: 'G', jersey: '', teamId: 'a' }];
+  let notifications = 0;
+  const unsubscribe = subscribeRenderSnapshots(() => notifications++);
+  saveRenderSnapshot('nbaRoster', 'roster:a:2027', players);
+  assert.equal(notifications, 1);
+  assert.deepEqual(readNBADirectorySnapshot(teams, 2027), [{ team: teams[0], players }]);
+  assert.equal(readNBADirectorySnapshot(teams, 2028), null);
+  saveRenderSnapshot('nbaRoster', 'roster:b:2027', []);
+  assert.equal(readNBADirectorySnapshot(teams, 2027).length, 2, 'Empty saved roster is valid');
+  saveRenderSnapshot('nbaTeamSeason', 'season:a:2027', []);
+  saveRenderSnapshot('nbaTeamSeason', 'season:b:2027', []);
+  assert.deepEqual(readNBAComparisonSnapshot('a', 'b', 2027), { away: [], home: [] });
+  assert.ok(readRenderSnapshot('nbaRoster', 'roster:a:2027', 300_000));
+  assert.equal(readRenderSnapshot('nbaRoster', 'roster:a:2027', 0), null);
+  unsubscribe();
+  const before = notifications;
+  saveRenderSnapshot('nbaRoster', 'roster:b:2028', []);
+  assert.equal(notifications, before, 'Unmounted views do not receive cache notifications');
 }));
 
 test('Account deletion stops late requests from recreating display snapshots', () => withStorage((storage) => {
