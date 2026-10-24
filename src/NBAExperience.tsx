@@ -346,7 +346,7 @@ export default function NBAExperience({ mode, games, status, query, favorites, o
       {tab === 'teams' && (upcoming ? <PregameComparison game={game} /> : <Comparison away={game.away} home={game.home} awayStats={currentSummary?.teams.find((item) => item.id === game.away.id)?.stats ?? []} homeStats={currentSummary?.teams.find((item) => item.id === game.home.id)?.stats ?? []} />)}
       {tab === 'plays' && <PlayByPlay plays={currentSummary?.plays ?? []} game={game} upcoming={upcoming} />}
     </>}
-    <p className="nba-note">Public ESPN feeds · live game details refresh every 15 seconds while visible. Missing statistics display —; DNP is not zero. NBA favorites are saved to your Locker Room without NBA notifications.</p>
+    <p className="nba-note">Public ESPN feeds · live game details refresh every 15 seconds while visible. Missing statistics display —; DNP is not zero. Enable game notifications for favorite NBA team quarter updates and league-wide player highlights.</p>
     {profile && season !== undefined && <PlayerProfile key={`${profile.player.id}:${season}`} {...profile} season={season} favorites={favorites} toggle={onToggleFavorite} close={() => setProfile(null)} />}
   </section>;
 }
