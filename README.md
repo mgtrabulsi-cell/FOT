@@ -285,6 +285,8 @@ The score poller uses ESPN's undocumented public scoreboard feed, so alert timin
 
 ### NFL and NBA navigation
 
+NBA's date picker has previous/next arrows to browse one Eastern calendar day at a time in The Wire, Stat Hub, and Locker Room. The calendar and Today shortcut remain available. Arrows respect the picker's 2000-2200 date bounds and use the same saved/preloaded schedules as calendar selection.
+
 Final-game scoreboards mute the losing team's name and score in gray across the game list, matchup wheel, and open matchup. NFL team tabs and final-score totals use the same treatment. Winners remain highlighted by contrast; live games, upcoming games, and ties are not dimmed. Favorites and team-selection controls stay fully interactive.
 
 The Wire and Stat Hub have an NFL/NBA banner. The selection carries between both screens and the Locker Room; NFL remains the initial sport. NFL keeps its weekly board and existing player/box-score workflows. NBA uses a calendar date in Eastern time (with a Today shortcut), not NFL week numbers. Today's NBA date rolls over while the app is open or on foreground return unless a historical date was explicitly selected.

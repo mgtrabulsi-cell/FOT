@@ -6,6 +6,7 @@ import {
   Activity,
   ChartColumn,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   Clock3,
@@ -37,7 +38,7 @@ import NBAExperience from './NBAExperience';
 import DraggableTabs from './DraggableTabs';
 import { preloadNBABoxes, preloadNBADates } from './services/nbaPreload';
 import type { NBAPlayerStatKey } from './services/nbaData';
-import { fetchNBAScoreboard, nbaCalendarDate } from './services/sportsData';
+import { fetchNBAScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
 import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
 import TheAngle from './TheAngle';
@@ -1222,10 +1223,14 @@ function App() {
             {(['NFL', 'NBA'] as const).map((league) => <button key={league} type="button" aria-pressed={sportLeague === league} onClick={() => {
               setSportLeague(league); setWireSearchQuery(''); setPlayerSearchQuery(''); setWirePlayerCard(null);
             }}>{league}</button>)}
-            {sportLeague === 'NBA' && <><label><span className="league-date-label">NBA date (Eastern)</span><input type="date" aria-label="NBA date (Eastern)" title="NBA date (Eastern)" value={selectedNBADate} min="2000-01-01" max="2200-12-31" onChange={(event) => {
+            {sportLeague === 'NBA' && <><div className="nba-date-navigation" role="group" aria-label="NBA date navigation"><button type="button" className="nba-date-arrow" aria-label="Previous NBA day" title="Previous day" disabled={selectedNBADate <= '2000-01-01'} onClick={() => {
+              setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, -1)); setNBASelectedGameId(null);
+            }}><ChevronLeft size={16} aria-hidden="true" /></button><label><span className="league-date-label">NBA date (Eastern)</span><input type="date" aria-label="NBA date (Eastern)" title="NBA date (Eastern)" value={selectedNBADate} min="2000-01-01" max="2200-12-31" onChange={(event) => {
               if (!event.target.value) return;
               setNBADateOverride(true); setSelectedNBADate(event.target.value); setNBASelectedGameId(null);
-            }} /></label><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}
+            }} /></label><button type="button" className="nba-date-arrow" aria-label="Next NBA day" title="Next day" disabled={selectedNBADate >= '2200-12-31'} onClick={() => {
+              setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, 1)); setNBASelectedGameId(null);
+            }}><ChevronRight size={16} aria-hidden="true" /></button></div><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}
           </div>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}

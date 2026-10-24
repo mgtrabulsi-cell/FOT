@@ -523,6 +523,14 @@ export function nbaCalendarDate(date = new Date()): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+export function shiftNBACalendarDate(date: string, direction: -1 | 1): string {
+  const day = new Date(`${date}T12:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(day.getTime())
+    || day.toISOString().slice(0, 10) !== date) throw new Error('Choose a valid NBA calendar date.');
+  day.setUTCDate(day.getUTCDate() + direction);
+  return day.toISOString().slice(0, 10);
+}
+
 export function readNBAScoreboard(payload: unknown): Game[] {
   const data = asObject(payload);
   if (!Array.isArray(data.events)) throw new Error('NBA scoreboard returned an invalid game list.');

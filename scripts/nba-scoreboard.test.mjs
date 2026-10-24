@@ -1,7 +1,27 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { fetchNBAScoreboard, nbaCalendarDate, readNBAScoreboard } from '../src/services/sportsData.ts';
+import { fetchNBAScoreboard, nbaCalendarDate, readNBAScoreboard, shiftNBACalendarDate } from '../src/services/sportsData.ts';
+
+test('NBA day arrows move one calendar day across months, years, leap days and daylight saving', () => {
+  for (const [before, after] of [
+    ['2026-10-24', '2026-10-25'], ['2026-10-31', '2026-11-01'], ['2026-12-31', '2027-01-01'],
+    ['2024-02-28', '2024-02-29'], ['2024-02-29', '2024-03-01'], ['2026-02-28', '2026-03-01'],
+    ['2026-03-08', '2026-03-09'], ['2026-11-01', '2026-11-02'],
+  ]) {
+    assert.equal(shiftNBACalendarDate(before, 1), after);
+    assert.equal(shiftNBACalendarDate(after, -1), before);
+  }
+  for (const invalid of ['', '2026-02-30', 'bad']) assert.throws(() => shiftNBACalendarDate(invalid, 1), /valid NBA calendar date/);
+  const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  for (const [label, limit, direction] of [['Previous NBA day', '2000-01-01', -1], ['Next NBA day', '2200-12-31', 1]]) {
+    const handler = source.slice(source.indexOf(`aria-label="${label}"`)).split('</button>')[0];
+    assert.ok(handler.includes(limit));
+    assert.ok(handler.includes('setNBADateOverride(true)'));
+    assert.ok(handler.includes(`shiftNBACalendarDate(date, ${direction})`));
+    assert.ok(handler.includes('setNBASelectedGameId(null)'));
+  }
+});
 
 const competitor = (id, side, score) => ({
   homeAway: side, score: String(score), team: { id, displayName: `NBA Team ${id}`, abbreviation: `T${id}` },
