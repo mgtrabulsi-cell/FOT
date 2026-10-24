@@ -69,13 +69,21 @@ const seasonFixture = () => ({
 const logsFixture = () => ({
   names: ['minutes', 'fieldGoalsMade-fieldGoalsAttempted', 'fieldGoalPct', 'threePointFieldGoalsMade-threePointFieldGoalsAttempted', 'threePointPct', 'freeThrowsMade-freeThrowsAttempted', 'freeThrowPct', 'totalRebounds', 'assists', 'blocks', 'steals', 'fouls', 'turnovers', 'points'],
   events: {
-    first: { id: 'first', gameDate: '2026-04-01T00:00:00Z', opponent: { abbreviation: 'HOU' }, gameResult: 'W', score: '119-96' },
+    first: { id: 'first', gameDate: '2026-04-01T00:00:00Z', atVs: '@', opponent: { abbreviation: 'HOU' }, gameResult: 'W', score: '119-96' },
     second: { id: 'second', gameDate: '2026-04-04T00:00:00Z', opponent: { abbreviation: 'DAL' }, gameResult: 'L', score: '90-99' },
   },
   seasonTypes: [{ displayName: '2025-26 Regular Season', categories: [
     { type: 'event', events: [{ eventId: 'first', stats: ['17', '6-15', '40.0', '0-3', '0.0', '6-7', '85.7', '4', '6', '0', '3', '0', '4', '18'] }] },
     { type: 'event', events: [{ eventId: 'second', stats: ['30:30', '0-5', '0', '0-2', '0', '0-0', '—', '7', '8', '0', '0', '1', '—', '0'] }, { eventId: 'first', stats: [] }, { eventId: 'missing', stats: ['99'] }] },
   ] }],
+});
+
+test('Game logs preserve matchup location, exact minutes and made-attempted shooting lines', () => {
+  const games = parseNBAPlayerGames(logsFixture());
+  assert.equal(games[1].atVs, '@');
+  assert.deepEqual(games[0].display, { MIN: '30:30', FG: '0-5', '3PT': '0-2', FT: '0-0' });
+  assert.equal(games[0].stats.points, 0);
+  assert.equal(games[0].stats.turnovers, undefined);
 });
 
 test('Numeric parsing preserves actual zero and rejects missing/malformed values', () => {

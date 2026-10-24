@@ -8,7 +8,7 @@ export type NBATeamStat = { name: string; label: string; display: string };
 export type NBABoxTeam = { id: string; players: NBABoxPlayer[]; stats: NBATeamStat[] };
 export type NBAPlay = { id: string; sequence?: number; text: string; period: number; periodLabel: string; clock: string; awayScore?: number; homeScore?: number; scoring: boolean; teamId: string; playerIds: string[]; timestamp: string };
 export type NBASummary = { eventId: string; teams: NBABoxTeam[]; plays: NBAPlay[]; clock: string; period: string; status: string; awayScore?: number; homeScore?: number };
-export type NBAPlayerGame = { id: string; date: string; opponent: string; result: string; score: string; seasonType: string; stats: NBAStats };
+export type NBAPlayerGame = { id: string; date: string; opponent: string; atVs?: string; display?: Record<string, string>; result: string; score: string; seasonType: string; stats: NBAStats };
 export type NBAPlayerProfile = { season: number; gamesPlayed?: number; totals: NBAStats; averages: NBAStats; games: NBAPlayerGame[] };
 export const nbaStatOptions: Array<{ key: NBAPlayerStatKey; label: string }> = [
   { key: 'points', label: 'Points' }, { key: 'rebounds', label: 'Rebounds' }, { key: 'assists', label: 'Assists' },
@@ -236,7 +236,15 @@ export function parseNBAPlayerGames(value: unknown): NBAPlayerGame[] {
         const row = obj(raw), id = str(row.eventId), event = obj(events[id]);
         if (!id || seen.has(id) || !str(event.gameDate)) continue;
         seen.add(id);
-        result.push({ id, date: str(event.gameDate), opponent: str(obj(event.opponent).abbreviation) || str(obj(event.opponent).displayName), result: str(event.gameResult), score: str(event.score), seasonType: str(obj(seasonType).displayName), stats: parseNBAStatRow(data.names, row.stats) });
+        const display: Record<string, string> = {};
+        list(data.names).forEach((name, index) => {
+          const value = str(list(row.stats)[index]);
+          if (name === 'minutes') display.MIN = value;
+          if (name === 'fieldGoalsMade-fieldGoalsAttempted') display.FG = value;
+          if (name === 'threePointFieldGoalsMade-threePointFieldGoalsAttempted') display['3PT'] = value;
+          if (name === 'freeThrowsMade-freeThrowsAttempted') display.FT = value;
+        });
+        result.push({ id, date: str(event.gameDate), opponent: str(obj(event.opponent).abbreviation) || str(obj(event.opponent).displayName), atVs: ['@', 'vs'].includes(str(event.atVs)) ? str(event.atVs) : undefined, display, result: str(event.gameResult), score: str(event.score), seasonType: str(obj(seasonType).displayName), stats: parseNBAStatRow(data.names, row.stats) });
       }
     }
   }

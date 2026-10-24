@@ -121,6 +121,10 @@
 .nba-stat-dialog .nba-season-grid dd { font-size: 16px; }
 .nba-stat-dialog .nba-segments button, .nba-stat-dialog select, .nba-stat-hub select { min-height: 34px; padding: 6px 10px; border: 1px solid #34445b; border-radius: 6px; background: #182438; color: #bbc7d9; cursor: pointer; }
 .nba-stat-dialog .nba-segments button[aria-pressed=true] { background: #344968; color: #fff; }
+.nba-full-game-log { margin-top: 18px; min-width: 0; }
+.nba-game-log th, .nba-game-log td { padding: 8px; font-size: 11px; }
+.nba-game-log th:first-child { position: sticky; left: 0; z-index: 1; background: #151f2e; text-align: left; min-width: 80px; box-shadow: 2px 0 #34445b; }
+.nba-game-log th small { display: block; margin-top: 4px; color: #bbc7d9; font-size: 9px; }
 @media (max-width: 760px) {
   .nba-wire .nba-game-wheel { display: none; }
   .nba-experience { padding: 10px 2px; }

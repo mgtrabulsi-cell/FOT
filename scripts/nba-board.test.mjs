@@ -394,3 +394,25 @@ test('Shared NFL/NBA tabs preserve scale-aware dragging, click selection and key
   tree.props.children[0].props.onClick();
   assert.deepEqual(selected, ['nba', 'nba'], 'Keyboard-generated click retains selection');
 });
+
+test('Full NBA game log includes every season game and every box-score column independently of chart selection', async () => {
+  const props = { player: { id: '23', name: 'Actual Player', position: 'G' }, team: away, season: 2027, favorites: [], toggle() {}, close() {} };
+  const app = setup('stats', new Map(), { name: 'PlayerProfile', props });
+  app.data.fetchNBAPlayerProfile = async () => ({ games: Array.from({ length: 25 }, (_, i) => ({
+    id: String(i), date: '2026-10-21', atVs: '@', opponent: 'BOS', result: 'W', score: '100-99', seasonType: i < 20 ? 'Regular Season' : 'Preseason',
+    display: { MIN: '30:30', FG: '0-5', FT: '0-0', '3PT': '0-2' }, stats: { points: 0, rebounds: 5, assists: 6 },
+  })), totals: {}, averages: {} });
+  app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.retry(); app.render(); await app.settle();
+  const log = () => app.nodes().find((node) => node.props?.className === 'nba-table nba-game-log');
+  const rows = () => descendants(log()).filter((node) => node.type === 'tr');
+  assert.equal(rows().length, 26, 'All 25 game rows, not only the 15 chart games');
+  assert.equal(descendants(rows()[0]).filter((node) => node.type === 'th').length, 14);
+  const values = descendants(rows()[1]).filter((node) => node.type === 'td').map((node) => node.props.children);
+  assert.deepEqual(values.slice(1, 8), ['30:30', '0', '5', '6', '0-5', '0-0', '0-2']);
+  assert.equal(values.at(-1), '—');
+  app.nodes().find((node) => node.props?.className === 'nfl-player-stat-tabs').props.onSelect('rebounds'); app.render();
+  assert.deepEqual(descendants(rows()[1]).filter((node) => node.type === 'td').map((node) => node.props.children), values);
+  app.nodes().find((node) => node.type === 'select').props.onChange({ target: { value: 'Preseason' } }); app.render();
+  assert.equal(rows().length, 6);
+  app.unmount();
+});
