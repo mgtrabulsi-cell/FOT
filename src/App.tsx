@@ -17,7 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
-import { readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
+import { readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, subscribeRenderSnapshots } from './services/renderSnapshots';
 import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
@@ -490,6 +490,16 @@ function App() {
   const [nbaGamesDate, setNBAGamesDate] = useState(nbaCalendarDate);
   const savedNBADateGames = useMemo(() => readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [], [selectedNBADate]);
   const nbaGames = nbaGamesDate === selectedNBADate ? loadedNBAGames : savedNBADateGames;
+  const previousNBADate = shiftNBACalendarDate(selectedNBADate, -1);
+  const [previousNBARevision, setPreviousNBARevision] = useState(0);
+  const previousNBAGames = useMemo(() => readRenderSnapshot('scoreboard', `NBA:${previousNBADate}`)?.games ?? [], [previousNBADate, previousNBARevision]);
+  useEffect(() => {
+    let previous = JSON.stringify(readRenderSnapshot('scoreboard', `NBA:${previousNBADate}`)?.games ?? []);
+    return subscribeRenderSnapshots(() => {
+      const next = JSON.stringify(readRenderSnapshot('scoreboard', `NBA:${previousNBADate}`)?.games ?? []);
+      if (next !== previous) { previous = next; setPreviousNBARevision((value) => value + 1); }
+    });
+  }, [previousNBADate]);
   const [nbaStatus, setNBAStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [nbaError, setNBAError] = useState('');
   const [nbaRetry, setNBARetry] = useState(0);
@@ -1299,7 +1309,7 @@ function App() {
         {view === 'Profile' ? (
           authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Guest saved browsing is available in The Wire and Stat Hub.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' && sportLeague === 'NBA' ? (
-          <NBAExperience mode="wire" games={nbaGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
+          <NBAExperience mode="wire" games={nbaGames} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
         ) : view === 'Wire' ? (
           <>
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}

@@ -162,3 +162,11 @@
   .nba-box td.nba-dnp { text-align: left; white-space: nowrap; padding-inline: 12px; }
   .nba-filter { flex-wrap: wrap; }
 }
+.nba-board-card { position: relative; }
+.nba-experience button.nba-board-open { padding: 0; border: 0; background: none; cursor: pointer; min-height: 30px; font: 600 11px var(--mono); }
+.nba-board-open::after { content: ''; position: absolute; inset: 0; border-radius: 8px; }
+.nba-experience button.nba-board-open:focus-visible { outline: none; }
+.nba-board-open:focus-visible::after { outline: 2px solid #cc2633; outline-offset: 2px; }
+.nba-b2b-badge { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 3px 6px; margin-left: 6px; border: 1px solid #d9770680; border-radius: 4px; background: #451a03; color: #fde68a; font: 700 10px/1.2 var(--mono); letter-spacing: .4px; text-decoration: none; vertical-align: middle; }
+.nba-b2b-badge:hover { background: #78350f; color: #fff; }
+.nba-b2b-badge:focus-visible { outline: 2px solid #fbbf24; outline-offset: 2px; }

@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { nbaPreviousGame } from '../src/services/nbaBackToBack.ts';
+import { nbaCalendarDate } from '../src/services/sportsData.ts';
 
 const code = ts.transpileModule(readFileSync(new URL('../src/NBAExperience.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -65,6 +67,8 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name === './services/nbaData') return data;
+      if (name === './services/nbaBackToBack') return { nbaPreviousGame };
+      if (name === './services/sportsData') return { nbaCalendarDate };
       if (name === './services/renderSnapshots') return {
         readLastNBAStatHub: () => snapshots.get('nbaStatHub:last') ?? null,
         saveLastNBAStatHub: (value) => {
@@ -98,7 +102,7 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       return {};
     },
   });
-  vm.runInContext(`${code}\nexports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.LatestPlay = LatestPlay; exports.useDragScroll = useDragScroll; exports.NBADirectory = NBADirectory; exports.PlayerProfile = PlayerProfile; exports.PregameComparison = PregameComparison; exports.Roster = Roster; exports.TeamSeason = TeamSeason;`, context);
+  vm.runInContext(`${code}\nexports.BackToBackBadge = BackToBackBadge; exports.PlayerBox = PlayerBox; exports.PlayByPlay = PlayByPlay; exports.LatestPlay = LatestPlay; exports.useDragScroll = useDragScroll; exports.NBADirectory = NBADirectory; exports.PlayerProfile = PlayerProfile; exports.PregameComparison = PregameComparison; exports.Roster = Roster; exports.TeamSeason = TeamSeason;`, context);
   function render() {
     let count = 0;
     do {
@@ -122,6 +126,32 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
     unmount() { slots.forEach((slot) => slot?.cleanup?.()); },
   };
 }
+
+test('NBA B2B badges match only teams that played the previous Eastern night and link to that exact box', () => {
+  const current = { ...game, date: '2026-11-02T00:00:00Z' };
+  const previous = { ...game, id: 'NBA:400', eventId: '400', status: 'FINAL', date: '2026-11-01T02:30:00Z',
+    home: { ...home, id: 'other', name: 'Other Team' } };
+  assert.equal(nbaPreviousGame(current, away.id, [previous]), previous, 'Eastern date, not UTC date or a 24-hour cutoff');
+  assert.equal(nbaPreviousGame(current, home.id, [previous]), undefined);
+  for (const candidate of [
+    { ...previous, status: 'UPCOMING' }, { ...previous, status: 'LIVE' },
+    { ...previous, date: '2026-10-30T23:00:00Z' }, { ...previous, date: current.date },
+    { ...previous, league: 'NFL' },
+  ]) assert.equal(nbaPreviousGame(current, away.id, [candidate]), undefined);
+  const badge = setup('wire', new Map(), { name: 'BackToBackBadge', props: { game: current, team: away, previousGames: [previous] } });
+  const link = badge.nodes().find((node) => node.type === 'a');
+  assert.equal(link.props.children, 'B2B');
+  assert.equal(link.props.href, '#wire/nba/2026-10-31/400');
+  assert.match(link.props['aria-label'], /Atlanta Hawks back-to-back.*Other Team/);
+  badge.unmount();
+  const board = setup();
+  board.props.previousGames = [previous]; board.render();
+  assert.equal(board.nodes().filter((node) => node.type?.name === 'BackToBackBadge').length, 2);
+  assert.equal(board.nodes().find((node) => node.props?.['data-game-id']).type, 'button');
+  board.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); board.render();
+  assert.equal(board.nodes().filter((node) => node.type?.name === 'BackToBackBadge').length, 2, 'Both matchup headings retain badges');
+  board.unmount();
+});
 
 test('NBA pregame list cards show reported signed spreads accessibly, never missing, live or final lines', () => {
   const app = setup();

@@ -55,7 +55,7 @@ export function saveNBASummary(key: string, summary: NBASummary) {
 
 export function nbaNearbyDates(date: string) {
   const day = new Date(`${date}T12:00:00Z`);
-  return [1, 2, 3, 4, 5, 6, 7, -1].map((offset) => {
+  return [-1, 1, 2, 3, 4, 5, 6, 7].map((offset) => {
     const next = new Date(day);
     next.setUTCDate(next.getUTCDate() + offset);
     return next.toISOString().slice(0, 10);

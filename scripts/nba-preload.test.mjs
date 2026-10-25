@@ -50,9 +50,10 @@ test('next seven NBA dates and yesterday are saved for immediate selection, incl
   const requests = [];
   globalThis.fetch = async (address) => { requests.push(String(address)); return Response.json({ events: [] }); };
   try {
-    assert.deepEqual(nbaNearbyDates('2026-10-31'), ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-10-30']);
+    assert.deepEqual(nbaNearbyDates('2026-10-31'), ['2026-10-30', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']);
     assert.deepEqual(await preloadNBADates('2026-10-31', new AbortController().signal), []);
     assert.equal(requests.length, 8);
+    assert.match(requests[0], /dates=20261030/, 'Previous night loads before future dates so B2B badges do not wait');
     for (const date of nbaNearbyDates('2026-10-31')) assert.deepEqual(readRenderSnapshot('scoreboard', `NBA:${date}`).games, []);
   } finally {
     globalThis.fetch = originalFetch;

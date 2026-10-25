@@ -18,6 +18,8 @@ The Angle starts with a collapsed **Active bets** dropdown listing every pending
 
 NBA pregame list cards on The Wire and matchup details show the reported spread with the home-team abbreviation and its signed line, matching the NFL spread badge. Missing lines are omitted, and spreads are hidden after tipoff. NFL live player boxes warm in the background two games at a time, refreshing stale copies every 30 seconds without downloading full-week player histories or changing scoreboard polling. Open NFL boxes restore saved statistics synchronously, notice background snapshot writes, and continue their existing 15-second live refresh. Failed or wholly empty player refreshes retain the last good box. A first-ever unsaved box still requires a connection.
 
+NBA teams on The Wire list and matchup headers display a **B2B** badge when a completed game is reported for that team on the previous Eastern calendar date. Each badge opens that exact game's box score inside GameWire. Previous-night schedules load first in nearby-date preloading, reuse saved schedules immediately, and update badges when background saves arrive. Missing or unplayed games never produce a badge.
+
 ## Run locally
 
 Install Node.js 20 or newer, then run:
