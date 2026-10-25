@@ -59,9 +59,9 @@ export default function ActiveAngleBets({ active, revision }: { active: boolean;
     {!loaded && !error && <p role="status">Loading active bets...</p>}
     {error && <p className="feed-warning" role="alert">{error} <button type="button" onClick={() => setRefresh((value) => value + 1)}>Retry active bets</button></p>}
     {loaded && !picks.length && <p>No active bets. No unsettled admin picks right now.</p>}
-    {!!picks.length && <ul aria-label="Unsettled admin picks">{picks.map(({ story, pick }) => <li key={`${story.id}:${pick.id}`}>
+    {!!picks.length && <ul aria-label="Unsettled admin picks">{picks.map(({ story, pick }, index) => <li key={`${story.id}:${pick.id}`}>
+      <div className="active-bet-meta"><strong>Pick {index + 1}</strong><span>{angleSport(story.game_id).label} · {story.matchup} · Week {story.week}, {story.season}</span></div>
       <AnglePicks picks={[pick]} emoji={angleSport(story.game_id).emoji} />
-      <a href={`#analyst-desk/story/${story.id}`}>{angleSport(story.game_id).label} · {story.matchup} · Week {story.week}, {story.season}</a>
     </li>)}</ul>}
   </details>;
 }

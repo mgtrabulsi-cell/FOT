@@ -108,7 +108,11 @@ test('Saved picks render synchronously in a collapsed accessible dropdown using 
   assert.ok(app.nodes().some((node) => node.type === 'summary'));
   const pick = app.nodes().find((node) => node.type === 'original-pick-format');
   assert.equal(pick.props.picks[0].text, pending.text);
-  assert.ok(app.nodes().some((node) => node.props?.href === '#analyst-desk/story/old-story'));
+  assert.equal(app.nodes().some((node) => node.type === 'a' || node.props?.href), false, 'Active picks have no links');
+  assert.match(app.text(), /Pick |Team A @ Team B/);
+  const metadata = app.nodes().find((node) => node.props?.className === 'active-bet-meta');
+  assert.ok(metadata);
+  assert.ok(app.nodes().some((node) => node.type === 'strong' && JSON.stringify(node.props.children) === JSON.stringify(['Pick ', 1])));
   assert.doesNotMatch(app.text(), /Loading active bets/);
   assert.equal(app.requests.length, 0);
 });
