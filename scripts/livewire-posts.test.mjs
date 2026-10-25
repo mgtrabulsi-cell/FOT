@@ -64,6 +64,7 @@ const executable = ts.transpileModule(component.getText(parsed).replace('export 
 function livewireFixture() {
   const hooks = [], requests = [], timers = new Map();
   let cursor = 0, changed = false, effects = [], tree, saved = null, foreground;
+  const listeners = new Set();
   const props = { user: null, active: false };
   const equal = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
   const jsx = (type, props) => ({ type, props });
@@ -72,7 +73,8 @@ function livewireFixture() {
     publicSupabaseConfig: { url: 'https://test.supabase.co', key: 'public-key' }, supabase: null,
     usePublicDataRevision: () => 0,
     readRenderSnapshot: () => saved,
-    saveRenderSnapshot: (_kind, _key, data) => { saved = data; },
+    saveRenderSnapshot: (_kind, _key, data) => { saved = data; listeners.forEach((callback) => callback()); },
+    subscribeRenderSnapshots: (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
     livewireSnapshot,
     fetchLivewirePosts: (_config, options, signal) => new Promise((resolve, reject) => requests.push({ options, signal, resolve, reject })),
     subscribeForegroundRefresh: (callback) => { foreground = callback; return () => { foreground = undefined; }; },
@@ -118,9 +120,21 @@ function livewireFixture() {
     button: (label) => all().find((node) => node.type === 'button' && node.props.children === label),
     themeButton: (label) => all().find((node) => node.type === 'button' && node.props.children?.props?.children === label),
     foreground: () => foreground(),
+    preload: (posts) => { saved = livewireSnapshot(posts, 20); listeners.forEach((callback) => callback()); render(); },
     unmount: () => hooks.forEach((hook) => hook?.cleanup?.()),
   };
 }
+
+test('LIVEWIRE adopts a completed background preload while its own request is still pending', () => {
+  const app = livewireFixture();
+  try {
+    app.render();
+    app.preload([post]);
+    assert.match(app.text(), /Saved headline/);
+    assert.doesNotMatch(app.text(), /Loading LIVEWIRE/);
+    assert.equal(app.requests.length, 1);
+  } finally { app.unmount(); }
+});
 
 test('LIVEWIRE preloads before its tab opens, preserves in-flight loads and keeps posts through tab changes and slow refreshes', async () => {
   const app = livewireFixture();

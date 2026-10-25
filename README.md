@@ -10,6 +10,8 @@ NBA pregame comparisons, team season statistics, rosters, Stat Hub directories/s
 
 NBA Stat Hub keeps a protected last-viewed player list, including its displayed player order, separately from the normal rotating data cache. Opening Stat Hub restores that list synchronously even before the selected date's schedule or league/team directory responds, including after the calendar day changes. A note identifies the saved list until current rosters are available; background updates replace it without blocking browsing. Empty/failed roster refreshes do not erase it. Existing saved matchup directories can seed this list after upgrading. Clearing site data or account deletion can remove locally saved lists; the first visit without any saved players still needs a connection.
 
+LIVEWIRE and The Angle restore up to 20 saved published posts synchronously, then refresh without clearing the displayed feed. Their startup snapshots (including Fantasy News) are protected from routine sports-cache eviction. LIVEWIRE notices background preloads even after mounting; Angle feeds preload while their tabs are closed, and saved Angle posts can display before the selected NFL week finishes loading, with a saved-week label. Angle drafts are never stored in public feed snapshots. First use without saved posts requires a connection; refresh errors retain saved posts and offer a retry.
+
 ## Run locally
 
 Install Node.js 20 or newer, then run:

@@ -6,6 +6,8 @@ import { readMatchupPicks } from './matchupBoard.ts';
 import type { MatchupPick } from './matchupBoard.ts';
 import type { NBAPlayer, NBAPlayerProfile, NBASummary, NBATeamStat } from './nbaData.ts';
 import type { Team } from './sportsData.ts';
+import { readAngles } from './theAngle.ts';
+import type { Angle } from './theAngle.ts';
 
 type Snapshots = {
   scoreboard: { games: Game[]; failedLeagues: string[]; nflWeek: number | null };
@@ -24,6 +26,7 @@ type Snapshots = {
   nbaScoring: { averages: Record<string, number>; failed: string[]; updatedAt?: number };
   team: NFLTeamSeasonAverages;
   posts: LivewireSnapshot;
+  angleFeed: { season: number; week: number; rows: Angle[] };
   teamRanks: TeamComparisonRanks;
   fantasyBoard: { picks: MatchupPick[]; revision: number };
   fantasyAverages: Record<string, { average: number | null; games: number }>;
@@ -120,6 +123,11 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
       return typeof data.teamId === 'string' && 'pointsPerGame' in data;
     case 'posts':
       return typeof data.hasMore === 'boolean' && readLivewirePosts(data.posts).length <= 20;
+    case 'angleFeed': {
+      const rows = readAngles(data.rows);
+      return Number.isInteger(data.season) && Number.isInteger(data.week)
+        && rows.length <= 20 && rows.every((row) => row.status === 'published');
+    }
     case 'teamRanks':
       return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.length === 32
         && new Set(data.teams.map((team: unknown) => object(team) ? team.teamId : null)).size === 32
@@ -162,11 +170,11 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
       .filter((entry): entry is string => !!entry && entry.startsWith(prefix) && entry !== name);
     let size = raw.length;
     let count = 1;
-    const protectedEntry = `${prefix}nbaStatHub:last`;
-    entries.reverse().sort((a, b) => Number(b === protectedEntry) - Number(a === protectedEntry));
+    const protectedEntries = new Set(['nbaStatHub:last', 'posts:livewire', 'angleFeed:angle', 'angleFeed:news'].map((key) => `${prefix}${key}`));
+    entries.reverse().sort((a, b) => Number(protectedEntries.has(b)) - Number(protectedEntries.has(a)));
     for (const entry of entries) {
       const length = target.getItem(entry)?.length ?? 0;
-      if (entry !== protectedEntry && (count >= 160 || size + length > 2_000_000)) target.removeItem(entry);
+      if (!protectedEntries.has(entry) && (count >= 160 || size + length > 2_000_000)) target.removeItem(entry);
       else { size += length; count++; }
     }
     target.setItem(name, raw);

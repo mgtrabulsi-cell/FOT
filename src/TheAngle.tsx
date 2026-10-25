@@ -22,6 +22,8 @@ import XPublishingStatus from './XPublishingStatus';
 import PostViewers from './PostViewers';
 import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
 import { postThemes } from './services/postThemes';
+import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
+import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -68,8 +70,11 @@ function newAngle(game: Game | undefined, season: number, week: number, section:
 export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, section = 'angle', onOpenSection, active: visible = true }: Props) {
   const news = section === 'news';
   const [admin, setAdmin] = useState(false);
-  const [rows, setRows] = useState<Angle[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [savedFeed] = useState(() => readRenderSnapshot('angleFeed', section));
+  const [rows, setRows] = useState<Angle[]>(savedFeed?.rows ?? []);
+  const [loaded, setLoaded] = useState(!!savedFeed);
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
   const [loadError, setLoadError] = useState('');
   const [accessError, setAccessError] = useState('');
   const [viewError, setViewError] = useState('');
@@ -77,6 +82,16 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const visibleRef = useRef(visible);
+  const previousVisible = useRef(visible);
+  visibleRef.current = visible;
+  useEffect(() => {
+    if (visible && !previousVisible.current && loadedRef.current) setRefresh((value) => value + 1);
+    previousVisible.current = visible;
+  }, [visible]);
+  useEffect(() => subscribeForegroundRefresh(() => {
+    if (visibleRef.current) setRefresh((value) => value + 1);
+  }), []);
   const [form, setForm] = useState<Angle | null>(null);
   const [photos, setPhotos] = useState<Array<{ path?: string; file?: File; preview: string }>>([]);
   const previews = useRef(new Set<string>());
@@ -183,25 +198,38 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }, [user?.id, refresh]);
 
   useEffect(() => {
-    if (!visible || !season || !week) return;
+    if (!season || !week) return;
+    const boardSeason = season, boardWeek = week;
     let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     async function load() {
       if (!supabase) throw new Error('The Angle is unavailable: account services are not configured.');
       const next: Angle[] = [];
       for (let offset = 0; ; offset += 500) {
         const result = await supabase.rpc('angle_week_feed', { board_season: season, board_week: week, board_section: section })
-          .order('updated_at', { ascending: false }).order('id').range(offset, offset + 499);
+          .order('updated_at', { ascending: false }).order('id').range(offset, offset + 499).abortSignal(controller.signal);
         if (result.error) throw result.error;
         next.push(...readAngles(result.data));
         if (!active) return;
         if (result.data.length < 500) break;
       }
       setRows(next); setLoaded(true); setLoadError('');
+      saveRenderSnapshot('angleFeed', section, {
+        season: boardSeason, week: boardWeek,
+        rows: next.filter((row) => row.status === 'published' && angleSection(row) === section).slice(0, 20),
+      });
     }
-    void load().catch((cause: unknown) => { if (active) setLoadError(`Could not load The Angle: ${errorMessage(cause)}`); });
-    const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [visible, section, season, week, user?.id, refresh]);
+    void load().catch((cause: unknown) => {
+      if (active) setLoadError(controller.signal.aborted
+        ? 'The Angle refresh timed out. Saved posts remain available; retry to update.'
+        : `Could not load The Angle: ${errorMessage(cause)}`);
+    }).finally(() => window.clearTimeout(timeout));
+    const timer = window.setInterval(() => {
+      if (visibleRef.current && document.visibilityState !== 'hidden') setRefresh((value) => value + 1);
+    }, 30_000);
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); window.clearInterval(timer); };
+  }, [section, season, week, user?.id, refresh]);
 
   useEffect(() => {
     if (!visible || news || !admin || !scheduleKey) { setScanning(false); setSuggestions([]); return; }
@@ -324,13 +352,17 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       if (result.error) throw result.error;
       if (!result.data) throw new Error('Another admin changed this angle. Reload before deleting.');
       setRows((previous) => previous.filter((row) => row.id !== angle.id));
+      if (season && week) saveRenderSnapshot('angleFeed', section, {
+        season, week, rows: rows.filter((row) => row.id !== angle.id && row.status === 'published').slice(0, 20),
+      });
       if (angle.id === storyId) setLinkedStory(null);
       setNotice('Angle deleted.');
     } catch (cause) { setActionError(errorMessage(cause)); }
     finally { setBusy(false); }
   }
   const visibleLinked = linkedReady === storyId && linkedStory?.id === storyId ? linkedStory : null;
-  const feedStories = rows.filter((row) => visible && angleVisibleInWeek(row, season, week) && row.id !== visibleLinked?.id && row.status === 'published' && (news
+  const restoringWeek = (!season || !week) && !!savedFeed;
+  const feedStories = rows.filter((row) => visible && angleVisibleInWeek(row, restoringWeek ? savedFeed.season : season, restoringWeek ? savedFeed.week : week) && row.id !== visibleLinked?.id && row.status === 'published' && (news
     ? !newsFilter.length || (row.news_types ?? []).some((type) => newsFilter.includes(type))
     : kind === 'all' || row.kind === kind));
   const published = [
@@ -495,7 +527,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       <button aria-pressed={!newsFilter.length} onClick={() => setNewsFilter([])}>All news</button>
       {newsTypes.map((type) => <button key={type.value} aria-pressed={newsFilter.includes(type.value)} onClick={() => setNewsFilter((current) => current.includes(type.value) ? current.filter((value) => value !== type.value) : [...current, type.value])}><span className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span></button>)}
     </div> : <div className="angle-filters" role="group" aria-label="Filter published angles">{(['all', 'player', 'team'] as const).map((value) => <button key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All angles' : value === 'player' ? 'Players' : 'Team matchups'}</button>)}</div>}
-    {!season || !week ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
+    {restoringWeek && <p className="nfl-data-note" role="status">Showing saved posts from Week {savedFeed.week}. Updating the selected week in the background.</p>}
+    {(!season || !week) && !savedFeed ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     {admin && visible && <XPublishingStatus />}
     <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
       <div className="angle-card-meta"><span>{angle.category}</span>{news

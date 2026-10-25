@@ -14,7 +14,7 @@ import XPublishingStatus from './XPublishingStatus';
 import { anglePicks } from './services/theAngle';
 import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { LivewirePost as Post, PostTheme } from './services/livewirePosts';
-import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
+import { readRenderSnapshot, saveRenderSnapshot, subscribeRenderSnapshots } from './services/renderSnapshots';
 import { postThemes } from './services/postThemes';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
@@ -44,6 +44,7 @@ export default function LiveWire({ user, active: isActive = true, postId = null,
   activeRef.current = isActive;
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
+  const previousActive = useRef(isActive);
   const [error, setError] = useState('');
   const [linkedError, setLinkedError] = useState('');
   const [accessError, setAccessError] = useState('');
@@ -58,7 +59,8 @@ export default function LiveWire({ user, active: isActive = true, postId = null,
     if (activeRef.current) setRefresh((value) => value + 1);
   }), []);
   useEffect(() => {
-    if (isActive && loadedRef.current) setRefresh((value) => value + 1);
+    if (isActive && !previousActive.current && loadedRef.current) setRefresh((value) => value + 1);
+    previousActive.current = isActive;
   }, [isActive]);
   const [limit, setLimit] = useState(20);
   const [hasMore, setHasMore] = useState(savedFeed?.hasMore ?? false);
@@ -68,6 +70,15 @@ export default function LiveWire({ user, active: isActive = true, postId = null,
   const [themes, setThemes] = useState<PostTheme[]>([]);
   const [postToX, setPostToX] = useState(false);
   const [themeFilters, setThemeFilters] = useState<PostTheme[]>([]);
+  useEffect(() => {
+    if (themeFilters.length || limit !== 20) return;
+    return subscribeRenderSnapshots(() => {
+      const saved = readRenderSnapshot('posts', 'livewire');
+      if (saved) {
+        setPosts(saved.posts); setHasMore(saved.hasMore); setLoaded(true);
+      }
+    });
+  }, [themeFilters, limit]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [draftReady, setDraftReady] = useState(false);
   const [draftError, setDraftError] = useState('');
