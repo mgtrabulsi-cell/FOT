@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 // Board day grouping follows the viewer's local clock; pin it so CI (UTC) matches US viewers.
 process.env.TZ = 'America/New_York';
-import { detailsSnapshotKey, readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, stopRenderSnapshots, teamSnapshotKey, readNBADirectorySnapshot, readNBAComparisonSnapshot, subscribeRenderSnapshots } from '../src/services/renderSnapshots.ts';
+import { detailsSnapshotKey, readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, stopRenderSnapshots, teamSnapshotKey, readNBADirectorySnapshot, readNBAComparisonSnapshot, subscribeRenderSnapshots, readLastNBAStatHub, saveLastNBAStatHub } from '../src/services/renderSnapshots.ts';
 import { rankTeamAverages, teamComparisonMetrics } from '../src/services/teamComparisonRanks.ts';
 
 const source = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
@@ -344,6 +344,21 @@ test('NBA views compose team caches without a combined snapshot and notify alrea
   const before = notifications;
   saveRenderSnapshot('nbaRoster', 'roster:b:2028', []);
   assert.equal(notifications, before, 'Unmounted views do not receive cache notifications');
+}));
+
+test('Last NBA Stat Hub list migrates old saved directories, survives cache churn, and ignores empty replacements', () => withStorage((storage) => {
+  const team = { id: 'a', name: 'Saved team', abbr: 'SAV', color: '123456', score: 0, record: '' };
+  const groups = [{ team, players: [{ id: 'saved', name: 'Saved player', position: 'G', jersey: '1', teamId: team.id }] }];
+  saveRenderSnapshot('nbaDirectory', 'directory:a:2027', groups);
+  assert.deepEqual(readLastNBAStatHub(), { season: 2027, groups }, 'Existing users restore their old cache without a network visit');
+  saveLastNBAStatHub(readLastNBAStatHub());
+  for (let index = 0; index < 200; index++) saveRenderSnapshot('nbaPlayerSeason', `player-season:${index}:2027`, { season: 2027, averages: { points: index }, totals: {} });
+  assert.equal(readRenderSnapshot('nbaDirectory', 'directory:a:2027'), null, 'Normal cache entry is evicted');
+  assert.deepEqual(readLastNBAStatHub(), { season: 2027, groups }, 'Startup list survives player-stat cache churn');
+  saveLastNBAStatHub({ season: 2028, groups: [] });
+  assert.deepEqual(readLastNBAStatHub(), { season: 2027, groups });
+  storage.removeItem('gamewire-render-v1:/:nbaStatHub:last');
+  assert.equal(readLastNBAStatHub(), null, 'Removed storage is not secretly restored from another source');
 }));
 
 test('Account deletion stops late requests from recreating display snapshots', () => withStorage((storage) => {

@@ -66,6 +66,10 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name === './services/nbaData') return data;
       if (name === './services/renderSnapshots') return {
+        readLastNBAStatHub: () => snapshots.get('nbaStatHub:last') ?? null,
+        saveLastNBAStatHub: (value) => {
+          if (JSON.stringify(snapshots.get('nbaStatHub:last')) !== JSON.stringify(value)) saveSnapshot('nbaStatHub', 'last', value);
+        },
         subscribeRenderSnapshots: (listener) => { snapshotListeners.add(listener); return () => snapshotListeners.delete(listener); },
         readNBAComparisonSnapshot: (away, home, season) => {
           const combined = snapshots.get(`nbaComparison:comparison:${away}:${home}:${season}`);
@@ -139,7 +143,62 @@ test('NBA pregame and Stat Hub resources render saved data synchronously and ret
     assert.deepEqual(JSON.parse(JSON.stringify(resource().props.data)), saved, `${name} has saved data on its first render before network completion`);
     await app.settle();
     assert.deepEqual(JSON.parse(JSON.stringify(resource().props.data)), saved, `${name} retains saved content after a failed refresh`);
-    assert.equal(resource().props.error, 'Offline test');
+    assert.equal(resource().props.error, name === 'NBADirectory' ? 'Some player lists could not be refreshed. Saved players remain available.' : 'Offline test');
+    app.unmount();
+  }
+});
+
+test('Stat Hub opens its last player list without any schedule or league response', () => {
+  const player = { id: 'saved', name: 'Last viewed player', position: 'G', jersey: '1', teamId: away.id };
+  const last = { season: 2027, groups: [{ team: away, players: [{ ...player, id: 'first', name: 'Z first saved player' }, player] }, { team: home, players: [] }] };
+  const snapshots = new Map([['nbaStatHub:last', last]]);
+  const app = setup('stats', snapshots, undefined, { fetchNBALeague: () => new Promise(() => {}) });
+  app.props.games = []; app.props.status = 'loading'; app.render();
+  const directory = app.nodes().find(node => node.type?.name === 'NBADirectory');
+  assert.ok(directory, 'Directory mounts before schedule or league data is available');
+  assert.equal(directory.props.season, 2027);
+  assert.equal(directory.props.teams.length, 2);
+  assert.equal(directory.props.savedListOnly, true);
+  const list = setup('stats', snapshots, { name: 'NBADirectory', props: directory.props });
+  assert.ok(list.nodes().some(node => node.props?.['aria-label'] === 'View Last viewed player stats'));
+  assert.equal(list.nodes().filter(node => node.props?.className === 'nfl-directory-player-main')[0].props['aria-label'], 'View Z first saved player stats', 'Last displayed ordering survives before scoring data loads');
+  assert.equal(list.nodes().find(node => node.type?.name === 'ResourceMessage').props.loading, false);
+  app.unmount(); list.unmount();
+});
+
+test('A new matchup keeps the last list browseable until current players arrive and preserves their profile season', async () => {
+  const player = { id: 'saved', name: 'Yesterday player', position: 'G', jersey: '1', teamId: 'old' };
+  const oldTeam = { ...away, id: 'old', name: 'Yesterday team' };
+  const snapshots = new Map([['nbaStatHub:last', { season: 2026, groups: [{ team: oldTeam, players: [player] }] }]]);
+  let opened, release;
+  const props = { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open: (...args) => { opened = args; }, live: false };
+  const app = setup('stats', snapshots, { name: 'NBADirectory', props }, {
+    fetchNBARoster: id => id === away.id ? new Promise(resolve => { release = resolve; }) : Promise.resolve([]),
+  });
+  const savedButton = app.nodes().find(node => node.props?.['aria-label'] === 'View Yesterday player stats');
+  assert.ok(savedButton, 'Last-viewed players render synchronously despite a different uncached matchup');
+  savedButton.props.onClick();
+  assert.equal(opened[2], 2026, 'Saved players open their actual saved season, not the new matchup season');
+  release([{ ...player, id: 'current', name: 'Current player', teamId: away.id }]);
+  await app.settle();
+  assert.ok(app.nodes().some(node => node.props?.['aria-label'] === 'View Current player stats'));
+  assert.equal(app.nodes().some(node => node.props?.['aria-label'] === 'View Yesterday player stats'), false);
+  assert.equal(snapshots.get('nbaStatHub:last').season, 2027);
+  app.unmount();
+});
+
+test('Failed and empty roster refreshes never replace a good last-viewed player list', async () => {
+  for (const fail of [false, true]) {
+    const player = { id: 'saved', name: 'Retained player', position: 'G', jersey: '1', teamId: away.id };
+    const last = { season: 2027, groups: [{ team: away, players: [player] }] };
+    const snapshots = new Map([['nbaStatHub:last', last]]);
+    const app = setup('stats', snapshots, { name: 'NBADirectory', props: {
+      teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: false,
+    } }, { fetchNBARoster: async () => { if (fail) throw new Error('Offline'); return []; } });
+    await app.settle();
+    assert.ok(app.nodes().some(node => node.props?.['aria-label'] === 'View Retained player stats'));
+    assert.ok(app.nodes().find(node => node.type?.name === 'ResourceMessage').props.error);
+    assert.deepEqual(snapshots.get('nbaStatHub:last'), last);
     app.unmount();
   }
 });

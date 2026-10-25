@@ -19,6 +19,7 @@ type Snapshots = {
   nbaPlayerSeason: Omit<NBAPlayerProfile, 'games'>;
   nbaLeague: { teams: Team[]; season: number };
   nbaDirectory: Array<{ team: Team; players: NBAPlayer[] }>;
+  nbaStatHub: { season: number; groups: Array<{ team: Team; players: NBAPlayer[] }> };
   nbaComparison: { away: NBATeamStat[]; home: NBATeamStat[] };
   nbaScoring: { averages: Record<string, number>; failed: string[]; updatedAt?: number };
   team: NFLTeamSeasonAverages;
@@ -63,6 +64,10 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
   switch (kind) {
     case 'nbaLeague':
       return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.every(team);
+    case 'nbaStatHub':
+      return Number.isInteger(data.season) && Array.isArray(data.groups) && data.groups.length > 0
+        && data.groups.every((group: unknown) => object(group) && team(group.team) && players(group.players))
+        && data.groups.some((group: unknown) => object(group) && Array.isArray(group.players) && group.players.length > 0);
     case 'nbaComparison':
       return stats(data.away) && stats(data.home);
     case 'nbaScoring':
@@ -157,9 +162,11 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
       .filter((entry): entry is string => !!entry && entry.startsWith(prefix) && entry !== name);
     let size = raw.length;
     let count = 1;
-    for (const entry of entries.reverse()) {
+    const protectedEntry = `${prefix}nbaStatHub:last`;
+    entries.reverse().sort((a, b) => Number(b === protectedEntry) - Number(a === protectedEntry));
+    for (const entry of entries) {
       const length = target.getItem(entry)?.length ?? 0;
-      if (count >= 160 || size + length > 2_000_000) target.removeItem(entry);
+      if (entry !== protectedEntry && (count >= 160 || size + length > 2_000_000)) target.removeItem(entry);
       else { size += length; count++; }
     }
     target.setItem(name, raw);
@@ -191,6 +198,38 @@ export function readNBADirectorySnapshot(teams: Team[], season: number) {
   }));
   if (!groups.some((group) => group.players !== null)) return null;
   return groups.flatMap((group) => group.players !== null ? [{ team: group.team, players: group.players }] : []);
+}
+
+export function readLastNBAStatHub(): Snapshots['nbaStatHub'] | null {
+  const saved = readRenderSnapshot('nbaStatHub', 'last');
+  if (saved) return saved;
+  if (stopped) return null;
+  try {
+    const target = storage();
+    if (!target) return null;
+    const candidates = Array.from({ length: target.length }, (_, index) => target.key(index))
+      .filter((key): key is string => !!key && key.startsWith(`${prefix}nbaDirectory:directory:`))
+      .map((key) => {
+        const entry: unknown = JSON.parse(target.getItem(key) ?? 'null');
+        return { key: key.slice(`${prefix}nbaDirectory:`.length), savedAt: object(entry) && typeof entry.savedAt === 'number' ? entry.savedAt : 0 };
+      }).sort((a, b) => b.savedAt - a.savedAt);
+    for (const candidate of candidates) {
+      const groups = readRenderSnapshot('nbaDirectory', candidate.key);
+      const season = Number(candidate.key.split(':').at(-1));
+      if (groups?.some((group) => group.players.length) && Number.isInteger(season)) return { season, groups };
+    }
+    return null;
+  } catch (error) {
+    console.error('Could not restore last NBA Stat Hub list', error);
+    return null;
+  }
+}
+
+export function saveLastNBAStatHub(data: Snapshots['nbaStatHub']) {
+  if (!valid('nbaStatHub', data)) return;
+  if (JSON.stringify(readRenderSnapshot('nbaStatHub', 'last')) !== JSON.stringify(data)) {
+    saveRenderSnapshot('nbaStatHub', 'last', data);
+  }
 }
 
 export function readNBAComparisonSnapshot(away: string, home: string, season: number) {
