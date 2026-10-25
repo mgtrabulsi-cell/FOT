@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react';
-import AnglePicks from './AnglePicks';
+import { PickResult } from './AnglePicks';
 import { supabase } from './services/supabaseClient';
-import { angleSport, readAngles } from './services/theAngle';
+import { readAngles } from './services/theAngle';
 import { angleReviewKey, settledAngleReviews } from './services/angleReviews';
 import type { AngleReviewPick } from './services/angleReviews';
 
 export function AngleReviewList({ picks }: { picks: AngleReviewPick[] }) {
   if (!picks.length) return null;
-  return <section className="angle-review-picks" aria-label="Past picks reviewed">
-    <h4>Past picks · Review only</h4>
-    <p>Results when attached, for review only. These do not count again in Our Results.</p>
-    {picks.map((pick) => <div key={angleReviewKey(pick)}>
-      <AnglePicks picks={[{ id: pick.pick_id, text: pick.text, result: pick.result, category: pick.category }]} emoji={angleSport(pick.game_id).emoji} />
-      <a href={`#analyst-desk/story/${pick.story_id}`}>Original: {pick.title}</a>
-      <p className="angle-matchup">{pick.matchup} · {pick.season} · Week {pick.week}</p>
+  return <section className="angle-review-picks" aria-label="Settled picks">
+    {picks.map((pick) => <div className={`angle-pick angle-pick-${pick.result} angle-settled-pick`} key={angleReviewKey(pick)}>
+      <p>{pick.text}</p><PickResult result={pick.result} />
     </div>)}
   </section>;
 }

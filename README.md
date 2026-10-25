@@ -20,6 +20,8 @@ NBA pregame list cards on The Wire and matchup details show the reported spread 
 
 NBA teams on The Wire list and matchup headers display a **B2B** badge when a completed game is reported for that team on the previous Eastern calendar date. Each badge opens that exact game's box score inside GameWire. Previous-night schedules load first in nearby-date preloading, reuse saved schedules immediately, and update badges when background saves arrive. Missing or unplayed games never produce a badge.
 
+Published attached settled picks in The Angle and LIVEWIRE show only the pick text and its green check or red X, without review headings, explanations, or original-post metadata. Admin selection guidance stays in the editor; attached picks still do not count a second time in Our Results.
+
 ## Run locally
 
 Install Node.js 20 or newer, then run:
