@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { createNativePublicFetch, isNativePublicImage } from './nativePolicy.ts';
 import { publicDataChanged } from './publicDataUpdates.ts';
+import { App } from '@capacitor/app';
 
 export const nativeApp = Capacitor.isNativePlatform();
 const publicOrigin = import.meta.env?.VITE_SUPABASE_URL ? new URL(import.meta.env.VITE_SUPABASE_URL).origin : null;
@@ -26,6 +27,9 @@ export function isOfflineImageSource(src: string): boolean {
 
 export async function initializeNativeOffline() {
   if (!nativeApp) return;
+  await App.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) window.dispatchEvent(new Event('gamewire-app-active'));
+  });
   await NativeOffline.configure({ publicOrigin: publicOrigin ?? '' });
   const originalFetch = window.fetch.bind(window);
   window.fetch = createNativePublicFetch(originalFetch, (request) => {

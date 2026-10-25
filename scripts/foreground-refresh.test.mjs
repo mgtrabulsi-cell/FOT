@@ -43,11 +43,14 @@ test('Returning, restoring and reconnecting refresh immediately without duplicat
     now += 60_000;
     documentTarget.dispatchEvent(new Event('resume'));
     assert.equal(refreshes, 4, 'Page lifecycle resume refreshes');
+    now += 60_000;
+    windowTarget.dispatchEvent(new Event('gamewire-app-active'));
+    assert.equal(refreshes, 5, 'Native iPhone app activation refreshes even without a browser visibility event');
     unsubscribe();
     now += 60_000;
-    for (const type of ['focus', 'pageshow', 'online']) windowTarget.dispatchEvent(new Event(type));
+    for (const type of ['focus', 'pageshow', 'online', 'gamewire-app-active']) windowTarget.dispatchEvent(new Event(type));
     for (const type of ['visibilitychange', 'resume']) documentTarget.dispatchEvent(new Event(type));
-    assert.equal(refreshes, 4, 'Unmounting removes all listeners');
+    assert.equal(refreshes, 5, 'Unmounting removes all listeners');
   } finally {
     unsubscribe?.();
     Date.now = originalNow;

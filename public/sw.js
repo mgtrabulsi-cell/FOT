@@ -115,7 +115,8 @@ async function offlineResponse(event, kind) {
   const abort = () => controller.abort();
   request.signal.addEventListener('abort', abort, { once: true });
   if (request.signal.aborted) controller.abort();
-  const timeout = setTimeout(abort, cached ? 4000 : 15000);
+  const liveRead = kind === 'data' && (request.cache === 'no-store' || request.cache === 'reload');
+  const timeout = setTimeout(abort, cached && !liveRead ? 4000 : 15000);
   try {
     const response = await fetch(request, { signal: controller.signal });
     if (!response.ok && response.type !== 'opaque') throw new Error(`HTTP ${response.status}`);

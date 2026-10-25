@@ -15,6 +15,8 @@ function fixture(scope = 'https://gamewire.us/') {
   let failStorage = false;
   let body = 'live data';
   let status = 200;
+  let hold = false, finish;
+  const timeoutBudgets = [];
   const address = (key) => typeof key === 'string' ? key : key.url;
   const caches = {
     async open(name) {
@@ -46,9 +48,12 @@ function fixture(scope = 'https://gamewire.us/') {
     addEventListener(type, callback) { handlers[type] = callback; },
   };
   vm.runInNewContext(worker, {
-    self, caches, URL, Headers, Response, AbortController, AbortSignal, setTimeout, clearTimeout, console: { ...console, warn() {}, error() {} },
+    self, caches, URL, Headers, Response, AbortController, AbortSignal,
+    setTimeout: (callback, delay) => { timeoutBudgets.push(delay); return setTimeout(callback, delay); },
+    clearTimeout, console: { ...console, warn() {}, error() {} },
     fetch: async () => {
       if (!online) throw Error('Network offline');
+      if (hold) await new Promise((resolve) => { finish = resolve; });
       return new Response(body, { status });
     },
   });
@@ -57,6 +62,9 @@ function fixture(scope = 'https://gamewire.us/') {
     setOnline(value) { online = value; },
     setBody(value) { body = value; },
     setStatus(value) { status = value; },
+    timeoutBudgets,
+    holdNetwork() { hold = true; },
+    finishNetwork() { hold = false; finish(); },
     setStorageFailure(value) { failStorage = value; },
     async lifecycle(type) {
       let pending;
@@ -93,6 +101,21 @@ function fixture(scope = 'https://gamewire.us/') {
     },
   };
 }
+
+test('Live scoreboard reads with a saved copy are not cut off by the four-second offline shortcut', async () => {
+  const f = fixture();
+  const url = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
+  f.setBody('{"status":"pre"}');
+  await f.request(url);
+  f.holdNetwork(); f.setBody('{"status":"in"}');
+  const pending = f.request(url, { cache: 'no-store' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(f.timeoutBudgets.at(-1), 15000, 'Fresh mobile reads get the full network window, even with a saved pregame copy');
+  f.finishNetwork();
+  const response = await pending;
+  assert.equal((await response.json()).status, 'in');
+  assert.equal(response.headers.has('x-gamewire-saved-at'), false);
+});
 
 test('Shell launches offline at both custom-domain and project paths; only owned old shells are removed', async () => {
   for (const scope of ['https://gamewire.us/', 'https://example.github.io/FOT/']) {

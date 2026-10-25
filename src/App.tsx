@@ -496,6 +496,7 @@ function App() {
     if (!nbaDateOverride) setSelectedNBADate(nbaCalendarDate());
     setNBARetry((value) => value + 1);
   }), [nbaDateOverride]);
+  const warmNBA = !window.matchMedia('(max-width: 760px)').matches || sportLeague === 'NBA';
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -504,7 +505,7 @@ function App() {
     const saved = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [];
     setNBAGames(saved); setNBAGamesDate(selectedNBADate); setNBAStatus('loading'); setNBAError('');
     const preload = (next: Game[]) => {
-      if (preloadingBoxes || !next.length) return;
+      if (!warmNBA || preloadingBoxes || !next.length) return;
       preloadingBoxes = true;
       void Promise.all([preloadNBABoxes(next, controller.signal), preloadNBAPregame(next, controller.signal)]).then((results) => {
         if (active && results.some((failed) => failed.length)) setNBAError('Some NBA statistics could not be saved yet. Automatic refresh will retry.');
@@ -537,8 +538,9 @@ function App() {
       else void refresh();
     }, 30_000);
     return () => { active = false; controller.abort(); window.clearInterval(timer); };
-  }, [selectedNBADate, nbaDateOverride, nbaRetry]);
+  }, [selectedNBADate, nbaDateOverride, nbaRetry, warmNBA]);
   useEffect(() => {
+    if (!warmNBA) return;
     const controller = new AbortController();
     void preloadNBADates(selectedNBADate, controller.signal).then((failed) => {
       if (!controller.signal.aborted && failed.length) setNBAError('Some nearby NBA dates could not be preloaded. Selecting a date will retry.');
@@ -546,7 +548,7 @@ function App() {
       if (!controller.signal.aborted) console.error('NBA date preload failed', error);
     });
     return () => controller.abort();
-  }, [selectedNBADate, nbaRetry]);
+  }, [selectedNBADate, nbaRetry, warmNBA]);
   useEffect(() => {
     if (!publicSupabaseConfig || authLoading || deletedAccount !== null || !authUser) return;
     const controller = new AbortController();

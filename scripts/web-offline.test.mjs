@@ -56,6 +56,50 @@ function fixture() {
 const stats = 'https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/123/stats?seasontype=2';
 const image = 'https://a.espncdn.com/i/headshots/nfl/players/full/123.png';
 
+test('Caller timeouts promptly release live reads even while a shared network request is stuck', async () => {
+  const f = fixture();
+  let finish;
+  f.options.fetch = () => new Promise((resolve) => { finish = resolve; });
+  const store = f.store();
+  const controller = new AbortController();
+  const pending = store.fetch(stats, { cache: 'no-store', signal: controller.signal });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+  finish(Response.json({ yards: 456 }));
+  await store.settle();
+});
+
+test('Fresh mobile scores return without waiting for slow CacheStorage writes', async () => {
+  const f = fixture();
+  const open = f.options.caches.open;
+  let finish;
+  f.options.caches.open = async (...args) => {
+    const cache = await open(...args);
+    const put = cache.put;
+    cache.put = async (...values) => {
+      await new Promise((resolve) => { finish = resolve; });
+      return put(...values);
+    };
+    return cache;
+  };
+  const store = f.store();
+  const response = await store.fetch(stats, { cache: 'no-store' });
+  assert.deepEqual(await response.json(), { yards: 123 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof finish, 'function');
+  const finishFirst = finish;
+  f.setValue(456);
+  const next = await store.fetch(stats, { cache: 'no-store' });
+  assert.deepEqual(await next.json(), { yards: 456 }, 'A second live update must not wait behind the first cache write');
+  finishFirst();
+  await new Promise((resolve) => setImmediate(resolve));
+  finish();
+  await store.settle();
+  f.offline();
+  assert.deepEqual(await (await store.fetch(stats, { cache: 'no-store' })).json(), { yards: 456 }, 'Writes stay ordered so old data cannot overwrite the newer saved score');
+});
+
 test('Live no-store reads return current network scores on the first request and retain offline fallback', async () => {
   const f = fixture();
   const scoreboard = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';

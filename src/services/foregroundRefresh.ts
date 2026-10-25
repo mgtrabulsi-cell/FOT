@@ -12,11 +12,13 @@ export function subscribeForegroundRefresh(refresh: () => void) {
   window.addEventListener('pageshow', resume);
   window.addEventListener('online', resume);
   document.addEventListener('resume', resume);
+  window.addEventListener('gamewire-app-active', resume);
   return () => {
     document.removeEventListener('visibilitychange', resume);
     window.removeEventListener('focus', resume);
     window.removeEventListener('pageshow', resume);
     window.removeEventListener('online', resume);
     document.removeEventListener('resume', resume);
+    window.removeEventListener('gamewire-app-active', resume);
   };
 }

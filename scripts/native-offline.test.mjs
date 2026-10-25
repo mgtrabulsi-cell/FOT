@@ -5,6 +5,17 @@ import { createNativePublicFetch, isNativePublicRead, isNativePublicImage } from
 const origin = 'https://fixture.supabase.co';
 const scoreboard = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard';
 
+test('Native live read cancellation does not wait for a suspended bridge request', async () => {
+  let finish;
+  const fetcher = createNativePublicFetch(assert.fail,
+    () => new Promise((resolve) => { finish = resolve; }), () => {}, origin, 'capacitor://localhost/');
+  const controller = new AbortController();
+  const pending = fetcher(scoreboard, { cache: 'no-store', signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+  finish({ body: '{}' });
+});
+
 test('Native offline bridge restricts reads/images to public sources', () => {
   assert.ok(isNativePublicRead(new URL(scoreboard), 'GET', origin));
   assert.ok(isNativePublicRead(new URL(`${origin}/rest/v1/livewire_posts?select=*`), 'GET', origin));
@@ -102,7 +113,7 @@ test('Native live no-store requests wait for fresh scores, while network fallbac
     const response = await pending;
     assert.deepEqual(await response.json(), { score: 21 });
     assert.equal(response.headers.has('x-gamewire-saved-at'), false);
-    assert.deepEqual(updates, [scoreboard]);
+    assert.deepEqual(updates, [], 'A fresh caller already receives the update; do not trigger a duplicate refresh');
     assert.deepEqual(cached, []);
     const fallback = fetcher(scoreboard, { cache });
     await new Promise((resolve) => setImmediate(resolve));

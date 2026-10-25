@@ -1,3 +1,5 @@
+import { abortableRead } from './abortableRead.ts';
+
 const espnHosts = new Set(['site.api.espn.com', 'site.web.api.espn.com', 'sports.core.api.espn.com', 'lm-api-reads.fantasy.espn.com']);
 
 export function isNativePublicRead(url: URL, method: string, publicOrigin: string | null): boolean {
@@ -58,7 +60,8 @@ export function createNativePublicFetch(
       checked.set(key, Date.now());
       const load = read(publicRequest).then((result) => {
         if (!result.savedAt) revalidated.add(key);
-        if (previous.body !== undefined && !result.savedAt && !samePublicData(previous.body, result.body)) savedFirst?.updated(url.href);
+        if (previous.body !== undefined && !result.savedAt && request.cache !== 'no-store' && request.cache !== 'reload'
+          && !samePublicData(previous.body, result.body)) savedFirst?.updated(url.href);
         return result;
       }).finally(() => refreshing.delete(key));
       refreshing.set(key, load);
@@ -70,7 +73,7 @@ export function createNativePublicFetch(
       if (savedFirst?.online() && Date.now() - (checked.get(key) ?? 0) >= 15000) {
         void refresh().catch(savedFirst.error);
       }
-    } else result = await refresh();
+    } else result = await abortableRead(refresh(), request.signal);
     request.signal.throwIfAborted();
     const headers = new Headers({ 'content-type': 'application/json' });
     if (savedFirst?.online() && revalidated.has(key)) headers.set('x-gamewire-revalidated', 'true');

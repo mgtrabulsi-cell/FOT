@@ -8,8 +8,9 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
   const latestGames = useRef(games);
   latestGames.current = games;
   const weekKey = games.filter((game) => game.league === 'NFL').map((game) => `${game.seasonYear}:${game.eventId}`).sort().join(',');
+  const liveOnMobile = window.matchMedia('(max-width: 760px)').matches && games.some((game) => game.status === 'LIVE');
   useEffect(() => {
-    if (!import.meta.env.PROD || !enabled || !weekKey) return;
+    if (!import.meta.env.PROD || !enabled || !weekKey || liveOnMobile) return;
     const controller = new AbortController();
     let running = false;
     let refreshPending = false;
@@ -73,5 +74,5 @@ export function useOfflineSnapshots(games: Game[], enabled: boolean) {
       window.removeEventListener('online', reconnect);
       document.removeEventListener('visibilitychange', resume);
     };
-  }, [weekKey, enabled]);
+  }, [weekKey, enabled, liveOnMobile]);
 }

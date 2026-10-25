@@ -1,5 +1,6 @@
 import { isNativePublicImage, isNativePublicRead, samePublicData } from './nativePolicy.ts';
 import { publicDataChanged } from './publicDataUpdates.ts';
+import { abortableRead } from './abortableRead.ts';
 
 type StoreOptions = {
   fetch: typeof fetch;
@@ -18,6 +19,7 @@ export function createWebOfflineStore(options: StoreOptions) {
   let stopped = false;
   const images = new Map<string, Promise<Blob>>();
   const refreshing = new Map<string, Promise<Response>>();
+  const saving = new Map<string, Promise<void>>();
   const checked = new Map<string, number>();
   const revalidated = new Set<string>();
   const report = (error: unknown) => { failures++; options.onSaveError(error); };
@@ -45,6 +47,7 @@ export function createWebOfflineStore(options: StoreOptions) {
     let cached: Response | undefined;
     try {
       cache = await open('public');
+      if (!options.online() || (request.cache !== 'no-store' && request.cache !== 'reload')) await saving.get(key.href);
       cached = await cache.match(key.href);
     } catch (error) { report(error); }
     const saved = (response: Response) => {
@@ -73,20 +76,29 @@ export function createWebOfflineStore(options: StoreOptions) {
             return response;
           }
           if (cache) {
-            try {
-              const body = await response.clone().blob();
-              if (body.size > 5 * 1024 * 1024) throw new Error('Public response exceeds offline storage limit');
-              const text = await body.text();
-              JSON.parse(text);
-              const headers = new Headers(response.headers);
-              headers.set('x-gamewire-saved-at', new Date().toISOString());
-              headers.delete('vary');
-              headers.delete('content-encoding');
-              headers.delete('content-length');
-              await save(cache, key.href, new Response(body, { status: response.status, headers }), 1500);
-              revalidated.add(key.href);
-              if (!stopped && cached && !samePublicData(await cached.clone().text(), text)) options.onUpdated?.(url.href);
-            } catch (error) { report(error); }
+            const target = cache;
+            const previousSave = saving.get(key.href);
+            const persist = (async () => {
+              try {
+                await previousSave;
+                const body = await response.clone().blob();
+                if (body.size > 5 * 1024 * 1024) throw new Error('Public response exceeds offline storage limit');
+                const text = await body.text();
+                JSON.parse(text);
+                const headers = new Headers(response.headers);
+                headers.set('x-gamewire-saved-at', new Date().toISOString());
+                headers.delete('vary');
+                headers.delete('content-encoding');
+                headers.delete('content-length');
+                await save(target, key.href, new Response(body, { status: response.status, headers }), 1500);
+                revalidated.add(key.href);
+                if (!stopped && cached && request.cache !== 'no-store' && request.cache !== 'reload'
+                  && !samePublicData(await cached.clone().text(), text)) options.onUpdated?.(url.href);
+              } catch (error) { report(error); }
+            })();
+            saving.set(key.href, persist);
+            void persist.finally(() => { if (saving.get(key.href) === persist) saving.delete(key.href); });
+            if (request.cache !== 'no-store' && request.cache !== 'reload') await persist;
           }
           return response;
         } finally {
@@ -105,7 +117,7 @@ export function createWebOfflineStore(options: StoreOptions) {
       return saved(cached);
     }
     try {
-      const response = await refresh();
+      const response = await abortableRead(refresh(), request.signal);
       request.signal.throwIfAborted();
       return response.clone();
     } catch (error) {
@@ -147,7 +159,10 @@ export function createWebOfflineStore(options: StoreOptions) {
     signal.throwIfAborted();
     if (failed) throw new Error(`${failed} of ${urls.length} offline images could not be saved.`);
   };
-  const settle = async () => { await Promise.allSettled([...refreshing.values()]); };
+  const settle = async () => {
+    await Promise.allSettled([...refreshing.values()]);
+    await Promise.allSettled([...saving.values()]);
+  };
   return { fetch: publicFetch, image, warmImages, settle, failures: () => failures, stop: () => { stopped = true; } };
 }
 
