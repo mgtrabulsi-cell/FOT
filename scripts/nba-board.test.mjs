@@ -123,6 +123,31 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
   };
 }
 
+test('NBA pregame list cards show reported signed spreads accessibly, never missing, live or final lines', () => {
+  const app = setup();
+  for (const [spread, expected] of [[-7.5, 'BOS -7.5'], [6.5, 'BOS +6.5'], [0, 'BOS 0'], [null, null], [undefined, null]]) {
+    app.props.games = [{ ...game, status: 'UPCOMING', nbaMarket: { spread } }];
+    app.render();
+    const badge = app.nodes().find((node) => node.props?.className === 'wire-board-spread');
+    const card = app.nodes().find((node) => node.props?.['data-game-id']);
+    if (expected) {
+      assert.ok(badge);
+      assert.ok(card.props['aria-label'].includes(`Spread ${expected}`));
+      assert.equal(JSON.stringify(badge).includes(String(spread)), true);
+    } else {
+      assert.equal(badge, undefined);
+      assert.equal(card.props['aria-label'].includes('Spread'), false);
+    }
+  }
+  for (const status of ['LIVE', 'FINAL']) {
+    app.props.games = [{ ...game, status, nbaMarket: { spread: -7.5 } }];
+    app.render();
+    assert.equal(app.nodes().some((node) => node.props?.className === 'wire-board-spread'), false);
+    assert.equal(app.nodes().find((node) => node.props?.['data-game-id']).props['aria-label'].includes('Spread'), false);
+  }
+  app.unmount();
+});
+
 test('NBA pregame spread appears in matchup details only before tipoff, including even spreads', () => {
   for (const spread of [-7.5, 6.5, 0, null]) {
     const app = setup('wire', new Map(), undefined, { fetchNBASummary: () => new Promise(() => {}) });
