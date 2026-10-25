@@ -123,6 +123,23 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
   };
 }
 
+test('NBA pregame spread appears in matchup details only before tipoff, including even spreads', () => {
+  for (const spread of [-7.5, 6.5, 0, null]) {
+    const app = setup('wire', new Map(), undefined, { fetchNBASummary: () => new Promise(() => {}) });
+    app.props.games = [{ ...game, status: 'UPCOMING', nbaMarket: { spread } }];
+    app.render();
+    app.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); app.render();
+    const badge = app.nodes().find((node) => node.props?.['aria-label'] === 'Pregame spread');
+    if (spread === null) assert.equal(badge, undefined);
+    else {
+      assert.ok(badge);
+      assert.match(JSON.stringify(badge), new RegExp(spread > 0 ? '\\+6.5' : String(spread)));
+    }
+    app.props.games = [{ ...game, nbaMarket: { spread } }]; app.render();
+    assert.equal(app.nodes().some((node) => node.props?.['aria-label'] === 'Pregame spread'), false);
+  }
+});
+
 test('NBA pregame and Stat Hub resources render saved data synchronously and retain it after failed refresh', async () => {
   const savedPlayer = { id: 'p1', name: 'Saved player', position: 'G', jersey: '1', teamId: away.id };
   const cases = [

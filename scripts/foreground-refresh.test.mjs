@@ -70,7 +70,7 @@ test('The actual scoreboard effect fetches immediately and cancels the old reque
     if (ts.isCallExpression(node) && node.expression.getText(parsed) === 'useEffect') {
       const callback = node.arguments[0]?.getText(parsed);
       if (callback?.includes('await fetchScoreboards(')) polling = callback;
-      if (callback?.includes('subscribeForegroundRefresh(')) foreground = callback;
+      if (callback?.includes('subscribeForegroundRefresh(') && callback.includes('setScoreboardRetry')) foreground = callback;
     }
     ts.forEachChild(node, visit);
   };

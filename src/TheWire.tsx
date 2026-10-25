@@ -27,7 +27,7 @@ import {
 import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
-import { readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey } from './services/renderSnapshots';
+import { readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey, subscribeRenderSnapshots } from './services/renderSnapshots';
 import { nflFieldPosition, type NFLLastPlay } from './services/nflSituation.ts';
 import { ScoreTicker } from './ScoreTicker.tsx';
 import { fetchTeamComparisonRanks, teamComparisonMetrics } from './services/teamComparisonRanks.ts';
@@ -430,6 +430,22 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
   const homeTeamId = selectedGame?.home.id;
   const activeTeamId = selectedTeamSide === 'away' ? awayTeamId : homeTeamId;
   const activeTeamName = selectedTeamSide === 'away' ? selectedGame?.away.name : selectedGame?.home.name;
+  const [boxSnapshotRevision, setBoxSnapshotRevision] = useState(0);
+  useEffect(() => {
+    if (!eventId || !feedPath) return;
+    const saved = readRenderSnapshot('box', `${feedPath}:${eventId}`);
+    if (saved) setBoxScore(saved);
+    let previous = JSON.stringify(saved);
+    return subscribeRenderSnapshots(() => {
+      const snapshot = readRenderSnapshot('box', `${feedPath}:${eventId}`);
+      const next = JSON.stringify(snapshot);
+      if (next !== previous) {
+        previous = next;
+        if (snapshot) setBoxScore(snapshot);
+        setBoxSnapshotRevision((value) => value + 1);
+      }
+    });
+  }, [eventId, feedPath]);
   const savedDisplay = useMemo(() => {
     if (!eventId || !feedPath || !seasonYear || !activeTeamId || !awayTeamId || !homeTeamId) return null;
     const players = readRenderSnapshot('players', teamSnapshotKey(feedPath, activeTeamId, seasonYear));
@@ -442,7 +458,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
       players: players ? { gameId: eventId, ...players } : null,
       teams: teams.length === 2 ? { gameId: eventId, teams } : null,
     };
-  }, [eventId, feedPath, seasonYear, activeTeamId, awayTeamId, homeTeamId, savedRevision]);
+  }, [eventId, feedPath, seasonYear, activeTeamId, awayTeamId, homeTeamId, savedRevision, boxSnapshotRevision, detailOpen]);
   const boxScore = loadedBoxScore?.eventId === eventId ? loadedBoxScore : savedDisplay?.box ?? null;
   const playerAverages = loadedPlayerAverages && loadedPlayerAverages.gameId === eventId && loadedPlayerAverages.data.teamId === activeTeamId
     ? loadedPlayerAverages : savedDisplay?.players ?? null;

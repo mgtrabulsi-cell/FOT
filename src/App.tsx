@@ -37,6 +37,7 @@ import TheWire from './TheWire';
 import NBAExperience from './NBAExperience';
 import DraggableTabs from './DraggableTabs';
 import { preloadNBABoxes, preloadNBADates, preloadNBAPregame } from './services/nbaPreload';
+import { preloadNFLLiveBoxes } from './services/nflBoxPreload';
 import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
 import LiveWire from './LiveWire';
@@ -690,6 +691,25 @@ function App() {
   const favoritesRef = useRef(favorites);
   const gamesRef = useRef(games);
   gamesRef.current = games;
+  const liveNFLBoxKey = games.filter((game) => game.league === 'NFL' && game.status === 'LIVE').map((game) => game.eventId).sort().join(',');
+  useEffect(() => {
+    if (!liveNFLBoxKey) return;
+    const controller = new AbortController();
+    let running = false;
+    const warm = async () => {
+      if (running || document.visibilityState === 'hidden') return;
+      running = true;
+      try {
+        await preloadNFLLiveBoxes(gamesRef.current, controller.signal);
+      } catch (error) {
+        if (!controller.signal.aborted) console.error('Could not warm live NFL box scores', error);
+      } finally { running = false; }
+    };
+    void warm();
+    const stopForeground = subscribeForegroundRefresh(() => { void warm(); });
+    const timer = window.setInterval(() => { void warm(); }, 30_000);
+    return () => { controller.abort(); stopForeground(); window.clearInterval(timer); };
+  }, [liveNFLBoxKey]);
   const featuredFavoriteTeamId = topNFLFavoriteTeamId(favorites);
   const nflPlayFavorites = favorites.filter((favorite) => favorite.feedPath === 'football/nfl'
     && (favorite.type === 'team' || (favorite.type === 'player'

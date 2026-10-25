@@ -16,6 +16,8 @@ LIVEWIRE and The Angle restore up to 20 saved published posts synchronously, the
 
 The Angle starts with a collapsed **Active bets** dropdown listing every pending published admin pick across all sports and weeks, independent of the feed's week and player/team filters. It reuses the original pick formatting (including multiline parlays and sprinkle labels) inside separately bordered, numbered cards with plain-text matchup/week context and no links. It excludes settled picks, private drafts, and review attachments. The count is per pick, not per parlay leg. A dedicated saved snapshot makes reopening immediate; background polling every 30 seconds, tab return, foreground/reconnect, and feed edits refresh settlements without clearing the list. A refresh warning identifies potentially stale saved picks when the network fails.
 
+NBA pregame matchup details show the reported spread with the home-team abbreviation and its signed line, matching the NFL spread badge. Missing lines are omitted, and spreads are hidden after tipoff. NFL live player boxes warm in the background two games at a time, refreshing stale copies every 30 seconds without downloading full-week player histories or changing scoreboard polling. Open NFL boxes restore saved statistics synchronously, notice background snapshot writes, and continue their existing 15-second live refresh. Failed or wholly empty player refreshes retain the last good box. A first-ever unsaved box still requires a connection.
+
 ## Run locally
 
 Install Node.js 20 or newer, then run:

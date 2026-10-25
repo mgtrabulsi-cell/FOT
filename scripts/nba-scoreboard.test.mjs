@@ -74,6 +74,17 @@ test('NBA dates use Eastern calendar boundaries and requests preserve date and c
   } finally { globalThis.fetch = original; }
 });
 
+test('NBA spreads preserve the reported home-team sign and never invent missing odds', () => {
+  for (const spread of [-7.5, 6.5, 0]) {
+    const data = payload('pre');
+    data.events[0].competitions[0].odds = [{ spread }];
+    const game = readNBAScoreboard(data)[0];
+    assert.equal(game.nbaMarket.spread, spread);
+    assert.equal(game.nflMarket, undefined);
+  }
+  assert.equal(readNBAScoreboard(payload('pre'))[0].nbaMarket, undefined);
+});
+
 test('NBA does not opt favorite accounts into NFL push delivery and has separate daily archives', () => {
   const poller = readFileSync(new URL('../supabase/functions/poll-live-games/index.ts', import.meta.url), 'utf8');
   assert.match(poller, /\.filter\(\(favorite\) => favorite\.feedPath === 'football\/nfl'\)/);

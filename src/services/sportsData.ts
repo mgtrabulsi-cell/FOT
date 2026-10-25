@@ -1,4 +1,4 @@
-import { detailsSnapshotKey, saveRenderSnapshot, teamSnapshotKey } from './renderSnapshots.ts';
+import { detailsSnapshotKey, readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey } from './renderSnapshots.ts';
 import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
 
@@ -116,6 +116,7 @@ export type Game = {
   away: Team;
   home: Team;
   nflMarket?: NFLMarket;
+  nbaMarket?: NFLMarket;
 };
 
 export type NFLRecentGame = {
@@ -413,6 +414,7 @@ function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | 
     away: teamA,
     home: teamH,
     nflMarket: feed.league === 'NFL' ? readMarket(asArray(competition.odds)[0]) : undefined,
+    nbaMarket: feed.league === 'NBA' ? readMarket(asArray(competition.odds)[0]) : undefined,
     completedPeriods,
     situation: feed.league === 'NFL' && statusValue === 'LIVE'
       ? readNFLSituation(competition.situation, [teamA.id, teamH.id]) : undefined,
@@ -1738,6 +1740,11 @@ export async function fetchNFLBoxScore(
     venue,
     teams,
   };
+  const previous = readRenderSnapshot('box', `${feedPath}:${eventId}`);
+  if (previous?.teams.some((team) => team.categories.some((category) => category.athletes.length))
+    && !teams.some((team) => team.categories.some((category) => category.athletes.length))) {
+    throw new Error('The box-score refresh is incomplete. Keeping the last saved player stats.');
+  }
   if (!signal?.aborted && teams.length) saveRenderSnapshot('box', `${feedPath}:${eventId}`, data);
   return data;
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -64,6 +65,33 @@ const categories = [{
 }];
 const players = { data: { teamId: away.id, categories, failedPlayers: 0 }, players: [player] };
 const props = { games: [game], query: '', favorites: [], featuredFavoriteTeamId: null, onToggleFavorite() {}, onOpenPlayer() {}, openGameId: game.id };
+
+test('Mounted NFL boxes notice background preloads and newer saved stats without reopening or waiting for a request', () => withStorage(() => {
+  const snapshot = (yards) => ({
+    eventId: game.eventId, teams: [{ id: away.id, name: away.name,
+      categories: [{ ...categories[0], athletes: [{ ...categories[0].athletes[0], stats: [String(yards)] }] }],
+      teamStats: [], linescores: [],
+    }],
+  });
+  let loaded = null, revisions = 0, cleanup;
+  const hook = source.slice(source.indexOf('  const [boxSnapshotRevision,'), source.indexOf('  const savedDisplay ='));
+  runInNewContext(hook, {
+    eventId: game.eventId, feedPath: game.feedPath, readRenderSnapshot, subscribeRenderSnapshots,
+    useState: () => [0, () => revisions++], useEffect: (effect) => { cleanup = effect(); },
+    setBoxScore: (box) => { loaded = box; },
+  });
+  try {
+    assert.equal(loaded, null);
+    saveRenderSnapshot('box', 'football/nfl:123', snapshot(123));
+    assert.equal(loaded.teams[0].categories[0].athletes[0].stats[0], '123');
+    assert.equal(revisions, 1);
+    saveRenderSnapshot('box', 'football/nfl:other', { ...snapshot(999), eventId: 'other' });
+    assert.equal(revisions, 1, 'Unrelated games do not rerender the selected box');
+    saveRenderSnapshot('box', 'football/nfl:123', snapshot(246));
+    assert.equal(loaded.teams[0].categories[0].athletes[0].stats[0], '246');
+    assert.equal(revisions, 2, 'A newer preload replaces previously loaded stats while still mounted');
+  } finally { cleanup(); }
+}));
 
 test('NFL dims only a final loser across the board, wheel, matchup and team tabs, leaving live games and ties unchanged', () => withStorage(() => {
   for (const [status, awayScore, homeScore, losingSide] of [
