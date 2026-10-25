@@ -1258,12 +1258,12 @@ function App() {
             {(['NFL', 'NBA'] as const).map((league) => <button key={league} type="button" aria-pressed={sportLeague === league} onClick={() => {
               setSportLeague(league); setWireSearchQuery(''); setPlayerSearchQuery(''); setWirePlayerCard(null);
             }}>{league}</button>)}
-            {sportLeague === 'NBA' && <><div className="nba-date-navigation" role="group" aria-label="NBA date navigation"><button type="button" className="nba-date-arrow" aria-label="Previous NBA day" title="Previous day" disabled={selectedNBADate <= '2000-01-01'} onClick={() => {
+            {sportLeague === 'NBA' && <><div className="nba-date-navigation" role="group" aria-label="NBA date navigation"><label className="league-date-label" htmlFor="nba-date">NBA date (Eastern)</label><button type="button" className="nba-date-arrow" aria-label="Previous NBA day" title="Previous day" disabled={selectedNBADate <= '2000-01-01'} onClick={() => {
               setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, -1)); setNBASelectedGameId(null);
-            }}><ChevronLeft size={16} aria-hidden="true" /></button><label><span className="league-date-label">NBA date (Eastern)</span><input type="date" aria-label="NBA date (Eastern)" title="NBA date (Eastern)" value={selectedNBADate} min="2000-01-01" max="2200-12-31" onChange={(event) => {
+            }}><ChevronLeft size={16} aria-hidden="true" /></button><input id="nba-date" type="date" aria-label="NBA date (Eastern)" title="NBA date (Eastern)" value={selectedNBADate} min="2000-01-01" max="2200-12-31" onChange={(event) => {
               if (!event.target.value) return;
               setNBADateOverride(true); setSelectedNBADate(event.target.value); setNBASelectedGameId(null);
-            }} /></label><button type="button" className="nba-date-arrow" aria-label="Next NBA day" title="Next day" disabled={selectedNBADate >= '2200-12-31'} onClick={() => {
+            }} /><button type="button" className="nba-date-arrow" aria-label="Next NBA day" title="Next day" disabled={selectedNBADate >= '2200-12-31'} onClick={() => {
               setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, 1)); setNBASelectedGameId(null);
             }}><ChevronRight size={16} aria-hidden="true" /></button></div><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}
           </div>}

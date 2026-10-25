@@ -450,6 +450,8 @@ button { color: inherit; }
 .league-banner button[aria-pressed="true"] { background: #8198bd; color: #101a29; border-color: #9db9df; }
 .league-banner label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; }
 .nba-date-navigation { display: flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto; }
+.league-banner .nba-date-navigation > label { flex: 0 0 auto; margin: 0 4px 0 0; }
+.nba-date-navigation > input { min-width: 0; }
 .league-banner .nba-date-arrow { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px; width: 32px; min-width: 32px; padding: 6px; }
 .league-banner .nba-date-arrow:disabled { opacity: .45; cursor: not-allowed; }
 .league-banner :is(button,input):focus-visible { outline: 2px solid #9db9df; outline-offset: 3px; }
@@ -460,7 +462,7 @@ button { color: inherit; }
   .league-banner :is(button,input) { height: 34px; min-height: 34px; box-sizing: border-box; }
   .league-banner label { flex: 1 1 0; min-width: 0; margin-left: 0; }
   .nba-date-navigation { flex: 1 1 0; }
-  .league-date-label { display: none; }
+  .league-banner .nba-date-navigation > .league-date-label { display: none; }
   .league-banner input { appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; max-width: 160px; max-height: 34px; padding: 6px 4px; font-size: 12px; line-height: 20px; }
   .league-banner input::-webkit-date-and-time-value { min-height: 0; text-align: left; }
   .league-banner input::-webkit-datetime-edit { padding: 0; }

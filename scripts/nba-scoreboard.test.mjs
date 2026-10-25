@@ -14,6 +14,10 @@ test('NBA day arrows move one calendar day across months, years, leap days and d
   }
   for (const invalid of ['', '2026-02-30', 'bad']) assert.throws(() => shiftNBACalendarDate(invalid, 1), /valid NBA calendar date/);
   const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const dateNavigation = source.slice(source.indexOf('aria-label="NBA date navigation"')).split('</div>')[0];
+  assert.ok(dateNavigation.indexOf('htmlFor="nba-date"') < dateNavigation.indexOf('aria-label="Previous NBA day"'));
+  assert.ok(dateNavigation.indexOf('aria-label="Previous NBA day"') < dateNavigation.indexOf('id="nba-date"'));
+  assert.ok(dateNavigation.indexOf('id="nba-date"') < dateNavigation.indexOf('aria-label="Next NBA day"'));
   for (const [label, limit, direction] of [['Previous NBA day', '2000-01-01', -1], ['Next NBA day', '2200-12-31', 1]]) {
     const handler = source.slice(source.indexOf(`aria-label="${label}"`)).split('</button>')[0];
     assert.ok(handler.includes(limit));
