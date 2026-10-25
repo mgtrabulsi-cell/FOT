@@ -45,7 +45,7 @@ function fixture(saved = null) {
     window: { setInterval: () => 1, clearInterval() {}, setTimeout: () => 2, clearTimeout() {} },
     useAnalystReadObserver: () => ({ root: { current: null } }),
     observePostViews: () => () => {},
-    PostGallery: 'gallery', AnglePicks: 'picks', AngleReviewList: 'review-picks',
+    PostGallery: 'gallery', AnglePicks: 'picks', AngleReviewList: 'review-picks', ActiveAngleBets: 'active-bets',
     PostViewers: 'viewers', XPublishingStatus: 'x-status', Plus: 'plus', ExternalLink: 'link',
     useRef(initial) { const index = cursor++; return hooks[index] ??= { current: initial }; },
     useState(initial) {
@@ -154,9 +154,11 @@ test('Published feed snapshots survive sports cache churn and reject drafts', ()
   const log = console.error;
   try {
     saveRenderSnapshot('angleFeed', 'angle', { season: 2026, week: 7, rows: [story] });
+    saveRenderSnapshot('activeBets', 'last', { rows: [story] });
     saveRenderSnapshot('posts', 'livewire', { posts: [], hasMore: false });
     for (let i = 0; i < 200; i++) saveRenderSnapshot('nbaRoster', String(i), []);
     assert.equal(readRenderSnapshot('angleFeed', 'angle').rows[0].id, story.id);
+    assert.equal(readRenderSnapshot('activeBets', 'last').rows[0].id, story.id);
     assert.deepEqual(readRenderSnapshot('posts', 'livewire'), { posts: [], hasMore: false });
     const key = [...entries.keys()].find((key) => key.includes('angleFeed:angle'));
     const raw = JSON.parse(entries.get(key));

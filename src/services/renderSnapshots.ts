@@ -27,6 +27,7 @@ type Snapshots = {
   team: NFLTeamSeasonAverages;
   posts: LivewireSnapshot;
   angleFeed: { season: number; week: number; rows: Angle[] };
+  activeBets: { rows: Angle[] };
   teamRanks: TeamComparisonRanks;
   fantasyBoard: { picks: MatchupPick[]; revision: number };
   fantasyAverages: Record<string, { average: number | null; games: number }>;
@@ -128,6 +129,8 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
       return Number.isInteger(data.season) && Number.isInteger(data.week)
         && rows.length <= 20 && rows.every((row) => row.status === 'published');
     }
+    case 'activeBets':
+      return readAngles(data.rows).every((row) => row.status === 'published');
     case 'teamRanks':
       return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.length === 32
         && new Set(data.teams.map((team: unknown) => object(team) ? team.teamId : null)).size === 32
@@ -170,7 +173,7 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
       .filter((entry): entry is string => !!entry && entry.startsWith(prefix) && entry !== name);
     let size = raw.length;
     let count = 1;
-    const protectedEntries = new Set(['nbaStatHub:last', 'posts:livewire', 'angleFeed:angle', 'angleFeed:news'].map((key) => `${prefix}${key}`));
+    const protectedEntries = new Set(['nbaStatHub:last', 'posts:livewire', 'angleFeed:angle', 'angleFeed:news', 'activeBets:last'].map((key) => `${prefix}${key}`));
     entries.reverse().sort((a, b) => Number(protectedEntries.has(b)) - Number(protectedEntries.has(a)));
     for (const entry of entries) {
       const length = target.getItem(entry)?.length ?? 0;

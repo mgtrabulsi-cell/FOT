@@ -24,6 +24,7 @@ import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
 import { postThemes } from './services/postThemes';
 import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
+import ActiveAngleBets from './ActiveAngleBets';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -414,6 +415,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       : <input type="text" maxLength={limit} value={form?.[key] ?? ''} onChange={(event) => change(key, event.target.value)} />}
   </label>;
   return <section className="angle-panel" hidden={!visible} aria-label={news ? 'Fantasy News' : 'The Angle'}>
+    {!news && <ActiveAngleBets active={visible} revision={rows.map((row) => `${row.id}:${row.revision}`).join('|')} />}
     {visible && admin && <div className="angle-admin-bar">
       <button className="angle-create-button" disabled={busy || !draftReady || draftRestoreFailed || (!form && (!season || !week))} onClick={() => { if (form) editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else if (season && week) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{form ? 'Continue draft' : news ? 'Create news' : 'Create an angle'}</button>
       {form && <button type="button" className="angle-create-button" disabled={busy} onClick={() => void discardDraft()}>Discard draft</button>}

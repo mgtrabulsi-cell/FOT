@@ -56,6 +56,9 @@ export function publishedAnglePicks(stories: Angle[]) {
   return stories.filter((story) => story.status === 'published')
     .flatMap((story) => anglePicks(story).map((pick) => ({ story, pick })));
 }
+export function activeAnglePicks(stories: Angle[]) {
+  return publishedAnglePicks(stories).filter(({ pick }) => pick.result === 'pending');
+}
 export function pendingAnglesFirst<T extends Pick<Angle, 'id' | 'pick' | 'picks'>>(stories: T[]): T[] {
   const pending: T[] = [];
   const remaining: T[] = [];
