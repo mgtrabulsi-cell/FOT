@@ -22,3 +22,6 @@
 .gai-table small { display: block; margin-top: 6px; }
 .gai-panel summary { cursor: pointer; padding: 12px 0; min-height: 44px; }
 .gai-panel :focus-visible { outline: 2px solid #ff5965; outline-offset: 3px; }
+.gai-advanced { grid-column: 1 / -1; }
+.gai-advanced[open] { display: grid; gap: 14px; }
+.gai-choice { border: 1px solid #34445b; padding: 12px; border-radius: 6px; }

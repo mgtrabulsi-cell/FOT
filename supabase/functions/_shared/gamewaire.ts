@@ -30,6 +30,12 @@ export type Candidate = Quote & {
   identifiers?: Evidence['identifiers'];
 };
 export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }> };
+export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
+  const scale = (value: number, target: number) => Math.max(0, Math.min(1, value / target));
+  const score = Math.round(40 * scale(pick.conservativeEV, 0.15) + 25 * scale(pick.edge, 0.15)
+    + 20 * scale(pick.ev, 0.25) + 15 * scale(pick.quality, 1));
+  return { score, letter: score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : 'D' };
+}
 export function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -107,7 +113,7 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
   return result;
 }
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number): Evaluation {
+export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 = 4): Evaluation {
   const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [];
   const best = new Map<string, Quote>();
   for (const quote of quotes) {
@@ -182,7 +188,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       rejected.push({ key: candidate.key, reason: 'Excluded as a duplicate or correlated player/team-market selection.' }); continue;
     }
     picks.push(candidate); subjects.add(identity); if (!player) teamMarket = true;
-    if (picks.length === 4) break;
+    if (picks.length === limit) break;
   }
   return { status: picks.length ? 'completed' : !best.size && rejected.some((row) => row.reason.startsWith('Stale')) ? 'stale_odds'
     : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks, rejected };

@@ -93,6 +93,19 @@ test('Duplicate player markets and team markets are controlled without forcing f
   assert.ok(result.rejected.some((row) => row.reason.includes('correlated')));
   const teamQuotes = ['Boston Celtics', 'Atlanta Hawks'].map((team) => ({ ...quote, key: team, subject: team, side: team, market: 'h2h', line: null }));
   assert.equal(evaluate(teamQuotes).picks.length, 1);
+  const many = Array.from({ length: 12 }, (_, i) => ({ ...quote, key: `player-${i}`, subject: `Player ${i}` }));
+  const data = new Map(many.map((q) => [q.key, evidence]));
+  assert.equal(engine.evaluate(many, data, settings, now, 8).picks.length, 8);
+  assert.equal(engine.evaluate(many, data, settings, now).picks.length, 4);
+  assert.equal(engine.evaluate(many, new Map(many.map((q) => [q.key, { ...evidence, samples: [] }])), settings, now, 8).picks.length, 0);
+});
+
+test('GamewAIre grade is a bounded transparent rubric, not a probability', () => {
+  assert.deepEqual(engine.gamewaireGrade({ conservativeEV: 0.15, edge: 0.15, ev: 0.25, quality: 1 }), { score: 100, letter: 'A' });
+  assert.deepEqual(engine.gamewaireGrade({ conservativeEV: 0, edge: 0, ev: 0, quality: 0 }), { score: 0, letter: 'D' });
+  assert.equal(engine.gamewaireGrade({ conservativeEV: 10, edge: 10, ev: 10, quality: 1 }).score, 100);
+  const low = { conservativeEV: 0.01, edge: 0.03, ev: 0.05, quality: 0.8 };
+  assert.ok(engine.gamewaireGrade({ ...low, conservativeEV: 0.1 }).score > engine.gamewaireGrade(low).score);
 });
 
 test('Adjusted team forecasts retain real observed averages and valid point/push outcomes', () => {
@@ -196,7 +209,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, performance, performanceGroups } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, performance, performanceGroups, gamewaireGrade } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
@@ -212,14 +225,25 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const run = { id: 'run', matchup: 'Away at Home', created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
   const pick = { ...candidate, id: 'pick', event_start: quote.start, created_at: quote.updatedAt, push_probability: candidate.pushProbability,
     result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1 };
-  fixture([{ ...status, canAnalyze: false, oddsReady: true }, [run], [pick], true]);
+  const memberState = [{ ...status, canAnalyze: false, oddsReady: true }, [run], [pick], true];
+  memberState[22] = [{ sport: 'NBA', event_id: 'event', event_start: quote.start, matchup: 'Away at Home', picks: [candidate], published_at: quote.updatedAt }];
+  memberState[23] = 'event'; memberState[25] = quote.start.slice(0, 10);
+  fixture(memberState);
   const report = renderToStaticMarkup(createElement(Page));
   assert.match(report, /class="gai-pick angle-card"/);
   assert.match(report, /Book A/);
   assert.match(report, /loss/);
   assert.match(report, /withdrawn/);
   assert.doesNotMatch(report, /Admin analysis controls/);
+  assert.doesNotMatch(report, /Saved analysis reports|Choose up to four member picks/);
+  assert.match(report, /GamewAIre grade/);
+  assert.match(report, /Estimated win probability \(unvalidated\)/);
   assert.match(report, /Brier score/);
+  fixture([status, [run], [], true]);
+  const admin = renderToStaticMarkup(createElement(Page));
+  assert.match(admin, /Choose up to four member picks/);
+  assert.match(admin, /Publish 0\/4 picks/);
+  assert.match(admin, /ODDS_API_KEY/);
 });
 
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
@@ -276,6 +300,18 @@ test('Endpoint requires authentication/admin access and honestly reports unconfi
   const member = endpoint({ role: 'member', configured: true });
   assert.equal((await member.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 403);
   assert.equal(member.fetches.length, 0);
+  assert.equal((await member.run({ action: 'publish', runId: '00000000-0000-0000-0000-000000000001', keys: [quote.key] })).status, 403);
+});
+test('Publication is admin-only, rejects invalid counts, and uses the transactional publication RPC', async () => {
+  const api = endpoint();
+  const runId = '00000000-0000-0000-0000-000000000001';
+  for (const keys of [[], [quote.key, quote.key], [1], ['a', 'b', 'c', 'd', 'e']]) {
+    assert.equal((await api.run({ action: 'publish', runId, keys })).status, 400);
+  }
+  assert.equal((await api.run({ action: 'publish', runId, keys: [quote.key] })).status, 200);
+  assert.equal(api.rpc.at(-1).name, 'gamewaire_publish');
+  assert.equal(api.rpc.at(-1).args.selected_keys[0], quote.key);
+  assert.equal(api.fetches.length, 0, 'Publishing a prepared report never triggers a paid call');
 });
 test('Endpoint rate limits before paid API calls and persists deterministic complete reports transactionally', async () => {
   const limited = endpoint({ configured: true, failClaim: true });

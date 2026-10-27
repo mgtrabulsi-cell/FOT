@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 import type { Candidate, Settings, Sport } from '../../supabase/functions/_shared/gamewaire';
-export { defaultSettings, markets, performance, performanceGroups } from '../../supabase/functions/_shared/gamewaire';
+export { defaultSettings, markets, performance, performanceGroups, gamewaireGrade } from '../../supabase/functions/_shared/gamewaire';
 export type { Candidate, Settings, Sport };
 export type AnalysisStatus = 'in_progress' | 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds' | 'provider_error' | 'setup_required';
 export type AnalysisRun = {
@@ -16,6 +16,9 @@ export type StoredPick = {
 };
 export type EngineStatus = { canAnalyze: boolean; oddsReady: boolean; aiReady: boolean; model: string; experimental: boolean };
 export type OddsEvent = { id: string; sport: Sport; home: string; away: string; start: string };
+export type PublishedGame = {
+  sport: Sport; event_id: string; run_id: string; event_start: string; matchup: string; picks: Candidate[]; published_at: string;
+};
 export async function engineRequest<T>(body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   if (!supabase) throw new Error('Account services are not configured.');
   const session = await supabase.auth.getSession();
@@ -32,10 +35,13 @@ export async function engineRequest<T>(body: Record<string, unknown>, signal?: A
   if (!result.data) throw new Error('GamewAIre returned an empty response.');
   return result.data;
 }
-export async function loadEngineHistory(signal: AbortSignal) {
+export async function loadEngineHistory(signal: AbortSignal, canAnalyze = false) {
   if (!supabase) throw new Error('Account services are not configured.');
-  const runs = await supabase.from('gamewaire_runs').select('*').order('created_at', { ascending: false }).limit(50).abortSignal(signal);
+  const runs = canAnalyze ? await supabase.from('gamewaire_runs').select('*').order('created_at', { ascending: false }).limit(50).abortSignal(signal)
+    : { data: [], error: null };
   if (runs.error) throw new Error(`Could not load GamewAIre reports: ${runs.error.message}`);
+  const published = await supabase.from('gamewaire_publications').select('*').order('event_start', { ascending: false }).limit(200).abortSignal(signal);
+  if (published.error) throw new Error(`Could not load published GamewAIre games: ${published.error.message}`);
   const picks: StoredPick[] = [];
   for (let offset = 0; ; offset += 500) {
     const page = await supabase.from('gamewaire_picks').select('*').order('created_at', { ascending: false }).order('id').range(offset, offset + 499).abortSignal(signal);
@@ -43,5 +49,5 @@ export async function loadEngineHistory(signal: AbortSignal) {
     picks.push(...page.data);
     if (page.data.length < 500) break;
   }
-  return { runs: runs.data as AnalysisRun[], picks };
+  return { runs: runs.data as AnalysisRun[], picks, published: published.data as PublishedGame[] };
 }
