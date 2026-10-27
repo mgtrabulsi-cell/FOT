@@ -36,6 +36,8 @@ button { color: inherit; }
 .primary-nav button svg { display: none; }
 .primary-nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 4px; }
 .primary-nav button.active { color: #fff; }
+.gamewaire-name { white-space: nowrap; }
+.gamewaire-name strong { color: #ff5965; font-weight: 900; }
 .primary-nav button.active::after { content: ''; position: absolute; height: 2px; left: 0; right: 0; bottom: 0; background: var(--lime); }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 19px; }
 .banner-search { position: relative; }

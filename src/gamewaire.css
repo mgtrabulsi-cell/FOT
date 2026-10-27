@@ -1,0 +1,24 @@
+.gai-panel { display: grid; gap: 24px; min-width: 0; }
+.gai-panel h2 { margin: 8px 0; font: 600 32px var(--display); }
+.gai-panel p, .gai-panel li { font-size: 13px; line-height: 1.6; }
+.gai-panel section, .gai-admin { min-width: 0; }
+.gai-panel button, .gai-panel input, .gai-panel select { min-height: 44px; }
+.gai-panel button { border: 1px solid #52647e; border-radius: 6px; background: #192537; color: #edf2f8; padding: 8px 12px; cursor: pointer; }
+.gai-panel button:disabled { opacity: .5; cursor: not-allowed; }
+.gai-panel label { display: grid; gap: 6px; font-size: 12px; min-width: 0; }
+.gai-panel input, .gai-panel select { width: 100%; min-width: 0; padding: 8px; background: #101a29; color: #edf2f8; border: 1px solid #52647e; border-radius: 5px; }
+.gai-panel input[type="checkbox"] { width: 18px; min-height: 18px; vertical-align: middle; }
+.gai-panel fieldset { display: flex; flex-wrap: wrap; gap: 12px; grid-column: 1 / -1; border: 1px solid #34445b; }
+.gai-panel fieldset label { display: flex; align-items: center; }
+.gai-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; align-items: end; margin: 14px 0; }
+.gai-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 14px 0; }
+.gai-metrics div { padding: 10px; border: 1px solid #34445b; border-radius: 5px; background: #101a29; }
+.gai-metrics dt { font-size: 11px; color: #bbc7d9; }
+.gai-metrics dd { margin: 6px 0 0; font-weight: 700; }
+.gai-picks { display: grid; gap: 16px; margin: 16px 0; }
+.gai-table { overflow-x: auto; max-width: 100%; }
+.gai-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gai-table td, .gai-table th { padding: 10px; border-bottom: 1px solid #34445b; text-align: left; }
+.gai-table small { display: block; margin-top: 6px; }
+.gai-panel summary { cursor: pointer; padding: 12px 0; min-height: 44px; }
+.gai-panel :focus-visible { outline: 2px solid #ff5965; outline-offset: 3px; }

@@ -1,6 +1,6 @@
 import OfflineImage from './OfflineImage';
 import FantasyStartSit from './FantasyStartSit';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
   Activity,
@@ -12,6 +12,7 @@ import {
   Clock3,
   LogOut,
   Star,
+  Sparkles,
   Users,
   X,
   Zap,
@@ -35,6 +36,7 @@ import { useAnalystUnread } from './useAnalystUnread';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import NBAExperience from './NBAExperience';
+const Gamewaire = lazy(() => import('./Gamewaire'));
 import DraggableTabs from './DraggableTabs';
 import { preloadNBABoxes, preloadNBADates, preloadNBAPregame } from './services/nbaPreload';
 import { preloadNFLLiveBoxes } from './services/nflBoxPreload';
@@ -1190,6 +1192,7 @@ function App() {
           <button className={view === 'Wire' ? 'active' : ''} aria-current={view === 'Wire' ? 'page' : undefined} onClick={openWireTab}><Activity size={20} aria-hidden="true" /><span>The Wire</span></button>
           <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => setView('Players')}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
           <button className={view === 'Analyst' ? 'active' : ''} aria-current={view === 'Analyst' ? 'page' : undefined} aria-label={analystUnread.unread ? 'Analyst Desk, unread posts' : 'Analyst Desk'} onClick={() => { setView('Analyst'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="analyst-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10h18M4 10v11M20 10v11M14 10v8h6M16 14h2M7 10V3h10v7M10 6h4" /></svg>{analystUnread.unread && <i className="analyst-unread-dot" aria-hidden="true" />}</span><span>Analyst Desk</span></button>
+          <button className={view === 'Gamewaire' ? 'active' : ''} aria-current={view === 'Gamewaire' ? 'page' : undefined} aria-label="GamewAIre" onClick={() => { setView('Gamewaire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><Sparkles size={20} aria-hidden="true" /><span className="gamewaire-name">Gamew<strong>AI</strong>re</span></button>
           <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="livewire-nav-icon"><Zap size={20} aria-hidden="true" />{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span><span>LIVEWIRE</span></button>
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </PrimaryNavigation>
@@ -1224,12 +1227,12 @@ function App() {
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
             {view !== 'Wire' && <>
-              <h1>{view === 'LiveWire' ? 'LIVEWIRE' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : view === 'Analyst' ? 'Analyst Desk' : 'Stat Hub'}</h1>
-              {view !== 'Analyst' && <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>}
+              <h1>{view === 'Gamewaire' ? <span className="gamewaire-name">Gamew<strong>AI</strong>re</span> : view === 'LiveWire' ? 'LIVEWIRE' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : view === 'Analyst' ? 'Analyst Desk' : 'Stat Hub'}</h1>
+              {view !== 'Analyst' && view !== 'Gamewaire' && <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>}
             </>}
           </div>
           <div className="heading-actions">
-            {view !== 'Profile' && view !== 'LiveWire' && (view !== 'Analyst' || !!sessionUser) && (
+            {view !== 'Profile' && view !== 'LiveWire' && view !== 'Gamewaire' && (view !== 'Analyst' || !!sessionUser) && (
               <>
                 {(view !== 'Wire' || displayedFeedFailure) && <span className={`feed-status${displayedFeedFailure ? ' feed-status-warning' : ''}`}>
                   <i />
@@ -1264,7 +1267,8 @@ function App() {
           {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
-        <AccountRequired hasAccount={!!sessionUser} section={view === 'Analyst' ? 'Analyst Desk' : view === 'LiveWire' ? 'LIVEWIRE' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>
+        <AccountRequired hasAccount={!!sessionUser} section={view === 'Gamewaire' ? 'GamewAIre' : view === 'Analyst' ? 'Analyst Desk' : view === 'LiveWire' ? 'LIVEWIRE' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>
+        {view === 'Gamewaire' && <Suspense fallback={<p role="status">Opening GamewAIre…</p>}><Gamewaire key={sessionUser?.id ?? 'guest'} /></Suspense>}
         {view === 'Analyst' && <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
           <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={analystMode === 'Fantasy'} aria-label={analystUnread.news || analystUnread.picks || analystUnread.hate ? 'Fantasy, unread updates' : 'Fantasy'} className={analystMode === 'Fantasy' ? 'active' : ''} onClick={() => setAnalystMode('Fantasy')}>Fantasy{(analystUnread.news || analystUnread.picks || analystUnread.hate) && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
