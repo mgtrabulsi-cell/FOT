@@ -36,11 +36,15 @@ type Snapshots = {
 
 const prefix = `gamewire-render-v1:${import.meta.env?.BASE_URL ?? '/'}:`;
 let stopped = false;
-const listeners = new Set<() => void>();
+type SnapshotChange = { kind: keyof Snapshots; key: string };
+const listeners = new Set<(change: SnapshotChange) => void>();
 
-export function subscribeRenderSnapshots(listener: () => void) {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+export function subscribeRenderSnapshots(listener: () => void, filter?: SnapshotChange) {
+  const notify = (change: SnapshotChange) => {
+    if (!filter || (filter.kind === change.kind && filter.key === change.key)) listener();
+  };
+  listeners.add(notify);
+  return () => { listeners.delete(notify); };
 }
 
 function storage() {
@@ -168,7 +172,18 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
     const name = `${prefix}${kind}:${key}`;
     const raw = JSON.stringify({ version: 1, data, savedAt: Date.now() });
     if (raw.length > 256_000) throw new Error('Public display snapshot exceeds its storage limit');
-    if (target.getItem(name) === raw) return;
+    const previous = target.getItem(name);
+    if (previous === raw) return;
+    if (previous) {
+      let unchanged = false;
+      try {
+        const entry: unknown = JSON.parse(previous);
+        unchanged = object(entry) && entry.version === 1 && JSON.stringify(entry.data) === JSON.stringify(data);
+      } catch (error) {
+        console.error('Could not compare saved public display; replacing it with fresh data', error);
+      }
+      if (unchanged) { target.setItem(name, raw); return; }
+    }
     const entries = Array.from({ length: target.length }, (_, index) => target.key(index))
       .filter((entry): entry is string => !!entry && entry.startsWith(prefix) && entry !== name);
     let size = raw.length;
@@ -181,7 +196,7 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
       else { size += length; count++; }
     }
     target.setItem(name, raw);
-    listeners.forEach((listener) => listener());
+    listeners.forEach((listener) => listener({ kind, key }));
   } catch (error) {
     console.error('Could not save public display for immediate reopening', error);
   }

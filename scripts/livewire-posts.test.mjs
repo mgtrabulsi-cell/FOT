@@ -38,6 +38,11 @@ const compiled = ts.transpileModule(source, {
   .replace(/import \{ loadLivewireDraft, saveLivewireDraft \} from [^;]+;/, 'const loadLivewireDraft = async () => null; const saveLivewireDraft = async () => {};');
 const { default: LiveWire } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 
+test('Unrelated parent scoreboard renders can reuse LIVEWIRE while feed state updates remain independent', () => {
+  assert.equal(LiveWire.$$typeof, Symbol.for('react.memo'));
+  assert.equal(LiveWire.compare, null, 'Use normal prop comparison so active tabs, users and linked posts still update');
+});
+
 test('The app keeps one LIVEWIRE instance mounted outside tab-selection conditionals', () => {
   const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const app = ts.createSourceFile('App.tsx', appSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

@@ -16,6 +16,24 @@ const compile = (source, context) => vm.runInContext(ts.transpileModule(`(${sour
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText, context);
 
+test('Feed viewing pauses heavy sports preloads on phone and desktop without gating scoreboard reads', () => {
+  const declarations = new Map();
+  function collect(node) {
+    if (ts.isVariableDeclaration(node) && node.initializer) declarations.set(node.name.getText(app), node.initializer.getText(app));
+    ts.forEachChild(node, collect);
+  }
+  collect(app);
+  for (const mobile of [false, true]) {
+    for (const view of ['LiveWire', 'Analyst', 'Wire', 'Players', 'Den']) {
+      const context = vm.createContext({ view, sportLeague: 'NBA', window: { matchMedia: () => ({ matches: mobile }) } });
+      context.sportsView = vm.runInContext(declarations.get('sportsView'), context);
+      assert.equal(vm.runInContext(declarations.get('warmNBA'), context), !['LiveWire', 'Analyst'].includes(view));
+    }
+  }
+  const snapshotCall = appSource.match(/useOfflineSnapshots\(games, ([^;]+)\);/)[1];
+  assert.ok(snapshotCall.startsWith('sportsView &&'), 'Full-week downloads also wait while feeds are being browsed');
+});
+
 test('Mobile NFL viewing performs no unrelated NBA roster, box, or nearby-date downloads', async () => {
   for (const warmNBA of [false, true]) {
     const calls = { scoreboard: 0, boxes: 0, rosters: 0, dates: 0 };

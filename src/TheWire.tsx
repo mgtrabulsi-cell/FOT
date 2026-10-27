@@ -444,7 +444,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
         if (snapshot) setBoxScore(snapshot);
         setBoxSnapshotRevision((value) => value + 1);
       }
-    });
+    }, { kind: 'box', key: `${feedPath}:${eventId}` });
   }, [eventId, feedPath]);
   const savedDisplay = useMemo(() => {
     if (!eventId || !feedPath || !seasonYear || !activeTeamId || !awayTeamId || !homeTeamId) return null;

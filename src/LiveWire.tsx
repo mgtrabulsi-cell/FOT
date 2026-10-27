@@ -1,6 +1,6 @@
 import OfflineImage from './OfflineImage';
 import { usePublicDataRevision } from './usePublicDataRevision';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import PostViewers from './PostViewers';
 import { Plus } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
@@ -34,7 +34,7 @@ function safeNewsLink(value: string): string | null {
   }
 }
 
-export default function LiveWire({ user, active: isActive = true, postId = null, onPostSeen }: { user: User | null; active?: boolean; postId?: string | null; onPostSeen?: (postId: string) => Promise<void> }) {
+function LiveWire({ user, active: isActive = true, postId = null, onPostSeen }: { user: User | null; active?: boolean; postId?: string | null; onPostSeen?: (postId: string) => Promise<void> }) {
   const publicRevision = usePublicDataRevision('posts');
   const [savedFeed] = useState(() => readRenderSnapshot('posts', 'livewire'));
   const [posts, setPosts] = useState<Post[]>(savedFeed?.posts ?? []);
@@ -77,7 +77,7 @@ export default function LiveWire({ user, active: isActive = true, postId = null,
       if (saved) {
         setPosts(saved.posts); setHasMore(saved.hasMore); setLoaded(true);
       }
-    });
+    }, { kind: 'posts', key: 'livewire' });
   }, [themeFilters, limit]);
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [draftReady, setDraftReady] = useState(false);
@@ -413,3 +413,5 @@ export default function LiveWire({ user, active: isActive = true, postId = null,
     </details>}
   </section>;
 }
+
+export default memo(LiveWire);

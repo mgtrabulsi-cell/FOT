@@ -498,7 +498,7 @@ function App() {
     return subscribeRenderSnapshots(() => {
       const next = JSON.stringify(readRenderSnapshot('scoreboard', `NBA:${previousNBADate}`)?.games ?? []);
       if (next !== previous) { previous = next; setPreviousNBARevision((value) => value + 1); }
-    });
+    }, { kind: 'scoreboard', key: `NBA:${previousNBADate}` });
   }, [previousNBADate]);
   const [nbaStatus, setNBAStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [nbaError, setNBAError] = useState('');
@@ -507,7 +507,8 @@ function App() {
     if (!nbaDateOverride) setSelectedNBADate(nbaCalendarDate());
     setNBARetry((value) => value + 1);
   }), [nbaDateOverride]);
-  const warmNBA = !window.matchMedia('(max-width: 760px)').matches || sportLeague === 'NBA';
+  const sportsView = view === 'Wire' || view === 'Players' || view === 'Den';
+  const warmNBA = sportsView && (!window.matchMedia('(max-width: 760px)').matches || sportLeague === 'NBA');
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -660,7 +661,7 @@ function App() {
   const [scoreboardStatus, setScoreboardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [scoreboardRetry, setScoreboardRetry] = useState(0);
   useEffect(() => subscribeForegroundRefresh(() => setScoreboardRetry((value) => value + 1)), []);
-  useOfflineSnapshots(games, view !== 'LiveWire' && deletedAccount === null && (!!authUser || guestMode));
+  useOfflineSnapshots(games, sportsView && deletedAccount === null && (!!authUser || guestMode));
   useSiteOpenTracking(authUser?.id, deletedAccount === null && !authLoading && (!!authUser || guestMode));
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const notificationEventId = /^#wire\/game\/(\d+)$/i.exec(notificationHash)?.[1] ?? null;

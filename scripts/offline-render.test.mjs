@@ -389,6 +389,33 @@ test('Last NBA Stat Hub list migrates old saved directories, survives cache chur
   assert.equal(readLastNBAStatHub(), null, 'Removed storage is not secretly restored from another source');
 }));
 
+test('Feed subscribers ignore sports saves and unchanged data while freshness timestamps still advance', () => withStorage((storage) => {
+  const originalNow = Date.now;
+  let now = 1000, feedUpdates = 0, allUpdates = 0;
+  Date.now = () => now;
+  const stopFeed = subscribeRenderSnapshots(() => feedUpdates++, { kind: 'posts', key: 'livewire' });
+  const stopAll = subscribeRenderSnapshots(() => allUpdates++);
+  try {
+    const data = { posts: [], hasMore: false };
+    saveRenderSnapshot('posts', 'livewire', data);
+    assert.equal(feedUpdates, 1);
+    for (let index = 0; index < 50; index++) saveRenderSnapshot('nbaTeamSeason', `team:${index}`, []);
+    assert.equal(feedUpdates, 1, '50 sports saves cause zero feed notifications');
+    assert.equal(allUpdates, 51, 'Unfiltered consumers still receive relevant cache writes');
+    now = 2000;
+    saveRenderSnapshot('posts', 'livewire', { ...data });
+    assert.equal(feedUpdates, 1, 'Identical feeds do not rerender');
+    assert.equal(allUpdates, 51);
+    assert.equal(JSON.parse(storage.getItem('gamewire-render-v1:/:posts:livewire')).savedAt, 2000);
+    assert.deepEqual(readRenderSnapshot('posts', 'livewire', 100), data, 'Unchanged fresh reads renew the cache lifetime');
+    saveRenderSnapshot('posts', 'livewire', { ...data, hasMore: true });
+    assert.equal(feedUpdates, 2, 'Changed feeds still notify immediately');
+    stopFeed();
+    saveRenderSnapshot('posts', 'livewire', data);
+    assert.equal(feedUpdates, 2, 'Unsubscribed listeners stay removed');
+  } finally { Date.now = originalNow; stopFeed(); stopAll(); }
+}));
+
 test('Account deletion stops late requests from recreating display snapshots', () => withStorage((storage) => {
   saveRenderSnapshot('players', 'before', players);
   stopRenderSnapshots();

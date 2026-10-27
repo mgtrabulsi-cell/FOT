@@ -46,7 +46,7 @@ test('Mixed published galleries render controlled inline videos and retain photo
   assert.equal((html.match(/<video /g) ?? []).length, 3);
   assert.equal((html.match(/controls=""/g) ?? []).length, 3);
   assert.equal((html.match(/playsinline=""/g) ?? []).length, 3);
-  assert.equal((html.match(/preload="metadata"/g) ?? []).length, 3);
+  assert.equal((html.match(/preload="none"/g) ?? []).length, 3, 'Feed videos wait for playback instead of competing with posts and scores');
   assert.equal((html.match(/Open original video/g) ?? []).length, 3);
   assert.match(html, /Enlarge photo 2 for Analysis/);
   assert.doesNotMatch(html, /autoplay/);
