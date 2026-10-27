@@ -192,6 +192,22 @@ test('Evidence deduplicates shared event IDs, not coincidental same-date scores,
   assert.ok(data.warnings.some((warning) => warning.includes('injury availability')));
 });
 
+test('Matchup resolution uses supported individual scoreboard dates and deduplicates boundary games', async () => {
+  const requests = [];
+  const matchup = await sources.resolveMatchup(quote, async (url) => {
+    requests.push(String(url));
+    const dates = new URL(url).searchParams.get('dates');
+    assert.match(dates, /^\d{8}$/, 'NBA scoreboard does not support a multi-day range');
+    return Response.json({ events: [{ id: 'espn-event', date: quote.start, season: { year: 2027 },
+      competitions: [{ status: { type: { state: 'pre' } }, competitors: [
+        { homeAway: 'home', team: { id: '2', displayName: quote.home } },
+        { homeAway: 'away', team: { id: '17', displayName: quote.away } },
+      ] }] }] });
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(matchup.eventId, 'espn-event');
+});
+
 test('GamewAIre navigation is ordered correctly and AI styling is bold red without loading the engine at startup', () => {
   const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const nav = source.slice(source.indexOf('<PrimaryNavigation>'), source.indexOf('</PrimaryNavigation>'));

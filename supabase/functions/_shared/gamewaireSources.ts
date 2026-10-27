@@ -12,8 +12,10 @@ export type Matchup = { eventId: string; season: number; home: { id: string; nam
 export async function resolveMatchup(quote: Quote, fetcher: typeof fetch = fetch): Promise<Matchup> {
   const date = new Date(Date.parse(quote.start) - 6 * 60 * 60_000).toISOString().slice(0, 10).replace(/-/g, '');
   const end = new Date(Date.parse(quote.start) + 6 * 60 * 60_000).toISOString().slice(0, 10).replace(/-/g, '');
-  const data = object(await publicJSON(`https://site.api.espn.com/apis/site/v2/sports/${paths[quote.sport]}/scoreboard?dates=${date}-${end}&limit=100`, fetcher));
-  const matches = array(data.events).map(object).flatMap((event) => {
+  const boards = await Promise.all([...new Set([date, end])].map((day) =>
+    publicJSON(`https://site.api.espn.com/apis/site/v2/sports/${paths[quote.sport]}/scoreboard?dates=${day}&limit=100`, fetcher)));
+  const events = new Map(boards.flatMap((data) => array(object(data).events).map(object)).map((event) => [text(event.id), event]));
+  const matches = [...events.values()].flatMap((event) => {
     const competition = object(array(event.competitions)[0]);
     const sides = array(competition.competitors).map(object);
     const home = object(sides.find((side) => side.homeAway === 'home')?.team);
