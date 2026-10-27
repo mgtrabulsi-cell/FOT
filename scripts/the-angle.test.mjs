@@ -40,6 +40,7 @@ test('Mixed published galleries render controlled inline videos and retain photo
     .replace(/import PostPhotoViewer from [^;]+;/, 'const PostPhotoViewer = () => null;')
     .replace(/from ['"]\.\/PostVideo['"]/g, `from '${videoUrl}'`)
     .replace(/from ['"]\.\/services\/postMedia['"]/g, `from '${new URL('../src/services/postMedia.ts', import.meta.url)}'`)
+    .replace(/from ['"]\.\/services\/postImages['"]/g, `from '${new URL('../src/services/postImages.ts', import.meta.url)}'`)
     .replace(/import \{ supabase \} from [^;]+;/, `const supabase = { storage: { from: () => ({ getPublicUrl: (path) => ({ data: { publicUrl: 'https://example.test/' + path } }) }) } };`);
   const { default: Gallery } = await import(`data:text/javascript;base64,${Buffer.from(galleryCode).toString('base64')}`);
   const html = renderToStaticMarkup(createElement(Gallery, { paths: ['user/a.mp4', 'user/b.png', 'user/c.mov', 'user/d.webm'], title: 'Analysis' }));

@@ -9,11 +9,13 @@ const source = ts.transpileModule(readFileSync(new URL('../src/OurResults.tsx', 
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText
   .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let states = [], index = 0;
-    export const fixture = (rows, sport, category = null) => { states = [rows, false, true, '', '', '', '', false, 0, sport, category]; index = 0; };
+    export const fixture = (rows, sport, category = null) => { states = [null, rows, false, true, false, '', '', '', '', false, 0, sport, category]; index = 0; };
     const useEffect = () => {}; const useState = () => [states[index++], () => {}];`)
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
   .replace(/import \{ supabase \} from [^;]+;/, 'const supabase = null;')
+  .replace(/import \{ readRenderSnapshot, saveRenderSnapshot \} from [^;]+;/, 'const readRenderSnapshot = () => null; const saveRenderSnapshot = () => {};')
+  .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh = () => () => {};')
   .replace(/from ['"]\.\/services\/theAngle['"]/g, `from '${new URL('../src/services/theAngle.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/anglePicks['"]/g, `from '${new URL('../src/services/anglePicks.ts', import.meta.url)}'`)
   .replace(/import \{ PickResult \} from [^;]+;/, 'const PickResult = () => null;');

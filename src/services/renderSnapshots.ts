@@ -28,6 +28,7 @@ type Snapshots = {
   posts: LivewireSnapshot;
   angleFeed: { season: number; week: number; rows: Angle[] };
   activeBets: { rows: Angle[] };
+  results: { rows: Angle[] };
   teamRanks: TeamComparisonRanks;
   fantasyBoard: { picks: MatchupPick[]; revision: number };
   fantasyAverages: Record<string, { average: number | null; games: number }>;
@@ -134,6 +135,7 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
         && rows.length <= 20 && rows.every((row) => row.status === 'published');
     }
     case 'activeBets':
+    case 'results':
       return readAngles(data.rows).every((row) => row.status === 'published');
     case 'teamRanks':
       return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.length === 32
@@ -171,7 +173,7 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
     if (!target) return;
     const name = `${prefix}${kind}:${key}`;
     const raw = JSON.stringify({ version: 1, data, savedAt: Date.now() });
-    if (raw.length > 256_000) throw new Error('Public display snapshot exceeds its storage limit');
+    if (raw.length > (kind === 'results' ? 1_000_000 : 256_000)) throw new Error('Public display snapshot exceeds its storage limit');
     const previous = target.getItem(name);
     if (previous === raw) return;
     if (previous) {
@@ -188,7 +190,7 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
       .filter((entry): entry is string => !!entry && entry.startsWith(prefix) && entry !== name);
     let size = raw.length;
     let count = 1;
-    const protectedEntries = new Set(['nbaStatHub:last', 'posts:livewire', 'angleFeed:angle', 'angleFeed:news', 'activeBets:last'].map((key) => `${prefix}${key}`));
+    const protectedEntries = new Set(['nbaStatHub:last', 'posts:livewire', 'angleFeed:angle', 'angleFeed:news', 'activeBets:last', 'results:last'].map((key) => `${prefix}${key}`));
     entries.reverse().sort((a, b) => Number(protectedEntries.has(b)) - Number(protectedEntries.has(a)));
     for (const entry of entries) {
       const length = target.getItem(entry)?.length ?? 0;

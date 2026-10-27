@@ -9,7 +9,7 @@ export function isNativePublicRead(url: URL, method: string, publicOrigin: strin
 
 export function isNativePublicImage(url: URL, publicOrigin: string | null): boolean {
   return url.protocol === 'https:' && !url.username && !url.password && (url.hostname === 'a.espncdn.com'
-    || (url.origin === publicOrigin && url.pathname.startsWith('/storage/v1/object/public/livewire-photos/')));
+    || (url.origin === publicOrigin && /^\/storage\/v1\/(?:object|render\/image)\/public\/livewire-photos\//.test(url.pathname)));
 }
 
 export type NativePublicRequest = { url: string; accept: string; filter: string; apiKey: string };

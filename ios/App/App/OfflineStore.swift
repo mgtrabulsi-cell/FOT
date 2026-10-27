@@ -57,7 +57,7 @@ final class OfflineStore {
         guard let url = URL(string: address), url.scheme == "https", url.user == nil, url.password == nil else { throw error("Invalid public URL") }
         let publicAPI = !origin(url).isEmpty && origin(url) == settings.string(forKey: "gamewire-public-origin")
         let allowed = image
-            ? url.host == "a.espncdn.com" || (publicAPI && url.path.hasPrefix("/storage/v1/object/public/livewire-photos/"))
+            ? url.host == "a.espncdn.com" || (publicAPI && (url.path.hasPrefix("/storage/v1/object/public/livewire-photos/") || url.path.hasPrefix("/storage/v1/render/image/public/livewire-photos/")))
             : espn.contains(url.host ?? "") || (publicAPI && ["/rest/v1/livewire_posts", "/rest/v1/matchup_boards"].contains(url.path))
         guard allowed else { throw error("Only public sports data can be saved") }
         return url

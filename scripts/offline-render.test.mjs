@@ -416,6 +416,30 @@ test('Feed subscribers ignore sports saves and unchanged data while freshness ti
   } finally { Date.now = originalNow; stopFeed(); stopAll(); }
 }));
 
+test('Results retain complete histories larger than feed snapshots and survive sports-cache eviction', () => withStorage((storage) => {
+  const rows = Array.from({ length: 800 }, (_, index) => ({
+    id: `result-${index}`, season: 2026, week: 7, game_id: 'NFL:123', matchup: 'Away at Home',
+    kind: 'team', subject: '', category: 'Other', title: `Result ${index}`, narrative: '', evidence: '',
+    counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true, status: 'published', revision: 1,
+    picks: [{ id: '11111111-1111-4111-8111-111111111112', text: 'Reported pick', category: 'straight', result: index % 2 ? 'hit' : 'miss' }],
+  }));
+  assert.ok(JSON.stringify({ rows }).length > 256_000, 'Exercise full-history storage, not a 20-post feed proxy');
+  saveRenderSnapshot('results', 'last', { rows });
+  assert.deepEqual(readRenderSnapshot('results', 'last'), { rows });
+  for (let index = 0; index < 170; index++) saveRenderSnapshot('players', `churn:${index}`, players);
+  assert.deepEqual(readRenderSnapshot('results', 'last'), { rows });
+  saveRenderSnapshot('results', 'last', { rows: [] });
+  assert.deepEqual(readRenderSnapshot('results', 'last'), { rows: [] }, 'A successful empty history replaces deleted posts');
+  const key = 'gamewire-render-v1:/:results:last';
+  storage.setItem(key, JSON.stringify({ version: 1, savedAt: Date.now(), data: { rows: [{ ...rows[0], status: 'draft' }] } }));
+  const previous = console.error, errors = [];
+  console.error = (...args) => errors.push(args);
+  try {
+    assert.equal(readRenderSnapshot('results', 'last'), null);
+    assert.equal(errors.length, 1, 'Invalid/private history is rejected explicitly');
+  } finally { console.error = previous; }
+}));
+
 test('Account deletion stops late requests from recreating display snapshots', () => withStorage((storage) => {
   saveRenderSnapshot('players', 'before', players);
   stopRenderSnapshots();

@@ -56,7 +56,7 @@ self.addEventListener('message', (event) => {
 
 function isOfflineImage(url) {
   return url.protocol === 'https:' && (url.hostname === 'a.espncdn.com'
-    || (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin && url.pathname.startsWith('/storage/v1/object/public/livewire-photos/')));
+    || (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin && /^\/storage\/v1\/(?:object|render\/image)\/public\/livewire-photos\//.test(url.pathname)));
 }
 
 function offlineRequestKind(request) {

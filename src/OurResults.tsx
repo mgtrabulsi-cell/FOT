@@ -7,14 +7,18 @@ import type { Angle, AnglePick, AngleSportKey } from './services/theAngle';
 import { PickResult } from './AnglePicks';
 import { pickCategories, pickCategory, pickCategoryLabels } from './services/anglePicks';
 import type { PickCategory } from './services/anglePicks';
+import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
+import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
 const message = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'Could not load results. Please retry.';
 
 export default function OurResults({ user }: { user: User | null }) {
-  const [rows, setRows] = useState<Angle[]>([]);
+  const [saved] = useState(() => readRenderSnapshot('results', 'last'));
+  const [rows, setRows] = useState<Angle[]>(saved?.rows ?? []);
   const [admin, setAdmin] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(!!saved);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [accessError, setAccessError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -23,6 +27,7 @@ export default function OurResults({ user }: { user: User | null }) {
   const [refresh, setRefresh] = useState(0);
   const [selectedSport, setSelectedSport] = useState<AngleSportKey | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<PickCategory | null>(null);
+  useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
 
   useEffect(() => {
     let active = true;
@@ -35,13 +40,17 @@ export default function OurResults({ user }: { user: User | null }) {
   }, [user?.id, refresh]);
 
   useEffect(() => {
+    if (busy) return;
     let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    setRefreshing(true);
     async function load() {
       if (!supabase) throw new Error('Account services are not configured.');
       const next: Angle[] = [];
       for (let offset = 0; ; offset += 500) {
         const response = await supabase.from('angles').select('*').eq('status', 'published')
-          .order('published_at', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).range(offset, offset + 499);
+          .order('published_at', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).range(offset, offset + 499).abortSignal(controller.signal);
         if (response.error) throw response.error;
         next.push(...readAngles(response.data));
         if (!active) return;
@@ -49,10 +58,17 @@ export default function OurResults({ user }: { user: User | null }) {
       }
       setRows(next); setLoaded(true); setError('');
     }
-    void load().catch((cause: unknown) => { if (active) setError(`Could not refresh results: ${message(cause)}`); });
-    const timer = window.setInterval(() => setRefresh((value) => value + 1), 30_000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [user?.id, refresh]);
+    void load().catch((cause: unknown) => { if (active) setError(`Could not refresh results: ${message(cause)} Saved results may be out of date.`); })
+      .finally(() => { window.clearTimeout(timeout); if (active) setRefreshing(false); });
+    const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') setRefresh((value) => value + 1); }, 30_000);
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); window.clearInterval(timer); };
+  }, [user?.id, refresh, busy]);
+
+  useEffect(() => {
+    if (loaded) saveRenderSnapshot('results', 'last', { rows: rows.map((row) => ({
+      ...row, narrative: '', evidence: '', counterpoint: '', source_url: '', source_label: '', image_paths: [],
+    })) });
+  }, [rows, loaded]);
 
   async function updatePick(story: Angle, pickId: string, changes: Partial<Pick<AnglePick, 'result' | 'category'>>) {
     if (!supabase || !admin || busy) return;
@@ -79,6 +95,7 @@ export default function OurResults({ user }: { user: User | null }) {
     && (!selectedCategory || pickCategory(pick) === selectedCategory));
   return <section className="angle-panel results-panel" aria-label="Our Results">
     <p className="angle-disclaimer">Results are marked by admins. Editorial opinions, not betting recommendations.</p>
+    {loaded && refreshing && <p className="nfl-data-note" role="status">Showing saved results while checking for updates.</p>}
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
     {error && <p className="feed-warning" role="alert">{error} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}

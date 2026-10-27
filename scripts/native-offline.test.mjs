@@ -28,6 +28,8 @@ test('Native offline bridge restricts reads/images to public sources', () => {
   assert.equal(isNativePublicRead(new URL(scoreboard), 'POST', origin), false);
   assert.ok(isNativePublicImage(new URL('https://a.espncdn.com/player.png'), origin));
   assert.ok(isNativePublicImage(new URL(`${origin}/storage/v1/object/public/livewire-photos/photo.png`), origin));
+  assert.ok(isNativePublicImage(new URL(`${origin}/storage/v1/render/image/public/livewire-photos/photo.png?width=640&quality=75`), origin));
+  assert.equal(isNativePublicImage(new URL(`${origin}/storage/v1/render/image/private/livewire-photos/photo.png`), origin), false);
   assert.equal(isNativePublicImage(new URL(`${origin}/storage/v1/object/private/bucket/photo.png`), origin), false);
 });
 

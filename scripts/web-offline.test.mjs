@@ -38,7 +38,7 @@ function fixture() {
       requests.push(input);
       if (!online || failNetwork) throw new Error('Airplane mode');
       const url = input instanceof Request ? input.url : String(input);
-      if (url.includes('espncdn')) return new Response(new Uint8Array([137, 80, 78, 71]), { status, headers: { 'content-type': 'image/png' } });
+      if (url.includes('espncdn') || url.includes('/storage/v1/render/image/public/livewire-photos/')) return new Response(new Uint8Array([137, 80, 78, 71]), { status, headers: { 'content-type': 'image/png' } });
       return Response.json({ yards: value }, { status, headers: { vary: 'Origin' } });
     },
   };
@@ -174,6 +174,17 @@ test('Server errors and connectivity failures retain the last good stats; uncach
   f.breakNetwork();
   assert.deepEqual(await (await store.fetch(stats)).json(), { yards: 123 });
   await assert.rejects(store.fetch(stats + '&unseen=1'), /Airplane mode/);
+});
+
+test('Feed thumbnails persist as readable images across cold offline launches', async () => {
+  const f = fixture();
+  const thumbnail = `${f.options.publicOrigin}/storage/v1/render/image/public/livewire-photos/user/photo.png?width=640&quality=75&resize=contain`;
+  const first = await f.store().image(thumbnail);
+  f.offline();
+  const cold = await f.store().image(thumbnail);
+  assert.equal(first.type, 'image/png');
+  assert.deepEqual(await cold.arrayBuffer(), await first.arrayBuffer());
+  assert.equal(f.requests.length, 1, 'The saved variant needs no offline network request');
 });
 
 test('Player faces and logos persist as readable local image bytes across cold offline launches', async () => {

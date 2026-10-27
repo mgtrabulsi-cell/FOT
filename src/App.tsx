@@ -472,9 +472,6 @@ function App() {
   const [sessionUser, setAuthUser] = useState<User | null>(null);
   const authUser = online ? sessionUser : null;
   const [authLoading, setAuthLoading] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
-  const splashStartedAt = useRef<number | null>(Date.now());
-  const [splashReplay, setSplashReplay] = useState(0);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [savedGuestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
   const guestMode = savedGuestMode || !online;
@@ -781,35 +778,8 @@ function App() {
   }, [playUpdates]);
 
   useEffect(() => {
-    if (authLoading) return undefined;
-    if ((supabase && !authUser) || document.querySelector('.angle-editor')) {
-      setShowSplash(false);
-      return undefined;
-    }
-    setShowSplash(true);
-    const startedAt = splashStartedAt.current ?? Date.now();
-    splashStartedAt.current = null;
-    const timer = window.setTimeout(() => setShowSplash(false), Math.max(0, 1000 - (Date.now() - startedAt)));
-    return () => window.clearTimeout(timer);
-  }, [authLoading, authUser?.id, splashReplay]);
-
-  const signedInRef = useRef(false);
-  signedInRef.current = !supabase || Boolean(authUser);
-
-  useEffect(() => {
-    let hiddenAt: number | null = null;
-    const replayAfterAbsence = () => {
-      if (hiddenAt !== null && Date.now() - hiddenAt >= 5000 && signedInRef.current && !document.querySelector('.angle-editor')) {
-        setSplashReplay((count) => count + 1);
-      }
-      hiddenAt = null;
-    };
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-      else {
-        pruneExpiredLockerRoomUpdates();
-        replayAfterAbsence();
-      }
+      if (document.visibilityState !== 'hidden') pruneExpiredLockerRoomUpdates();
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
@@ -1205,13 +1175,12 @@ function App() {
 
   if (deletedAccount) return <main className="page-wrap"><section className="account-profile" role="status"><h2>Account deleted</h2><p>Your account and associated personal data have been deleted.</p>{deletedAccount.length > 0 && <p className="auth-error">Some data on this device could not be cleared: {deletedAccount.join(', ')}. Clear this site's browsing data in your browser settings.</p>}<button onClick={() => window.location.replace(import.meta.env.BASE_URL)}>Back to GameWire</button></section></main>;
   if (recoveringPassword && authUser) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
-  if (online && supabase && authLoading) return <SplashScreen />;
+  if (online && supabase && authLoading && !guestMode) return <SplashScreen />;
   if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
 
   return (
     <div className="app-shell">
-      {online && showSplash && <SplashScreen />}
-      {authUser && !authLoading && !showSplash && online && <NotificationOnboarding key={authUser.id} user={authUser} />}
+      {authUser && !authLoading && online && <NotificationOnboarding key={authUser.id} user={authUser} />}
       <header className="topbar">
         <a className="brand" href="#wire" onClick={openWireTab}>
           <OfflineImage className="brand-logo" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" />
