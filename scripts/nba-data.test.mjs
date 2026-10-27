@@ -5,6 +5,7 @@ import {
   parseNBATeamSeason, parseNBAPlayerSeason, parseNBAPlayerGames, fetchNBAPlayerProfile,
   fetchNBALivePlayerStats, fetchNBAFavoritePlays, fetchNBAPointsPerGame, fetchNBARoster, nbaFavoritePlays, nbaTeamFavorite, nbaPlayerFavorite,
 } from '../src/services/nbaData.ts';
+import { readRenderSnapshot, saveRenderSnapshot } from '../src/services/renderSnapshots.ts';
 
 test('PPG ranking reads requested season averages only, deduplicates players and reports partial failures', async () => {
   const originalFetch = globalThis.fetch, originalError = console.error;
@@ -300,6 +301,28 @@ test('Concurrent NBA roster consumers share one request and cancel independently
     await assert.rejects(fetchNBARoster('shared-test', 2027, a.signal), { name: 'AbortError' });
   } finally {
     globalThis.fetch = originalFetch;
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
+  }
+});
+
+test('An empty NBA roster refresh cannot overwrite a previously saved nonempty team', async () => {
+  const originalFetch = globalThis.fetch, originalNow = Date.now, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const entries = new Map();
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    get length() { return entries.size; }, key: i => [...entries.keys()][i] ?? null,
+    getItem: key => entries.get(key) ?? null, setItem: (key, value) => entries.set(key, value), removeItem: key => entries.delete(key),
+  } });
+  const players = [{ id: 'saved-player', name: 'Saved player', position: 'G', jersey: '1', teamId: 'empty-refresh' }];
+  const key = 'roster:empty-refresh:2027';
+  try {
+    Date.now = () => 1_000;
+    saveRenderSnapshot('nbaRoster', key, players);
+    Date.now = () => 400_000;
+    globalThis.fetch = async () => Response.json({ athletes: [] });
+    await assert.rejects(fetchNBARoster('empty-refresh', 2027), /Retaining the saved roster/);
+    assert.deepEqual(readRenderSnapshot('nbaRoster', key), players);
+  } finally {
+    Date.now = originalNow; globalThis.fetch = originalFetch;
     if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
   }
 });

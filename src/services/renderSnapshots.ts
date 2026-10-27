@@ -219,11 +219,11 @@ export function nbaResourceSnapshots<K extends 'nbaRoster' | 'nbaTeamSeason' | '
 
 export function readNBADirectorySnapshot(teams: Team[], season: number) {
   const combined = readRenderSnapshot('nbaDirectory', `directory:${teams.map((team) => team.id).join(',')}:${season}`);
-  const groups = teams.map((team) => ({
-    team,
-    players: readRenderSnapshot('nbaRoster', `roster:${team.id}:${season}`)
-      ?? combined?.find((group) => group.team.id === team.id)?.players ?? null,
-  }));
+  const groups = teams.map((team) => {
+    const roster = readRenderSnapshot('nbaRoster', `roster:${team.id}:${season}`);
+    const players = combined?.find((group) => group.team.id === team.id)?.players;
+    return { team, players: roster?.length ? roster : players?.length ? players : roster ?? players ?? null };
+  });
   if (!groups.some((group) => group.players !== null)) return null;
   return groups.flatMap((group) => group.players !== null ? [{ team: group.team, players: group.players }] : []);
 }

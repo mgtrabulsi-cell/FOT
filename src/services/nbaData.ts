@@ -310,6 +310,9 @@ export async function fetchNBARoster(teamId: string, season: number, signal?: Ab
   if (saved) return saved;
   const players = parseNBARoster(await get(`${base}/teams/${encodeURIComponent(teamId)}/roster?season=${season}`, signal), teamId);
   signal?.throwIfAborted();
+  if (!players.length && readRenderSnapshot('nbaRoster', key)?.length) {
+    throw new Error('NBA roster refresh returned no players. Retaining the saved roster.');
+  }
   saveRenderSnapshot('nbaRoster', key, players);
   return players;
 }

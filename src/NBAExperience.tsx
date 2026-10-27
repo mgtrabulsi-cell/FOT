@@ -45,9 +45,11 @@ const directorySnapshots = nbaResourceSnapshots('nbaDirectory');
 const comparisonSnapshots = nbaResourceSnapshots('nbaComparison');
 const scoringSnapshots = nbaResourceSnapshots('nbaScoring');
 
-function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0, snapshots?: { read: (key: string) => T | null; save: (key: string, data: T) => void; subscribe?: (key: string, listener: () => void) => () => void }) {
+function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0, snapshots?: { read: (key: string) => T | null; save: (key: string, data: T, previous?: T | null) => void; subscribe?: (key: string, listener: () => void) => () => void }) {
   const saved = useMemo(() => snapshots?.read(key) ?? null, [key, snapshots, load]);
   const [state, setState] = useState<Resource<T>>(() => ({ key, data: saved, loading: !!load, error: '' }));
+  const current = useRef(state);
+  current.current = state;
   const [revision, setRevision] = useState(0);
   const retry = useCallback(() => setRevision((value) => value + 1), []);
   useEffect(() => {
@@ -69,7 +71,7 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
       setState((previous) => ({ key, data: previous.key === key ? previous.data ?? saved : saved, loading: true, error: '' }));
       void load(controller.signal).then((data) => {
         if (!disposed && !controller.signal.aborted) {
-          try { snapshots?.save(key, data); }
+          try { snapshots?.save(key, data, current.current.key === key ? current.current.data : saved); }
           catch (error) {
             console.error('Could not update NBA display snapshot', error);
             setState((previous) => ({ key, data: previous.key === key ? previous.data ?? saved : saved, loading: false,
@@ -164,7 +166,9 @@ const boxColumns: Array<{ label: string; key: NBAPlayerStatKey; display?: string
 function PlayerBox({ team, box, favorites, toggle, open }: { team: Team; box?: NBABoxTeam; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void }) {
   const players = [...box?.players ?? []].sort((a, b) => Number(b.starter) - Number(a.starter));
   return <section><TeamHeading team={team} favorites={favorites} toggle={toggle} />
-    {!players.length ? <p>Player box scores are not available yet.</p> : <><p className="nba-box-scroll-hint">Swipe or drag for more stats. Select a player for details.</p><TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box">{[true, false].map((starter) => {
+    <p className="nba-box-scroll-hint">Swipe or drag for more stats. Select a player for details.</p><TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box">
+    {!players.length && <><thead><tr><th scope="col">Player</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody><tr><td colSpan={boxColumns.length + 1}><span role="status">Waiting for reported player statistics. This box score will update automatically.</span></td></tr></tbody></>}
+    {[true, false].map((starter) => {
       const group = players.filter((player) => player.starter === starter);
       if (!group.length) return null;
       const label = starter ? group.length === 5 ? 'Starting five' : 'Reported starters' : 'Bench';
@@ -172,7 +176,7 @@ function PlayerBox({ team, box, favorites, toggle, open }: { team: Team; box?: N
       <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" aria-label={`${player.name}, ${player.position}, player details`} onClick={() => open(player, team)}><span><span className="nba-box-full-name">{player.name}</span><small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
       {player.didNotPlay ? <td className="nba-dnp" colSpan={boxColumns.length}>DNP{player.reason ? ` · ${player.reason}` : ''}</td> : boxColumns.map((column) => <td data-label={column.label} key={column.key}>{column.display ? player.display[column.display] ?? '—' : format(player.stats[column.key])}</td>)}
     </tr>)}</tbody>;
-    })}</table></TableScroll></>}
+    })}</table></TableScroll>
   </section>;
 }
 function PlayByPlay({ plays, game, upcoming }: { plays: NBAPlay[]; game: Game; upcoming: boolean }) {
@@ -236,7 +240,16 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live, sav
     read: () => readNBADirectorySnapshot(teams, season),
   }), [teamKey, season, savedListOnly]);
   const load = useCallback(async (signal: AbortSignal) => {
-    const results = await Promise.allSettled(teams.map(async (team) => ({ team, players: await fetchNBARoster(team.id, season, signal) })));
+    const results = await Promise.allSettled(teams.map(async (team) => {
+      const cached = readNBADirectorySnapshot([team], season)?.[0]?.players;
+      const previous = cached?.length ? cached
+        : lastList?.season === season ? lastList.groups.find((group) => group.team.id === team.id)?.players : undefined;
+      const players = await fetchNBARoster(team.id, season, signal);
+      signal.throwIfAborted();
+      if (!players.length && previous?.length) throw new Error(`The roster refresh for ${team.name} returned no players. Retaining saved players.`);
+      rosterSnapshots.save(`roster:${team.id}:${season}`, players);
+      return { team, players };
+    }));
     signal.throwIfAborted();
     const groups = results.flatMap((result, index) => {
       if (result.status === 'fulfilled') return [result.value];
@@ -245,13 +258,17 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live, sav
     });
     if (results.some((result) => result.status === 'rejected')) throw new Error('Some player lists could not be refreshed. Saved players remain available.');
     if (!groups.some((group) => group.players.length) && readLastNBAStatHub()?.groups.some((group) => group.players.length)) {
-      throw new Error('The roster refresh returned no players. Showing the last saved list.');
+      throw new Error('The roster refresh returned no players. Retry to update this matchup.');
     }
     return groups;
   }, [teamKey, season]);
   const resource = useNBAResource(`directory:${teamKey}:${season}`, savedListOnly ? null : load, 0, snapshots);
-  const usingLastList = !resource.data?.some((group) => group.players.length) && !!lastList;
-  const displayed = usingLastList ? lastList.groups : resource.data;
+  const usingLastList = savedListOnly && !resource.data?.some((group) => group.players.length) && !!lastList;
+  const displayed = usingLastList ? lastList.groups : teams.map((team) => {
+    const players = resource.data?.find((group) => group.team.id === team.id)?.players;
+    const fallback = lastList?.season === season ? lastList.groups.find((group) => group.team.id === team.id)?.players : undefined;
+    return { team, players: players?.length ? players : fallback ?? players ?? [] };
+  });
   const displayedSeason = usingLastList ? lastList.season : season;
   const playerIds = resource.data?.flatMap((group) => group.players.map((player) => player.id)).join(',') ?? '';
   const scoringPlayers = useMemo(() => resource.data?.flatMap((group) => group.players) ?? [], [playerIds]);
@@ -266,7 +283,7 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live, sav
   const scoring = useNBAResource(`scoring:${teamKey}:${season}`, resource.data && !savedListOnly ? loadScoring : null, 0, scoringSnapshots);
   useEffect(() => {
     if (!savedListOnly && resource.data?.some((group) => group.players.length)) {
-      saveLastNBAStatHub({ season, groups: resource.data.map((group) => ({
+      saveLastNBAStatHub({ season, groups: displayed.map((group) => ({
         ...group, players: [...group.players].sort((a, b) =>
           (scoring.data?.averages[b.id] ?? -1) - (scoring.data?.averages[a.id] ?? -1) || a.name.localeCompare(b.name)),
       })) });
@@ -284,7 +301,7 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live, sav
     {scoring.loading && !scoring.data && resource.data && <p className="nfl-data-note" role="status">Updating scoring averages… Players are ready to open.</p>}
     {scoring.data && <p className="nfl-data-note">Season PPG · highest to lowest · unavailable averages last.{scoring.data.failed.length > 0 && <> Some scoring averages could not be refreshed. <button type="button" onClick={scoring.retry}>Retry averages</button></>}</p>}
     <div className="nfl-directory-grid">{groups.map((group, index) => <section className="nfl-directory-team" key={group.team.id}><header><span className="team-mark">{group.team.logo ? <OfflineImage src={group.team.logo} alt="" /> : group.team.abbr}</span><span><b>{group.team.name}</b><small>{teams.length === 2 ? index === 0 ? 'AWAY TEAM' : 'HOME TEAM' : 'NBA TEAM'}{group.team.record ? ` · ${group.team.record}` : ''}</small></span><FavoriteButton target={nbaTeamFavorite(group.team)} favorites={favorites} toggle={toggle} /></header>
-      <div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button type="button" className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => open(player, group.team, displayedSeason)}>{player.headshot && <OfflineImage className="nba-directory-headshot" src={player.headshot} alt="" loading="lazy" />}<span><b>{player.name}</b><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}{!usingLastList && scoring.data && ` · ${format(scoring.data.averages[player.id])} PPG`}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, group.team)} favorites={favorites} toggle={toggle} /></div>)}</div>{!group.players.length && <p className="nfl-empty-note">No players match these filters.</p>}
+      <div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button type="button" className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => open(player, group.team, displayedSeason)}>{player.headshot && <OfflineImage className="nba-directory-headshot" src={player.headshot} alt="" loading="lazy" />}<span><b>{player.name}</b><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}{!usingLastList && scoring.data && ` · ${format(scoring.data.averages[player.id])} PPG`}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, group.team)} favorites={favorites} toggle={toggle} />      </div>)}</div>{!group.players.length && <p className="nfl-empty-note" role="status">{query.trim() || position !== 'All' ? 'No players match these filters.' : resource.loading ? 'Updating this team’s player list…' : resource.error ? 'This team’s player list could not be refreshed. Retry above.' : 'No roster players are available for this team yet.'}</p>}
     </section>)}</div></>;
 }
 function PlayerProfile({ player, team, season, favorites, toggle, close }: { player: NBAPlayer; team: Team; season: number; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; close: () => void }) {

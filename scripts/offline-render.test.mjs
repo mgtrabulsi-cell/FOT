@@ -299,6 +299,18 @@ test('Stat Hub can compose both saved team rosters without waiting for their com
   assert.equal(readGameDetailsSnapshot(game.feedPath, 'another-game', game.seasonYear, [away.id, home.id]), null);
 }));
 
+test('An old empty individual NBA roster cannot hide the nonempty saved matchup roster', () => withStorage(() => {
+  const nbaPlayer = { id: 'nba-player', name: 'Saved NBA player', position: 'G', jersey: '1', teamId: away.id };
+  saveRenderSnapshot('nbaDirectory', `directory:${away.id},${home.id}:2027`, [
+    { team: away, players: [nbaPlayer] }, { team: home, players: [{ ...nbaPlayer, id: 'home-player', teamId: home.id }] },
+  ]);
+  saveRenderSnapshot('nbaRoster', `roster:${away.id}:2027`, []);
+  const groups = readNBADirectorySnapshot([away, home], 2027);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].players[0].name, 'Saved NBA player');
+  assert.equal(groups[1].players[0].id, 'home-player');
+}));
+
 test('Display storage is bounded, preserves unrelated preferences, and retains a good copy on write failure', () => withStorage((storage, entries) => {
   storage.setItem('gamewire-favorites', 'keep');
   for (let i = 0; i < 170; i++) saveRenderSnapshot('players', `team:${i}`, players);

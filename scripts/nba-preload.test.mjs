@@ -36,6 +36,10 @@ test('preloaded NBA finals persist without opening, skip completed saved boxes, 
     assert.equal(readRenderSnapshot('nbaSummary', key).plays.length, 80);
     assert.throws(() => saveNBASummary(key, { ...summary, teams: [] }), /incomplete/);
     assert.equal(readRenderSnapshot('nbaSummary', key).teams.length, 2);
+    assert.throws(() => saveNBASummary(key, { ...summary, teams: summary.teams.map(team => ({
+      ...team, players: team.players.map(player => ({ ...player, stats: {} })),
+    })) }), /incomplete/);
+    assert.equal(readRenderSnapshot('nbaSummary', key).teams[0].players[0].stats.points, 0, 'A partial refresh cannot erase saved zeros');
     const controller = new AbortController(); controller.abort();
     await assert.rejects(preloadNBABoxes([{ ...game, status: 'LIVE' }], controller.signal), { name: 'AbortError' });
   } finally {

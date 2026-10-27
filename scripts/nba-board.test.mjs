@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { nbaPreviousGame } from '../src/services/nbaBackToBack.ts';
 import { nbaCalendarDate } from '../src/services/sportsData.ts';
 import { nbaLiveScore } from '../src/services/nbaLiveScore.ts';
+import { saveNBASummary } from '../src/services/nbaPreload.ts';
 
 const code = ts.transpileModule(readFileSync(new URL('../src/NBAExperience.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -99,7 +100,10 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
         readRenderSnapshot: (kind, key) => snapshots.get(`${kind}:${key}`) ?? null,
         saveRenderSnapshot: (kind, key, value) => snapshots.set(`${kind}:${key}`, value),
       };
-      if (name === './services/nbaPreload') return { saveNBASummary: (key, value) => snapshots.set(`nbaSummary:${key}`, value) };
+      if (name === './services/nbaPreload') return { saveNBASummary: (key, value, previous) => {
+        saveNBASummary(key, value, previous);
+        snapshots.set(`nbaSummary:${key}`, value);
+      } };
       if (name === './services/foregroundRefresh') return { subscribeForegroundRefresh: () => () => {} };
       return {};
     },
@@ -270,19 +274,19 @@ test('Stat Hub opens its last player list without any schedule or league respons
   app.unmount(); list.unmount();
 });
 
-test('A new matchup keeps the last list browseable until current players arrive and preserves their profile season', async () => {
+test('A new matchup immediately shows both current teams rather than an unrelated last-viewed team', async () => {
   const player = { id: 'saved', name: 'Yesterday player', position: 'G', jersey: '1', teamId: 'old' };
   const oldTeam = { ...away, id: 'old', name: 'Yesterday team' };
   const snapshots = new Map([['nbaStatHub:last', { season: 2026, groups: [{ team: oldTeam, players: [player] }] }]]);
-  let opened, release;
-  const props = { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open: (...args) => { opened = args; }, live: false };
+  let release;
+  const props = { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: false };
   const app = setup('stats', snapshots, { name: 'NBADirectory', props }, {
     fetchNBARoster: id => id === away.id ? new Promise(resolve => { release = resolve; }) : Promise.resolve([]),
   });
-  const savedButton = app.nodes().find(node => node.props?.['aria-label'] === 'View Yesterday player stats');
-  assert.ok(savedButton, 'Last-viewed players render synchronously despite a different uncached matchup');
-  savedButton.props.onClick();
-  assert.equal(opened[2], 2026, 'Saved players open their actual saved season, not the new matchup season');
+  assert.equal(app.nodes().some(node => node.props?.['aria-label'] === 'View Yesterday player stats'), false);
+  assert.equal(app.nodes().filter(node => node.props?.className === 'nfl-directory-team').length, 2);
+  assert.ok(JSON.stringify(app.nodes()).includes(away.name));
+  assert.ok(JSON.stringify(app.nodes()).includes(home.name));
   release([{ ...player, id: 'current', name: 'Current player', teamId: away.id }]);
   await app.settle();
   assert.ok(app.nodes().some(node => node.props?.['aria-label'] === 'View Current player stats'));
@@ -316,7 +320,8 @@ test('NBA directory renders individual saved teams immediately and notices prelo
     fetchNBAPointsPerGame: () => new Promise(() => {}),
   });
   const panels = () => app.nodes().filter(node => node.props?.className === 'nfl-directory-team');
-  assert.equal(panels().length, 1, 'A missing combined snapshot does not hide saved players');
+  assert.equal(panels().length, 2, 'Both matchup panels remain visible even when only one roster is cached');
+  assert.ok(app.nodes().some(node => node.props?.['aria-label'] === 'View Instant player stats'));
   app.saveSnapshot('nbaRoster', 'roster:2:2027', [{ ...player, id: 'p2', teamId: home.id }]);
   app.render();
   assert.equal(panels().length, 2, 'Background-saved second team becomes visible without finishing the pending request');
@@ -325,6 +330,28 @@ test('NBA directory renders individual saved teams immediately and notices prelo
   app.render();
   assert.equal(app.nodes().filter(node => node.type?.name === 'ResourceMessage')[1].props.data.averages.p1, 24);
   app.unmount();
+});
+
+test('Both Stat Hub teams remain visible while one roster is slow or fails, and available players publish immediately', async () => {
+  for (const fail of [false, true]) {
+    let finish;
+    const player = { id: 'fast-player', name: 'Available player', position: 'G', jersey: '1', teamId: away.id };
+    const app = setup('stats', new Map(), { name: 'NBADirectory', props: {
+      teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: true,
+    } }, { fetchNBARoster: (id) => id === away.id ? Promise.resolve([player]) : new Promise((resolve, reject) => {
+      finish = () => fail ? reject(new Error('Home roster offline')) : resolve([{ ...player, id: 'home-player', teamId: home.id }]);
+    }) });
+    try {
+      assert.equal(app.nodes().filter((node) => node.props?.className === 'nfl-directory-team').length, 2);
+      await app.settle();
+      assert.ok(app.nodes().some((node) => node.props?.['aria-label'] === 'View Available player stats'), 'Fast roster does not wait for the slow team');
+      assert.equal(app.nodes().filter((node) => node.props?.className === 'nfl-directory-team').length, 2);
+      finish(); await app.settle();
+      assert.equal(app.nodes().filter((node) => node.props?.className === 'nfl-directory-team').length, 2);
+      assert.ok(app.nodes().some((node) => node.props?.['aria-label'] === 'View Available player stats'));
+      if (fail) assert.match(app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.error, /could not be refreshed/);
+    } finally { app.unmount(); }
+  }
 });
 
 test('NBA Stat Hub reuses recent saved scoring order without another player-stat request burst', async () => {
@@ -502,6 +529,47 @@ test('NBA opens a background-preloaded box on its first detail render without re
   app.data.fetchNBASummary = () => new Promise(() => {});
   app.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); app.render();
   assert.equal(app.nodes().find((node) => node.type?.name === 'PlayerBox').props.box.players[0].id, 'preloaded');
+  app.unmount();
+});
+
+test('NBA live boxes retain in-memory stats through empty/partial refreshes even if device storage was cleared', async () => {
+  const saved = { eventId: game.eventId, status: 'in', period: 'Q4', clock: '1:00', plays: [],
+    teams: [away, home].map((team) => ({ id: team.id, stats: [], players: [{
+      id: `player-${team.id}`, name: `Saved ${team.name} player`, stats: { points: 12, rebounds: 0 }, display: {},
+    }] })) };
+  const key = `nbaSummary:basketball/nba:${game.eventId}:${game.seasonYear}`;
+  const snapshots = new Map([[key, saved]]);
+  let resolve;
+  const app = setup('wire', snapshots, undefined, { fetchNBASummary: () => new Promise((done) => { resolve = done; }) });
+  const box = () => app.nodes().find((node) => node.type?.name === 'PlayerBox').props.box;
+  try {
+    app.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); app.render();
+    assert.equal(box().players[0].stats.points, 12);
+    snapshots.delete(key);
+    resolve({ ...saved, teams: [] }); await app.settle();
+    assert.equal(box().players[0].stats.points, 12);
+    assert.match(app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.error, /incomplete/);
+    const timer = [...app.timers.values()].find((item) => item.delay === 15000);
+    timer.callback(); app.render();
+    assert.equal(box().players[0].stats.points, 12, 'Polling never clears visible rows');
+    resolve({ ...saved, teams: saved.teams.map((team) => ({ ...team, players: team.players.map((player) => ({ ...player, stats: {} })) })) });
+    await app.settle();
+    assert.equal(box().players[0].stats.rebounds, 0, 'A partial response cannot erase a genuine zero');
+    timer.callback(); app.render();
+    resolve({ ...saved, teams: saved.teams.map((team) => ({ ...team, players: team.players.map((player) => ({ ...player, stats: { points: 14, rebounds: 1 } })) })) });
+    await app.settle();
+    assert.equal(box().players[0].stats.points, 14, 'A complete refresh still updates');
+  } finally { app.unmount(); }
+});
+
+test('NBA box-score table and all column headers remain visible before any player data arrives', () => {
+  const app = setup();
+  const tree = app.components.PlayerBox({ team: away, favorites: [], toggle() {}, open() {} });
+  const nodes = descendants(tree);
+  assert.equal(nodes.filter((node) => node.type === 'table' && node.props.className === 'nba-table nba-box').length, 1);
+  assert.equal(nodes.filter((node) => node.type === 'th' && node.props.scope === 'col').length, 13);
+  assert.match(JSON.stringify(tree), /Waiting for reported player statistics/);
+  assert.equal(nodes.some((node) => node.type === 'td' && node.props.children === 0), false);
   app.unmount();
 });
 

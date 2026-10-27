@@ -43,10 +43,24 @@ export async function preloadNBAPregame(games: Game[], signal: AbortSignal): Pro
   return failed;
 }
 
-export function saveNBASummary(key: string, summary: NBASummary) {
+export function saveNBASummary(key: string, summary: NBASummary, current?: NBASummary | null) {
   const previous = readRenderSnapshot('nbaSummary', key);
-  if (previous?.teams.some((team) => team.players.length
-    && !summary.teams.some((next) => next.id === team.id && next.players.length))) {
+  if ([previous, current].some((saved) => saved?.teams.some((team) => {
+    if (!team.players.length) return false;
+    const next = summary.teams.find((item) => item.id === team.id);
+    if (!next?.players.length) return true;
+    return team.players.some((player) => {
+      const updated = next.players.find((item) => item.id === player.id);
+      if (updated?.didNotPlay) return false;
+      const nextStats = new Map(Object.entries(updated?.stats ?? {}));
+      const nextDisplay = new Map(Object.entries(updated?.display ?? {}));
+      return Object.entries(player.stats ?? {}).some(([stat, value]) => value !== undefined && nextStats.get(stat) === undefined)
+        || ['MIN', 'FG', 'FT', '3PT', '+/-'].some((stat) => {
+          const value = player.display?.[stat];
+          return value && value !== '—' && !nextDisplay.get(stat);
+        });
+    });
+  }))) {
     throw new Error('NBA box-score refresh is incomplete; retaining saved statistics.');
   }
   // Keep instant-open snapshots small; the complete play history still loads from ESPN.
