@@ -8,6 +8,7 @@ import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { gameSnapshotKey, readRenderSnapshot, nbaResourceSnapshots, readNBADirectorySnapshot, readNBAComparisonSnapshot, subscribeRenderSnapshots, readLastNBAStatHub, saveLastNBAStatHub } from './services/renderSnapshots';
 import { saveNBASummary } from './services/nbaPreload';
 import { nbaPreviousGame } from './services/nbaBackToBack';
+import { nbaLiveScore } from './services/nbaLiveScore';
 import { nbaCalendarDate } from './services/sportsData';
 import {
   fetchNBALeague, fetchNBAPlayerProfile, fetchNBAPointsPerGame, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
@@ -34,6 +35,7 @@ type Resource<T> = { key: string; data: T | null; loading: boolean; error: strin
 const summarySnapshots = {
   read: (key: string) => readRenderSnapshot('nbaSummary', key),
   save: saveNBASummary,
+  subscribe: (key: string, listener: () => void) => subscribeRenderSnapshots(listener, { kind: 'nbaSummary', key }),
 };
 const rosterSnapshots = nbaResourceSnapshots('nbaRoster');
 const seasonSnapshots = nbaResourceSnapshots('nbaTeamSeason');
@@ -43,7 +45,7 @@ const directorySnapshots = nbaResourceSnapshots('nbaDirectory');
 const comparisonSnapshots = nbaResourceSnapshots('nbaComparison');
 const scoringSnapshots = nbaResourceSnapshots('nbaScoring');
 
-function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0, snapshots?: { read: (key: string) => T | null; save: (key: string, data: T) => void }) {
+function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<T>) | null, poll = 0, snapshots?: { read: (key: string) => T | null; save: (key: string, data: T) => void; subscribe?: (key: string, listener: () => void) => () => void }) {
   const saved = useMemo(() => snapshots?.read(key) ?? null, [key, snapshots, load]);
   const [state, setState] = useState<Resource<T>>(() => ({ key, data: saved, loading: !!load, error: '' }));
   const [revision, setRevision] = useState(0);
@@ -52,13 +54,14 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
     if (!load) return;
     let disposed = false;
     let request: AbortController | undefined;
-    const unsubscribeSnapshots = subscribeRenderSnapshots(() => {
+    const onSnapshot = () => {
       const data = snapshots?.read(key);
       if (!disposed && data !== null && data !== undefined) {
         setState((previous) => ({ key, data, loading: previous.key === key ? previous.loading : !!load,
           error: previous.key === key ? previous.error : '' }));
       }
-    });
+    };
+    const unsubscribeSnapshots = snapshots?.subscribe ? snapshots.subscribe(key, onSnapshot) : subscribeRenderSnapshots(onSnapshot);
     const refresh = () => {
       request?.abort();
       const controller = new AbortController();
@@ -369,8 +372,9 @@ export default function NBAExperience({ mode, games, previousGames = [], status,
   const visibleGames = nbaGames.filter((item) => !query.trim() || `${item.away.name} ${item.away.abbr} ${item.home.name} ${item.home.abbr}`.toLowerCase().includes(query.trim().toLowerCase()));
   const upcoming = game?.status === 'UPCOMING' && currentSummary?.status !== 'in' && currentSummary?.status !== 'post';
   const finalScore = currentSummary?.status === 'post' || game?.status === 'FINAL';
-  const awayScore = currentSummary?.awayScore ?? game?.away.score;
-  const homeScore = currentSummary?.homeScore ?? game?.home.score;
+  const liveScore = game ? nbaLiveScore(game, currentSummary, summary.loading) : null;
+  const awayScore = liveScore?.awayScore;
+  const homeScore = liveScore?.homeScore;
   const awayLost = finalScore && awayScore !== undefined && homeScore !== undefined && awayScore < homeScore;
   const homeLost = finalScore && awayScore !== undefined && homeScore !== undefined && homeScore < awayScore;
   const boxTeam = game && (game.home.id === boxTeamId ? game.home : game.away);
@@ -409,7 +413,7 @@ export default function NBAExperience({ mode, games, previousGames = [], status,
       <small>{item.status === 'LIVE' ? `LIVE · ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'FINAL' : gameDate(item.date, true)}</small>
       {[item.away, item.home].map((side) => <span className={item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? 'is-loser' : undefined} key={side.id}>{side.logo && <OfflineImage src={side.logo} alt="" />}<b>{side.abbr}</b><strong>{item.status === 'UPCOMING' ? '—' : side.score}</strong></span>)}
     </button>)}</ScrollRow>{!visibleGames.length && <p>No matchups match your search. Player searches apply to the roster below.</p>}</>}
-    {game && showingDetails && <><div className="nba-matchup"><div className={awayLost ? 'is-loser' : undefined}>{game.away.logo && <OfflineImage src={game.away.logo} alt="" />}<strong>{game.away.name}</strong><BackToBackBadge game={game} team={game.away} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.away)} favorites={favorites} toggle={onToggleFavorite} /></div><div className="nba-score" aria-live="polite"><b>{upcoming ? 'vs' : <><span className={awayLost ? 'is-loser' : undefined}>{awayScore}</span>{' – '}<span className={homeLost ? 'is-loser' : undefined}>{homeScore}</span></>}</b><small>{finalScore ? 'FINAL' : upcoming ? gameDate(game.date, true) : `${currentSummary?.period || game.period} · ${currentSummary?.clock || game.clock}`}</small></div><div className={homeLost ? 'is-loser' : undefined}>{game.home.logo && <OfflineImage src={game.home.logo} alt="" />}<strong>{game.home.name}</strong><BackToBackBadge game={game} team={game.home} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.home)} favorites={favorites} toggle={onToggleFavorite} /></div></div>
+    {game && showingDetails && <><div className="nba-matchup"><div className={awayLost ? 'is-loser' : undefined}>{game.away.logo && <OfflineImage src={game.away.logo} alt="" />}<strong>{game.away.name}</strong><BackToBackBadge game={game} team={game.away} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.away)} favorites={favorites} toggle={onToggleFavorite} /></div><div className="nba-score" aria-live="polite"><b>{upcoming ? 'vs' : <><span className={awayLost ? 'is-loser' : undefined}>{awayScore}</span>{' – '}<span className={homeLost ? 'is-loser' : undefined}>{homeScore}</span></>}</b><small>{finalScore ? 'FINAL' : upcoming ? gameDate(game.date, true) :     `${liveScore?.period || game.period} · ${liveScore?.clock || game.clock}`}</small></div><div className={homeLost ? 'is-loser' : undefined}>{game.home.logo && <OfflineImage src={game.home.logo} alt="" />}<strong>{game.home.name}</strong><BackToBackBadge game={game} team={game.home} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.home)} favorites={favorites} toggle={onToggleFavorite} /></div></div>
       {upcoming && game.nbaMarket?.spread != null && <div className="wire-spread-badge" aria-label="Pregame spread"><span>Spread</span><b>{game.home.abbr} {game.nbaMarket.spread > 0 ? `+${game.nbaMarket.spread}` : game.nbaMarket.spread}</b></div>}
       {game.venue && <p className="nba-note">{game.venue}</p>}
     </>}

@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { nbaPreviousGame } from '../src/services/nbaBackToBack.ts';
 import { nbaCalendarDate } from '../src/services/sportsData.ts';
+import { nbaLiveScore } from '../src/services/nbaLiveScore.ts';
 
 const code = ts.transpileModule(readFileSync(new URL('../src/NBAExperience.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -68,6 +69,7 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name === './services/nbaData') return data;
       if (name === './services/nbaBackToBack') return { nbaPreviousGame };
+      if (name === './services/nbaLiveScore') return { nbaLiveScore };
       if (name === './services/sportsData') return { nbaCalendarDate };
       if (name === './services/renderSnapshots') return {
         readLastNBAStatHub: () => snapshots.get('nbaStatHub:last') ?? null,
@@ -126,6 +128,36 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
     unmount() { slots.forEach((slot) => slot?.cleanup?.()); },
   };
 }
+
+test('Opening live NBA details shows current Wire scores immediately with saved stats, then accepts newer summary scores without regressing', async () => {
+  const saved = { eventId: game.eventId, status: 'in', period: 'Q3', clock: '5:00', awayScore: 80, homeScore: 79,
+    teams: [{ id: away.id, players: [{ id: 'p', name: 'Saved scorer' }], stats: [] }], plays: [] };
+  let resolve;
+  const app = setup('wire', new Map([[`nbaSummary:basketball/nba:${game.eventId}:${game.seasonYear}`, saved]]), undefined,
+    { fetchNBASummary: () => new Promise((done) => { resolve = done; }) });
+  const score = () => app.nodes().find((node) => node.props?.className === 'nba-score');
+  app.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); app.render();
+  assert.ok(JSON.stringify(score()).includes('100'), 'Current board score appears before the summary resolves');
+  assert.ok(JSON.stringify(score()).includes('Q4'));
+  assert.equal(app.nodes().find((node) => node.type?.name === 'PlayerBox').props.box.players[0].name, 'Saved scorer');
+  resolve({ ...saved, period: 'Q4', clock: '0:45', awayScore: 102, homeScore: 101 }); await app.settle();
+  assert.ok(JSON.stringify(score()).includes('102'), 'Newer live summary updates the score');
+  [...app.timers.values()].find((timer) => timer.delay === 15000).callback(); app.render();
+  assert.ok(JSON.stringify(score()).includes('102'), 'Starting another refresh does not roll back to the older board');
+  resolve(saved); await app.settle();
+  assert.ok(JSON.stringify(score()).includes('100'), 'An older summary never replaces the more advanced board score');
+  app.unmount();
+});
+
+test('NBA score selection handles quarters, overtime, halftime, finals and reported corrections without taking maximum scores', () => {
+  const summary = { status: 'in', period: 'Q4', clock: '1:30', awayScore: 98, homeScore: 97 };
+  assert.equal(nbaLiveScore(game, summary, false).awayScore, 100);
+  assert.equal(nbaLiveScore(game, { ...summary, clock: '0:30', awayScore: 99 }, false).awayScore, 99, 'A later official correction is not discarded');
+  assert.equal(nbaLiveScore({ ...game, period: 'OT1', clock: '4:00' }, summary, false).period, 'OT1');
+  assert.equal(nbaLiveScore({ ...game, period: 'Halftime', clock: '' }, { ...summary, period: 'Q2', clock: '1:00' }, false).period, 'Halftime');
+  assert.equal(nbaLiveScore({ ...game, status: 'FINAL' }, summary, false).awayScore, 100);
+  assert.equal(nbaLiveScore(game, { ...summary, status: 'post', awayScore: 110 }, true).awayScore, 110);
+});
 
 test('NBA B2B badges match only teams that played the previous Eastern night and link to that exact box', () => {
   const current = { ...game, date: '2026-11-02T00:00:00Z' };

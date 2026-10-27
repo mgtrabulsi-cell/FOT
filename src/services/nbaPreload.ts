@@ -69,7 +69,7 @@ export async function preloadNBABoxes(games: Game[], signal: AbortSignal): Promi
     const saved = readRenderSnapshot('nbaSummary', gameSnapshotKey(game.feedPath, game.eventId, game.seasonYear));
     return !(game.status === 'FINAL' && saved?.status === 'post'
       && [game.away.id, game.home.id].every((id) => saved.teams.some((team) => team.id === id && team.players.length)));
-  });
+  }).sort((a, b) => Number(b.status === 'LIVE') - Number(a.status === 'LIVE'));
   for (let start = 0; start < due.length; start += 2) {
     signal.throwIfAborted();
     await Promise.all(due.slice(start, start + 2).map(async (game) => {

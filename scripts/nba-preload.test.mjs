@@ -44,6 +44,26 @@ test('preloaded NBA finals persist without opening, skip completed saved boxes, 
   }
 });
 
+test('Live NBA boxes start before earlier completed games instead of waiting behind their downloads', async () => {
+  const originalFetch = globalThis.fetch, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage() });
+  const requested = [];
+  globalThis.fetch = async (url) => {
+    requested.push(new URL(url).searchParams.get('event'));
+    return Response.json({ header: { competitions: [{ status: { type: { state: 'in' } } }] }, boxscore: { players: [] } });
+  };
+  try {
+    await preloadNBABoxes([
+      { ...game, eventId: 'old1' }, { ...game, eventId: 'old2' },
+      { ...game, eventId: 'live1', status: 'LIVE' }, { ...game, eventId: 'live2', status: 'LIVE' },
+    ], new AbortController().signal);
+    assert.deepEqual(requested, ['live1', 'live2', 'old1', 'old2']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage;
+  }
+});
+
 test('next seven NBA dates and yesterday are saved for immediate selection, including empty schedules and month boundaries', async () => {
   const originalFetch = globalThis.fetch, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage() });
