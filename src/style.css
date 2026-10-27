@@ -485,6 +485,15 @@ button { color: inherit; }
 .angle-panel :is(button, input, textarea, select, a):focus-visible { outline: 2px solid #9db9df; outline-offset: 3px; }
 .angle-empty, .angle-admin { margin: 0; padding: 20px; border: 1px solid #34445b; border-radius: 8px; background: #151f2e; font-size: 12px; line-height: 1.6; }
 .angle-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.angle-cards-collapsible { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.angle-card-collapsible { gap: 0; }
+.angle-post-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.angle-post-toggle > span:first-child { min-width: 0; }
+.angle-post-chevron { flex: 0 0 8px; width: 8px; height: 8px; margin-right: 4px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+.angle-post-toggle[aria-expanded="true"] .angle-post-chevron { transform: rotate(225deg); }
+.angle-post-toggle:focus-visible { outline: 2px solid #a9bfdf; outline-offset: 4px; border-radius: 2px; }
+.angle-post-content { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.angle-card-collapsible .angle-post-content { padding-top: 16px; }
 .angle-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px; border: 1px solid #34445b; border-radius: 8px; background: #151f2e; overflow-wrap: anywhere; }
 .angle-card-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #a9bfdf; font: 10px var(--mono); }
 .angle-card h3 { margin: 0; font: 600 24px var(--display); }
@@ -580,7 +589,7 @@ button { color: inherit; }
 .livewire-post .angle-pick p { margin: 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 .angle-editor input[type="file"]::file-selector-button { padding: 8px 12px; margin-right: 10px; border: 1px solid #526b90; border-radius: 4px; background: #202e43; color: #e5eaf3; cursor: pointer; }
 .angle-panel a { display: inline-flex; align-items: center; gap: 6px; color: #a9c5ed; font-size: 12px; }
-.angle-card > a { align-self: flex-start; margin-top: auto; }
+.angle-card > a, .angle-post-content > a { align-self: flex-start; margin-top: auto; }
 .angle-notice { margin: 0; color: #b5d9c4; font-size: 12px; }
 .angle-admin { display: grid; gap: 16px; margin-top: 10px; }
 .angle-admin > h3, .angle-admin > h4, .angle-admin > p { margin: 0; }

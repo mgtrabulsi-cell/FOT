@@ -82,6 +82,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
+  const [expandedPosts, setExpandedPosts] = useState<string[]>([]);
   const [refresh, setRefresh] = useState(0);
   const visibleRef = useRef(visible);
   const previousVisible = useRef(visible);
@@ -180,6 +181,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
 
   useEffect(() => {
     if (storyId && linkedReady === storyId && linkedStory) {
+      setExpandedPosts((previous) => previous.includes(storyId) ? previous : [...previous, storyId]);
       const target = document.getElementById(`angle-${storyId}`);
       target?.scrollIntoView({ block: 'start' });
       target?.focus({ preventScroll: true });
@@ -532,11 +534,14 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {restoringWeek && <p className="nfl-data-note" role="status">Showing saved posts from Week {savedFeed.week}. Updating the selected week in the background.</p>}
     {(!season || !week) && !savedFeed ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     {admin && visible && <XPublishingStatus />}
-    <div className="angle-cards" ref={readObserver.root}>{published.map((angle) => <article className="angle-card" id={`angle-${angle.id}`} data-post-id={angle.id} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
+    <div className={`angle-cards${news ? '' : ' angle-cards-collapsible'}`} ref={readObserver.root}>{published.map((angle) => <article className={`angle-card${news ? '' : ' angle-card-collapsible'}`} id={`angle-${angle.id}`} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
+      {!news && <h3><button type="button" className="angle-post-toggle" aria-expanded={expandedPosts.includes(angle.id)} aria-controls={`angle-body-${angle.id}`} onClick={() => setExpandedPosts((previous) => previous.includes(angle.id) ? previous.filter((id) => id !== angle.id) : [...previous, angle.id])}><span>{angle.title}</span><span className="angle-post-chevron" aria-hidden="true" /></button></h3>}
+      <div id={`angle-body-${angle.id}`} className="angle-post-body">
+      {(news || expandedPosts.includes(angle.id)) && <div className="angle-post-content" data-post-id={angle.id}>
       <div className="angle-card-meta"><span>{angle.category}</span>{news
         ? newsTypes.filter((type) => angle.news_types?.includes(type.value)).map((type) => <span key={type.value} className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span>)
         : <span>{angle.kind === 'player' ? 'PLAYER ANGLE' : 'MATCHUP ANGLE'}</span>}</div>
-      <h3>{angle.title}</h3>{angle.subject && <p className="angle-subject">{angle.subject}</p>}<p className="angle-matchup">{angleSport(angle.game_id).key === 'NFL' ? '' : `${angleSport(angle.game_id).emoji} ${angleSport(angle.game_id).label} · `}{angle.matchup} · {angle.season} · Week {angle.week}</p>
+      {news && <h3>{angle.title}</h3>}{angle.subject && <p className="angle-subject">{angle.subject}</p>}<p className="angle-matchup">{angleSport(angle.game_id).key === 'NFL' ? '' : `${angleSport(angle.game_id).emoji} ${angleSport(angle.game_id).label} · `}{angle.matchup} · {angle.season} · Week {angle.week}</p>
       <p className="angle-story">{angle.narrative}</p>
       {angle.evidence && <div className="angle-context"><h4>The supporting context</h4><p>{angle.evidence}</p></div>}
       {angle.counterpoint && <div className="angle-counterpoint"><h4>The other side</h4><p>{angle.counterpoint}</p></div>}
@@ -546,6 +551,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       {admin && <PostViewers surface="angle" postId={angle.id} count={viewCounts[angle.id]} />}
       {isAngleSource(angle.source_url) && <a href={angle.source_url} target="_blank" rel="noopener noreferrer"><BookOpen size={14} aria-hidden="true" />{angle.source_label}<ExternalLink size={12} aria-hidden="true" /></a>}
       {admin && <div className="angle-actions"><button disabled={busy} onClick={() => openEditor(angle)}>{news ? 'Edit news' : 'Edit angle'}</button><button disabled={busy} onClick={() => void remove(angle)}>Delete</button></div>}
+      </div>}
+      </div>
     </article>)}</div>
     {admin && <section className="angle-admin" aria-label={news ? 'Fantasy News admin desk' : 'The Angle admin desk'}>
       <h3>Admin desk <span>Private</span></h3>{!news && <><p>Verify every lead before publishing.</p>

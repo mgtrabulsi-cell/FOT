@@ -33,7 +33,10 @@ function fixture(saved = null) {
     readRenderSnapshot: () => saved,
     saveRenderSnapshot: (_kind, _key, data) => { saved = data; },
     subscribeForegroundRefresh: (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
-    supabase: { rpc: (_name, args) => {
+    supabase: { from: () => {
+      const builder = { select: () => builder, eq: () => builder, maybeSingle: async () => ({ data: story, error: null }) };
+      return builder;
+    }, rpc: (_name, args) => {
       const request = { args };
       const promise = new Promise((resolve, reject) => Object.assign(request, { resolve, reject }));
       const builder = { order: () => builder, range: () => builder, abortSignal: (signal) => {
@@ -41,7 +44,7 @@ function fixture(saved = null) {
       } };
       return builder;
     } },
-    document: { visibilityState: 'visible' },
+    document: { visibilityState: 'visible', getElementById: () => ({ scrollIntoView() {}, focus() {} }) },
     window: { setInterval: () => 1, clearInterval() {}, setTimeout: () => 2, clearTimeout() {} },
     useAnalystReadObserver: () => ({ root: { current: null } }),
     observePostViews: () => () => {},
@@ -89,6 +92,62 @@ test('Angle renders saved published posts before effects, schedule, or network',
   assert.match(app.text(), /Showing saved posts from Week/);
   assert.doesNotMatch(app.text(), /Loading The Angle|Waiting for the selected/);
   assert.equal(app.requests.length, 0);
+});
+
+function findNode(node, predicate) {
+  if (Array.isArray(node)) return node.map((item) => findNode(item, predicate)).find(Boolean);
+  if (!node || typeof node !== 'object') return undefined;
+  return predicate(node) ? node : findNode(node.props?.children, predicate);
+}
+
+test('Angle starts with titles only, expands full posts independently, and collapses without mounting media or recording views', () => {
+  const second = { ...story, id: 'second-angle', title: 'Second headline', narrative: 'Second analysis' };
+  const app = fixture({ season: 2026, week: 7, rows: [story, second] });
+  app.props.active = true;
+  try {
+    let tree = app.render();
+    assert.match(app.text(), /Saved Angle headline/);
+    assert.doesNotMatch(app.text(), /Saved analysis|Second analysis|"data-post-id"|"type":"gallery"/);
+    const toggle = () => findNode(tree, (node) => node.props?.className === 'angle-post-toggle' && node.props['aria-controls'] === `angle-body-${story.id}`);
+    assert.equal(toggle().props['aria-expanded'], false);
+    toggle().props.onClick(); tree = app.render();
+    assert.equal(toggle().props['aria-expanded'], true);
+    assert.match(app.text(), /Saved analysis|"data-post-id":"saved-angle"|"type":"gallery"/);
+    assert.doesNotMatch(app.text(), /Second analysis/);
+    const secondToggle = findNode(tree, (node) => node.props?.['aria-controls'] === 'angle-body-second-angle');
+    secondToggle.props.onClick(); tree = app.render();
+    assert.match(app.text(), /Saved analysis/);
+    assert.match(app.text(), /Second analysis/);
+    toggle().props.onClick(); tree = app.render();
+    assert.doesNotMatch(app.text(), /Saved analysis|"data-post-id":"saved-angle"/);
+    assert.match(app.text(), /Second analysis/);
+    assert.equal(toggle().props['aria-expanded'], false);
+  } finally { app.unmount(); }
+});
+
+test('Linked Angle posts expand automatically and can still be collapsed', async () => {
+  const app = fixture({ season: 2026, week: 7, rows: [story] });
+  app.props.active = true; app.props.storyId = story.id;
+  try {
+    app.render(); await app.settle();
+    const toggle = findNode(app.render(), (node) => node.props?.className === 'angle-post-toggle');
+    assert.equal(toggle.props['aria-expanded'], true);
+    assert.match(app.text(), /Saved analysis/);
+    toggle.props.onClick(); app.render();
+    assert.doesNotMatch(app.text(), /Saved analysis/);
+    app.props.storyOpenKey = 1; app.render();
+    assert.match(app.text(), /Saved analysis/);
+  } finally { app.unmount(); }
+});
+
+test('Fantasy News retains the full-post layout', () => {
+  const app = fixture({ season: 2026, week: 7, rows: [{ ...story, section: 'news' }] });
+  app.props.active = true; app.props.section = 'news';
+  try {
+    app.render();
+    assert.match(app.text(), /Saved analysis/);
+    assert.doesNotMatch(app.text(), /angle-post-toggle/);
+  } finally { app.unmount(); }
 });
 
 test('Angle preloads while closed, preserves posts during failed refresh, and accepts edits/deletions', async () => {
