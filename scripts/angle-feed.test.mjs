@@ -100,6 +100,25 @@ function findNode(node, predicate) {
   return predicate(node) ? node : findNode(node.props?.children, predicate);
 }
 
+test('Collapsed Angle titles prefix the first assigned theme only and remove it while expanded', () => {
+  for (const [themes, label] of [[['betting'], 'Betting'], [['fantasy'], 'Fantasy'], [['news'], 'News'], [['betting', 'news'], 'Betting'], [undefined, 'News'], [[], null]]) {
+    const app = fixture({ season: 2026, week: 7, rows: [{ ...story, themes }] });
+    app.props.active = true;
+    try {
+      let tree = app.render();
+      const prefix = () => findNode(tree, (node) => node.props?.className === 'angle-post-theme');
+      const toggle = () => findNode(tree, (node) => node.props?.className === 'angle-post-toggle');
+      if (label) assert.equal(prefix().props.children.join(''), `${label}: `);
+      else assert.equal(prefix(), undefined);
+      toggle().props.onClick(); tree = app.render();
+      assert.equal(prefix(), undefined, 'Opened posts show an unprefixed title');
+      assert.match(app.text(), /Saved analysis/);
+      toggle().props.onClick(); tree = app.render();
+      if (label) assert.equal(prefix().props.children.join(''), `${label}: `);
+    } finally { app.unmount(); }
+  }
+});
+
 test('Angle starts with titles only, expands full posts independently, and collapses without mounting media or recording views', () => {
   const second = { ...story, id: 'second-angle', title: 'Second headline', narrative: 'Second analysis' };
   const app = fixture({ season: 2026, week: 7, rows: [story, second] });
