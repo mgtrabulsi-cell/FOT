@@ -39,7 +39,7 @@ import DraggableTabs from './DraggableTabs';
 import { preloadNBABoxes, preloadNBADates, preloadNBAPregame } from './services/nbaPreload';
 import { preloadNFLLiveBoxes } from './services/nflBoxPreload';
 import type { NBAPlayerStatKey } from './services/nbaData';
-import { fetchNBAScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
+import { fetchNBAScoreboard, fetchStoredNBAScoreboard, fetchStoredNFLScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
 import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
 import TheAngle from './TheAngle';
@@ -513,6 +513,7 @@ function App() {
     let active = true;
     let refreshing = false;
     let preloadingBoxes = false;
+    let receivedFreshSchedule = false;
     const saved = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [];
     setNBAGames(saved); setNBAGamesDate(selectedNBADate); setNBAStatus('loading'); setNBAError('');
     const preload = (next: Game[]) => {
@@ -525,12 +526,21 @@ function App() {
       }).finally(() => { preloadingBoxes = false; });
     };
     preload(saved);
+    if (!saved.length) void fetchStoredNBAScoreboard(selectedNBADate, controller.signal).then((stored) => {
+      if (active && !receivedFreshSchedule && stored !== null) {
+        saveRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`, { games: stored, nflWeek: null, failedLeagues: [] });
+        setNBAGames(stored); setNBAStatus('ready'); preload(stored);
+      }
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) console.error('Could not open shared NBA schedule', error);
+    });
     const refresh = async () => {
       if (refreshing) return;
       refreshing = true;
       try {
         const next = await fetchNBAScoreboard(selectedNBADate, controller.signal);
         if (active) {
+          receivedFreshSchedule = true;
           setNBAGames(next); setNBAStatus('ready'); setNBAError('');
           preload(next);
         }
@@ -999,6 +1009,19 @@ function App() {
     let quickRetryId: number | undefined;
     let quickRetries = 0;
     let refreshing = false;
+    let receivedFreshSchedule = false;
+    if (!hasGames) void fetchStoredNFLScoreboard(selectedNFLWeek, controller.signal).then((stored) => {
+      if (current && !receivedFreshSchedule && stored?.games.length) {
+        saveRenderSnapshot('scoreboard', String(selectedNFLWeek ?? 'current'), stored);
+        gamesRef.current = stored.games;
+        hasGames = true;
+        setGames(stored.games);
+        setLoadedNFLWeek(selectedNFLWeek ?? stored.nflWeek);
+        setCurrentNFLWeek(stored.nflWeek);
+      }
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) console.error('Could not open shared NFL schedule', error);
+    });
     const refresh = async () => {
       if (refreshing) return;
       refreshing = true;
@@ -1006,6 +1029,7 @@ function App() {
       try {
         const result = await fetchScoreboards(controller.signal, selectedNFLWeek ?? undefined);
         if (!current) return;
+        receivedFreshSchedule = result.failedLeagues.length === 0;
         setCurrentNFLWeek(result.nflWeek);
         const changedItems: DenScoreItem[] = [];
         const cutoff = getTuesdayCutoff();
@@ -1267,6 +1291,7 @@ function App() {
               setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, 1)); setNBASelectedGameId(null);
             }}><ChevronRight size={16} aria-hidden="true" /></button></div><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}
           </div>}
+          {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
         <AccountRequired hasAccount={!!sessionUser} section={view === 'Analyst' ? 'Analyst Desk' : view === 'LiveWire' ? 'LIVEWIRE' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>

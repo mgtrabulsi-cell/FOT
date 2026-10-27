@@ -69,7 +69,7 @@ function offlineRequestKind(request) {
   if (url.hostname === 'site.api.espn.com' || url.hostname === 'site.web.api.espn.com'
     || url.hostname === 'sports.core.api.espn.com' || url.hostname === 'lm-api-reads.fantasy.espn.com') return 'data';
   if (url.origin === self.GAMEWIRE_OFFLINE.publicApiOrigin
-    && /^\/rest\/v1\/(livewire_posts|matchup_boards)$/.test(url.pathname)) return 'data';
+    && /^\/rest\/v1\/(livewire_posts|matchup_boards|sports_resources)$/.test(url.pathname)) return 'data';
   if (request.destination === 'image' && isOfflineImage(url)) return 'image';
   return null;
 }

@@ -1,6 +1,7 @@
 import { detailsSnapshotKey, readRenderSnapshot, saveRenderSnapshot, teamSnapshotKey } from './renderSnapshots.ts';
 import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
+import { fetchStaticSports, readSportsDatabase } from './sportsDatabase.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -117,6 +118,7 @@ export type Game = {
   home: Team;
   nflMarket?: NFLMarket;
   nbaMarket?: NFLMarket;
+  sharedSavedAt?: string;
 };
 
 export type NFLRecentGame = {
@@ -473,6 +475,18 @@ async function fetchScoreboardJSON(url: string, signal: AbortSignal | undefined,
     if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
     return { payload: await response.json(), headers: response.headers };
   } catch (error) {
+    if (!signal?.aborted) {
+      try {
+        const stored = await readSportsDatabase(url, signal);
+        if (stored) {
+          console.warn(`${label} could not refresh; showing shared saved schedule`);
+          return { payload: await stored.json(), headers: stored.headers };
+        }
+      } catch (databaseError) {
+        if (signal?.aborted) throw databaseError;
+        console.error('Could not load shared saved schedule', databaseError);
+      }
+    }
     if (controller.signal.aborted && !signal?.aborted) throw new Error(`${label} timed out`);
     throw error;
   } finally {
@@ -497,7 +511,8 @@ export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): 
     const events = asArray(scoreboard.events);
     return {
       games: events.map((event) => mapEvent(event, feed)).filter((game): game is Game => game !== null)
-        .map((game) => ({ ...game, seasonYear: Number(asObject(scoreboard.season).year) || game.seasonYear })),
+        .map((game) => ({ ...game, seasonYear: Number(asObject(scoreboard.season).year) || game.seasonYear,
+          ...(headers.has('x-gamewire-database') ? { sharedSavedAt: headers.get('x-gamewire-saved-at') ?? '' } : {}) })),
       nflWeek: currentWeek,
     };
   }));
@@ -549,10 +564,31 @@ export function readNBAScoreboard(payload: unknown): Game[] {
 export async function fetchNBAScoreboard(date: string, signal?: AbortSignal): Promise<Game[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T12:00:00Z`))
     || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error('Choose a valid NBA calendar date.');
-  const { payload } = await fetchScoreboardJSON(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal, 'NBA');
-  const games = readNBAScoreboard(payload);
+  const { payload, headers } = await fetchScoreboardJSON(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal, 'NBA');
+  const games = readNBAScoreboard(payload).map((game) => ({ ...game,
+    ...(headers.has('x-gamewire-database') ? { sharedSavedAt: headers.get('x-gamewire-saved-at') ?? '' } : {}) }));
   if (!signal?.aborted) saveRenderSnapshot('scoreboard', `NBA:${date}`, { games, nflWeek: null, failedLeagues: [] });
   return games;
+}
+
+export async function fetchStoredNBAScoreboard(date: string, signal: AbortSignal): Promise<Game[] | null> {
+  const response = await readSportsDatabase(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal);
+  return response ? readNBAScoreboard(await response.json()).map((game) => ({ ...game, sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })) : null;
+}
+
+export async function fetchStoredNFLScoreboard(week: number | null, signal: AbortSignal): Promise<ScoreboardResult | null> {
+  const response = await readSportsDatabase(`${apiBase}/football/nfl/scoreboard${week ? `?week=${week}&seasontype=2` : ''}`, signal);
+  if (!response) return null;
+  const payload = asObject(await response.json());
+  if (!Array.isArray(payload.events)) throw new Error('Saved NFL schedule is invalid.');
+  const feed = scoreFeeds.find((entry) => entry.league === 'NFL');
+  if (!feed) throw new Error('NFL feed configuration is missing.');
+  return {
+    games: payload.events.map((event) => mapEvent(event, feed)).filter((game): game is Game => game !== null)
+      .map((game) => ({ ...game, seasonYear: Number(asObject(payload.season).year) || game.seasonYear,
+        sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })),
+    failedLeagues: [], nflWeek: Number(asObject(payload.week).number) || week,
+  };
 }
 
 function articleMatchesFavorite(article: Record<string, unknown>, favorite: FavoriteTarget): boolean {
@@ -1253,7 +1289,7 @@ function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number):
   const cacheKey = `${feedPath}:${teamId}:${season}`;
   const cached = nflRosters.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < 300_000) return cached.promise;
-  const request = fetch(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`)
+  const request = fetchStaticSports(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`)
     .then(async (response) => {
       if (!response.ok) throw new Error(`Team roster returned HTTP ${response.status}`);
       return readNFLActiveRoster(await response.json());

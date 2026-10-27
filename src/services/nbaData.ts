@@ -1,5 +1,6 @@
 import type { FavoriteTarget, Game, NFLFavoritePlay, Team } from './sportsData.ts';
 import { readRenderSnapshot, saveRenderSnapshot } from './renderSnapshots.ts';
+import { fetchStaticSports, sportsResourceKey } from './sportsDatabase.ts';
 
 export type NBAPlayerStatKey = 'points' | 'rebounds' | 'assists' | 'steals' | 'blocks' | 'turnovers' | 'minutes' | 'offensiveRebounds' | 'defensiveRebounds' | 'fouls' | 'threePointersMade' | 'fieldGoalsMade' | 'fieldGoalsAttempted' | 'threePointersAttempted' | 'freeThrowsMade' | 'freeThrowsAttempted' | 'fieldGoalPct' | 'threePointPct' | 'freeThrowPct' | 'plusMinus';
 export type NBAStats = Partial<Record<NBAPlayerStatKey, number>>;
@@ -260,7 +261,9 @@ async function get(url: string, signal?: AbortSignal): Promise<unknown> {
     const timer = setTimeout(() => controller.abort(), 10_000);
     const promise = Promise.resolve().then(async () => {
       try {
-        const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+        const response = sportsResourceKey(url) && !url.includes('/scoreboard')
+          ? await fetchStaticSports(url, controller.signal)
+          : await fetch(url, { signal: controller.signal, cache: 'no-store' });
         if (!response.ok) throw new Error(`NBA data feed returned HTTP ${response.status}.`);
         const data: unknown = await response.json();
         if (!isObject(data)) throw new Error('NBA data feed returned a malformed response.');

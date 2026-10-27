@@ -4,7 +4,7 @@ const espnHosts = new Set(['site.api.espn.com', 'site.web.api.espn.com', 'sports
 
 export function isNativePublicRead(url: URL, method: string, publicOrigin: string | null): boolean {
   return method === 'GET' && url.protocol === 'https:' && !url.username && !url.password
-    && (espnHosts.has(url.hostname) || (url.origin === publicOrigin && /^\/rest\/v1\/(livewire_posts|matchup_boards)$/.test(url.pathname)));
+    && (espnHosts.has(url.hostname) || (url.origin === publicOrigin && /^\/rest\/v1\/(livewire_posts|matchup_boards|sports_resources)$/.test(url.pathname)));
 }
 
 export function isNativePublicImage(url: URL, publicOrigin: string | null): boolean {

@@ -22,6 +22,14 @@ NBA teams on The Wire list and matchup headers display a **B2B** badge when a co
 
 Published attached settled picks in The Angle and LIVEWIRE show only the pick text and its green check or red X, without review headings, explanations, or original-post metadata. Admin selection guidance stays in the editor; attached picks still do not count a second time in Our Results.
 
+### Shared sports database
+
+GameWire also keeps public NFL/NBA schedules, team directories, and rosters in Supabase's `sports_resources` table. New devices request the shared schedule alongside the normal live-score request; a late saved response cannot replace fresh results. Schedule failures can fall back to the shared copy, labeled as saved because scores/status may be stale. Rosters and NBA team directories use the shared database first, with direct-feed fallback for missing resources or database failures. Device snapshots and web/native offline caches remain enabled; live summaries and normal scoreboard polling stay direct and unchanged.
+
+The secret-protected `sync-sports-resources` function runs hourly through the existing Vault/pg_cron setup, without requiring an open browser. It saves NFL's current scoreboard and all 18 regular-season weeks, plus NBA schedules from seven days ago through 30 days ahead. Schedules refresh hourly (NFL future-week resources reuse six-hour copies); directories and all 32 NFL/30 NBA rosters refresh every 12 hours. Failed, malformed, or unexpectedly empty refreshes do not overwrite good resources. Empty schedules for dates without games are supported. Data is public-read-only; only the server service role can write it. This improves feed-outage resilience, not guaranteed availability during database/hosting outages.
+
+Backend setup: apply `supabase/sports-resources.sql` to the linked project, deploy `sync-sports-resources` with `--no-verify-jwt` (it validates the existing cron secret itself), and run the scheduled job once to seed it before releasing the client. Existing `gamewire-poll-url` and `gamewire-poll-secret` Vault entries and `GAMEWIRE_CRON_SECRET` function configuration are required. Verify row coverage and `cron.job` after deployment. `supabase/tests/sports-resources.sql` checks anonymous reads and denial of anonymous/authenticated writes in a rolled-back transaction.
+
 ## Run locally
 
 Install Node.js 20 or newer, then run:

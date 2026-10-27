@@ -78,6 +78,7 @@ test('The actual scoreboard effect fetches immediately and cancels the old reque
   assert.ok(polling && foreground, 'Both real scoreboard effects must be present');
   const requests = [];
   const applied = [];
+  const storedRequests = [];
   let onReturn;
   let cleanup;
   let run;
@@ -86,6 +87,7 @@ test('The actual scoreboard effect fetches immediately and cancels the old reque
     AbortController,
     window: { setInterval: () => 1, clearInterval: noop, clearTimeout: noop },
     gamesRef: { current: [] }, selectedNFLWeek: 7,
+    fetchStoredNFLScoreboard: (week, signal) => new Promise((resolve) => storedRequests.push({ week, signal, resolve })),
     fetchScoreboards: (signal, week) => new Promise((resolve) => requests.push({ signal, week, resolve })),
     getTuesdayCutoff: () => 0,
     setCurrentNFLWeek: noop, setScoreUpdates: noop, setScoreboardStatus: noop,
@@ -112,6 +114,9 @@ test('The actual scoreboard effect fetches immediately and cancels the old reque
     requests[1].resolve({ nflWeek: 7, games: [], failedLeagues: [] });
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(applied.length, 1, 'Fresh response updates the board without a second polling cycle');
+    storedRequests.forEach((request) => request.resolve({ nflWeek: 7, games: [{ id: 'old-database-game' }] }));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(applied.length, 1, 'An aborted bootstrap or an older shared schedule must not overwrite a successful fresh read');
   } finally {
     cleanup();
     stopForeground();
