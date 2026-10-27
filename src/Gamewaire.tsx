@@ -33,14 +33,15 @@ function PickCard({ pick, record }: { pick: Candidate; record?: StoredPick }) {
       <div><dt>Projection</dt><dd>{pick.projection.toFixed(1)}</dd></div>
     </dl>
     <p>{pick.explanation}</p>
+    {pick.baseline && <p className="nfl-data-note">{pick.baseline} Previous full-season average: {pick.previousSeasonAverage?.toFixed(1) ?? 'Unavailable'}.</p>}
     <small>Odds: {stamp(pick.updatedAt)} · Data retrieved: {stamp(pick.dataAt)}</small>
     {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="feed-warning">Historical analysis: these odds are stale. A changed line/price requires a fresh evaluation.</p>}
     <details><summary>Evidence, game logs and risks</summary>
-      <p>{pick.sampleSize} prior games · Last 5: {pick.last5.toFixed(1)} · Last 10: {pick.last10.toFixed(1)} · Season: {pick.seasonAverage.toFixed(1)}</p>
+      <p>{pick.sampleSize} underlying games · Current-season last 5: {pick.last5.toFixed(1)} · Last 10: {pick.last10.toFixed(1)} · Current-season average: {pick.seasonAverage.toFixed(1)}</p>
       <p>Data-completeness rubric: {percent(pick.quality)}. This is not a calibrated confidence or win probability.</p>
       <ul>{pick.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul>
-      <div className="gai-table"><table><caption>Underlying prior observations</caption><thead><tr><th>Date</th><th>Opponent</th><th>Location</th><th>Value</th><th>Minutes</th></tr></thead><tbody>
-        {pick.samples.map((row, i) => <tr key={`${row.date}:${i}`}><td>{stamp(row.date)}</td><td>{row.opponent || 'Unavailable'}</td><td>{row.location || 'Unavailable'}</td><td>{row.value}</td><td>{row.minutes ?? 'Unavailable'}</td></tr>)}
+      <div className="gai-table"><table><caption>Underlying prior observations</caption><thead><tr><th>Date</th><th>Season ending</th><th>Opponent</th><th>Location</th><th>Value</th><th>Minutes</th></tr></thead><tbody>
+        {pick.samples.map((row, i) => <tr key={`${row.date}:${i}`}><td>{stamp(row.date)}</td><td>{row.season ?? 'Unavailable'}</td><td>{row.opponent || 'Unavailable'}</td><td>{row.location || 'Unavailable'}</td><td>{row.value}</td><td>{row.minutes ?? 'Unavailable'}</td></tr>)}
       </tbody></table></div>
     </details>
   </article>;
@@ -231,9 +232,9 @@ export default function Gamewaire() {
     </section>
     <details><summary>Methodology and limitations</summary>
       <p>GamewAIre grade is a transparent 0-100 rubric, not a probability: conservative EV / 15% (40 points), edge / 15 percentage points (25), estimated EV / 25% (20), completeness (15). Each factor is capped at its weight. A: 85+, B: 70+, C: 55+, D: below 55. This heuristic has not been validated against outcomes; estimated win probability is shown separately and is also unvalidated.</p>
-      <p>Empirical regular-season distribution, 12-game NBA / 8-game NFL minimum, with configurable recent-10 weighting and a four-observation no-vig market prior. Actual price and exact line are evaluated independently. Push mass is retained; edge compares conditional win probability with raw implied probability. Selections must also pass a conservative one-sided 1.645-standard-error EV check. This uncertainty screen is not calibrated confidence.</p>
+      <p>NBA early season: before 12 current-season games, 50% weight goes to current-season games and 50% to all available previous-season regular-season game logs (minimum 12). At least one recent current-season game is required; no repeated season-average pseudo-games. Current-season-only analysis resumes at 12 games. Recent-10 weighting is paused during the equal blend. NFL still requires 8 current-season games. A four-observation no-vig prior and a conservative one-sided 1.645-standard-error EV check apply. This uncertainty screen is not calibrated confidence.</p>
       <p>Team markets use season scoring margins or totals, with a simple opponent-margin adjustment. NBA props require reasonably stable minutes; NFL opportunity and injury effects remain uncertain. Completeness is 80% for supported team/NBA data, 75% for NFL props lacking snap-share data, and lower/ineligible for missing identity, status, logs or playing time. No ATS, positional-defense, scheme, home-field or injury coefficient is invented.</p>
-      <p>Ranking uses conservative EV, then estimated EV. Admins review up to eight qualifying candidates and publish up to four per game. At most one selection per player and one team market; other game-level correlations remain possible. No exact pick quota. Odds older than 10 minutes are rejected; supported data must be fetched within an hour. Model version: empirical-baseline-v1.</p>
+      <p>Ranking uses conservative EV, then estimated EV. Admins review up to eight qualifying candidates and publish up to four per game. At most one selection per player and one team market; other game-level correlations remain possible. No exact pick quota. Odds older than 10 minutes are rejected; supported data must be fetched within an hour. Model version: empirical-baseline-v2.</p>
       <p>Historical replay tooling rejects future observations and requires pre-event odds/data snapshots. No licensed historical dataset or validated backtest is configured yet. No reliability or profitability claim is made.</p>
     </details>
   </section>;

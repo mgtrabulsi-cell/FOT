@@ -1,5 +1,5 @@
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v1';
+export const modelVersion = 'empirical-baseline-v2';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -16,10 +16,11 @@ export type Quote = {
   market: string; subject: string; side: string; line: number | null; american: number;
   book: string; updatedAt: string; noVig: number | null;
 };
-export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string };
+export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string; season?: number; weight?: number };
 export type Evidence = {
   samples: Observation[]; fetchedAt: string; quality: number; risks: string[];
   eligible: boolean; reason?: string; adjustment?: number;
+  currentSeason?: number;
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
@@ -28,6 +29,7 @@ export type Candidate = Quote & {
   sampleSize: number; effectiveSample: number; last5: number; last10: number; seasonAverage: number;
   quality: number; dataAt: string; samples: Observation[]; risks: string[]; facts: string[]; explanation: string;
   identifiers?: Evidence['identifiers'];
+  baseline?: string; previousSeasonAverage?: number;
 };
 export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }> };
 export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
@@ -150,7 +152,17 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const observed = samples.map((row) => row.value);
     const values = observed.map((value) => quote.market === 'h2h' || quote.market === 'spreads'
       ? Math.round(value + (data.adjustment ?? 0)) : value + (data.adjustment ?? 0));
-    const weights = samples.map((_, index) => (1 - settings.recentWeight) / samples.length + (index < 10 ? settings.recentWeight / Math.min(10, samples.length) : 0));
+    const blended = samples.some((row) => row.weight !== undefined);
+    if (blended && (quote.sport !== 'NBA' || samples.some((row) => !Number.isFinite(row.weight) || row.weight! <= 0)
+      || Math.abs(samples.reduce((sum, row) => sum + row.weight!, 0) - 1) > 1e-8)) {
+      reject('Invalid early-season baseline weights.'); continue;
+    }
+    const current = data.currentSeason === undefined ? samples : samples.filter((row) => row.season === data.currentSeason);
+    const previous = data.currentSeason === undefined ? [] : samples.filter((row) => row.season === data.currentSeason! - 1);
+    if (!current.length || (blended && !previous.length)) { reject('Current or previous-season baseline unavailable.'); continue; }
+    const baseline = blended ? 'Early-season 50/50 blend: current-season and previous full-season game logs. Recent weighting is paused until 12 current-season games.' : undefined;
+    const weights = samples.map((row, index) => blended ? row.weight!
+      : (1 - settings.recentWeight) / samples.length + (index < 10 ? settings.recentWeight / Math.min(10, samples.length) : 0));
     const sign = quote.side === 'Under' ? -1 : 1;
     const nbaMoneyline = quote.sport === 'NBA' && quote.market === 'h2h';
     const wins = values.reduce((sum, value, i) => sum + (sign * (value - threshold) > 0 ? weights[i]
@@ -171,12 +183,14 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const facts = [
       `${quote.subject}: ${quote.side}${quote.line === null ? '' : ` ${quote.line}`} at ${quote.american > 0 ? '+' : ''}${quote.american} (${quote.book}).`,
       `The weighted baseline projection is ${projection.toFixed(1)} from ${samples.length} prior games.`,
-      `Observed last 5 average ${mean(observed.slice(0, 5)).toFixed(1)}; last 10 average ${mean(observed.slice(0, 10)).toFixed(1)}.`,
+      `Observed current-season last 5 average ${mean(current.slice(0, 5).map((row) => row.value)).toFixed(1)}; last 10 average ${mean(current.slice(0, 10).map((row) => row.value)).toFixed(1)}.`,
       `Estimated EV ${(ev * 100).toFixed(1)}% of one unit, including pushes. This baseline is not calibrated or independently validated.`,
     ];
     candidates.push({ ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,
-      sampleSize: samples.length, effectiveSample, last5: mean(observed.slice(0, 5)), last10: mean(observed.slice(0, 10)), seasonAverage: mean(observed),
-      quality: data.quality, dataAt: data.fetchedAt, samples, risks: data.risks, facts, explanation: facts.join(' '), identifiers: data.identifiers });
+      sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
+      quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
+      facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
+      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined });
   }
   candidates.sort((a, b) => b.conservativeEV - a.conservativeEV || b.ev - a.ev);
   const picks: Candidate[] = [], subjects = new Set<string>();

@@ -76,6 +76,13 @@ export function playerSamples(value: unknown, market: string, now: number): Obse
   }
   return [...result.values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 }
+export function nbaSeasonBlend<T extends Observation>(current: T[], previous: T[], season: number): T[] {
+  const tagged = current.map((row) => ({ ...row, season }));
+  if (current.length >= 12) return tagged;
+  if (!current.length || previous.length < 12) return [];
+  return [...tagged.map((row) => ({ ...row, weight: 0.5 / current.length })),
+    ...previous.map((row) => ({ ...row, season: season - 1, weight: 0.5 / previous.length }))];
+}
 export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: number, fetcher: typeof fetch = fetch) {
   const sport = quotes[0].sport, path = paths[sport], base = `https://site.api.espn.com/apis/site/v2/sports/${path}`;
   const fetchedAt = new Date(now).toISOString(), evidence = new Map<string, Evidence>(), warnings: string[] = [];
@@ -90,10 +97,21 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       get(`${base}/teams/${team.id}/roster?season=${matchup.season}`),
     ]);
     const athletes = array(object(roster).athletes).flatMap((row) => Array.isArray(object(row).items) ? array(object(row).items) : [row]).map(object);
-    return { team, games: teamSamples(schedule, team.id, now), athletes };
+    const current = teamSamples(schedule, team.id, now);
+    let games = current;
+    if (sport === 'NBA') {
+      let previous: typeof current = [];
+      if (current.length > 0 && current.length < 12) {
+        try { previous = teamSamples(await get(`${base}/teams/${team.id}/schedule?season=${matchup.season - 1}&seasontype=2`), team.id, now); }
+        catch (cause) { warnings.push(`${team.name}: previous-season schedule unavailable: ${cause instanceof Error ? cause.message : 'request failed'}`); }
+      }
+      games = nbaSeasonBlend(current, previous, matchup.season);
+    }
+    return { team, games, athletes };
   }));
   const players = [...new Set(quotes.filter((quote) => quote.market.startsWith('player_')).map((quote) => quote.subject))].slice(0, 24);
   const logs = new Map<string, unknown>();
+  const previousLogs = new Map<string, unknown>();
   const identities = new Map<string, { playerId: string; teamId: string }>();
   for (let start = 0; start < players.length; start += 4) {
     await Promise.all(players.slice(start, start + 4).map(async (name) => {
@@ -107,6 +125,11 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
         const data = await get(`https://site.web.api.espn.com/apis/common/v3/sports/${path}/athletes/${encodeURIComponent(text(athlete.id))}/gamelog?season=${matchup.season}`);
         logs.set(name, data);
         identities.set(name, { playerId: text(athlete.id), teamId: team.id });
+        const market = quotes.find((quote) => quote.subject === name && quote.market.startsWith('player_'))?.market;
+        if (sport === 'NBA' && market && playerSamples(data, market, now).length < 12) {
+          try { previousLogs.set(name, await get(`https://site.web.api.espn.com/apis/common/v3/sports/${path}/athletes/${encodeURIComponent(text(athlete.id))}/gamelog?season=${matchup.season - 1}`)); }
+          catch (cause) { warnings.push(`${name}: previous-season logs unavailable: ${cause instanceof Error ? cause.message : 'request failed'}`); }
+        }
       } catch {
         warnings.push(`${name}: player game logs could not be retrieved.`);
       }
@@ -126,10 +149,16 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       if (sport === 'NBA') {
         const minutes = samples.slice(0, 10).map((row) => row.minutes);
         const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
-        if (minutes.length < 10 || minutes.some((value) => value === undefined)
+        if (!minutes.length || minutes.some((value) => value === undefined)
           || mean(minutes.slice(0, 5) as number[]) < 12
           || Math.abs(mean(minutes.slice(0, 5) as number[]) / mean(minutes as number[]) - 1) > 0.2) {
           evidence.set(quote.key, { eligible: false, reason: 'Playing time is missing, low or unstable.', samples, fetchedAt, quality: 0.5, risks }); continue;
+        }
+        try {
+          const previous = previousLogs.get(quote.subject);
+          samples = nbaSeasonBlend(samples, previous ? playerSamples(previous, quote.market, now) : [], matchup.season);
+        } catch (cause) {
+          evidence.set(quote.key, { eligible: false, reason: `Previous-season baseline unavailable: ${cause instanceof Error ? cause.message : 'invalid logs'}`, samples: [], fetchedAt, quality: 0, risks }); continue;
         }
       } else {
         risks.push('Snap share and confirmed future role are unavailable; current-season opportunity can change.');
@@ -142,23 +171,27 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
         if (teamData.some((row) => row.games.length < (sport === 'NBA' ? 12 : 8))) {
           evidence.set(quote.key, { eligible: false, reason: 'Both teams need a sufficient current-season sample for totals.', samples, fetchedAt, quality: 0, risks }); continue;
         }
-        const seen = new Set<string>();
-        samples = [...away.games, ...home.games].filter((row) => {
+        const blended = [...away.games, ...home.games].some((row) => row.weight !== undefined);
+        const seen = new Map<string, Observation>();
+        for (const [index, row] of [...away.games, ...home.games].entries()) {
           const identity = row.eventId ?? `${row.date}:${row.opponent}:${row.location}`;
-          if (seen.has(identity)) return false;
-          seen.add(identity); return true;
-        }).map((row) => ({ ...row, value: row.total }));
+          const weight = blended ? (row.weight ?? 1 / (index < away.games.length ? away.games.length : home.games.length)) / 2 : undefined;
+          const existing = seen.get(identity);
+          if (existing) { if (weight !== undefined) existing.weight = (existing.weight ?? 0) + weight; }
+          else seen.set(identity, { ...row, value: row.total, weight });
+        }
+        samples = [...seen.values()];
       } else if (own) {
         const opponent = teamData.find((row) => row !== own)!;
         samples = own.games;
         if (opponent.games.length < (sport === 'NBA' ? 12 : 8)) samples = [];
-        else adjustment = -opponent.games.reduce((sum, row) => sum + row.margin, 0) / opponent.games.length / 2;
+        else adjustment = -opponent.games.reduce((sum, row) => sum + row.margin * (row.weight ?? 1 / opponent.games.length), 0) / 2;
         risks.push('Opponent season scoring margin adjustment is a simple baseline, not opponent-adjusted efficiency.');
         risks.push('Adjusted scoring margins are rounded to whole points. NBA moneyline ties split equally between win and loss, not pushes.');
       }
       risks.push('No home-court/home-field coefficient is assumed without fitted historical evidence.');
     }
-    evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment,
+    evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: sport === 'NBA' ? matchup.season : undefined,
       identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
   }
   return { evidence, warnings, coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };

@@ -108,6 +108,70 @@ test('GamewAIre grade is a bounded transparent rubric, not a probability', () =>
   assert.ok(engine.gamewaireGrade({ ...low, conservativeEV: 0.1 }).score > engine.gamewaireGrade(low).score);
 });
 
+test('NBA early season uses exactly half of each real cohort and switches off at twelve games', () => {
+  const current = evidence.samples.slice(0, 3).map((row) => ({ ...row, value: 40 }));
+  const previous = Array.from({ length: 82 }, (_, i) => ({ date: new Date(now - (200 + i) * 86_400_000).toISOString(), value: 20 }));
+  const samples = sources.nbaSeasonBlend(current, previous, 2027);
+  assert.equal(samples.length, 85);
+  const mass = (season) => samples.filter((row) => row.season === season).reduce((sum, row) => sum + row.weight, 0);
+  assert.ok(Math.abs(mass(2027) - 0.5) < 1e-10);
+  assert.ok(Math.abs(mass(2026) - 0.5) < 1e-10);
+  const data = { ...evidence, samples, currentSeason: 2027 };
+  const blendedQuote = { ...quote, line: 15.5 };
+  const pick = evaluate([blendedQuote], data).picks[0];
+  assert.ok(pick);
+  assert.ok(Math.abs(pick.projection - 30) < 1e-10, 'Projection equals 50% current mean plus 50% previous full-season mean');
+  assert.equal(pick.seasonAverage, 40);
+  assert.equal(pick.previousSeasonAverage, 20);
+  assert.ok(pick.effectiveSample < 12, 'Three current games do not become 85 equal-weight observations');
+  assert.match(pick.baseline, /50\/50/);
+  assert.equal(evaluate([blendedQuote], data, { ...settings, recentWeight: 0 }).picks[0].projection, pick.projection);
+  const eleven = sources.nbaSeasonBlend(evidence.samples.slice(0, 11), previous, 2027);
+  assert.equal(eleven.filter((row) => row.season === 2026).length, 82);
+  const twelve = sources.nbaSeasonBlend(evidence.samples.slice(0, 12), previous, 2027);
+  assert.equal(twelve.length, 12);
+  assert.ok(twelve.every((row) => row.weight === undefined && row.season === 2027));
+  assert.deepEqual(sources.nbaSeasonBlend([], previous, 2027), []);
+  assert.deepEqual(sources.nbaSeasonBlend(current, previous.slice(0, 11), 2027), []);
+  assert.equal(evaluate([{ ...quote, sport: 'NFL' }], data).picks.length, 0, 'NBA cohort weighting cannot apply to NFL');
+  assert.equal(evaluate([quote], { ...data, samples: samples.map((row) => ({ ...row, weight: 1 })) }).picks.length, 0);
+  assert.equal(evaluate([quote], { ...data, samples: [{ ...samples[0], date: new Date(now + 1).toISOString() }, ...samples.slice(1)] }).picks.length, 0);
+});
+
+test('Early-season NBA totals and player minutes use real previous-season evidence with equal cohort weights', async () => {
+  const matchup = { eventId: 'espn-event', season: 2027, home: { id: '1', name: quote.home }, away: { id: '2', name: quote.away } };
+  const fetcher = async (url) => {
+    const parsed = new URL(url), year = Number(parsed.searchParams.get('season')), n = year === 2027 ? 3 : 82;
+    if (parsed.pathname.endsWith('/schedule')) return Response.json({ events: Array.from({ length: n }, (_, i) => ({
+      id: `${year}-${i}`, date: new Date(now - (year === 2027 ? i + 1 : 200 + i) * 86_400_000).toISOString(), seasonType: { type: 2 },
+      competitions: [{ status: { type: { completed: true } }, competitors: [
+        { team: { id: '1', displayName: quote.home }, score: year === 2027 ? 120 : 100 },
+        { team: { id: '2', displayName: quote.away }, score: 90 },
+      ] }],
+    })) });
+    if (parsed.pathname.endsWith('/roster')) return Response.json({ athletes: parsed.pathname.includes('/teams/1/') ? [
+      { id: 'player', displayName: 'Player', status: { type: 'active' }, injuries: [] },
+    ] : [] });
+    if (parsed.pathname.endsWith('/gamelog')) {
+      const rows = Array.from({ length: n }, (_, i) => ({ eventId: `${year}-${i}`, stats: [year === 2027 ? '40' : '20', '30'] }));
+      return Response.json({ names: ['points', 'minutes'], events: Object.fromEntries(rows.map((row, i) => [row.eventId, {
+        gameDate: new Date(now - (year === 2027 ? i + 1 : 200 + i) * 86_400_000).toISOString(),
+      }])), seasonTypes: [{ type: 2, categories: [{ events: rows }] }] });
+    }
+    throw new Error('Unexpected public request');
+  };
+  const total = { ...quote, key: 'total', market: 'totals', side: 'Over', line: 180.5 };
+  const data = await sources.collectEvidence([total, quote], matchup, now, fetcher);
+  for (const q of [total, quote]) {
+    const item = data.evidence.get(q.key);
+    assert.equal(item.samples.length, 85, 'Shared team totals are deduplicated without losing probability mass');
+    assert.equal(item.eligible, true);
+    assert.ok(Math.abs(item.samples.filter((row) => row.season === 2027).reduce((sum, row) => sum + row.weight, 0) - 0.5) < 1e-10);
+    assert.ok(Math.abs(item.samples.filter((row) => row.season === 2026).reduce((sum, row) => sum + row.weight, 0) - 0.5) < 1e-10);
+  }
+  assert.ok(engine.evaluate([{ ...quote, line: 15.5 }], data.evidence, settings, now).picks[0], 'Three valid current games with minutes can use the prior-season baseline');
+});
+
 test('Adjusted team forecasts retain real observed averages and valid point/push outcomes', () => {
   const team = { ...quote, market: 'spreads', side: 'Boston Celtics', line: -28.5 };
   const pick = evaluate([team], { ...evidence, adjustment: -1.5 }, { ...settings, markets: ['spreads'] }).picks[0];

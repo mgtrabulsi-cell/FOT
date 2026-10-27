@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { array, decimalOdds, evaluate, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
+import { array, decimalOdds, evaluate, modelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 
@@ -67,7 +67,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     let input: unknown;
     try { input = await request.json(); } catch { return json({ error: 'Invalid GamewAIre request body.' }, 400); }
     const body = object(input);
-    if (body.action === 'status') return json({ canAnalyze, oddsReady: !!oddsKey, aiReady: !!aiKey, model: 'empirical-baseline-v1', experimental: true });
+    if (body.action === 'status') return json({ canAnalyze, oddsReady: !!oddsKey, aiReady: !!aiKey, model: modelVersion, experimental: true });
     if (!canAnalyze) return json({ error: 'Only admins can generate analyses or settle model picks.' }, 403);
     if (body.action === 'publish') {
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId) || !Array.isArray(body.keys)
@@ -141,6 +141,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (cached.error) throw new Error('Could not read the shared analysis cache.');
     if (cached.data?.status === 'in_progress' && Date.now() - Date.parse(cached.data.created_at) < 180_000) return json({ error: 'This game is already being analyzed. Reopen its saved report shortly.' }, 409);
     if (cached.data && ['completed', 'no_qualifying', 'insufficient_data'].includes(cached.data.status)
+      && object(cached.data.payload).modelVersion === modelVersion
       && Date.parse(cached.data.event_start) > Date.now() && Date.now() - Date.parse(cached.data.created_at) < 120_000
       && JSON.stringify(readSettings(cached.data.settings, sport)) === JSON.stringify(settings)) return json({ run: cached.data, cached: true });
     const claim = await admin.rpc('gamewaire_claim', { target_user: verified.data.user.id });
@@ -168,6 +169,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (aiKey && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }
+    report = { ...report, modelVersion };
     const finished = await admin.rpc('gamewaire_finish', { target_run: runId, final_status: report.status, report, candidates: report.picks });
     if (finished.error) throw new Error('Could not persist the complete analysis. No successful report is being claimed.');
     return json({ run: { ...created.data, status: report.status, payload: report, finished_at: new Date().toISOString() } });
