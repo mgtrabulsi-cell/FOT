@@ -108,6 +108,38 @@ test('GamewAIre grade is a bounded transparent rubric, not a probability', () =>
   assert.ok(engine.gamewaireGrade({ ...low, conservativeEV: 0.1 }).score > engine.gamewaireGrade(low).score);
 });
 
+test('Top Picks rank by probability bands before value, moneyline preference and verified player usage', () => {
+  const base = evaluate().picks[0];
+  const candidate = (key, probability, extra = {}) => ({ ...base, key, probability, ...extra });
+  const picks = [
+    candidate('famous-lower-band', 0.709, { rotation: { label: 'Core rotation', minutes: 38, involvement: 35 } }),
+    candidate('high-usage', 0.731, { rotation: { label: 'Core rotation', minutes: 34, involvement: 24 } }),
+    candidate('moneyline', 0.730, { market: 'h2h', line: null }),
+    candidate('highest', 0.81, { conservativeEV: 0.001, ev: 0.06 }),
+    candidate('lower-usage', 0.739, { rotation: { label: 'Core rotation', minutes: 32, involvement: 14 } }),
+  ];
+  assert.deepEqual(engine.rankTopPicks(picks).map((pick) => pick.key),
+    ['highest', 'moneyline', 'high-usage', 'lower-usage', 'famous-lower-band']);
+  assert.equal(picks[0].key, 'famous-lower-band', 'Ranking does not mutate saved reports');
+  for (const a of picks) for (const b of picks) {
+    const forward = engine.rankTopPicks([a, b]), backward = engine.rankTopPicks([b, a]);
+    if (a.key !== b.key) assert.equal(forward[0].key, backward[0].key, 'Tie rules are deterministic');
+  }
+  const q = [{ ...quote, key: 'high-probability', subject: 'Primary', american: 100 },
+    { ...quote, key: 'high-payout', subject: 'Secondary', american: 300 }];
+  const data = new Map([
+    [q[0].key, evidence],
+    [q[1].key, { ...evidence, samples: evidence.samples.map((row, i) => ({ ...row, value: i < 21 ? 30 : 10 })) }],
+  ]);
+  const result = engine.evaluate(q, data, settings, now, 8);
+  assert.equal(result.picks.length, 2);
+  assert.equal(result.picks[0].key, 'high-probability', 'Generation selects highest hit probability, not highest payout/EV');
+  assert.ok(result.picks[0].conservativeEV < result.picks[1].conservativeEV);
+  const ml = { ...quote, key: 'unqualified-ml', market: 'h2h', side: 'Boston Celtics', line: null, american: -10000 };
+  assert.equal(engine.evaluate([ml], new Map([[ml.key, evidence]]), { ...settings, markets: ['h2h'] }, now).picks.length, 0,
+    'Moneyline focus never bypasses value thresholds');
+});
+
 test('NBA rotation pool keeps five high-minute players per team and verified high-usage reserves only', () => {
   const player = (name, minutes, involvement, teamId = 'home') => ({ name, teamId,
     samples: Array.from({ length: 3 }, () => ({ date: quote.updatedAt, value: 10, minutes, offensiveInvolvement: involvement })) });
@@ -331,21 +363,26 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, rankTopPicks } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
   const status = { canAnalyze: true, oddsReady: false, aiReady: false, model: engine.modelVersion, experimental: true };
   fixture([status, [], [], true]);
   const empty = renderToStaticMarkup(createElement(Page));
-  assert.match(empty, /Gamew<strong>AI<\/strong>re/);
+  assert.doesNotMatch(empty, /Gamew<strong>AI<\/strong>re/, 'The App heading owns the single GamewAIre title');
+  assert.match(empty, /ANALYSIS ENGINE/);
+  assert.match(empty, /class="gai-dashboard"/);
+  assert.match(empty, /aria-label="Game filters"/);
+  assert.match(empty, /aria-label="Top Picks"/);
+  assert.match(empty, /aria-label="How picks are ranked"/);
   assert.match(empty, /Sportsbook analysis is unavailable/);
   assert.match(empty, /No model analyses yet/);
   assert.doesNotMatch(empty, /class="gai-pick/);
   assert.match(empty, /disabled=""[^>]*>Load upcoming games/);
   const candidate = { ...evaluate().picks[0], baseline: 'Early-season 50/50 blend', previousSeasonAverage: 20,
     rotation: { label: 'Core rotation', minutes: 32, involvement: 18 } };
-  const run = { id: 'run', matchup: 'Away at Home', created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
+  const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date().toISOString(), matchup: 'Away at Home', created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
   const pick = { ...candidate, id: 'pick', event_start: quote.start, created_at: quote.updatedAt, push_probability: candidate.pushProbability,
     result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1 };
   const memberState = [{ ...status, canAnalyze: false, oddsReady: true }, [run], [pick], true];
@@ -372,11 +409,30 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(admin, /Choose up to four member picks/);
   assert.match(admin, /Publish 0\/4 picks/);
   assert.match(admin, /ODDS_API_KEY/);
-  assert.match(admin, /<details class="gai-workspace">/);
+  assert.match(admin, /<section class="gai-workspace">/);
   assert.doesNotMatch(admin, /class="feed-warning"[^>]*>This baseline/);
   assert.match(admin, /<summary>Data notes &amp; excluded markets/);
   const css = readFileSync(new URL('../src/gamewaire.css', import.meta.url), 'utf8');
   assert.match(css, /\.gai-grade-a, \.gai-grade-b \{ color: #8bf0b3;/);
+  assert.match(css, /@media \(max-width: 760px\)/);
+  assert.match(css, /\.gai-dashboard \{ grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /font-size: 16px/);
+  assert.match(admin, /Moneyline \(game winner\)/);
+  assert.match(admin, /Player props/);
+  assert.match(admin, /Admin candidates · unpublished/);
+  assert.equal((admin.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selection and evidence share one card, not duplicated rows');
+  const more = { ...candidate, key: 'top-probability', subject: 'Higher hit estimate', probability: 0.99 };
+  const adminState = [status, [{ ...run, payload: { picks: [candidate, more] } }], [], true];
+  fixture(adminState);
+  const rankedAdmin = renderToStaticMarkup(createElement(Page));
+  assert.ok(rankedAdmin.indexOf('Higher hit estimate') < rankedAdmin.indexOf('Player · Over'));
+  const nflFilter = [...adminState]; nflFilter[6] = 'NFL';
+  fixture(nflFilter);
+  const wrongLeague = renderToStaticMarkup(createElement(Page));
+  assert.doesNotMatch(wrongLeague, /class="gai-pick angle-card"/, 'Changing league never displays an unrelated saved NBA report');
+  const archived = [...adminState]; archived[7] = '2025-01-01';
+  fixture(archived);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(Page)), /class="gai-pick angle-card"/, 'Report date follows the Eastern game date filter');
 });
 
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')

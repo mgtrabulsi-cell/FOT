@@ -1,5 +1,5 @@
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v3';
+export const modelVersion = 'empirical-baseline-v4';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -40,6 +40,14 @@ export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservati
   const score = Math.round(40 * scale(pick.conservativeEV, 0.15) + 25 * scale(pick.edge, 0.15)
     + 20 * scale(pick.ev, 0.25) + 15 * scale(pick.quality, 1));
   return { score, letter: score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : 'D' };
+}
+export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
+  return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)
+    || Number(b.market === 'h2h') - Number(a.market === 'h2h')
+    || (b.rotation?.involvement ?? 0) - (a.rotation?.involvement ?? 0)
+    || (b.rotation?.minutes ?? 0) - (a.rotation?.minutes ?? 0)
+    || b.probability - a.probability || gamewaireGrade(b).score - gamewaireGrade(a).score
+    || a.key.localeCompare(b.key));
 }
 export function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -195,10 +203,9 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
       previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation });
   }
-  candidates.sort((a, b) => b.conservativeEV - a.conservativeEV || b.ev - a.ev);
   const picks: Candidate[] = [], subjects = new Set<string>();
   let teamMarket = false;
-  for (const candidate of candidates) {
+  for (const candidate of rankTopPicks(candidates)) {
     const player = candidate.market.startsWith('player_');
     const identity = normalize(candidate.subject);
     if ((player && subjects.has(identity)) || (!player && teamMarket)) {
