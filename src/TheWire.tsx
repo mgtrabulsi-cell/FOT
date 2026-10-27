@@ -790,8 +790,8 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
     onToggleFavorite(target);
   };
 
-  const isTeamFavorite = (teamId: string) => {
-    return favorites.some((fav) => fav.type === 'team' && fav.id === teamId);
+  const isTeamFavorite = (teamId: string, feedPath: string) => {
+    return favorites.some((fav) => fav.type === 'team' && fav.id === teamId && fav.feedPath === feedPath);
   };
 
   const toggleTeamFavorite = (team: NFLBoxScoreTeam | Team) => {
@@ -862,7 +862,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     <span className="wire-board-team-name">
                       <b>
                         <span className="wire-board-team-label">{team.name}</span>
-                        {isTeamFavorite(team.id) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
+                        {isTeamFavorite(team.id, game.feedPath) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
                         {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
                       </b>
                       <small>{team.abbr}{team.record ? ` · ${team.record}` : ''}</small>
@@ -1061,11 +1061,11 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     )}
                   </span>
                   <button
-                    className={`favorite-star-button${isTeamFavorite(selectedGame.away.id) ? ' is-favorite' : ''}`}
-                    title={isTeamFavorite(selectedGame.away.id) ? 'Remove favorite' : 'Add favorite'}
+                    className={`favorite-star-button${isTeamFavorite(selectedGame.away.id, selectedGame.feedPath) ? ' is-favorite' : ''}`}
+                    title={isTeamFavorite(selectedGame.away.id, selectedGame.feedPath) ? 'Remove favorite' : 'Add favorite'}
                     onClick={() => toggleTeamFavorite(selectedGame.away)}
                   >
-                    <Star size={15} fill={isTeamFavorite(selectedGame.away.id) ? 'currentColor' : 'none'} />
+                    <Star size={15} fill={isTeamFavorite(selectedGame.away.id, selectedGame.feedPath) ? 'currentColor' : 'none'} />
                   </button>
                 </div>
                 <div className="wire-matchup-team-details">
@@ -1148,11 +1148,11 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     )}
                   </span>
                   <button
-                    className={`favorite-star-button${isTeamFavorite(selectedGame.home.id) ? ' is-favorite' : ''}`}
-                    title={isTeamFavorite(selectedGame.home.id) ? 'Remove favorite' : 'Add favorite'}
+                    className={`favorite-star-button${isTeamFavorite(selectedGame.home.id, selectedGame.feedPath) ? ' is-favorite' : ''}`}
+                    title={isTeamFavorite(selectedGame.home.id, selectedGame.feedPath) ? 'Remove favorite' : 'Add favorite'}
                     onClick={() => toggleTeamFavorite(selectedGame.home)}
                   >
-                    <Star size={15} fill={isTeamFavorite(selectedGame.home.id) ? 'currentColor' : 'none'} />
+                    <Star size={15} fill={isTeamFavorite(selectedGame.home.id, selectedGame.feedPath) ? 'currentColor' : 'none'} />
                   </button>
                 </div>
               </div>

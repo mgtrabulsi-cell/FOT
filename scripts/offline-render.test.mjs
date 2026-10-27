@@ -66,6 +66,23 @@ const categories = [{
 const players = { data: { teamId: away.id, categories, failedPlayers: 0 }, players: [player] };
 const props = { games: [game], query: '', favorites: [], featuredFavoriteTeamId: null, onToggleFavorite() {}, onOpenPlayer() {}, openGameId: game.id };
 
+test('Wire team stars require the same league, team ID and team favorite type on both board and matchup', () => withStorage(() => {
+  const favorite = { key: `team:${away.id}`, type: 'team', id: away.id, name: away.name, shortName: away.abbr, feedPath: 'football/nfl' };
+  for (const [favorites, expected] of [
+    [[], 0], [[favorite], 1],
+    [[{ ...favorite, key: `team:basketball/nba:${away.id}`, feedPath: 'basketball/nba' }], 0],
+    [[{ ...favorite, key: `team:hockey/nhl:${away.id}`, feedPath: 'hockey/nhl' }], 0],
+    [[{ ...favorite, key: `player:${away.id}`, type: 'player' }], 0],
+    [[{ ...favorite, id: 'unrelated' }], 0],
+  ]) {
+    const board = renderToStaticMarkup(createElement(TheWire, { ...props, favorites, openGameId: null }));
+    assert.equal((board.match(/aria-label="Favorite team"/g) ?? []).length, expected);
+    const matchup = renderToStaticMarkup(createElement(TheWire, { ...props, favorites }));
+    assert.equal((matchup.match(/favorite-star-button is-favorite/g) ?? []).length, expected);
+    assert.equal((matchup.match(/title="Remove favorite"/g) ?? []).length, expected);
+  }
+}));
+
 test('Mounted NFL boxes notice background preloads and newer saved stats without reopening or waiting for a request', () => withStorage(() => {
   const snapshot = (yards) => ({
     eventId: game.eventId, teams: [{ id: away.id, name: away.name,
