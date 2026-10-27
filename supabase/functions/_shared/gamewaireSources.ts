@@ -1,5 +1,5 @@
 import { array, markets, normalize, numeric, object, text } from './gamewaire.ts';
-import type { Evidence, Observation, Quote, Sport } from './gamewaire.ts';
+import type { Evidence, NBARotation, Observation, Quote, Sport } from './gamewaire.ts';
 
 const paths = { NBA: 'basketball/nba', NFL: 'football/nfl' };
 const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
@@ -57,6 +57,12 @@ export function playerSamples(value: unknown, market: string, now: number): Obse
   const index = names.findIndex((name) => columns.includes(name));
   if (index < 0) throw new Error(`Player log does not report ${market}.`);
   const minutesIndex = names.findIndex((name) => ['MIN', 'minutes'].includes(name));
+  const attempt = (stats: unknown[], direct: string, combined: string) => {
+    const directIndex = names.indexOf(direct), combinedIndex = names.indexOf(combined);
+    if (directIndex >= 0) return numeric(stats[directIndex]);
+    const value = stats[combinedIndex];
+    return typeof value === 'string' && /^\d+-\d+$/.test(value) ? numeric(value.split('-')[1]) : undefined;
+  };
   const result = new Map<string, Observation>();
   for (const rawType of array(data.seasonTypes)) {
     const type = object(rawType);
@@ -70,7 +76,13 @@ export function playerSamples(value: unknown, market: string, now: number): Obse
         if (!id || value === undefined || !Number.isFinite(Date.parse(date)) || Date.parse(date) >= now) continue;
         const min = stats[minutesIndex], parsed = typeof min === 'string' && /^\d+:\d{2}$/.test(min)
           ? Number(min.split(':')[0]) + Number(min.split(':')[1]) / 60 : numeric(min);
-        result.set(id, { eventId: id, date, value, minutes: parsed, opponent: text(object(event.opponent).displayName), location: text(event.atVs) });
+        const fga = attempt(stats, 'fieldGoalsAttempted', 'fieldGoalsMade-fieldGoalsAttempted');
+        const fta = attempt(stats, 'freeThrowsAttempted', 'freeThrowsMade-freeThrowsAttempted');
+        const turnovers = numeric(stats[names.indexOf('turnovers')]);
+        const offensiveInvolvement = fga !== undefined && fta !== undefined && turnovers !== undefined
+          ? fga + 0.44 * fta + turnovers : undefined;
+        result.set(id, { eventId: id, date, value, minutes: parsed, offensiveInvolvement,
+          opponent: text(object(event.opponent).displayName), location: text(event.atVs) });
       }
     }
   }
@@ -82,6 +94,26 @@ export function nbaSeasonBlend<T extends Observation>(current: T[], previous: T[
   if (!current.length || previous.length < 12) return [];
   return [...tagged.map((row) => ({ ...row, weight: 0.5 / current.length })),
     ...previous.map((row) => ({ ...row, season: season - 1, weight: 0.5 / previous.length }))];
+}
+export function nbaRotationPool(players: Array<{ name: string; teamId: string; samples: Observation[] }>) {
+  const result = new Map<string, NBARotation>();
+  const ranked = players.flatMap((player) => {
+    const recent = player.samples.slice(0, 5);
+    if (!recent.length || recent.some((row) => row.minutes === undefined || !Number.isFinite(row.minutes))) return [];
+    const minutes = recent.reduce((sum, row) => sum + row.minutes!, 0) / recent.length;
+    const involvement = recent.every((row) => row.offensiveInvolvement !== undefined)
+      ? recent.reduce((sum, row) => sum + row.offensiveInvolvement!, 0) / recent.length : undefined;
+    return [{ ...player, minutes, involvement }];
+  }).sort((a, b) => b.minutes - a.minutes || (b.involvement ?? 0) - (a.involvement ?? 0));
+  const teams = new Map<string, number>();
+  for (const player of ranked) {
+    const rank = (teams.get(player.teamId) ?? 0) + 1;
+    teams.set(player.teamId, rank);
+    if (rank <= 5 && player.minutes >= 24) result.set(player.name, { label: 'Core rotation', minutes: player.minutes, involvement: player.involvement });
+    else if (player.minutes >= 18 && player.involvement !== undefined && player.involvement >= 12)
+      result.set(player.name, { label: 'High-usage rotation', minutes: player.minutes, involvement: player.involvement });
+  }
+  return result;
 }
 export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: number, fetcher: typeof fetch = fetch) {
   const sport = quotes[0].sport, path = paths[sport], base = `https://site.api.espn.com/apis/site/v2/sports/${path}`;
@@ -112,6 +144,7 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
   const players = [...new Set(quotes.filter((quote) => quote.market.startsWith('player_')).map((quote) => quote.subject))].slice(0, 24);
   const logs = new Map<string, unknown>();
   const previousLogs = new Map<string, unknown>();
+  const rotationSamples = new Map<string, Observation[]>();
   const identities = new Map<string, { playerId: string; teamId: string }>();
   for (let start = 0; start < players.length; start += 4) {
     await Promise.all(players.slice(start, start + 4).map(async (name) => {
@@ -125,15 +158,21 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
         const data = await get(`https://site.web.api.espn.com/apis/common/v3/sports/${path}/athletes/${encodeURIComponent(text(athlete.id))}/gamelog?season=${matchup.season}`);
         logs.set(name, data);
         identities.set(name, { playerId: text(athlete.id), teamId: team.id });
-        const market = quotes.find((quote) => quote.subject === name && quote.market.startsWith('player_'))?.market;
-        if (sport === 'NBA' && market && playerSamples(data, market, now).length < 12) {
-          try { previousLogs.set(name, await get(`https://site.web.api.espn.com/apis/common/v3/sports/${path}/athletes/${encodeURIComponent(text(athlete.id))}/gamelog?season=${matchup.season - 1}`)); }
-          catch (cause) { warnings.push(`${name}: previous-season logs unavailable: ${cause instanceof Error ? cause.message : 'request failed'}`); }
-        }
-      } catch {
-        warnings.push(`${name}: player game logs could not be retrieved.`);
+        if (sport === 'NBA') rotationSamples.set(name, playerSamples(data, 'player_points', now));
+      } catch (cause) {
+        warnings.push(`${name}: player game logs could not be verified: ${cause instanceof Error ? cause.message : 'request failed'}`);
       }
     }));
+  }
+  const rotation = nbaRotationPool([...rotationSamples].map(([name, samples]) => ({ name, samples, teamId: identities.get(name)!.teamId })));
+  if (sport === 'NBA') {
+    const eligible = players.filter((name) => rotation.has(name) && (rotationSamples.get(name)?.length ?? 0) < 12);
+    for (let start = 0; start < eligible.length; start += 4) {
+      await Promise.all(eligible.slice(start, start + 4).map(async (name) => {
+        try { previousLogs.set(name, await get(`https://site.web.api.espn.com/apis/common/v3/sports/${path}/athletes/${encodeURIComponent(identities.get(name)!.playerId)}/gamelog?season=${matchup.season - 1}`)); }
+        catch (cause) { warnings.push(`${name}: previous-season logs unavailable: ${cause instanceof Error ? cause.message : 'request failed'}`); }
+      }));
+    }
   }
   for (const quote of quotes) {
     const risks = ['Experimental, uncalibrated baseline; not a promise of profit.', 'Cross-player and team correlations are not fully modeled.',
@@ -147,6 +186,9 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
         evidence.set(quote.key, { eligible: false, reason: error instanceof Error ? error.message : 'Player logs unavailable.', samples, fetchedAt, quality: 0, risks }); continue;
       }
       if (sport === 'NBA') {
+        if (!rotation.has(quote.subject)) {
+          evidence.set(quote.key, { eligible: false, reason: 'Outside the core/high-usage rotation: requires top-five recent minutes (24+), or 18+ minutes with 12+ offensive involvement.', samples: [], fetchedAt, quality: 0, risks }); continue;
+        }
         const minutes = samples.slice(0, 10).map((row) => row.minutes);
         const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
         if (!minutes.length || minutes.some((value) => value === undefined)
@@ -191,7 +233,8 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       }
       risks.push('No home-court/home-field coefficient is assumed without fitted historical evidence.');
     }
-    evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: sport === 'NBA' ? matchup.season : undefined,
+    if (sport === 'NBA' && quote.market.startsWith('player_')) risks.push('Rotation is ranked by recent minutes among matched offered players, not a confirmed starting five. Offensive involvement is FGA + 0.44 × FTA + turnovers, not official usage percentage.');
+    evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: sport === 'NBA' ? matchup.season : undefined, rotation: sport === 'NBA' && quote.market.startsWith('player_') ? rotation.get(quote.subject) : undefined,
       identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
   }
   return { evidence, warnings, coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };

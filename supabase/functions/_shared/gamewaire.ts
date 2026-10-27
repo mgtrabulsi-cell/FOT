@@ -1,5 +1,5 @@
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v2';
+export const modelVersion = 'empirical-baseline-v3';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -16,11 +16,13 @@ export type Quote = {
   market: string; subject: string; side: string; line: number | null; american: number;
   book: string; updatedAt: string; noVig: number | null;
 };
-export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string; season?: number; weight?: number };
+export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string; season?: number; weight?: number; offensiveInvolvement?: number };
+export type NBARotation = { label: 'Core rotation' | 'High-usage rotation'; minutes: number; involvement?: number };
 export type Evidence = {
   samples: Observation[]; fetchedAt: string; quality: number; risks: string[];
   eligible: boolean; reason?: string; adjustment?: number;
   currentSeason?: number;
+  rotation?: NBARotation;
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
@@ -30,6 +32,7 @@ export type Candidate = Quote & {
   quality: number; dataAt: string; samples: Observation[]; risks: string[]; facts: string[]; explanation: string;
   identifiers?: Evidence['identifiers'];
   baseline?: string; previousSeasonAverage?: number;
+  rotation?: NBARotation;
 };
 export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }> };
 export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
@@ -190,7 +193,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
-      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined });
+      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation });
   }
   candidates.sort((a, b) => b.conservativeEV - a.conservativeEV || b.ev - a.ev);
   const picks: Candidate[] = [], subjects = new Set<string>();

@@ -15,7 +15,7 @@
 .gai-metrics div { padding: 10px; border: 1px solid #34445b; border-radius: 5px; background: #101a29; }
 .gai-metrics dt { font-size: 11px; color: #bbc7d9; }
 .gai-metrics dd { margin: 6px 0 0; font-weight: 700; }
-.gai-picks { display: grid; gap: 16px; margin: 16px 0; }
+.gai-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; margin: 16px 0; align-items: start; }
 .gai-table { overflow-x: auto; max-width: 100%; }
 .gai-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .gai-table td, .gai-table th { padding: 10px; border-bottom: 1px solid #34445b; text-align: left; }
@@ -25,3 +25,22 @@
 .gai-advanced { grid-column: 1 / -1; }
 .gai-advanced[open] { display: grid; gap: 14px; }
 .gai-choice { border: 1px solid #34445b; padding: 12px; border-radius: 6px; }
+.gai-pick { min-width: 0; }
+.gai-pick-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.gai-grade { display: inline-block; font-size: 12px; font-weight: 800; border: 1px solid #52647e; background: #192537; border-radius: 6px; padding: 6px 10px; white-space: nowrap; }
+.gai-grade-a, .gai-grade-b { color: #8bf0b3; }
+.gai-grade.gai-grade-a, .gai-grade.gai-grade-b, .gai-metrics .gai-grade-a, .gai-metrics .gai-grade-b { background: #102e25; border-color: #3e9367; }
+.gai-grade-c { color: #f0d998; }
+.gai-grade-d { color: #c4cfdf; }
+.gai-tag { display: inline-block; margin-left: 10px; padding: 3px 8px; border-radius: 5px; background: #1d2b40; color: #bfcde0; font-size: 11px; font-weight: 500; }
+.gai-panel .gai-note { color: #b3c1d5; font-size: 12px; }
+.gai-rotation { color: #c2d4eb; }
+.gai-rotation small, .gai-choice small { display: block; margin-top: 4px; }
+.gai-choice { display: flex !important; align-items: center; gap: 10px; cursor: pointer; }
+.gai-choice input { flex: 0 0 18px; }
+.gai-choice > span:first-of-type { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.gai-choice .gai-grade { padding: 4px 6px; font-size: 11px; }
+.gai-workspace, .gai-history { border-top: 1px solid #34445b; padding-top: 4px; min-width: 0; }
+.gai-workspace > summary, .gai-history > summary { font-weight: 700; }
+.gai-workspace > section { margin: 16px 0 24px; }
+.gai-diagnostics ul { max-height: 320px; overflow-y: auto; }

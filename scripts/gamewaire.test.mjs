@@ -108,6 +108,26 @@ test('GamewAIre grade is a bounded transparent rubric, not a probability', () =>
   assert.ok(engine.gamewaireGrade({ ...low, conservativeEV: 0.1 }).score > engine.gamewaireGrade(low).score);
 });
 
+test('NBA rotation pool keeps five high-minute players per team and verified high-usage reserves only', () => {
+  const player = (name, minutes, involvement, teamId = 'home') => ({ name, teamId,
+    samples: Array.from({ length: 3 }, () => ({ date: quote.updatedAt, value: 10, minutes, offensiveInvolvement: involvement })) });
+  const players = [player('A', 36, 20), player('B', 34, 18), player('C', 33, 17), player('D', 30, undefined), player('E', 28, 8),
+    player('Bench scorer', 22, 14), player('Limited reserve', 20, 6), player('Small cameo', 17.9, 20),
+    player('Unknown bench usage', 19, undefined), player('Away starter', 32, 8, 'away')];
+  const pool = sources.nbaRotationPool(players);
+  assert.equal(pool.size, 7);
+  assert.equal(pool.get('A').label, 'Core rotation');
+  assert.equal(pool.get('D').label, 'Core rotation', 'Core-minute players need not invent missing usage data');
+  assert.equal(pool.get('Bench scorer').label, 'High-usage rotation');
+  assert.equal(pool.get('Away starter').label, 'Core rotation', 'Each team gets its own five-player ranking');
+  assert.equal(pool.has('Limited reserve'), false);
+  assert.equal(pool.has('Small cameo'), false);
+  assert.equal(pool.has('Unknown bench usage'), false);
+  assert.equal(sources.nbaRotationPool([player('At threshold', 18, 12)]).get('At threshold').label, 'High-usage rotation');
+  assert.equal(sources.nbaRotationPool([player('No minutes', undefined, 20)]).size, 0);
+  assert.equal(sources.nbaRotationPool([{ name: 'No history', teamId: 'home', samples: [] }]).size, 0);
+});
+
 test('NBA early season uses exactly half of each real cohort and switches off at twelve games', () => {
   const current = evidence.samples.slice(0, 3).map((row) => ({ ...row, value: 40 }));
   const previous = Array.from({ length: 82 }, (_, i) => ({ date: new Date(now - (200 + i) * 86_400_000).toISOString(), value: 20 }));
@@ -170,6 +190,28 @@ test('Early-season NBA totals and player minutes use real previous-season eviden
     assert.ok(Math.abs(item.samples.filter((row) => row.season === 2026).reduce((sum, row) => sum + row.weight, 0) - 0.5) < 1e-10);
   }
   assert.ok(engine.evaluate([{ ...quote, line: 15.5 }], data.evidence, settings, now).picks[0], 'Three valid current games with minutes can use the prior-season baseline');
+  assert.equal(data.evidence.get(quote.key).rotation.label, 'Core rotation');
+  for (const [minutes, attempts, expected] of [['20', '5', false], ['20', '12', true], ['17', '20', false]]) {
+    const calls = [];
+    const tested = await sources.collectEvidence([quote], matchup, now, async (url) => {
+      calls.push(String(url));
+      const response = await fetcher(url);
+      if (!String(url).includes('/gamelog')) return response;
+      const body = await response.json();
+      body.names.push('fieldGoalsMade-fieldGoalsAttempted', 'freeThrowsMade-freeThrowsAttempted', 'turnovers');
+      for (const type of body.seasonTypes) for (const category of type.categories) for (const row of category.events) {
+        row.stats[1] = minutes; row.stats.push(`3-${attempts}`, '0-0', '0');
+      }
+      return Response.json(body);
+    });
+    const item = tested.evidence.get(quote.key);
+    assert.equal(item.eligible, expected);
+    if (expected) assert.equal(item.rotation.label, 'High-usage rotation');
+    else {
+      assert.match(item.reason, /Outside the core/);
+      assert.equal(calls.some((url) => url.includes('/gamelog?season=2026')), false, 'Do not download prior logs for ineligible reserves');
+    }
+  }
 });
 
 test('Adjusted team forecasts retain real observed averages and valid point/push outcomes', () => {
@@ -289,7 +331,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, performance, performanceGroups, gamewaireGrade } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
@@ -301,7 +343,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(empty, /No model analyses yet/);
   assert.doesNotMatch(empty, /class="gai-pick/);
   assert.match(empty, /disabled=""[^>]*>Load upcoming games/);
-  const candidate = evaluate().picks[0];
+  const candidate = { ...evaluate().picks[0], baseline: 'Early-season 50/50 blend', previousSeasonAverage: 20,
+    rotation: { label: 'Core rotation', minutes: 32, involvement: 18 } };
   const run = { id: 'run', matchup: 'Away at Home', created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
   const pick = { ...candidate, id: 'pick', event_start: quote.start, created_at: quote.updatedAt, push_probability: candidate.pushProbability,
     result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1 };
@@ -319,17 +362,27 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /GamewAIre grade/);
   assert.match(report, /Estimated win probability \(unvalidated\)/);
   assert.match(report, /Brier score/);
+  assert.match(report, /gai-grade-a/);
+  assert.match(report, /Core rotation/);
+  assert.match(report, /not a confirmed starter/);
+  assert.match(report, /data-method note, not an error/);
+  assert.match(report, /<details class="gai-history">/);
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
   assert.match(admin, /Choose up to four member picks/);
   assert.match(admin, /Publish 0\/4 picks/);
   assert.match(admin, /ODDS_API_KEY/);
+  assert.match(admin, /<details class="gai-workspace">/);
+  assert.doesNotMatch(admin, /class="feed-warning"[^>]*>This baseline/);
+  assert.match(admin, /<summary>Data notes &amp; excluded markets/);
+  const css = readFileSync(new URL('../src/gamewaire.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gai-grade-a, \.gai-grade-b \{ color: #8bf0b3;/);
 });
 
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ role = 'admin', configured = false, failClaim = false } = {}) {
+function endpoint({ role = 'admin', configured = false, failClaim = false, publicationVersion = engine.modelVersion } = {}) {
   const rpc = [], tables = [], fetches = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
     ...(configured ? { ODDS_API_KEY: 'fixture-odds' } : {}),
@@ -339,10 +392,11 @@ function endpoint({ role = 'admin', configured = false, failClaim = false } = {}
     from(table) {
       tables.push(table);
       const builder = {
-        select: () => builder, eq: () => builder, order: () => builder, limit: () => builder, lt: () => builder,
+        select: (columns) => { builder.columns = columns; return builder; }, eq: () => builder, order: () => builder, limit: () => builder, lt: () => builder,
         update: () => builder, insert: (value) => { builder.value = value; return builder; },
         upsert: () => builder,
-        maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role } : null, error: null }),
+        maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role }
+          : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } } : null, error: null }),
         single: async () => ({ data: { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
       };
@@ -392,6 +446,11 @@ test('Publication is admin-only, rejects invalid counts, and uses the transactio
   assert.equal(api.rpc.at(-1).name, 'gamewaire_publish');
   assert.equal(api.rpc.at(-1).args.selected_keys[0], quote.key);
   assert.equal(api.fetches.length, 0, 'Publishing a prepared report never triggers a paid call');
+  const legacy = endpoint({ publicationVersion: 'empirical-baseline-v2' });
+  const result = await legacy.run({ action: 'publish', runId, keys: [quote.key] });
+  assert.equal(result.status, 400);
+  assert.match((await result.json()).error, /older model/);
+  assert.equal(legacy.rpc.length, 0);
 });
 test('Endpoint rate limits before paid API calls and persists deterministic complete reports transactionally', async () => {
   const limited = endpoint({ configured: true, failClaim: true });

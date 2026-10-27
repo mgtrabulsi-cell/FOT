@@ -73,6 +73,10 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId) || !Array.isArray(body.keys)
         || body.keys.length < 1 || body.keys.length > 4 || body.keys.some((key) => typeof key !== 'string')
         || new Set(body.keys).size !== body.keys.length) return json({ error: 'Select one to four unique candidates from an analysis.' }, 400);
+      const source = await admin.from('gamewaire_runs').select('payload').eq('id', body.runId).maybeSingle();
+      if (source.error) throw new Error('Could not verify the analysis model before publishing.');
+      if (!source.data || object(source.data.payload).modelVersion !== modelVersion)
+        return json({ error: 'This saved analysis uses an older model. Generate fresh candidates before publishing.' }, 400);
       const saved = await admin.rpc('gamewaire_publish', { target_run: body.runId, selected_keys: body.keys });
       if (saved.error) return json({ error: `Could not publish picks: ${saved.error.message}` }, 400);
       return json({ saved: true });
@@ -163,7 +167,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     else {
       const anchor: Quote = quotes[0];
       const matchup = await resolveMatchup(anchor, fetcher);
-      const data = await collectEvidence(quotes, matchup, Date.now(), fetcher);
+      const data = await collectEvidence(allQuotes, matchup, Date.now(), fetcher);
       report = { ...evaluate(quotes, data.evidence, settings, Date.now(), 8), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (aiKey && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);

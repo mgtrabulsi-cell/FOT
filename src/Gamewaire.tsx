@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { defaultSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, performance, performanceGroups } from './services/gamewaire';
+import { defaultSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups } from './services/gamewaire';
 import type { AnalysisRun, Candidate, EngineStatus, OddsEvent, PublishedGame, Settings, Sport, StoredPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
@@ -17,26 +17,34 @@ const statusLabels = {
 function PickCard({ pick, record }: { pick: Candidate; record?: StoredPick }) {
   const grade = gamewaireGrade(pick);
   return <article className="gai-pick angle-card">
-    <span className="eyebrow">{pick.sport} · EXPERIMENTAL MODEL</span>
+    <div className="gai-pick-top"><span className="eyebrow">{pick.sport} · {pick.market.replace(/_/g, ' ')}</span>
+      <span className={`gai-grade gai-grade-${grade.letter.toLowerCase()}`}>Grade {grade.letter} · {grade.score}/100</span></div>
     <h3>{pick.subject} · {pick.side}{pick.line === null ? '' : ` ${pick.line}`}</h3>
-    <p>{pick.market.replace(/_/g, ' ')} · {pick.book} · <b>{odds(pick.american)}</b></p>
+    <p>{pick.book} · <b>{odds(pick.american)}</b>
+      {pick.baseline && <span className="gai-tag">50/50 season blend</span>}</p>
+    {pick.rotation && <p className="gai-rotation">{pick.rotation.label} · {pick.rotation.minutes.toFixed(1)} recent minutes
+      {pick.rotation.involvement !== undefined && ` · ${pick.rotation.involvement.toFixed(1)} offensive involvement`}
+      <small>Minutes/usage-ranked, not a confirmed starter.</small></p>}
     {record && <p>{record.withdrawn ? 'Withdrawn · not an active selection · ' : ''}Status: {record.result}</p>}
     <dl className="gai-metrics">
-      <div><dt>GamewAIre grade</dt><dd>{grade.letter} · {grade.score}/100</dd></div>
+      <div className={`gai-grade-${grade.letter.toLowerCase()}`}><dt>GamewAIre grade</dt><dd>{grade.letter} · {grade.score}/100</dd></div>
       <div><dt>Estimated win probability (unvalidated)</dt><dd>{percent(pick.probability)}</dd></div>
+      <div><dt>Projection</dt><dd>{pick.projection.toFixed(1)}</dd></div>
+    </dl>
+    {record && record.result !== 'pending' && <p className="gai-note">Saved analysis, not a new live selection.</p>}
+    {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="gai-note">Saved price · refresh analysis before using a changed line.</p>}
+    <details><summary>Pick analysis &amp; game logs</summary>
+    <dl className="gai-metrics">
       <div><dt>Push probability</dt><dd>{percent(pick.pushProbability)}</dd></div>
       <div><dt>Raw market implied</dt><dd>{percent(pick.implied)}</dd></div>
       <div><dt>No-vig market</dt><dd>{percent(pick.noVig)}</dd></div>
       <div><dt>Decisive-outcome edge</dt><dd>{(pick.edge * 100).toFixed(1)} pp</dd></div>
       <div><dt>Estimated EV / 1 unit</dt><dd>{percent(pick.ev)}</dd></div>
       <div><dt>Conservative EV</dt><dd>{percent(pick.conservativeEV)}</dd></div>
-      <div><dt>Projection</dt><dd>{pick.projection.toFixed(1)}</dd></div>
     </dl>
     <p>{pick.explanation}</p>
-    {pick.baseline && <p className="nfl-data-note">{pick.baseline} Previous full-season average: {pick.previousSeasonAverage?.toFixed(1) ?? 'Unavailable'}.</p>}
+    {pick.baseline && <p className="gai-note">{pick.baseline} Previous full-season average: {pick.previousSeasonAverage?.toFixed(1) ?? 'Unavailable'}. This is a data-method note, not an error.</p>}
     <small>Odds: {stamp(pick.updatedAt)} · Data retrieved: {stamp(pick.dataAt)}</small>
-    {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="feed-warning">Historical analysis: these odds are stale. A changed line/price requires a fresh evaluation.</p>}
-    <details><summary>Evidence, game logs and risks</summary>
       <p>{pick.sampleSize} underlying games · Current-season last 5: {pick.last5.toFixed(1)} · Last 10: {pick.last10.toFixed(1)} · Current-season average: {pick.seasonAverage.toFixed(1)}</p>
       <p>Data-completeness rubric: {percent(pick.quality)}. This is not a calibrated confidence or win probability.</p>
       <ul>{pick.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul>
@@ -51,15 +59,18 @@ function PublishPicks({ report, refresh }: { report: AnalysisRun; refresh: () =>
   const [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const stale = candidates.some((pick) => Date.now() - Date.parse(pick.updatedAt) > 600_000) || Date.parse(report.event_start) <= Date.now();
+  const legacy = candidates.some((pick) => pick.modelVersion !== modelVersion);
   return <section aria-label="Choose member picks"><h4>Choose up to four member picks</h4>
-    <p>Review up to eight algorithm-qualified candidates. Only selected, published picks appear in the member game selector and enter performance tracking. Fewer picks are valid; never fill a quota with weak data.</p>
+    <p>Select candidates below, review their cards, then publish. Only published picks enter member views and performance tracking.</p>
     <div className="gai-form">{candidates.map((pick) => <label key={pick.key} className="gai-choice">
       <input type="checkbox" checked={selected.includes(pick.key)} disabled={busy || (!selected.includes(pick.key) && selected.length >= 4)}
         onChange={(event) => setSelected((previous) => event.target.checked ? [...previous, pick.key] : previous.filter((key) => key !== pick.key))} />
-      {pick.subject} · {pick.side} {pick.line ?? ''} · {pick.market.replace(/_/g, ' ')} · {odds(pick.american)} · Grade {gamewaireGrade(pick).letter}
+      <span>{pick.subject} · {pick.side} {pick.line ?? ''}<small>{pick.market.replace(/_/g, ' ')} · {odds(pick.american)}</small></span>
+      <span className={`gai-grade gai-grade-${gamewaireGrade(pick).letter.toLowerCase()}`}>Grade {gamewaireGrade(pick).letter}</span>
     </label>)}</div>
     {stale && <p className="feed-warning">These prices are stale or the game has started. Run a fresh analysis before publishing.</p>}
-    <button disabled={busy || stale || !selected.length} onClick={() => {
+    {legacy && <p className="gai-note">Saved under an older model. Generate fresh candidates to apply the rotation filter before publishing.</p>}
+    <button disabled={busy || stale || legacy || !selected.length} onClick={() => {
       setBusy(true); setError(''); setNotice('');
       void engineRequest({ action: 'publish', runId: report.id, keys: selected })
         .then(() => { setNotice(`${selected.length} picks published for this game.`); refresh(); })
@@ -145,8 +156,7 @@ export default function Gamewaire() {
   const changeSport = (value: Sport) => { setSport(value); setEvents([]); setEventId(''); setSettings((previous) => ({ ...previous, markets: [...markets[value]] })); };
   return <section className="gai-panel" aria-label="GamewAIre">
     <header><span className="eyebrow">NFL + NBA · PRICE-AWARE ANALYSIS</span><h2><GamewaireName /></h2>
-      <p>Experimental statistical analysis with verified sportsbook lines. No forced picks, no invented data, and no promise of profit. Not financial advice.</p></header>
-    <p className="feed-warning">This baseline has not been calibrated or validated out of sample. Early-season or incomplete data will often produce no picks. Never treat model estimates as certainty.</p>
+      <p className="gai-note">Experimental model · Grades are ratings, not certainty. Win estimates are unvalidated. No guarantee of profit.</p></header>
     {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
     {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
     <section aria-label="Game picks"><h3>Select a game for GamewAIre picks</h3>
@@ -164,20 +174,10 @@ export default function Gamewaire() {
         <div className="gai-picks">{memberReport.picks.map((pick) => <PickCard key={pick.key} pick={pick}
           record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />)}</div></>}
     </section>
-    {status?.canAnalyze && <details><summary>Live data setup and provider status</summary>
-      <ol>
-        <li>Create your own account at <a href="https://the-odds-api.com/#get-access" target="_blank" rel="noreferrer">The Odds API</a>. Confirm NFL/NBA US odds and desired player props are covered; review costs and display rights before subscribing.</li>
-        <li>In <a href="https://supabase.com/dashboard/project/cbwhmouuckrqnhvfnaol/functions/secrets" target="_blank" rel="noreferrer">Supabase Edge Function Secrets</a>, add <code>ODDS_API_KEY</code> with your key. Do not paste it in chat or use a browser/VITE variable.</li>
-        <li>Return here and press Refresh provider status. Then load games, analyze, choose up to four from eight candidates, and publish.</li>
-      </ol>
-      <p>Odds key: {status.oddsReady ? 'Configured (provider connection is verified when games are loaded)' : 'Not configured'}. OpenAI: {status.aiReady ? 'Configured' : 'Optional; deterministic explanations are ready'}.</p>
-      <button onClick={refreshHistory}>Refresh provider status</button>
-    </details>}
-    {status?.canAnalyze && (!status.oddsReady || !status.aiReady) && <p className="feed-warning" role="status">
-      {!status.oddsReady && 'Sportsbook analysis is unavailable until an admin configures The Odds API on the server. '}
-      {!status.aiReady && 'OpenAI is not configured; available model results use deterministic, verified explanations.'}
-    </p>}
-    {status?.canAnalyze && <details open className="gai-admin"><summary>Admin analysis controls</summary>
+    {status?.canAnalyze && <details className="gai-workspace"><summary>Create &amp; manage picks <span className="gai-tag">Admin</span></summary>
+    {!status.oddsReady && <p className="feed-warning" role="status">Sportsbook analysis is unavailable until an admin configures The Odds API on the server. Open provider setup below.</p>}
+    <section className="gai-admin" aria-label="Admin analysis controls"><h3>Create picks</h3>
+      <p>1. Load games &nbsp; 2. Generate candidates &nbsp; 3. Choose up to four and publish</p>
       <form className="gai-form" onSubmit={(event) => { event.preventDefault(); void request('analyze'); }}>
         <label>Sport<select value={sport} disabled={busy} onChange={(event) => changeSport(event.target.value as Sport)}><option>NBA</option><option>NFL</option></select></label>
         <label>Date (Eastern)<input type="date" value={date} disabled={busy} onChange={(event) => { setDate(event.target.value); setEvents([]); setEventId(''); }} required /></label>
@@ -192,23 +192,36 @@ export default function Gamewaire() {
         </details>
         <button disabled={busy || !eventId || !settings.markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : 'Generate up to eight candidates'}</button>
       </form>
-      <p>Calls are cached and limited to 6 requests per admin / 20 site-wide per hour. Only upcoming games. Up to 24 matched players; coverage limits and omissions are disclosed.</p>
-    </details>}
+      <p className="gai-note">NBA focuses on core rotation and high-usage reserves, not confirmed lineups. Fewer than eight candidates may qualify.</p>
+    </section>
     {actionError && <p role="alert" className="feed-warning">{actionError}</p>}
     {(busy || notice) && <p role="status">{busy ? 'Working with verified provider data. Existing reports remain available…' : notice}</p>}
-    {status?.canAnalyze && <section aria-label="Analysis reports"><h3>Saved analysis reports</h3>
+    <section aria-label="Analysis reports"><h3>Saved analysis reports</h3>
       {!!runs.length && <label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{runs.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label>}
       {loaded && !runs.length && <p>No model analyses yet. Configure providers, then an admin can evaluate a matchup.</p>}
       {report && <><h4>{report.matchup}</h4><p role="status">{report.status === 'in_progress' && Date.now() - Date.parse(report.created_at) > 180_000 ? 'Analysis interrupted. Retry this matchup; no completed recommendation is being claimed.' : statusLabels[report.status]}</p>
         {report.status === 'no_qualifying' && <p>No qualifying value bets found for this matchup.</p>}
         {report.payload.error && <p className="feed-warning">{report.payload.error}</p>}
-        {report.payload.warnings?.map((warning) => <p className="nfl-data-note" key={warning}>{warning}</p>)}
-        {report.payload.explanationMode && <p className="nfl-data-note">{report.payload.explanationMode}</p>}
         {report.status === 'completed' && !!report.payload.picks?.length && <PublishPicks key={report.id} report={report} refresh={refreshHistory} />}
         <div className="gai-picks">{report.payload.picks?.map((pick) => <PickCard key={pick.key} pick={pick} />)}</div>
-        {!!report.payload.rejected?.length && <details><summary>Why other markets did not qualify ({report.payload.rejected.length})</summary><ul>{report.payload.rejected.map((row, i) => <li key={`${row.key}:${i}`}>{row.key.split('|').slice(1).join(' · ')}: {row.reason}</li>)}</ul></details>}
+        <details className="gai-diagnostics"><summary>Data notes &amp; excluded markets</summary>
+          {report.payload.warnings?.map((warning) => <p className="gai-note" key={warning}>{warning}</p>)}
+          {report.payload.explanationMode && <p className="gai-note">{report.payload.explanationMode}</p>}
+          {!!report.payload.rejected?.length && <ul>{report.payload.rejected.map((row, i) => <li key={`${row.key}:${i}`}>{row.key.split('|').slice(1).join(' · ')}: {row.reason}</li>)}</ul>}
+        </details>
       </>}
-    </section>}
+    </section>
+    <details><summary>Live data setup and provider status</summary>
+      <p>Odds key: {status.oddsReady ? 'Configured (provider connection is verified when games are loaded)' : 'Not configured'}. OpenAI: {status.aiReady ? 'Configured' : 'Optional; deterministic explanations are ready'}.</p>
+      <ol>
+        <li>Create your own account at <a href="https://the-odds-api.com/#get-access" target="_blank" rel="noreferrer">The Odds API</a>. Confirm NFL/NBA US odds, player-prop coverage and display rights.</li>
+        <li>Add <code>ODDS_API_KEY</code> in <a href="https://supabase.com/dashboard/project/cbwhmouuckrqnhvfnaol/functions/secrets" target="_blank" rel="noreferrer">Supabase Edge Function Secrets</a>. Never share it in chat or a browser variable.</li>
+      </ol>
+      <p>Calls are cached and limited to 6 requests per admin / 20 site-wide per hour. Only upcoming games. Up to 24 matched players; coverage limits and omissions are disclosed.</p>
+      <button onClick={refreshHistory}>Refresh provider status</button>
+    </details>
+    </details>}
+    <details className="gai-history"><summary>Results &amp; pick history</summary>
     <section aria-label="Model performance"><h3>All-history model tracking</h3><p>One unit at the recorded odds per unique selection/price. Repeated identical analyses are not counted twice. All settled selections remain included, even if withdrawn. Admin-reported settlements; no historical simulations are mixed in.</p>
       {loaded && <><dl className="gai-metrics">
         <div><dt>Total tracked</dt><dd>{record.total}</dd></div><div><dt>Settled</dt><dd>{record.settled}</dd></div><div><dt>Pending</dt><dd>{record.pending}</dd></div>
@@ -230,11 +243,13 @@ export default function Gamewaire() {
         {visible.map((pick) => <tr key={pick.id}><td>{stamp(pick.event_start)}</td><td>{pick.sport} · {pick.market}</td><td>{pick.subject} · {pick.side} {pick.line ?? ''}{status?.canAnalyze && <Settlement key={`${pick.id}:${pick.revision}`} pick={pick} refresh={refreshHistory} />}</td><td>{odds(pick.american)}</td><td>{percent(pick.data.ev)}</td><td>{pick.result}{pick.withdrawn ? ' · withdrawn' : ''}{pick.settlement_note && <small>{pick.settlement_note}</small>}</td></tr>)}
       </tbody></table></div>
     </section>
+    </details>
     <details><summary>Methodology and limitations</summary>
       <p>GamewAIre grade is a transparent 0-100 rubric, not a probability: conservative EV / 15% (40 points), edge / 15 percentage points (25), estimated EV / 25% (20), completeness (15). Each factor is capped at its weight. A: 85+, B: 70+, C: 55+, D: below 55. This heuristic has not been validated against outcomes; estimated win probability is shown separately and is also unvalidated.</p>
       <p>NBA early season: before 12 current-season games, 50% weight goes to current-season games and 50% to all available previous-season regular-season game logs (minimum 12). At least one recent current-season game is required; no repeated season-average pseudo-games. Current-season-only analysis resumes at 12 games. Recent-10 weighting is paused during the equal blend. NFL still requires 8 current-season games. A four-observation no-vig prior and a conservative one-sided 1.645-standard-error EV check apply. This uncertainty screen is not calibrated confidence.</p>
+      <p>NBA player pool: top five by recent minutes among matched offered players, requiring 24+ minutes, plus other players averaging 18+ minutes and 12+ offensive involvement over up to five current-season games. Involvement = field goal attempts + 0.44 x free throw attempts + turnovers; it is a proxy, not official usage percentage. These are rotation estimates, not confirmed starters. Missing involvement cannot qualify a bench player. Active status and stable minutes checks still apply.</p>
       <p>Team markets use season scoring margins or totals, with a simple opponent-margin adjustment. NBA props require reasonably stable minutes; NFL opportunity and injury effects remain uncertain. Completeness is 80% for supported team/NBA data, 75% for NFL props lacking snap-share data, and lower/ineligible for missing identity, status, logs or playing time. No ATS, positional-defense, scheme, home-field or injury coefficient is invented.</p>
-      <p>Ranking uses conservative EV, then estimated EV. Admins review up to eight qualifying candidates and publish up to four per game. At most one selection per player and one team market; other game-level correlations remain possible. No exact pick quota. Odds older than 10 minutes are rejected; supported data must be fetched within an hour. Model version: empirical-baseline-v2.</p>
+      <p>Ranking uses conservative EV, then estimated EV. Admins review up to eight qualifying candidates and publish up to four per game. At most one selection per player and one team market; other game-level correlations remain possible. No exact pick quota. Odds older than 10 minutes are rejected; supported data must be fetched within an hour. Model version: empirical-baseline-v3.</p>
       <p>Historical replay tooling rejects future observations and requires pre-event odds/data snapshots. No licensed historical dataset or validated backtest is configured yet. No reliability or profitability claim is made.</p>
     </details>
   </section>;
