@@ -67,48 +67,47 @@ export function pickBlurb(pick: Candidate) {
   const sample = `${current.length} recorded ${currentSeason === undefined ? 'games' : 'games this season'}`;
   const margin = (value: number) => value > 0 ? `outscored opponents by ${value.toFixed(1)} points per game`
     : value < 0 ? `been outscored by ${Math.abs(value).toFixed(1)} points per game` : 'scored the same number of points as opponents on average';
-  let explanation: string;
+  const sentences: string[] = [];
+  let takeaway: string;
   if (player || pick.market === 'totals') {
     const over = pick.side === 'Over', line = pick.line;
     const target = line === null ? `${pick.side.toLowerCase()} ${unit}` : `${pick.side.toLowerCase()} ${line} ${unit}`;
-    const average = player ? `${pick.subject} averages ${pick.seasonAverage.toFixed(1)} ${unit} across ${sample}.`
-      : `For ${pick.away} vs. ${pick.home}, the teams' ${sample} averaged ${pick.seasonAverage.toFixed(1)} combined points. Those are their separate past games, not a head-to-head average.`;
-    const form = recent.length ? ` The last ${recent.length} ${player ? 'outings produced' : 'games in those logs finished with'} ${recent.map((row) => String(row.value)).join(', ')} ${unit}, starting with the most recent.` : '';
-    const hitCount = line === null || !recent.length ? '' : ` ${recent.filter((row) => over ? row.value > line : row.value < line).length} of those ${recent.length} ${player ? 'outings' : 'games'} ${over ? 'cleared' : 'stayed below'} the ${line} line.`;
+    sentences.push(player ? `${pick.subject} averages ${pick.seasonAverage.toFixed(1)} ${unit} across ${sample}${pick.rotation ? `, with ${pick.rotation.minutes.toFixed(1)} minutes per game recently` : ''}.`
+      : `For ${pick.away} vs ${pick.home}, the teams' ${sample} averaged ${pick.seasonAverage.toFixed(1)} combined points in their separate past games, not a head-to-head average.`);
+    if (recent.length) {
+      const hitCount = line === null ? '' : `; ${recent.filter((row) => over ? row.value > line : row.value < line).length} of those ${recent.length} ${player ? 'outings' : 'games'} ${over ? 'cleared' : 'stayed below'} the ${line} line`;
+      sentences.push(`The last ${recent.length} ${player ? 'outings produced' : 'games in those logs finished with'} ${recent.map((row) => String(row.value)).join(', ')} ${unit}, most recent first${hitCount}.`);
+    }
     const supports = line !== null && (over ? pick.seasonAverage > line : pick.seasonAverage < line);
-    const takeaway = line === null ? '' : supports
-      ? ` That average gives the ${target} a statistical case, though recent results are only part of the picture.`
-      : ` The ${target} is less straightforward: the season average ${pick.seasonAverage === line ? 'sits on the line' : `leans the other way`}, so the recent numbers are worth treating cautiously.`;
-    const minutes = player && pick.rotation ? ` Recent playing time has averaged ${pick.rotation.minutes.toFixed(1)} minutes per game.` : '';
-    explanation = `${average}${form}${hitCount}${minutes}${takeaway}`;
+    takeaway = line === null ? 'The available form is useful context, but not a guarantee of the next result.' : supports
+      ? `That gives the ${target} a statistical case, but ${player ? 'a change in role or minutes' : 'a change in scoring pace'} could shift the outlook.`
+      : `The ${target} is a more cautious lean: the season average ${pick.seasonAverage === line ? 'sits on the line' : 'leans the other way'}, rather than backing it cleanly.`;
   } else {
     const wins = current.filter((row) => row.value > 0).length, losses = current.filter((row) => row.value < 0).length;
     const ties = current.length - wins - losses;
-    const record = current.length ? `${pick.subject} are ${wins}-${losses}${ties ? `-${ties} (W-L-T)` : ''} across ${sample} and have ${margin(pick.seasonAverage)}.` : '';
+    if (current.length) sentences.push(`${pick.subject} are ${wins}-${losses}${ties ? `-${ties} (W-L-T)` : ''} across ${sample} and have ${margin(pick.seasonAverage)}.`);
     const line = pick.line;
     const target = pick.market === 'h2h' ? `${pick.subject} moneyline`
       : `${pick.subject}${line === null ? ' spread' : ` ${line > 0 ? '+' : ''}${line}`}`;
-    const latest = recent.length ? ` Their last ${recent.length} results: ${recent.map((row) => `${row.value > 0 ? 'won' : row.value < 0 ? 'lost' : 'tied'}${row.value === 0 ? '' : ` by ${Math.abs(row.value)}`}${row.opponent ? ` vs. ${row.opponent}` : ''}`).join('; ')}, starting with the most recent.` : '';
+    if (recent.length) sentences.push(`Their last ${recent.length} results: ${recent.map((row) => `${row.value > 0 ? 'won' : row.value < 0 ? 'lost' : 'tied'}${row.value === 0 ? '' : ` by ${Math.abs(row.value)}`}${row.opponent ? ` vs ${row.opponent}` : ''}`).join('; ')}, most recent first.`);
     const threshold = pick.market === 'h2h' ? 0 : -(line ?? 0);
-    const support = pick.seasonAverage > threshold ? `That scoring edge gives the ${target} a statistical case, without making it a sure thing.`
-      : `The ${target} is a less straightforward call: their average scoring ${pick.seasonAverage === threshold ? 'sits right on the line' : 'does not favor this side'}, so the recent results deserve a cautious read.`;
-    explanation = `${record}${latest} ${support}`;
+    takeaway = pick.seasonAverage > threshold ? `That scoring edge gives the ${target} a statistical case, though lineup changes and a small sample can shift the outlook.`
+      : `The ${target} is a more cautious lean: their average scoring ${pick.seasonAverage === threshold ? 'sits right on the line' : 'does not favor this side'}, so the recent results are not a clean endorsement.`;
   }
-  const recentFive = current.slice(0, 5);
-  const form = recentFive.length > 3 ? ` Over the last ${recentFive.length}, ${player ? `${pick.subject} has averaged` : pick.market === 'totals' ? 'those games have averaged' : 'their average point difference is'} ${(recentFive.reduce((sum, row) => sum + row.value, 0) / recentFive.length).toFixed(1)} ${unit}.` : '';
   const opponentName = player ? undefined : pick.subject === pick.home ? pick.away : pick.home;
   const meetings = pick.market === 'totals' ? [] : current.filter((row) =>
     row.opponent && normalize(row.opponent).replace(/^losangeles/, 'la') === normalize(opponentName ?? pick.opponents?.[0]?.team ?? '').replace(/^losangeles/, 'la'));
-  const matchupForm = meetings.length ? ` In ${meetings.length} recorded ${currentSeason === undefined ? '' : 'current-season '}meeting${meetings.length === 1 ? '' : 's'} with ${opponentName ?? pick.opponents?.[0]?.team}, ${player
+  const matchupForm = meetings.length ? `In ${meetings.length} recorded ${currentSeason === undefined ? '' : 'current-season '}meeting${meetings.length === 1 ? '' : 's'} with ${opponentName ?? pick.opponents?.[0]?.team}, ${player
     ? `${pick.subject} averaged ${(meetings.reduce((sum, row) => sum + row.value, 0) / meetings.length).toFixed(1)} ${unit}`
     : `${pick.subject} went ${meetings.filter((row) => row.value > 0).length}-${meetings.filter((row) => row.value < 0).length}${meetings.some((row) => row.value === 0) ? `-${meetings.filter((row) => row.value === 0).length} (W-L-T)` : ''}`}.` : '';
-  const defense = (pick.opponents ?? []).map((opponent) => ` ${opponent.team} have allowed ${opponent.pointsAllowed.toFixed(1)} points per game, ${opponent.tied ? 'tied for ' : ''}No. ${opponent.rank} of ${opponent.leagueSize} in fewest points allowed per game, across ${opponent.games} games this season. They've scored ${opponent.pointsScored.toFixed(1)} per game themselves.`).join('');
-  const defensiveCaveat = defense ? ` That's team scoring-defense context${player ? ', not a ranking against this position or stat' : ', not a pace-adjusted defensive-efficiency rating'}; it does not change the saved probability.${(pick.opponents ?? []).some((opponent) => opponent.games < 12) ? ' The early-season ranking can move quickly.' : ''}` : '';
+  const defense = (pick.opponents ?? []).map((opponent) => `${opponent.team} have allowed ${opponent.pointsAllowed.toFixed(1)} points per game (${opponent.tied ? 'tied for ' : ''}rank ${opponent.rank} of ${opponent.leagueSize} in team scoring defense over ${opponent.games} games${player ? ', not a ranking against this position or stat' : ''})${pick.market === 'totals' ? ` and scored ${opponent.pointsScored.toFixed(1)} per game` : ''}`).join('; ');
   const history = pick.previousSeasonAverage === undefined ? '' : player
-    ? ` For a longer view, ${pick.subject} averaged ${pick.previousSeasonAverage.toFixed(1)} ${unit} in the available prior-season games.`
-    : pick.market === 'totals' ? ` The available prior-season games averaged ${pick.previousSeasonAverage.toFixed(1)} combined points.`
-    : ` In the available prior-season games, they had ${margin(pick.previousSeasonAverage)}.`;
-  return `${explanation}${form}${matchupForm}${defense}${defensiveCaveat}${history} Small samples and changing ${player ? 'roles' : 'lineups'} can change the outlook.`;
+    ? `For a longer view, ${pick.subject} averaged ${pick.previousSeasonAverage.toFixed(1)} ${unit} in the available prior-season games.`
+    : pick.market === 'totals' ? `The available prior-season games averaged ${pick.previousSeasonAverage.toFixed(1)} combined points.`
+    : `In the available prior-season games, they had ${margin(pick.previousSeasonAverage)}.`;
+  if (defense) sentences.push(`${defense}${(pick.opponents ?? []).some((opponent) => opponent.games < 12) ? '; the early-season ranking can move quickly' : ''}.`);
+  if (matchupForm || history) sentences.push(matchupForm || history);
+  return [...sentences.slice(0, 4), takeaway].join(' ');
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
   return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)

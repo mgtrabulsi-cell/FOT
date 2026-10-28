@@ -163,7 +163,7 @@ test('Conversational team blurbs use recorded form without revealing the formula
   const ml = engine.pickBlurb(base);
   assert.match(ml, /Los Angeles Lakers are 1-1 across 2 recorded games this season/);
   assert.match(ml, /outscored opponents by 13\.0 points per game/);
-  assert.match(ml, /won by 30 vs\. Utah Jazz; lost by 4 vs\. Boston Celtics/);
+  assert.match(ml, /won by 30 vs Utah Jazz; lost by 4 vs Boston Celtics/);
   assert.match(ml, /Lakers moneyline a statistical case/);
   assert.doesNotMatch(ml, /Old opponent|scoring margin|weight|50\/50|model|projection|5\.2|69\.0|LowVig|guaranteed win/i);
   const negative = engine.pickBlurb({ ...base, seasonAverage: -3.2, projection: -2 });
@@ -237,11 +237,31 @@ test('Opponent context is persisted without changing the picks, probability, pro
     assert.equal(enriched.picks[0][field], original.picks[0][field]);
   }
   const blurb = engine.pickBlurb(enriched.picks[0]);
-  assert.match(blurb, /Atlanta Hawks have allowed 100\.0 points per game, tied for No\. 1 of 30/);
+  assert.match(blurb, /Atlanta Hawks have allowed 100\.0 points per game \(tied for rank 1 of 30/);
   assert.match(blurb, /not a ranking against this position or stat/);
   assert.match(blurb, /early-season ranking can move quickly/);
   assert.doesNotMatch(blurb, /50\/50|weight|efficiency rating|defense boosts|algorithm/i);
   assert.doesNotMatch(engine.pickBlurb(original.picks[0]), /No\. \d|points allowed per game/);
+});
+test('Explanations stay within five sentences across all markets, prioritizing form, verified defense and matchup history', () => {
+  const base = evaluate().picks[0];
+  const opponent = { team: quote.away, games: 3, pointsAllowed: 110, pointsScored: 115, rank: 12, tied: false, leagueSize: 30, season: 2027, fetchedAt: quote.updatedAt };
+  for (const sport of ['NBA', 'NFL']) for (const market of engine.markets[sport]) {
+    const pick = { ...base, sport, market, subject: market.startsWith('player_') ? base.subject : quote.home, side: 'Over', line: 7.5, previousSeasonAverage: 12.3,
+      rotation: { label: 'Core rotation', minutes: 32 }, opponents: [opponent],
+      samples: Array.from({ length: 10 }, (_, index) => ({ date: `2026-10-${26 - index}`, season: 2027, value: 10 + index, opponent: quote.away })) };
+    const text = engine.pickBlurb(pick);
+    assert.ok(text.split(/[.!?](?:\s|$)/).filter(Boolean).length <= 5, `${market}: ${text}`);
+    assert.ok(text.split(/\s+/).length <= 220, `${market} should remain concise`);
+    assert.match(text, /110\.0 points per game/);
+    if (market !== 'totals') {
+      assert.match(text, /recorded current-season meeting/);
+      assert.doesNotMatch(text, /prior-season games/, 'Verified direct matchup is prioritized over extra historical context');
+    }
+    assert.doesNotMatch(text, /50\/50|algorithm|saved probability|weighting|projection/i);
+  }
+  const total = engine.pickBlurb({ ...base, market: 'totals', opponents: [opponent, { ...opponent, team: quote.home }] });
+  assert.ok(total.split(/[.!?](?:\s|$)/).filter(Boolean).length <= 5, 'Two-team context remains one sentence');
 });
 test('Matchup history uses verified opponent matches only and never counts prior-season logs as current form', () => {
   const opponent = { team: quote.away, games: 20, pointsAllowed: 110, pointsScored: 115, rank: 12, tied: false, leagueSize: 30, season: 2027, fetchedAt: quote.updatedAt };
@@ -551,11 +571,11 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /Brier score/);
   assert.match(report, /gai-grade-positive/);
   assert.match(report, /32\.0 minutes per game/);
-  assert.match(report, /Recent playing time has averaged/);
+  assert.match(report, /minutes per game recently/);
   assert.match(report, /available prior-season games/);
   assert.match(report, /class="gai-pick-summary" aria-label="Why this pick:/);
   assert.ok(report.includes(`${candidate.subject} averages ${candidate.seasonAverage.toFixed(1)} points`));
-  assert.match(report, /Small samples and changing roles can change the outlook/);
+  assert.match(report, /a change in role or minutes/);
   assert.match(report, /<details class="gai-history">/);
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
