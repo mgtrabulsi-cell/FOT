@@ -41,6 +41,11 @@ export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservati
     + 20 * scale(pick.ev, 0.25) + 15 * scale(pick.quality, 1));
   return { score, letter: score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : 'D' };
 }
+export function probabilityGrade(probability: number) {
+  if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error('Invalid win probability.');
+  return probability >= 0.75 ? 'A' : probability >= 0.70 ? 'A-' : probability >= 0.65 ? 'B+'
+    : probability >= 0.55 ? 'B' : probability >= 0.50 ? 'B-' : 'C';
+}
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
   return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)
     || Number(b.market === 'h2h') - Number(a.market === 'h2h')

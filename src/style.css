@@ -938,7 +938,8 @@ td:first-child { color: #828c84; }
   html { scroll-padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .app-shell { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .primary-nav { position: fixed; inset: auto 0 var(--navigation-bottom, 0px); z-index: 40; height: calc(64px + env(safe-area-inset-bottom)); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); align-self: auto; justify-content: space-around; gap: 0; border-top: 1px solid #29354a; background: #0b111c; transform: none; }
-  .primary-nav button { display: flex; flex: 1; min-width: 0; min-height: 64px; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 4px; font-size: 11px; color: var(--muted); }
+  .primary-nav button { display: flex; flex: 1 1 0; min-width: 0; min-height: 64px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 4px 2px; font-size: clamp(9px, 2.5vw, 11px); color: var(--muted); }
+  .primary-nav button > span:last-child { display: block; width: 100%; min-height: 24px; align-content: center; line-height: 12px; text-align: center; text-wrap: balance; }
   .primary-nav button svg { display: block; flex-shrink: 0; }
   .livewire-nav-icon { margin-right: 0; }
   .analyst-nav-icon { margin-right: 0; }
@@ -1713,10 +1714,6 @@ td:first-child { color: #828c84; }
   .wire-linescore-table th.wire-col-team, .wire-linescore-table td.wire-col-team { width: 64px; padding-left: 4px; padding-right: 4px; }
   .wire-linescore-table .wire-team-inline { gap: 4px; font-size: 10px; }
   .wire-linescore-table .wire-team-inline img { width: 16px; height: 16px; flex-basis: 16px; }
-}
-
-@media (max-width: 420px) {
-  .primary-nav button { font-size: 11px; padding: 0 2px; }
 }
 
 /* Score change: slot-wheel roll + fireworks burst (ScoreTicker) */

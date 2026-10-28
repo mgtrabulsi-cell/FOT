@@ -55,10 +55,8 @@
 .gai-pick-price { display: grid; justify-items: end; flex: 0 0 auto; gap: 5px; text-align: right; }
 .gai-pick-price > b { font-size: 14px; }
 .gai-grade { display: inline-block; font-size: 11px; font-weight: 800; border: 1px solid #52647e; background: #192537; border-radius: 5px; padding: 5px 8px; white-space: nowrap; }
-.gai-grade-a, .gai-grade-b { color: #8bf0b3; }
-.gai-grade.gai-grade-a, .gai-grade.gai-grade-b, .gai-metrics .gai-grade-a, .gai-metrics .gai-grade-b { background: #102e25; border-color: #3e9367; }
-.gai-grade-c { color: #f0d998; }
-.gai-grade-d { color: #c4cfdf; }
+.gai-grade-positive { color: #8bf0b3; background: #102e25; border-color: #3e9367; }
+.gai-grade-neutral { color: #c4cfdf; }
 .gai-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 14px 0; }
 .gai-metrics div { min-width: 0; padding: 10px; border: 1px solid #263b55; border-radius: 5px; background: #0a1422; }
 .gai-metrics dt { font-size: 10px; color: #b6c6db; }

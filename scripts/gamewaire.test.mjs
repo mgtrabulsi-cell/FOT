@@ -108,6 +108,15 @@ test('GamewAIre grade is a bounded transparent rubric, not a probability', () =>
   assert.ok(engine.gamewaireGrade({ ...low, conservativeEV: 0.1 }).score > engine.gamewaireGrade(low).score);
 });
 
+test('Probability grades use exact agreed thresholds, independently of value and odds', () => {
+  for (const [probability, expected] of [
+    [0, 'C'], [0.499999, 'C'], [0.50, 'B-'], [0.549999, 'B-'],
+    [0.55, 'B'], [0.649999, 'B'], [0.65, 'B+'], [0.699999, 'B+'],
+    [0.70, 'A-'], [0.749999, 'A-'], [0.75, 'A'], [1, 'A'],
+  ]) assert.equal(engine.probabilityGrade(probability), expected);
+  for (const probability of [NaN, Infinity, -0.01, 1.01]) assert.throws(() => engine.probabilityGrade(probability), /Invalid win probability/);
+});
+
 test('Top Picks rank by probability bands before value, moneyline preference and verified player usage', () => {
   const base = evaluate().picks[0];
   const candidate = (key, probability, extra = {}) => ({ ...base, key, probability, ...extra });
@@ -363,7 +372,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, rankTopPicks } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
@@ -396,10 +405,11 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /withdrawn/);
   assert.doesNotMatch(report, /Admin analysis controls/);
   assert.doesNotMatch(report, /Saved analysis reports|Choose up to four member picks/);
-  assert.match(report, /GamewAIre grade/);
+  assert.match(report, /Probability grade/);
+  assert.match(report, /Value\/quality score \(not probability\)/);
   assert.match(report, /Estimated win probability \(unvalidated\)/);
   assert.match(report, /Brier score/);
-  assert.match(report, /gai-grade-a/);
+  assert.match(report, /gai-grade-positive/);
   assert.match(report, /Core rotation/);
   assert.match(report, /not a confirmed starter/);
   assert.match(report, /data-method note, not an error/);
@@ -413,7 +423,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.doesNotMatch(admin, /class="feed-warning"[^>]*>This baseline/);
   assert.match(admin, /<summary>Data notes &amp; excluded markets/);
   const css = readFileSync(new URL('../src/gamewaire.css', import.meta.url), 'utf8');
-  assert.match(css, /\.gai-grade-a, \.gai-grade-b \{ color: #8bf0b3;/);
+  assert.match(css, /\.gai-grade-positive \{ color: #8bf0b3;/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /\.gai-dashboard \{ grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /font-size: 16px/);
@@ -442,6 +452,20 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
   assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
   assert.match(teamMarkets, /close ties favor moneylines and high-usage players/);
+  for (const [market, label] of Object.entries({
+    player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
+    player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions',
+  })) {
+    fixture([status, [{ ...run, payload: { picks: [{ ...candidate, market, subject: 'Cade Cunningham', line: 7.5, side: 'Over', probability: 0.65 }] } }], [], true]);
+    const namedStat = renderToStaticMarkup(createElement(Page));
+    assert.ok(namedStat.includes(`<h3>Cade Cunningham · Over 7.5 ${label}</h3>`));
+    assert.match(namedStat, /gai-grade-positive">Probability grade B\+/);
+  }
+  fixture([status, [{ ...run, payload: { picks: [{ ...candidate, probability: 0.49 }] } }], [], true]);
+  assert.match(renderToStaticMarkup(createElement(Page)), /gai-grade-neutral">Probability grade C/);
+  const navCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(navCSS, /font-size: clamp\(9px, 2\.5vw, 11px\)/);
+  assert.match(navCSS, /\.primary-nav button > span:last-child[^}]+min-height: 24px/);
 });
 
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')

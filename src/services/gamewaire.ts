@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 import type { Candidate, Settings, Sport } from '../../supabase/functions/_shared/gamewaire';
-export { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, rankTopPicks } from '../../supabase/functions/_shared/gamewaire';
+export { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks } from '../../supabase/functions/_shared/gamewaire';
 export type { Candidate, Settings, Sport };
 export type AnalysisStatus = 'in_progress' | 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds' | 'provider_error' | 'setup_required';
 export type AnalysisRun = {

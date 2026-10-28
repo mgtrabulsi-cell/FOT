@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { defaultSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, rankTopPicks } from './services/gamewaire';
+import { defaultSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks } from './services/gamewaire';
 import type { AnalysisRun, Candidate, EngineStatus, OddsEvent, PublishedGame, Settings, Sport, StoredPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
@@ -13,23 +13,30 @@ const statusLabels = {
   in_progress: 'Analysis in progress', completed: 'Analysis completed', no_qualifying: 'No qualifying value bets',
   insufficient_data: 'Insufficient data', stale_odds: 'Stale odds', provider_error: 'Provider error', setup_required: 'Provider setup required',
 };
+const marketLabels: Record<string, string> = {
+  h2h: 'Moneyline', spreads: 'Spread', totals: 'Total points',
+  player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
+  player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions',
+};
 function PickCard({ pick, record, rank, selection }: { pick: Candidate; record?: StoredPick; rank: number;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
-  const grade = gamewaireGrade(pick);
+  const valueScore = gamewaireGrade(pick).score;
+  const grade = probabilityGrade(pick.probability);
+  const marketLabel = marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ');
   const title = pick.market === 'h2h' ? `${pick.subject} ML`
     : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
-    : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`}`;
+    : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabel}`;
   return <article className="gai-pick angle-card">
     <div className="gai-pick-top">
       <div className="gai-pick-identity">
         {selection && <label className="gai-select-pick"><input type="checkbox" checked={selection.checked} disabled={selection.disabled}
           aria-label={`Select ${title}`} onChange={(event) => selection.onChange(event.target.checked)} /></label>}
         <span className="gai-rank" aria-label={`Rank ${rank}`}>{String(rank).padStart(2, '0')}</span>
-        <div><span className="eyebrow">{pick.sport} · {pick.market === 'h2h' ? 'MONEYLINE' : pick.market.replace(/_/g, ' ')}</span>
+        <div><span className="eyebrow">{pick.sport} · {marketLabel}</span>
           <h3>{title}</h3>
           <small>{pick.away} @ {pick.home}</small></div>
       </div>
-      <div className="gai-pick-price"><span className={`gai-grade gai-grade-${grade.letter.toLowerCase()}`}>Grade {grade.letter} · {grade.score}/100</span>
+      <div className="gai-pick-price"><span className={`gai-grade ${pick.probability >= 0.5 ? 'gai-grade-positive' : 'gai-grade-neutral'}`}>Probability grade {grade}</span>
         <b>{odds(pick.american)}</b><small>{pick.book}</small></div>
     </div>
     {record && <p>{record.withdrawn ? 'Withdrawn · not an active selection · ' : ''}Status: {record.result}</p>}
@@ -39,7 +46,7 @@ function PickCard({ pick, record, rank, selection }: { pick: Candidate; record?:
       <div><dt>Edge</dt><dd>+{(pick.edge * 100).toFixed(1)} pp</dd></div>
       <div><dt>Est. EV</dt><dd>+{percent(pick.ev)}</dd></div>
     </dl>
-    <p className="gai-note gai-estimate-note">Model estimate, unvalidated · Grade is a separate value/quality score.</p>
+    <p className="gai-note gai-estimate-note">Probability grade reflects an unvalidated model estimate, not value or a guarantee of profit.</p>
     {record && record.result !== 'pending' && <p className="gai-note">Saved analysis, not a new live selection.</p>}
     {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="gai-note">Saved price · refresh analysis before using a changed line.</p>}
     <details><summary>View details <span aria-hidden="true">→</span></summary>
@@ -47,7 +54,7 @@ function PickCard({ pick, record, rank, selection }: { pick: Candidate; record?:
       {pick.rotation.involvement !== undefined && ` · ${pick.rotation.involvement.toFixed(1)} offensive involvement`}
       <small>Minutes/usage-ranked, not a confirmed starter.</small></p>}
     <dl className="gai-metrics">
-      <div className={`gai-grade-${grade.letter.toLowerCase()}`}><dt>GamewAIre grade</dt><dd>{grade.letter} · {grade.score}/100</dd></div>
+      <div><dt>Value/quality score (not probability)</dt><dd>{valueScore}/100</dd></div>
       <div><dt>Estimated win probability (unvalidated)</dt><dd>{percent(pick.probability)}</dd></div>
       <div><dt>Projection</dt><dd>{pick.projection.toFixed(1)}</dd></div>
       <div><dt>Push probability</dt><dd>{percent(pick.pushProbability)}</dd></div>
@@ -250,7 +257,7 @@ export default function Gamewaire() {
     </aside>
     <section id="gai-top-picks" className="gai-top-picks gai-outline" aria-label="Top Picks">
       <div className="gai-section-heading"><h3><span aria-hidden="true">★</span> Top Picks</h3><span className="gai-tag">{candidateView ? 'Admin candidates · unpublished' : 'Published picks'}</span></div>
-      <p className="gai-note">Probability-first ranking; close ties favor moneylines and high-usage players. Estimates are unvalidated; grades measure value/quality, not hit rate.</p>
+      <p className="gai-note">Probability-first ranking; close ties favor moneylines and high-usage players. Probability grades summarize unvalidated estimates, not betting value.</p>
       {candidateView ? <section aria-label="Analysis reports">
         {!!matchingRuns.length && <details className="gai-report-picker"><summary>Saved analysis reports</summary><label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{matchingRuns.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label></details>}
         {loaded && !matchingRuns.length && <div className="gai-empty"><h4>Ready to analyze</h4><p>No model analyses yet for these filters. Choose a game, then run analysis to review up to eight candidates.</p></div>}
@@ -274,7 +281,7 @@ export default function Gamewaire() {
     <aside className="gai-why gai-outline" aria-label="How picks are ranked">
       <h3>Behind the picks</h3>
       <ul><li>Actual sportsbook lines and prices</li><li>Estimated hit probability drives ranking</li><li>Moneylines favored on close ties</li><li>High-usage rotation players prioritized</li><li>Value and data checks before selection</li></ul>
-      <div className="gai-callout"><b>Smarter data.<br />Clearer decisions.</b><p>No guaranteed outcomes. Model grades and hit estimates are different measures.</p></div>
+      <div className="gai-callout"><b>Smarter data.<br />Clearer decisions.</b><p>No guaranteed outcomes. A higher hit estimate does not necessarily mean better value at the offered odds.</p></div>
       <details><summary>Ranking explained</summary><p>Probabilities are grouped into one-percentage-point bands. Within a band, moneylines come first, then higher recorded offensive involvement and minutes. Popularity itself is not a measured model input. Lower-probability bands never jump ahead because of player fame or market type.</p>
         <p>Moneylines must pass the same edge, EV, uncertainty and freshness checks as props. No market is forced into the list. NBA rotation rankings are not confirmed starters.</p></details>
     </aside>
@@ -303,11 +310,12 @@ export default function Gamewaire() {
     </section>
     </details>
     <details><summary>Methodology and limitations</summary>
-      <p>GamewAIre grade is a transparent 0-100 rubric, not a probability: conservative EV / 15% (40 points), edge / 15 percentage points (25), estimated EV / 25% (20), completeness (15). Each factor is capped at its weight. A: 85+, B: 70+, C: 55+, D: below 55. This heuristic has not been validated against outcomes; estimated win probability is shown separately and is also unvalidated.</p>
+      <p>Probability grades summarize the unrounded estimated win probability: A: 75%+, A-: 70 to below 75%, B+: 65 to below 70%, B: 55 to below 65%, B-: 50 to below 55%, C: below 50%. Green indicates an estimate of at least 50%, not good value or a betting recommendation. Estimates are unvalidated.</p>
+      <p>The separate value/quality score is a transparent 0-100 rubric: conservative EV / 15% (40 points), edge / 15 percentage points (25), estimated EV / 25% (20), completeness (15). Each factor is capped at its weight. This heuristic has not been validated against outcomes and is not a probability.</p>
       <p>NBA early season: before 12 current-season games, 50% weight goes to current-season games and 50% to all available previous-season regular-season game logs (minimum 12). At least one recent current-season game is required; no repeated season-average pseudo-games. Current-season-only analysis resumes at 12 games. Recent-10 weighting is paused during the equal blend. NFL still requires 8 current-season games. A four-observation no-vig prior and a conservative one-sided 1.645-standard-error EV check apply. This uncertainty screen is not calibrated confidence.</p>
       <p>NBA player pool: top five by recent minutes among matched offered players, requiring 24+ minutes, plus other players averaging 18+ minutes and 12+ offensive involvement over up to five current-season games. Involvement = field goal attempts + 0.44 x free throw attempts + turnovers; it is a proxy, not official usage percentage. These are rotation estimates, not confirmed starters. Missing involvement cannot qualify a bench player. Active status and stable minutes checks still apply.</p>
       <p>Team markets use season scoring margins or totals, with a simple opponent-margin adjustment. NBA props require reasonably stable minutes; NFL opportunity and injury effects remain uncertain. Completeness is 80% for supported team/NBA data, 75% for NFL props lacking snap-share data, and lower/ineligible for missing identity, status, logs or playing time. No ATS, positional-defense, scheme, home-field or injury coefficient is invented.</p>
-      <p>Ranking uses estimated win probability in one-percentage-point bands, then moneyline preference, verified offensive involvement and minutes, exact probability, and grade. Conservative EV, edge and data-quality thresholds remain eligibility requirements. Admins review up to eight qualifying candidates and publish up to four per game. At most one selection per player and one team market; other game-level correlations remain possible. No exact pick quota. Odds older than 10 minutes are rejected; supported data must be fetched within an hour. Model version: empirical-baseline-v4.</p>
+      <p>Ranking uses estimated win probability in one-percentage-point bands, then moneyline preference, verified offensive involvement and minutes, exact probability, and value/quality score. Conservative EV, edge and data-quality thresholds remain eligibility requirements. Admins review up to eight qualifying candidates and publish up to four per game. At most one selection per player and one team market; other game-level correlations remain possible. No exact pick quota. Odds older than 10 minutes are rejected; supported data must be fetched within an hour. Model version: empirical-baseline-v4.</p>
       <p>Historical replay tooling rejects future observations and requires pre-event odds/data snapshots. No licensed historical dataset or validated backtest is configured yet. No reliability or profitability claim is made.</p>
     </details>
   </section>;
