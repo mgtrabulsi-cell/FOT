@@ -118,7 +118,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       scheduledJob = { id: job.id, sport: job.sport, event_id: job.event_id, event_start: job.event_start,
         matchup: job.matchup, selection_note: job.selection_note };
       body = { action: 'analyze', sport: scheduledJob.sport, eventId: scheduledJob.event_id,
-        settings: { ...defaultSettings, markets: scheduledJob.sport === 'NBA' ? ['h2h', 'spreads'] : [...markets.NFL] } };
+        settings: { ...defaultSettings, markets: ['h2h', 'spreads'] } };
       canAnalyze = true;
     } else {
       const verified = await client.auth.getUser();
@@ -139,7 +139,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     }
     if (body.action === 'publishLean') {
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId))
-        return json({ error: 'Choose a saved NBA game lean.' }, 400);
+        return json({ error: 'Choose a saved game lean.' }, 400);
       const source = await admin.from('gamewaire_runs').select('payload').eq('id', body.runId).maybeSingle();
       if (source.error) throw new Error('Could not verify the saved lean.');
       if (!source.data || object(source.data.payload).modelVersion !== modelVersion)

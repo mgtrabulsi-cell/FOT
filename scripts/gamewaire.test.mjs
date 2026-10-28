@@ -683,25 +683,27 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(scheduledView, /Scheduled shortlists/);
   assert.match(scheduledView, /Review saved report/);
   assert.match(scheduledView, /<section id="gai-saved-games" class="gai-scheduled" aria-label="Saved analyses">/);
-  assert.match(scheduledView, /Open saved picks for Away at Home · 0 credits/);
+  assert.match(scheduledView, /class="gai-saved-chooser">Saved game<select/);
+  assert.match(scheduledView, /<option value="run" selected="">NBA · Away at Home/);
+  assert.doesNotMatch(scheduledView, /gai-saved-list|Open saved picks for/);
   assert.match(scheduledView, /<details class="gai-schedule-details"><summary>Scheduled shortlists/);
   assert.match(scheduledView, /<details class="gai-top-pick-tools"><summary>Top Pick candidates/);
   assert.match(scheduledView, /0 credits to view picks and explanations/);
   assert.match(scheduledView, /Overnight shortlist · Standings-ranked matchup/);
   assert.match(scheduledView, /Odds API: 7 credits for this saved request · 479 remaining/);
   assert.match(scheduledView, /Refresh prices &amp; review picks · up to 4 credits/);
-  assert.match(scheduledView, /No NBA lean or Top Pick publishes automatically/);
+  assert.match(scheduledView, /No game lean or Top Pick publishes automatically/);
   const finishedState = scheduledState.slice();
   finishedState[30] = { completed: ['NBA:event'], completionWarning: '' };
   fixture(finishedState);
   const finishedView = renderToStaticMarkup(createElement(Page));
-  assert.doesNotMatch(finishedView, /Open saved picks for Away at Home|Review saved report · 0 credits|Review NBA game lean/);
+  assert.doesNotMatch(finishedView, /<option value="run"|Review saved report · 0 credits|Review game lean/);
   assert.match(finishedView, /No saved games awaiting review/);
   assert.match(finishedView, /Results &amp; pick history/, 'Published results history remains available');
   assert.match(scheduledView, /Publish game lean · 0 credits/);
   assert.match(scheduledView, /Refresh game lean only · up to 2 credits/);
   assert.match(scheduledView, /Analyze players &amp; full game · up to 7 credits/);
-  assert.match(raw, /<ReviewNBALean key=\{`lean:\$\{report\.id\}`\}/, 'Lean review and sibling Top Pick publication have distinct React keys');
+  assert.match(raw, /<ReviewGameLean key=\{`lean:\$\{report\.id\}`\}/, 'Lean review and sibling Top Pick publication have distinct React keys');
   const more = { ...candidate, key: 'top-probability', subject: 'Higher hit estimate', probability: 0.99 };
   const adminState = [status, [{ ...run, payload: { picks: [candidate, more] } }], [], true];
   fixture(adminState);
@@ -969,12 +971,13 @@ test('Scheduled worker requires the private cron secret, bypasses only manual ca
     assert.equal((await idle.cron()).status, 200);
     assert.equal(idle.fetches.length, 0, 'No claimed job means no paid call');
   });
-test('NFL scheduled requests retain full markets; publishing an NBA lean is explicit and uses no provider credits', async () => {
+test('NFL scheduled requests use only team markets; explicit lean publication uses no provider credits', async () => {
   const api = endpoint({ configured: true, scheduledJob: {
     id: 'nfl-job', sport: 'NFL', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Weekly slate.',
   } });
   assert.equal((await api.cron()).status, 200);
-  assert.equal(new URL(api.fetches[0]).searchParams.get('markets').split(',').length, 7);
+  assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), ['h2h', 'spreads']);
+  assert.ok(api.rpc.every((call) => !['gamewaire_publish', 'gamewaire_publish_lean'].includes(call.name)), 'Scheduled NFL never publishes');
   const publish = endpoint();
   assert.equal((await publish.run({ action: 'publishLean', runId: '00000000-0000-0000-0000-000000000001' })).status, 200);
   assert.equal(publish.rpc.at(-1).name, 'gamewaire_publish_lean');
@@ -994,12 +997,12 @@ test('Team-only evidence never fetches player rosters or player game logs', asyn
   assert.ok(calls.length > 0);
   assert.ok(calls.every((url) => !url.includes('/roster') && !url.includes('/athletes/')));
 });
-test('NBA review buttons publish freely, refresh only team markets, and request players only explicitly', async () => {
+for (const sport of ['NBA', 'NFL']) test(`${sport} review buttons publish freely, refresh only team markets, and request players only explicitly`, async () => {
   const source = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8')
-    .replace('function ReviewNBALean(', 'export function ReviewNBALean(');
+    .replace('function ReviewGameLean(', 'export function ReviewGameLean(');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const calls = [], refreshed = [];
-  const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date(Date.now() + 86400000).toISOString(),
+  const run = { id: 'run', sport, event_id: 'event', event_start: new Date(Date.now() + 86400000).toISOString(),
     settings, payload: { teamLean: { reason: 'Lean only', pick: { ...evaluate().picks[0],
       updatedAt: new Date().toISOString(), dataAt: new Date().toISOString() } } } };
   const jsx = (type, props) => ({ type, props });
@@ -1012,7 +1015,7 @@ test('NBA review buttons publish freely, refresh only team markets, and request 
     return {};
   } });
   vm.runInContext(code, context);
-  const tree = context.exports.ReviewNBALean({ report: run, refresh() {}, onFreshReport: (next) => refreshed.push(next) });
+  const tree = context.exports.ReviewGameLean({ report: run, refresh() {}, onFreshReport: (next) => refreshed.push(next) });
   const nodes = (node) => !node || typeof node !== 'object' ? [] : Array.isArray(node)
     ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
   const buttons = nodes(tree).filter((node) => node.type === 'button');
@@ -1025,9 +1028,11 @@ test('NBA review buttons publish freely, refresh only team markets, and request 
   buttons[1].props.onClick();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual([...calls[1].settings.markets], ['h2h', 'spreads']);
+  assert.equal(calls[1].sport, sport);
   buttons[2].props.onClick();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual([...calls[2].settings.markets], [...engine.markets.NBA]);
+  assert.deepEqual([...calls[2].settings.markets], [...engine.markets[sport]]);
+  assert.equal(calls[2].sport, sport);
   assert.equal(refreshed.length, 2, 'Both analyses return to review, never publish automatically');
   assert.equal(calls.filter((call) => call.action === 'publishLean').length, 1);
 });

@@ -10,9 +10,9 @@ test('Schedules use Eastern 1 AM across DST, including the repeated fall-back ho
   }
   assert.equal(easternClock(Date.parse('2026-12-01T05:00:00Z')).hour, 0);
   assert.equal(easternClock(now).weekday, 'Thu');
-  assert.deepEqual(scheduleWindow('NFL', '2026-10-29'), { first: '2026-10-29', last: '2026-11-02' });
+  assert.deepEqual(scheduleWindow('NFL', '2026-10-29'), { first: '2026-10-29', last: '2026-10-29' });
 });
-test('NBA only uses that Eastern date; NFL includes Thursday through Monday, not Tuesday', () => {
+test('Both NBA and NFL use only upcoming games on that Eastern date', () => {
   const events = [
     game('thu', 'H', 'A', '2026-10-30T00:00:00Z', 'NFL'),
     game('mon', 'H', 'A', '2026-11-03T01:00:00Z', 'NFL'),
@@ -20,7 +20,7 @@ test('NBA only uses that Eastern date; NFL includes Thursday through Monday, not
     game('old', 'H', 'A', '2026-10-29T04:30:00Z', 'NFL'),
     game('nba', 'H', 'A'),
   ];
-  assert.deepEqual(scheduleEvents(events, 'NFL', '2026-10-29', now).map((event) => event.id), ['thu', 'mon']);
+  assert.deepEqual(scheduleEvents(events, 'NFL', '2026-10-29', now).map((event) => event.id), ['thu']);
   assert.deepEqual(scheduleEvents(events, 'NBA', '2026-10-29', now).map((event) => event.id), ['nba']);
 });
 const standings = (season, stats) => ({ season: { year: season }, children: [{ standings: {
@@ -41,7 +41,7 @@ function planner() {
     },
   } };
 }
-test('Thursday plans every NBA game and the NFL window once without standings requests', async () => {
+test('Every day plans all NBA and NFL games once without standings requests', async () => {
   const fixture = planner(), fetches = [], listed = [];
   const list = async (sport) => { listed.push(sport); return Array.from({ length: sport === 'NBA' ? 15 : 1 }, (_, index) =>
     game(`event-${index}`, 'A', 'B', '2026-10-29T23:00:00Z', sport)); };
@@ -56,15 +56,15 @@ test('Thursday plans every NBA game and the NFL window once without standings re
   assert.equal(fixture.calls[0].args.games.length, 15, 'All NBA games, not a three-game shortlist');
   assert.equal(fixture.calls[1].args.games.length, 1);
   assert.ok(fixture.calls.every(({ args }) => args.problem === null));
-  assert.match(fixture.calls[0].args.plan_note, /Moneyline\/spread only; private/);
+  assert.ok(fixture.calls.every(({ args }) => /Moneyline\/spread only; private/.test(args.plan_note)));
   await planScheduledAnalyses(fixture.db, list, fetcher, now + 60_000);
   assert.equal(listed.length, 2);
   assert.equal(fixture.calls.length, 2, 'Repeated/DST double-hour ticks cannot create another batch');
   await planScheduledAnalyses(fixture.db, list, fetcher, Date.parse('2026-10-30T05:00:00Z'));
-  assert.equal(listed.at(-1), 'NBA');
-  assert.equal(listed.length, 3, 'NFL only plans on Thursdays');
+  assert.equal(listed.at(-1), 'NFL');
+  assert.equal(listed.length, 4, 'Both sports plan on Friday too');
   await planScheduledAnalyses(fixture.db, list, fetcher, Date.parse('2026-10-30T06:00:00Z'));
-  assert.equal(listed.length, 3, 'Outside Eastern 1 AM no new batches are planned');
+  assert.equal(listed.length, 4, 'Outside Eastern 1 AM no new batches are planned');
 });
 test('Planning failures are saved explicitly with no arbitrary fallback; empty days cost no odds analysis', async () => {
   const fixture = planner();

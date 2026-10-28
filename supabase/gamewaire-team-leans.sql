@@ -26,11 +26,6 @@ begin
     and (coalesce(report->'teamLean'->'pick'->>'market' not in ('h2h','spreads'), true)
       or coalesce((report->'teamLean'->'pick'->>'eventId') <> saved.event_id, true))
     then raise exception 'Invalid team lean for this game'; end if;
-  if saved.sport='NBA' then return; end if;
-  insert into public.gamewaire_team_leans(sport,event_id,event_start,matchup,team_lean)
-    values(saved.sport,saved.event_id,saved.event_start,saved.matchup,nullif(report->'teamLean','null'::jsonb))
-  on conflict(sport,event_id) do update set event_start=excluded.event_start,matchup=excluded.matchup,
-    team_lean=excluded.team_lean,updated_at=now();
 end $$;
 revoke all on function public.gamewaire_finish(uuid,text,jsonb,jsonb) from public, anon, authenticated;
 grant execute on function public.gamewaire_finish(uuid,text,jsonb,jsonb) to service_role;
