@@ -509,7 +509,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button>
           <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? false} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
         </div>
-        <p>Requires a connected X account. Edits and republishing do not create another tweet. Attached videos play on GameWire and LIVEWIRE; X keeps the existing headline, story link, and analysis-image format.</p>
+        <p>Requires a connected X account. Edits and republishing do not create another tweet. Attached videos play in The Angle; X keeps the existing headline, story link, and analysis-image format.</p>
       </fieldset>
     </form>}
     {draftError && <p className="feed-warning" role="alert">{draftError} <button disabled={busy} onClick={() => {

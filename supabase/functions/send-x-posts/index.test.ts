@@ -86,11 +86,13 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
       if (url.pathname.endsWith('/angles')) {
         sourceReads++;
         return Response.json(missing || (removedDuringUpload && sourceReads > 1) ? null : {
-          title: overlongCaption ? 'Headline '.repeat(100) : changed && sourceReads > 1 ? 'Changed headline' : 'Original headline',
+          title: graphic ? 'Week 7 Must Start Fantasy QB' : overlongCaption ? 'Headline '.repeat(100) : changed && sourceReads > 1 ? 'Changed headline' : 'Original headline',
           subject: 'Player name', narrative: longAnalysis ? 'Long analysis. '.repeat(5000) : fourPages ? Array.from({ length: 90 }, () => 'Analysis line').join('\n') : 'Our editorial text.',
           evidence: '', counterpoint: '', pick: '', game_id: 'NBA:123',
           picks: [{ id: '11111111-1111-4111-8111-111111111111', text: 'Player 6+ assists', result: 'pending' }],
           status: 'published',
+          ...(graphic ? { fantasy_graphic_id: '11111111-1111-4111-8111-111111111111',
+            image_paths: ['11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png'] } : {}),
         });
       }
       if (url.pathname.endsWith('/livewire_posts')) {
@@ -131,7 +133,9 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
     reset(); overlongCaption = true;
     assert((await invoke()).status === 503 && !texts.length && uploads === 0 && writes.some(row => row.status === 'failed'), 'Caption overflow never silently drops picks or uploads images');
     reset(); storyline = false;
-    assert((await invoke()).status === 200 && texts[0].includes('#livewire/post/'), 'Standalone post uses LIVEWIRE URL');
+    assert((await invoke()).status === 200 && !texts.length && uploads === 0, 'Retired standalone jobs never upload or tweet');
+    assert(writes.some(write => write.status === 'cancelled'), 'Retired job is cancelled');
+    storyline = true;
     reset(); graphic = true;
     assert((await invoke()).status === 200 && texts[0] === 'Week 7 Must Start Fantasy QB' && uploads === 1, 'Start/Sit tweet has exactly the subject and original graphic, no URL or extra wording');
     reset(); graphicFailure = true;

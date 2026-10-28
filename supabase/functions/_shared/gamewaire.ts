@@ -1,5 +1,5 @@
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v4';
+export const modelVersion = 'empirical-baseline-v5';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -34,7 +34,8 @@ export type Candidate = Quote & {
   baseline?: string; previousSeasonAverage?: number;
   rotation?: NBARotation;
 };
-export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }> };
+export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
+export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean };
 export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
   const scale = (value: number, target: number) => Math.max(0, Math.min(1, value / target));
   const score = Math.round(40 * scale(pick.conservativeEV, 0.15) + 25 * scale(pick.edge, 0.15)
@@ -45,6 +46,25 @@ export function probabilityGrade(probability: number) {
   if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error('Invalid win probability.');
   return probability >= 0.75 ? 'A' : probability >= 0.70 ? 'A-' : probability >= 0.65 ? 'B+'
     : probability >= 0.55 ? 'B' : probability >= 0.50 ? 'B-' : 'C';
+}
+export function pickBlurb(pick: Candidate) {
+  const units: Record<string, string> = { player_points: 'points', player_rebounds: 'rebounds', player_assists: 'assists',
+    player_threes: 'made threes', player_pass_yds: 'passing yards', player_rush_yds: 'rushing yards',
+    player_reception_yds: 'receiving yards', player_receptions: 'receptions', totals: 'combined points' };
+  const unit = units[pick.market] ?? 'points of scoring margin';
+  const player = pick.market.startsWith('player_');
+  const recent = [...pick.samples].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 3);
+  const form = player
+    ? `${pick.subject} is averaging ${pick.seasonAverage.toFixed(1)} ${unit} across the available current-season games. ${recent.length ? `The latest recorded outings were ${recent.map((row) => row.value.toFixed(0)).join(', ')} ${unit}${recent[0].opponent ? `, most recently against ${recent[0].opponent}` : ''}. ` : ''}`
+    : `${pick.subject} brings a current-season average of ${pick.seasonAverage.toFixed(1)} ${unit} in the available logs. `;
+  const minutes = player && pick.rotation ? `Recent playing time is ${pick.rotation.minutes.toFixed(1)} minutes per game, giving us a measured role to work with—not a confirmed starting assignment. ` : '';
+  const line = pick.market === 'h2h' ? 'the moneyline'
+    : pick.market === 'spreads' ? `the ${pick.line !== null && pick.line > 0 ? '+' : ''}${pick.line} spread`
+    : `${pick.side.toLowerCase()} ${pick.line} ${unit}`;
+  const baseline = pick.baseline ? "Early in the season, we balance current games with last season's full game logs, 50/50. " : '';
+  const direction = player && pick.line !== null ? `Our weighted baseline lands at ${pick.projection.toFixed(1)} ${unit}, ${pick.projection > pick.line ? 'above' : pick.projection < pick.line ? 'below' : 'right on'} the ${pick.line} line. ` : '';
+  const price = `${pick.american > 0 ? '+' : ''}${pick.american}`;
+  return `${form}${minutes}${baseline}${direction}That's the statistical case behind ${line} at ${price} (${pick.book}): the saved model puts the win estimate at ${(pick.probability * 100).toFixed(1)}%. It's an experimental estimate, not a lock; prices and roles can change.`;
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
   return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)
@@ -132,7 +152,7 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
 }
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 = 4): Evaluation {
-  const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [];
+  const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [], teamOptions: TeamLean[] = [];
   const best = new Map<string, Quote>();
   for (const quote of quotes) {
     if (!Number.isFinite(Date.parse(quote.updatedAt)) || !Number.isFinite(Date.parse(quote.start))
@@ -140,7 +160,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       || (quote.noVig !== null && (!Number.isFinite(quote.noVig) || quote.noVig <= 0 || quote.noVig >= 1))) {
       rejected.push({ key: quote.key, reason: 'Invalid price, probability, line or timestamp.' }); continue;
     }
-    if (!settings.markets.includes(quote.market) || (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player)))) continue;
+    if ((!settings.markets.includes(quote.market) && !['h2h', 'spreads'].includes(quote.market)) || (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player)))) continue;
     if (settings.direction !== 'both' && ['Over', 'Under'].includes(quote.side) && quote.side.toLowerCase() !== settings.direction) continue;
     if (Date.parse(quote.start) <= now) { rejected.push({ key: quote.key, reason: 'Game has started; pregame analysis only.' }); continue; }
     if (now - Date.parse(quote.updatedAt) > 10 * 60_000 || Date.parse(quote.updatedAt) > now + 60_000) {
@@ -194,7 +214,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const implied = impliedProbability(quote.american);
     const edge = conditional - implied, ev = expectedValue(probability, push, quote.american);
     const conservativeEV = expectedValue(conservative, push, quote.american);
-    if (edge < settings.minEdge || ev < settings.minEV || conservativeEV <= 0) { reject('Exact price fails edge, EV or conservative uncertainty threshold.'); continue; }
+    const qualifies = edge >= settings.minEdge && ev >= settings.minEV && conservativeEV > 0;
     const projection = values.reduce((sum, value, i) => sum + value * weights[i], 0);
     const facts = [
       `${quote.subject}: ${quote.side}${quote.line === null ? '' : ` ${quote.line}`} at ${quote.american > 0 ? '+' : ''}${quote.american} (${quote.book}).`,
@@ -202,11 +222,15 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       `Observed current-season last 5 average ${mean(current.slice(0, 5).map((row) => row.value)).toFixed(1)}; last 10 average ${mean(current.slice(0, 10).map((row) => row.value)).toFixed(1)}.`,
       `Estimated EV ${(ev * 100).toFixed(1)}% of one unit, including pushes. This baseline is not calibrated or independently validated.`,
     ];
-    candidates.push({ ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,
+    const candidate: Candidate = { ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
-      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation });
+      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation };
+    if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
+      reason: qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
+    if (!qualifies) { reject('Exact price fails edge, EV or conservative uncertainty threshold.'); continue; }
+    candidates.push(candidate);
   }
   const picks: Candidate[] = [], subjects = new Set<string>();
   let teamMarket = false;
@@ -219,8 +243,18 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     picks.push(candidate); subjects.add(identity); if (!player) teamMarket = true;
     if (picks.length === limit) break;
   }
+  const teamLean = [...teamOptions].sort((a, b) => Number(b.qualifies) - Number(a.qualifies) || b.pick.probability - a.pick.probability
+    || b.pick.ev - a.pick.ev || a.pick.key.localeCompare(b.pick.key))[0];
+  if (teamLean?.qualifies && !picks.some((pick) => pick.key === teamLean.pick.key)) {
+    const existing = picks.findIndex((pick) => !pick.market.startsWith('player_'));
+    const displaced = existing >= 0 ? picks.splice(existing, 1)[0] : picks.length >= limit ? picks.pop() : undefined;
+    if (displaced) rejected.push({ key: displaced.key, reason: 'Excluded to reserve one qualifying moneyline/spread slot for this game.' });
+    const previouslyRejected = rejected.findIndex((row) => row.key === teamLean.pick.key);
+    if (previouslyRejected >= 0) rejected.splice(previouslyRejected, 1);
+    picks.push(teamLean.pick);
+  }
   return { status: picks.length ? 'completed' : !best.size && rejected.some((row) => row.reason.startsWith('Stale')) ? 'stale_odds'
-    : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks, rejected };
+    : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks: rankTopPicks(picks), rejected, teamLean };
 }
 export type Settled = { probability: number; pushProbability: number; american: number; result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closingAmerican?: number | null; withdrawn?: boolean };
 export function performance(rows: Settled[]) {

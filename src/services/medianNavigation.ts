@@ -1,12 +1,12 @@
-export type AppView = 'Wire' | 'Players' | 'Analyst' | 'Gamewaire' | 'LiveWire' | 'Den' | 'Profile';
+export type AppView = 'Wire' | 'Players' | 'Analyst' | 'Gamewaire' | 'Den' | 'Profile';
 
 const routes: Record<AppView, string> = {
-  Wire: '#wire', Players: '#stat-hub', Analyst: '#analyst-desk', Gamewaire: '#gamewaire', LiveWire: '#livewire', Den: '#locker-room', Profile: '#profile',
+  Wire: '#wire', Players: '#stat-hub', Analyst: '#analyst-desk', Gamewaire: '#gamewaire', Den: '#locker-room', Profile: '#profile',
 };
 
 export function viewFromHash(hash: string): AppView | null {
   if (hash === '#wire' || /^#wire\/game\/\d+$/.test(hash) || nbaNotificationFromHash(hash)) return 'Wire';
-  if (hash === '#livewire' || /^#livewire\/post\/[0-9a-f-]{36}$/i.test(hash)) return 'LiveWire';
+  if (hash === '#livewire' || /^#livewire\/post\/[0-9a-f-]{36}$/i.test(hash)) return 'Analyst';
   if (/^#analyst-desk\/story\/[0-9a-f-]{36}$/i.test(hash)) return 'Analyst';
   return (Object.keys(routes) as AppView[]).find((view) => routes[view] === hash) ?? null;
 }
@@ -20,6 +20,7 @@ export function nbaNotificationFromHash(hash: string): { date: string; eventId: 
 }
 
 export function hashForView(view: AppView, currentHash: string): string {
+  if (view === 'Analyst' && currentHash.startsWith('#livewire')) return routes.Analyst;
   return viewFromHash(currentHash) === view ? currentHash : routes[view];
 }
 

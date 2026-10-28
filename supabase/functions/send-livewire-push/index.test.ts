@@ -1,6 +1,6 @@
 import { ApplicationServer } from 'jsr:@negrel/webpush@0.5.0';
 
-Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures', async () => {
+Deno.test('Angle dispatcher drops retired jobs, sends headline-only alerts and retries failures', async () => {
   function assert(value: unknown, message: string): asserts value {
     if (!value) throw new Error(message);
   }
@@ -20,6 +20,7 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
   let subject = 'Player news';
   let storyline = false;
   let published = true;
+  let graphic = false;
   try {
     const keys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
     Deno.env.set('VAPID_KEYS_JSON', JSON.stringify({
@@ -48,7 +49,7 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
       if (path.endsWith('/rpc/claim_livewire_push')) {
         return Response.json(emptyQueue ? [] : [{ id: 1, post_id: storyline ? null : 'post-123', angle_id: storyline ? 'story-123' : null, user_id: 'user-123', endpoint: 'https://push.example.invalid/device', subject, attempts: 1, primary_theme: primaryTheme }]);
       }
-      if (path.endsWith('/angles')) return Response.json(published ? { id: 'story-123' } : null);
+      if (path.endsWith('/angles')) return Response.json(published ? { id: 'story-123', fantasy_graphic_id: graphic ? 'graphic-123' : null } : null);
       if (path.endsWith('/user_push_subscriptions')) return Response.json(subscribed ? { subscription: {} } : null);
       if (request.method === 'PATCH') writes.push(await request.json());
       return new Response(null, { status: 204 });
@@ -59,17 +60,21 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
     const invoke = () => handler(new Request('https://example.invalid', { method: 'POST', headers: { 'x-gamewire-cron-secret': 'test-secret' } }));
     const success = await invoke();
     assert(success.status === 200, 'Delivery should succeed');
-    assert(payloads.length === 1 && payloads[0].title === 'LIVEWIRE: Player news' && payloads[0].body === '', 'Alert contains only LIVEWIRE and subject');
-    assert(payloads[0].url === 'https://mgtrabulsi-cell.github.io/FOT/#livewire/post/post-123' && payloads[0].tag === 'gamewire-livewire-post-123', 'Alerts use an absolute project URL, deep-link to the specific post, and deduplicate by post');
+    assert(payloads.length === 0 && writes.length === 0, 'Retired LIVEWIRE jobs never send or retry');
+    storyline = true;
+    await invoke();
+    assert(payloads[0].title === 'News: Player news' && payloads[0].body === '', 'Alert contains only theme and subject');
+    assert(payloads[0].url === 'https://mgtrabulsi-cell.github.io/FOT/#analyst-desk/story/story-123' && payloads[0].tag === 'gamewire-storyline-story-123', 'Alerts link directly to Angle');
     assert(typeof writes[0].delivered_at === 'string', 'Success is persisted');
     for (const theme of ['fantasy', 'news', 'betting']) {
       primaryTheme = theme;
       assert((await invoke()).status === 200, 'Themed delivery should succeed');
       const latest = payloads[payloads.length - 1];
       assert(latest.title === `${theme[0].toUpperCase() + theme.slice(1)}: Player news` && latest.body === '', 'First theme replaces LIVEWIRE, with no body');
-      assert(latest.tag === 'gamewire-livewire-post-123', 'Themed alerts retain their post tag');
+      assert(latest.tag === 'gamewire-storyline-story-123', 'Themed alerts retain their story tag');
     }
     primaryTheme = 'fantasy';
+    graphic = true;
     for (const week of [7, 12]) {
       for (const kind of ['Start', 'Sit']) {
         for (const position of ['QB', 'RB', 'WR', 'TE']) {
@@ -77,13 +82,14 @@ Deno.test('LIVEWIRE dispatcher sends headline-only alerts and retries failures',
           assert((await invoke()).status === 200, 'Graphic notification should succeed');
           const latest = payloads[payloads.length - 1];
           assert(latest.title === `Week ${week} Must ${kind} ${position}s` && latest.body === '', 'Graphic alerts use only the compact week, kind and plural position');
-          assert(latest.url === 'https://mgtrabulsi-cell.github.io/FOT/#livewire/post/post-123' && latest.tag === 'gamewire-livewire-post-123', 'Compact graphic alerts retain the post link and deduplication tag');
+          assert(latest.url === 'https://mgtrabulsi-cell.github.io/FOT/#analyst-desk/story/story-123' && latest.tag === 'gamewire-storyline-story-123', 'Graphic alerts link to Angle');
         }
       }
     }
     storyline = true;
+    graphic = false;
     assert((await invoke()).status === 200, 'Storyline with a graphic-like title should succeed');
-    assert(payloads[payloads.length - 1].title === `Fantasy: ${subject}`, 'Storyline headlines are not rewritten');
+    assert(payloads[payloads.length - 1].title === `Fantasy: ${subject}`, 'Ordinary Angle headlines are not rewritten');
     subject = 'Player news';
     primaryTheme = 'betting';
     assert((await invoke()).status === 200, 'Storyline delivery succeeds');

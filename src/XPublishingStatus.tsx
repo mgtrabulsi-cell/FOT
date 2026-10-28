@@ -32,13 +32,13 @@ export default function XPublishingStatus() {
   }, [retry]);
   return <details className="x-publishing-status">
     <summary>X publishing: {enabled === null ? 'checking connection' : enabled ? 'enabled' : 'not connected'}</summary>
-    <p>Only first publications are eligible. Edits, mirrored posts, and weekly player boards do not send extra tweets.</p>
+    <p>Only first Angle publications are eligible. Edits and weekly player boards do not send extra tweets.</p>
     <p>Checked posts share the headline, subject, admin picks with sport emojis, story link, and full analysis as up to four images. Overlong captions or analysis show a delivery error instead of being cut short.</p>
-    <p>Start/Sit graphics are different: the tweet contains only the LIVEWIRE subject and the published graphic, with no extra wording or link.</p>
+    <p>Start/Sit graphics are different: the tweet contains only the Angle subject and the published graphic, with no extra wording or link.</p>
     {enabled === false && <p>Connect the GameWire X account before enabling. Posts published while disconnected are not queued for later.</p>}
     {error && <p role="alert">{error} <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
     <ul>{deliveries.map((delivery) => <li key={delivery.id}>
-      <a href={delivery.source_type === 'angle' ? `#analyst-desk/story/${delivery.source_id}` : `#livewire/post/${delivery.source_id}`}>View source</a>
+      <a href={delivery.source_type === 'angle' ? `#analyst-desk/story/${delivery.source_id}` : '#analyst-desk'}>{delivery.source_type === 'angle' ? 'View source' : 'Archived LIVEWIRE delivery'}</a>
       {' - '}{delivery.status}{delivery.last_error ? `: ${delivery.last_error}` : ''}
       {delivery.tweet_id && <> - <a href={`https://x.com/i/web/status/${delivery.tweet_id}`} target="_blank" rel="noopener noreferrer">View tweet</a></>}
     </li>)}</ul>

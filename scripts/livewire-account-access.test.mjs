@@ -16,7 +16,7 @@ const AccountRequired = context.exports.default;
 const walk = (node) => !node || typeof node !== 'object' ? [] : [node, ...[node.props?.children].flat().flatMap(walk)];
 const text = (node) => Array.isArray(node) ? node.map(text).join('') : node && typeof node === 'object' ? text(node.props?.children) : typeof node === 'string' ? node : '';
 
-for (const section of ['Analyst Desk', 'LIVEWIRE']) {
+for (const section of ['Analyst Desk', 'GamewAIre']) {
   test(`guests see an account message instead of ${section} content, with a working sign-in action`, () => {
     let clicked = false;
     const content = { type: 'private-content', props: {} };
@@ -33,7 +33,7 @@ for (const section of ['Analyst Desk', 'LIVEWIRE']) {
 
 test('signed-in accounts retain their content across tabs and offline transitions', () => {
   const content = { type: 'saved-content', props: {} };
-  for (const section of ['Analyst Desk', 'LIVEWIRE', null]) {
+  for (const section of ['Analyst Desk', 'GamewAIre', null]) {
     for (const online of [true, false]) {
       assert.equal(AccountRequired({ hasAccount: true, section, online, children: content }), content);
     }
@@ -41,15 +41,15 @@ test('signed-in accounts retain their content across tabs and offline transition
 });
 
 test('offline guests are prompted to reconnect, and public tabs have no account gate', () => {
-  const tree = AccountRequired({ hasAccount: false, section: 'LIVEWIRE', online: false });
+  const tree = AccountRequired({ hasAccount: false, section: 'Analyst Desk', online: false });
   assert.match(text(tree), /Reconnect to the internet/);
   assert.equal(walk(tree).find((node) => node.type === 'button').props.disabled, true);
   assert.equal(AccountRequired({ hasAccount: false, section: null, online: true }), null);
 });
 
-test('every Analyst Desk and LIVEWIRE content surface is inside the account gate', () => {
+test('every Analyst Desk content surface is inside the account gate', () => {
   const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const protectedNames = new Set(['LiveWire', 'TheAngle', 'FantasyStartSit', 'FavorableMatchups', 'OurResults']);
+  const protectedNames = new Set(['TheAngle', 'FantasyStartSit', 'FavorableMatchups', 'OurResults']);
   const found = new Set();
   const visit = (node) => {
     const opening = ts.isJsxElement(node) ? node.openingElement : ts.isJsxSelfClosingElement(node) ? node : null;
@@ -62,7 +62,6 @@ test('every Analyst Desk and LIVEWIRE content surface is inside the account gate
       const attributes = ancestor.openingElement.attributes.getText(source);
       assert.match(attributes, /hasAccount=\{!!sessionUser\}/, 'Retain verified account sessions offline');
       assert.match(attributes, /view === 'Analyst'/);
-      assert.match(attributes, /view === 'LiveWire'/);
     }
     ts.forEachChild(node, visit);
   };
@@ -72,7 +71,6 @@ test('every Analyst Desk and LIVEWIRE content surface is inside the account gate
 
 test('guest entry cannot enable member feed preloads or unread polling', () => {
   const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-  assert.match(source, /useLivewireUnread\(authUser\?\.id \?\? null, deletedAccount === null && !authLoading && !!authUser\)/);
+  assert.doesNotMatch(source, /useLivewireUnread|fetchLivewirePosts/);
   assert.match(source, /useAnalystUnread\(authUser\?\.id \?\? null,\s*deletedAccount === null && !authLoading && !!authUser,/);
-  assert.match(source, /if \(!publicSupabaseConfig \|\| authLoading \|\| deletedAccount !== null \|\| !authUser\) return;/);
 });

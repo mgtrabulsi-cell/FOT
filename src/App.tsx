@@ -15,11 +15,9 @@ import {
   Sparkles,
   Users,
   X,
-  Zap,
 } from 'lucide-react';
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
 import { readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, subscribeRenderSnapshots } from './services/renderSnapshots';
-import { fetchLivewirePosts, livewireSnapshot } from './services/livewirePosts';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, Team } from './services/sportsData';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
 import { useSiteOpenTracking } from './useSiteOpenTracking';
@@ -31,7 +29,6 @@ import SplashScreen from './SplashScreen';
 import PullToRefresh from './PullToRefresh';
 import BannerSearch from './BannerSearch';
 import PrimaryNavigation from './PrimaryNavigation';
-import { useLivewireUnread } from './useLivewireUnread';
 import { useAnalystUnread } from './useAnalystUnread';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
@@ -42,7 +39,6 @@ import { preloadNBABoxes, preloadNBADates, preloadNBAPregame } from './services/
 import { preloadNFLLiveBoxes } from './services/nflBoxPreload';
 import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, fetchStoredNBAScoreboard, fetchStoredNFLScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
-import LiveWire from './LiveWire';
 import FavorableMatchups from './FavorableMatchups';
 import TheAngle from './TheAngle';
 import OurResults from './OurResults';
@@ -52,7 +48,7 @@ import { useOfflineSnapshots } from './useOfflineSnapshots';
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { completedScoreUpdates } from './services/lockerRoomScores';
-import { publicSupabaseConfig, supabase } from './services/supabaseClient';
+import { supabase } from './services/supabaseClient';
 import { nflFieldPosition } from './services/nflSituation.ts';
 import { connectMedianNavigation, hashForView, nbaNotificationFromHash, viewFromHash } from './services/medianNavigation';
 import type { AppView } from './services/medianNavigation';
@@ -477,7 +473,6 @@ function App() {
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [savedGuestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
   const guestMode = savedGuestMode || !online;
-  const livewireUnread = useLivewireUnread(authUser?.id ?? null, deletedAccount === null && !authLoading && !!authUser);
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [storyOpenKey, setStoryOpenKey] = useState(0);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
@@ -570,18 +565,6 @@ function App() {
     });
     return () => controller.abort();
   }, [selectedNBADate, nbaRetry, warmNBA]);
-  useEffect(() => {
-    if (!publicSupabaseConfig || authLoading || deletedAccount !== null || !authUser) return;
-    const controller = new AbortController();
-    void fetchLivewirePosts(publicSupabaseConfig, { limit: 20, themes: [] }, controller.signal)
-      .then((posts) => {
-        if (!controller.signal.aborted) saveRenderSnapshot('posts', 'livewire', livewireSnapshot(posts, 20));
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) console.error('Could not preload LIVEWIRE; opening the feed will retry', error);
-      });
-    return () => controller.abort();
-  }, [authLoading, authUser?.id, deletedAccount]);
   const previousView = useRef(view);
   useEffect(() => connectMedianNavigation(), []);
   useEffect(() => {
@@ -596,7 +579,18 @@ function App() {
     const openNotification = () => {
       setNotificationHash(window.location.hash);
       if (window.location.hash.startsWith('#livewire')) {
-        setView('LiveWire');
+        const legacyPost = /^#livewire\/post\/([0-9a-f-]{36})$/i.exec(window.location.hash)?.[1];
+        setView('Analyst');
+        setAnalystMode('Angle');
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#analyst-desk`);
+        setNotificationHash('#analyst-desk');
+        if (legacyPost && supabase) {
+          void Promise.resolve(supabase.rpc('retired_livewire_destination', { post_id: legacyPost })).then(({ data }) => {
+            if (typeof data === 'string' && window.location.hash === '#analyst-desk') {
+              window.location.hash = `#analyst-desk/story/${data}`;
+            }
+          }, () => { /* The Angle landing page remains available offline. */ });
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else if (window.location.hash === '#wire' || window.location.hash.startsWith('#wire/game/') || nbaNotificationFromHash(window.location.hash)) {
         setView('Wire');
@@ -636,6 +630,7 @@ function App() {
       window.location.hash = url.hash;
       openNotification();
     };
+    if (window.location.hash.startsWith('#livewire')) openNotification();
     window.addEventListener('hashchange', openNotification);
     navigator.serviceWorker?.addEventListener('message', onNotification);
     return () => {
@@ -1193,7 +1188,6 @@ function App() {
           <button className={view === 'Players' ? 'active' : ''} aria-current={view === 'Players' ? 'page' : undefined} onClick={() => setView('Players')}><ChartColumn size={20} aria-hidden="true" /><span>Stat Hub</span></button>
           <button className={view === 'Analyst' ? 'active' : ''} aria-current={view === 'Analyst' ? 'page' : undefined} aria-label={analystUnread.unread ? 'Analyst Desk, unread posts' : 'Analyst Desk'} onClick={() => { setView('Analyst'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="analyst-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10h18M4 10v11M20 10v11M14 10v8h6M16 14h2M7 10V3h10v7M10 6h4" /></svg>{analystUnread.unread && <i className="analyst-unread-dot" aria-hidden="true" />}</span><span>Analyst Desk</span></button>
           <button className={view === 'Gamewaire' ? 'active' : ''} aria-current={view === 'Gamewaire' ? 'page' : undefined} aria-label="GamewAIre" onClick={() => { setView('Gamewaire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><Sparkles size={20} aria-hidden="true" /><span className="gamewaire-name">Gamew<strong>AI</strong>re</span></button>
-          <button className={view === 'LiveWire' ? 'active' : ''} aria-current={view === 'LiveWire' ? 'page' : undefined} aria-label={livewireUnread.unread ? 'LIVEWIRE, unread posts' : 'LIVEWIRE'} onClick={() => { setView('LiveWire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span className="livewire-nav-icon"><Zap size={20} aria-hidden="true" />{livewireUnread.unread && <i className="livewire-unread-dot" aria-hidden="true" />}</span><span>LIVEWIRE</span></button>
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </PrimaryNavigation>
         <div className="topbar-right">
@@ -1219,20 +1213,19 @@ function App() {
           )}
         </div>
       </header>
-      <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : view === 'LiveWire' ? 'page-wrap livewire-page' : 'page-wrap'}>
+      <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
         <PullToRefresh />
-        {livewireUnread.error && <p className="feed-warning" role="status">{livewireUnread.error}</p>}
         {analystUnread.error && <p className="feed-warning" role="status">{analystUnread.error}</p>}
         <div className="page-heading">
           <div>
             <div className="date-line"><span>{dateLabel}</span><span className="date-divider" /> <span>LOCAL GAME TIMES</span></div>
             {view !== 'Wire' && <>
-              <h1>{view === 'Gamewaire' ? <span className="gamewaire-name">Gamew<strong>AI</strong>re</span> : view === 'LiveWire' ? 'LIVEWIRE' : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : view === 'Analyst' ? 'Analyst Desk' : 'Stat Hub'}</h1>
-              {view !== 'Analyst' && view !== 'Gamewaire' && <p>{view === 'LiveWire' ? 'Player news and takes from the GameWire desk.' : view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>}
+              <h1>{view === 'Gamewaire' ? <span className="gamewaire-name">Gamew<strong>AI</strong>re</span> : view === 'Den' ? 'Locker Room' : view === 'Profile' ? 'Profile' : view === 'Analyst' ? 'Analyst Desk' : 'Stat Hub'}</h1>
+              {view !== 'Analyst' && view !== 'Gamewaire' && <p>{view === 'Den' ? 'Your home for updates on the teams and players you follow.' : view === 'Profile' ? 'Manage your account details and security.' : 'The numbers behind the names.'}</p>}
             </>}
           </div>
           <div className="heading-actions">
-            {view !== 'Profile' && view !== 'LiveWire' && view !== 'Gamewaire' && (view !== 'Analyst' || !!sessionUser) && (
+            {view !== 'Profile' && view !== 'Gamewaire' && (view !== 'Analyst' || !!sessionUser) && (
               <>
                 {(view !== 'Wire' || displayedFeedFailure) && <span className={`feed-status${displayedFeedFailure ? ' feed-status-warning' : ''}`}>
                   <i />
@@ -1267,7 +1260,7 @@ function App() {
           {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
-        <AccountRequired hasAccount={!!sessionUser} section={view === 'Gamewaire' ? 'GamewAIre' : view === 'Analyst' ? 'Analyst Desk' : view === 'LiveWire' ? 'LIVEWIRE' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>
+        <AccountRequired hasAccount={!!sessionUser} section={view === 'Gamewaire' ? 'GamewAIre' : view === 'Analyst' ? 'Analyst Desk' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>
         {view === 'Gamewaire' && <Suspense fallback={<p role="status">Opening GamewAIre…</p>}><Gamewaire key={sessionUser?.id ?? 'guest'} /></Suspense>}
         {view === 'Analyst' && <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
           <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
@@ -1300,9 +1293,6 @@ function App() {
           storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null}
           storyOpenKey={storyOpenKey}
         />)}
-        <div hidden={view !== 'LiveWire'}>
-          <LiveWire key={authUser?.id ?? 'guest'} active={view === 'LiveWire'} user={authUser} onPostSeen={livewireUnread.markRead} postId={/^#livewire\/post\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null} />
-        </div>
         {view === 'Analyst' && analystMode === 'Results' && <OurResults key={authUser?.id ?? 'guest'} user={authUser} />}
         </AccountRequired>
         {view === 'Profile' ? (
@@ -1337,7 +1327,7 @@ function App() {
             onClose={() => setWirePlayerCard(null)}
           />}
           </>
-        ) : view === 'LiveWire' ? null : view === 'Den' ? (
+        ) : view === 'Den' ? (
           <TheDen league={sportLeague} activityDate={selectedNBADate} favorites={favorites.filter((favorite) => favorite.feedPath === (sportLeague === 'NBA' ? 'basketball/nba' : 'football/nfl'))} games={sportLeague === 'NBA' ? nbaGames : lockerRoomReady ? games : []} items={denHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={denHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={denHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={denHistory.loading} historyError={denHistory.error} signedIn={!!authUser} onRetryHistory={denHistory.retry} livePlayerGames={sportLeague === 'NBA' ? nbaGames.filter((game) => game.status === 'LIVE').length : livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
         ) : view === 'Players' ? (
           sportLeague === 'NBA'

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 export default function AccountRequired({ hasAccount, section, online, onSignIn, children }: {
   hasAccount: boolean;
-  section: 'Analyst Desk' | 'GamewAIre' | 'LIVEWIRE' | null;
+  section: 'Analyst Desk' | 'GamewAIre' | null;
   online: boolean;
   onSignIn: () => void;
   children: ReactNode;

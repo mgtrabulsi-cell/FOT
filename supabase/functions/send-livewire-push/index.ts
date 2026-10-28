@@ -22,6 +22,8 @@ Deno.serve(async (request: Request) => {
       await Promise.all(deliveries.slice(start, start + 10).map(async (delivery: {
         id: number; post_id: string | null; angle_id?: string | null; user_id: string; endpoint: string; subject: string; attempts: number; primary_theme?: 'news' | 'fantasy' | 'betting' | null;
       }) => {
+        // The historical endpoint/queue also carries Angle alerts. Never send archived post jobs.
+        if (!delivery.angle_id || delivery.post_id) return;
         try {
           const { data: target, error: targetError } = await admin.from('user_push_subscriptions')
             .select('subscription').eq('user_id', delivery.user_id).eq('endpoint', delivery.endpoint).maybeSingle();
@@ -31,8 +33,9 @@ Deno.serve(async (request: Request) => {
             if (cleanupError) throw cleanupError;
             return;
           }
+          let graphic = false;
           if (delivery.angle_id) {
-            const { data: story, error: storyError } = await admin.from('angles').select('id')
+            const { data: story, error: storyError } = await admin.from('angles').select('id,fantasy_graphic_id')
               .eq('id', delivery.angle_id).eq('status', 'published').maybeSingle();
             if (storyError) throw storyError;
             if (!story) {
@@ -40,18 +43,19 @@ Deno.serve(async (request: Request) => {
               if (cleanupError) throw cleanupError;
               return;
             }
+            graphic = !!story.fantasy_graphic_id;
           }
-          const graphicSubject = !delivery.angle_id && delivery.primary_theme === 'fantasy'
+          const graphicSubject = graphic && delivery.primary_theme === 'fantasy'
             ? /^(Week \d+ Must (?:Start|Sit)) Fantasy (QB|RB|WR|TE)$/.exec(delivery.subject)
             : null;
           const title = graphicSubject
             ? `${graphicSubject[1]} ${graphicSubject[2]}s`
-            : `${delivery.primary_theme ? delivery.primary_theme[0].toUpperCase() + delivery.primary_theme.slice(1) : delivery.angle_id ? 'News' : 'LIVEWIRE'}: ${delivery.subject}`;
+            : `${delivery.primary_theme ? delivery.primary_theme[0].toUpperCase() + delivery.primary_theme.slice(1) : 'News'}: ${delivery.subject}`;
           await sendWebPush(pushServer, target.subscription, {
             title,
             body: '',
-            url: new URL(delivery.angle_id ? `#analyst-desk/story/${delivery.angle_id}` : `#livewire/post/${delivery.post_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
-            tag: delivery.angle_id ? `gamewire-storyline-${delivery.angle_id}` : `gamewire-livewire-${delivery.post_id}`,
+            url: new URL(`#analyst-desk/story/${delivery.angle_id}`, Deno.env.get('GAMEWIRE_SITE_URL') ?? 'https://mgtrabulsi-cell.github.io/FOT/').href,
+            tag: `gamewire-storyline-${delivery.angle_id}`,
           });
           const { error: saveError } = await admin.from('livewire_push_deliveries')
             .update({ delivered_at: new Date().toISOString(), last_error: null }).eq('id', delivery.id);
@@ -65,8 +69,8 @@ Deno.serve(async (request: Request) => {
             return;
           }
           failed++;
-          const message = cause instanceof Error ? cause.message : 'LIVEWIRE push delivery failed';
-          console.error('LIVEWIRE delivery failed', { deliveryId: delivery.id, message });
+          const message = cause instanceof Error ? cause.message : 'Angle push delivery failed';
+          console.error('Angle delivery failed', { deliveryId: delivery.id, message });
           const retryAt = new Date(Date.now() + Math.min(3600, 60 * 2 ** Math.min(delivery.attempts, 6)) * 1000);
           const { error: retryError } = await admin.from('livewire_push_deliveries')
             .update({ last_error: message.slice(0, 1000), next_attempt_at: retryAt.toISOString() }).eq('id', delivery.id);
@@ -76,7 +80,7 @@ Deno.serve(async (request: Request) => {
     }
     return Response.json({ sent, failed }, { status: failed ? 503 : 200 });
   } catch (cause) {
-    console.error('LIVEWIRE push dispatch failed', cause);
-    return Response.json({ error: 'LIVEWIRE push dispatch failed. Pending deliveries will be retried.' }, { status: 500 });
+    console.error('Angle push dispatch failed', cause);
+    return Response.json({ error: 'Angle push dispatch failed. Pending deliveries will be retried.' }, { status: 500 });
   }
 });

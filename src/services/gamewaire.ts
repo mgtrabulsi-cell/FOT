@@ -1,12 +1,12 @@
 import { supabase } from './supabaseClient';
 import type { Candidate, Settings, Sport } from '../../supabase/functions/_shared/gamewaire';
-export { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks } from '../../supabase/functions/_shared/gamewaire';
-export type { Candidate, Settings, Sport };
+export { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '../../supabase/functions/_shared/gamewaire';
+export type { Candidate, Settings, Sport, TeamLean } from '../../supabase/functions/_shared/gamewaire';
 export type AnalysisStatus = 'in_progress' | 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds' | 'provider_error' | 'setup_required';
 export type AnalysisRun = {
   id: string; sport: Sport; event_id: string; event_start: string; matchup: string; settings: Settings; status: AnalysisStatus;
   created_at: string; finished_at: string | null;
-  payload: { picks?: Candidate[]; rejected?: Array<{ key: string; reason: string }>; warnings?: string[]; error?: string; explanationMode?: string };
+  payload: { picks?: Candidate[]; teamLean?: import('../../supabase/functions/_shared/gamewaire').TeamLean; rejected?: Array<{ key: string; reason: string }>; warnings?: string[]; error?: string; explanationMode?: string };
 };
 export type StoredPick = {
   id: string; sport: Sport; event_id: string; event_start: string; market: string; subject: string; side: string; line: number | null;
@@ -19,6 +19,7 @@ export type OddsEvent = { id: string; sport: Sport; home: string; away: string; 
 export type PublishedGame = {
   sport: Sport; event_id: string; run_id: string; event_start: string; matchup: string; picks: Candidate[]; published_at: string;
 };
+export type GameLean = { sport: Sport; event_id: string; event_start: string; matchup: string; team_lean: import('../../supabase/functions/_shared/gamewaire').TeamLean | null; updated_at: string };
 export async function engineRequest<T>(body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   if (!supabase) throw new Error('Account services are not configured.');
   const session = await supabase.auth.getSession();
@@ -43,11 +44,13 @@ export async function loadEngineHistory(signal: AbortSignal, canAnalyze = false)
   const published = await supabase.from('gamewaire_publications').select('*').order('event_start', { ascending: false }).limit(200).abortSignal(signal);
   if (published.error) throw new Error(`Could not load published GamewAIre games: ${published.error.message}`);
   const picks: StoredPick[] = [];
+  const leans = await supabase.from('gamewaire_team_leans').select('*').order('event_start', { ascending: false }).limit(200).abortSignal(signal);
+  if (leans.error) throw new Error(`Could not load GamewAIre team leans: ${leans.error.message}`);
   for (let offset = 0; ; offset += 500) {
     const page = await supabase.from('gamewaire_picks').select('*').order('created_at', { ascending: false }).order('id').range(offset, offset + 499).abortSignal(signal);
     if (page.error) throw new Error(`Could not load complete model performance: ${page.error.message}`);
     picks.push(...page.data);
     if (page.data.length < 500) break;
   }
-  return { runs: runs.data as AnalysisRun[], picks, published: published.data as PublishedGame[] };
+  return { runs: runs.data as AnalysisRun[], picks, published: published.data as PublishedGame[], leans: leans.data as GameLean[] };
 }

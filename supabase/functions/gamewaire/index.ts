@@ -151,7 +151,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     const claim = await admin.rpc('gamewaire_claim', { target_user: verified.data.user.id });
     if (claim.error) throw new Error('Could not check analysis rate limits.');
     if (!claim.data) return json({ error: 'GamewAIre budget reached: up to 6 requests per admin and 20 site-wide per hour.' }, 429);
-    const raw = await oddsJSON(`sports/${oddsSport[sport]}/events/${encodeURIComponent(text(body.eventId))}/odds?regions=us&oddsFormat=american&markets=${settings.markets.join(',')}`, oddsKey, fetcher);
+    const requestedMarkets = [...new Set([...settings.markets, 'h2h', 'spreads'])];
+    const raw = await oddsJSON(`sports/${oddsSport[sport]}/events/${encodeURIComponent(text(body.eventId))}/odds?regions=us&oddsFormat=american&markets=${requestedMarkets.join(',')}`, oddsKey, fetcher);
     const event = object(raw), start = text(event.commence_time);
     if (text(event.id) !== body.eventId) throw new Error('Odds provider returned a different event than requested.');
     if (!Number.isFinite(Date.parse(start)) || Date.parse(start) <= Date.now()) return json({ error: 'Only upcoming games can be analyzed.' }, 400);

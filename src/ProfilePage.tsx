@@ -4,6 +4,7 @@ import { ArrowLeft, Bell, CalendarDays, CheckCircle2, KeyRound, Mail, Trash2 } f
 import { supabase } from './services/supabaseClient';
 import { deleteAccount } from './services/deleteAccount';
 import OwnerUserActivity from './OwnerUserActivity';
+import AdminAccessSettings from './AdminAccessSettings';
 import { useSwipeBack } from './useSwipeBack';
 import { disablePushNotifications, enablePushNotifications, getPushSettings, hasPushConfiguration, sendTestPushNotification, supportsPushNotifications, updatePushPreference } from './services/pushNotifications';
 
@@ -115,9 +116,9 @@ function PushNotificationSettings({ user }: { user: User }) {
     }
   };
 
-  return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>New LIVEWIRE posts and admin storylines, favorite NFL updates, favorite NBA team quarter scores, and league-wide NBA scoring milestones and buzzer-beaters.</small></div></header><div className="account-setting-form push-settings-form">
+  return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>Angle updates, favorite NFL updates, favorite NBA team quarter scores, and league-wide NBA scoring milestones and buzzer-beaters.</small></div></header><div className="account-setting-form push-settings-form">
     {!supported ? <p className="nfl-empty-note">This browser does not support push notifications.</p> : !configured ? <p className="auth-config-note">Push is not configured for this site yet.</p> : checking ? <p className="nfl-empty-note">Checking this device…</p> : settingsError ? <p className="auth-error" role="alert">{settingsError} <button type="button" onClick={() => setSettingsRetry((value) => value + 1)}>Retry</button></p> : enabled ? <>
-      <p className="push-enabled-status" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span><b>Notifications enabled</b><small>Active on this device · LIVEWIRE and admin storyline alerts are on.</small></span></p>
+      <p className="push-enabled-status" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span><b>Notifications enabled</b><small>Active on this device · Angle alerts are on.</small></span></p>
       <label className="push-preference"><input type="checkbox" checked={notifyScores} onChange={(event) => void updatePreference(event.target.checked)} />Game updates: favorite NFL games, favorite NBA team quarters, and NBA highlights</label>
       <p className="owner-users-note">NBA highlights cover any player: 35, 40, 50 and 60 points, a final PTS / REB / AST line for 35+ points, halftime buzzer-beaters, and confirmed game-winning buzzer-beaters.</p>
       <div className="push-actions"><button type="button" onClick={() => void sendTest()} disabled={testBusy}>{testBusy ? 'Sending…' : 'Send test notification'}</button><button type="button" className="push-disable-button" onClick={() => void disable()} disabled={busy}>{busy ? 'Updating…' : 'Turn off on this device'}</button></div>
@@ -144,7 +145,7 @@ function DeleteAccountSettings({ onDeleted }: { onDeleted: (warnings: string[]) 
     <header><Trash2 size={16} /><div><b>Delete my account</b><small>Permanently delete your account and its saved personal data.</small></div></header>
     <div className="account-setting-form">
       {!confirming ? <button className="account-delete-button" onClick={() => setConfirming(true)}>Delete my account</button> : <>
-      <p>This cannot be undone. Your login, favorites, Locker Room history, notification subscriptions, admin access, and any LIVEWIRE posts and photos you uploaded will be deleted. Shared matchup boards remain without your account attribution.</p>
+      <p>This cannot be undone. Your login, favorites, Locker Room history, notification subscriptions, admin access, and any posts and photos you uploaded (including archived LIVEWIRE content) will be deleted. Shared matchup boards remain without your account attribution.</p>
       <p>Previously downloaded public copies on other devices cannot be remotely erased. Provider backups may remain until their retention period expires.</p>
       <form onSubmit={(event) => void remove(event)}>
         <label>Current password<input type="password" autoComplete="current-password" required value={password} disabled={busy} onChange={(event) => setPassword(event.target.value)} /></label>
@@ -226,6 +227,7 @@ export default function ProfilePage({ user, onBack, onDeleted }: { user: User; o
       <section className="account-setting"><header><Mail size={16} /><div><b>Email address</b><small>Update the address used to sign in.</small></div></header><form className="account-setting-form" onSubmit={updateEmail}><label>New email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>{emailError && <p className="auth-error" role="alert">{emailError}</p>}{emailMessage && <p className="auth-notice" role="status">{emailMessage}</p>}<button type="submit" disabled={emailBusy}>{emailBusy ? 'Sending confirmation…' : 'Change email'}</button></form></section>
       <section className="account-setting"><header><KeyRound size={16} /><div><b>Password</b><small>Choose a new password for your account.</small></div></header><form className="account-setting-form" onSubmit={updatePassword}><label>New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} /></label><label>Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} /></label>{passwordError && <p className="auth-error" role="alert">{passwordError}</p>}{passwordMessage && <p className="auth-notice" role="status">{passwordMessage}</p>}<button type="submit" disabled={passwordBusy}>{passwordBusy ? 'Updating…' : 'Change password'}</button></form></section>
     </div>
+    <AdminAccessSettings key={user.id} userId={user.id} />
     <OwnerUserActivity user={user} />
     <DeleteAccountSettings onDeleted={onDeleted} />
   </section>;

@@ -14,7 +14,7 @@ Deno.serve(async (request: Request) => {
     if (!url || !key) throw new Error('Supabase server configuration is missing');
     const admin = createClient(url, key);
     reportFailure = async (message) => {
-      const { error } = await admin.from('x_publications').update({ last_error: message.slice(0, 1000), updated_at: new Date().toISOString() }).eq('status', 'pending');
+      const { error } = await admin.from('x_publications').update({ last_error: message.slice(0, 1000), updated_at: new Date().toISOString() }).eq('source_type', 'angle').eq('status', 'pending');
       if (error) console.error('Could not record X connection failure', error);
     };
     const { data: settings, error: settingsError } = await admin.from('x_publishing_settings').select('enabled').eq('id', true).single();
@@ -23,9 +23,9 @@ Deno.serve(async (request: Request) => {
     const { error: expireError } = await admin.from('x_publications').update({
       status: 'unknown', updated_at: new Date().toISOString(),
       last_error: 'Dispatch interrupted. Check the X account before attempting to repost.',
-    }).eq('status', 'sending').lt('updated_at', new Date(Date.now() - 5 * 60_000).toISOString());
+    }).eq('source_type', 'angle').eq('status', 'sending').lt('updated_at', new Date(Date.now() - 5 * 60_000).toISOString());
     if (expireError) throw expireError;
-    const { data: pending, error: pendingError } = await admin.from('x_publications').select('id').eq('status', 'pending').limit(1);
+    const { data: pending, error: pendingError } = await admin.from('x_publications').select('id').eq('source_type', 'angle').eq('status', 'pending').limit(1);
     if (pendingError) throw pendingError;
     if (!pending?.length) return Response.json({ sent: 0, failed: 0 });
     const apiKey = Deno.env.get('X_API_KEY');
@@ -47,19 +47,20 @@ Deno.serve(async (request: Request) => {
     let sent = 0;
     let failed = 0;
     for (const delivery of deliveries ?? []) {
+      if (delivery.source_type !== 'angle') {
+        const { error } = await admin.from('x_publications').update({
+          status: 'cancelled', updated_at: new Date().toISOString(), last_error: 'LIVEWIRE retired',
+        }).eq('id', delivery.id);
+        if (error) throw error;
+        continue;
+      }
       let attempted = false;
       let acceptedId: string | undefined;
       try {
-        const angle = delivery.source_type === 'angle';
         const loadSource = async () => {
-          if (angle) {
-            const { data, error } = await admin.from('angles').select('title,subject,narrative,evidence,counterpoint,pick,picks,review_picks,game_id,status').eq('id', delivery.source_id).maybeSingle();
+            const { data, error } = await admin.from('angles').select('title,subject,narrative,evidence,counterpoint,pick,picks,review_picks,game_id,status,fantasy_graphic_id,image_paths').eq('id', delivery.source_id).maybeSingle();
             if (error) throw error;
             return data && data.status === 'published' ? xSource(data, true, delivery.source_id) : null;
-          }
-          const { data, error } = await admin.from('livewire_posts').select('title,body,angle_id,fantasy_graphic_id,image_paths').eq('id', delivery.source_id).maybeSingle();
-          if (error) throw error;
-          return data && data.angle_id === null ? xSource(data, false, delivery.source_id) : null;
         };
         const source = await loadSource();
         if (!source) {
@@ -69,7 +70,7 @@ Deno.serve(async (request: Request) => {
           if (cancelError) throw cancelError;
           continue;
         }
-        const link = `https://gamewire.us/${angle ? '#analyst-desk/story/' : '#livewire/post/'}${delivery.source_id}`;
+        const link = `https://gamewire.us/#analyst-desk/story/${delivery.source_id}`;
         const text = xImagePostText(source, link);
         const graphicImage = source.graphicImage;
         const images = graphicImage ? await (async () => {

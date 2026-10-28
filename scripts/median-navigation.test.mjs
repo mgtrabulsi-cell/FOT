@@ -6,15 +6,19 @@ import ts from 'typescript';
 import { connectMedianNavigation, hashForView, viewFromHash } from '../src/services/medianNavigation.ts';
 
 test('section routes and nested notification links preserve their destination', () => {
-  for (const [view, hash] of [['Wire', '#wire'], ['Players', '#stat-hub'], ['Analyst', '#analyst-desk'], ['Gamewaire', '#gamewaire'], ['LiveWire', '#livewire'], ['Den', '#locker-room'], ['Profile', '#profile']]) {
+  for (const [view, hash] of [['Wire', '#wire'], ['Players', '#stat-hub'], ['Analyst', '#analyst-desk'], ['Gamewaire', '#gamewaire'], ['Den', '#locker-room'], ['Profile', '#profile']]) {
     assert.equal(viewFromHash(hash), view);
     assert.equal(hashForView(view, '#unknown'), hash);
   }
-  for (const [view, hash] of [['Wire', '#wire/game/123'], ['LiveWire', '#livewire/post/11111111-1111-4111-8111-111111111111'], ['Analyst', '#analyst-desk/story/11111111-1111-4111-8111-111111111111']]) {
+  for (const [view, hash] of [['Wire', '#wire/game/123'], ['Analyst', '#analyst-desk/story/11111111-1111-4111-8111-111111111111']]) {
     assert.equal(viewFromHash(hash), view);
     assert.equal(hashForView(view, hash), hash);
   }
   assert.equal(viewFromHash('#stat-hub-invalid'), null);
+  for (const hash of ['#livewire', '#livewire/post/11111111-1111-4111-8111-111111111111']) {
+    assert.equal(viewFromHash(hash), 'Analyst');
+    assert.equal(hashForView('Analyst', hash), '#analyst-desk');
+  }
 });
 
 test('mobile navigation stays outside scaled app content and tracks visible viewport changes with cleanup', () => {

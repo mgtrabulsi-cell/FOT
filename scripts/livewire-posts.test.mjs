@@ -43,7 +43,7 @@ test('Unrelated parent scoreboard renders can reuse LIVEWIRE while feed state up
   assert.equal(LiveWire.compare, null, 'Use normal prop comparison so active tabs, users and linked posts still update');
 });
 
-test('The app keeps one LIVEWIRE instance mounted outside tab-selection conditionals', () => {
+test('The retired archival renderer is never mounted in the app', () => {
   const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const app = ts.createSourceFile('App.tsx', appSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const instances = [];
@@ -52,12 +52,7 @@ test('The app keeps one LIVEWIRE instance mounted outside tab-selection conditio
     ts.forEachChild(node, visit);
   };
   visit(app);
-  assert.equal(instances.length, 1);
-  const wrapper = instances[0].parent;
-  assert.ok(ts.isJsxElement(wrapper), 'LIVEWIRE stays mounted inside a visibility wrapper');
-  assert.match(wrapper.openingElement.getText(app), /hidden=\{view !== 'LiveWire'\}/);
-  assert.match(instances[0].getText(app), /active=\{view === 'LiveWire'\}/);
-  assert.ok(ts.isJsxElement(wrapper.parent), 'The wrapper is a direct main-app child, not a conditional branch');
+  assert.equal(instances.length, 0);
 });
 
 const parsed = ts.createSourceFile('LiveWire.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

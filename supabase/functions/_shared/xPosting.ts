@@ -16,9 +16,8 @@ export function xSource(row: Record<string, unknown>, angle: boolean, id: string
     return value;
   };
   const title = row.title === null && !angle ? 'GameWire update' : text('title');
-  if (!angle) {
     if (row.fantasy_graphic_id !== undefined && row.fantasy_graphic_id !== null) {
-      if (typeof row.fantasy_graphic_id !== 'string' || row.body !== ''
+      if (typeof row.fantasy_graphic_id !== 'string' || (!angle && row.body !== '')
         || !/^Week (?:[1-9]|1[0-8]) Must (?:Start|Sit) Fantasy (?:QB|RB|WR|TE)$/.test(title)
         || !Array.isArray(row.image_paths) || row.image_paths.length !== 1
         || typeof row.image_paths[0] !== 'string' || !/^[0-9a-f-]+\/[0-9a-f-]+[.]png$/.test(row.image_paths[0])) {
@@ -26,6 +25,7 @@ export function xSource(row: Record<string, unknown>, angle: boolean, id: string
       }
       return { title, subject: '', analysis: '', gameId: '', picks: [], graphicImage: row.image_paths[0] };
     }
+  if (!angle) {
     return { title, subject: '', analysis: text('body'), gameId: '', picks: [] };
   }
   const picks = row.picks === undefined ? undefined : readAnglePicks(row.picks);

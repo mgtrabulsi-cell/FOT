@@ -117,6 +117,42 @@ test('Probability grades use exact agreed thresholds, independently of value and
   for (const probability of [NaN, Infinity, -0.01, 1.01]) assert.throws(() => engine.probabilityGrade(probability), /Invalid win probability/);
 });
 
+test('Conversational blurbs use only saved player or team evidence without invented matchup context', () => {
+  const pick = { ...evaluate().picks[0], subject: 'Cade Cunningham', market: 'player_assists', side: 'Under',
+    line: 7.5, projection: 4.2, seasonAverage: 5.1, rotation: { label: 'Core rotation', minutes: 32, involvement: 18 } };
+  const blurb = engine.pickBlurb(pick);
+  assert.match(blurb, /Cade Cunningham is averaging 5\.1 assists/);
+  assert.match(blurb, /32\.0 minutes/);
+  assert.match(blurb, /4\.2 assists, below the 7\.5 line/);
+  assert.match(blurb, /under 7\.5 assists/);
+  assert.doesNotMatch(blurb, /unbeaten|LeBron|home court|injur|lock to|guaranteed/i);
+  const team = engine.pickBlurb({ ...pick, market: 'spreads', side: 'Boston Celtics', subject: 'Boston Celtics', line: 4.5 });
+  assert.match(team, /\+4\.5 spread/);
+  assert.doesNotMatch(team, /minutes per game|averaging.*assists/);
+});
+
+test('Every analyzed game gets a supported team lean, with failed value screens excluded from Top Picks', () => {
+  const team = { ...quote, key: 'team', market: 'h2h', subject: 'Boston Celtics', side: 'Boston Celtics', line: null, american: -10000 };
+  const data = new Map([[team.key, evidence]]);
+  const failed = engine.evaluate([team], data, settings, now, 8);
+  assert.ok(failed.teamLean);
+  assert.equal(failed.teamLean.qualifies, false);
+  assert.equal(failed.picks.length, 0);
+  assert.match(failed.teamLean.reason, /Not a Top Pick/);
+  for (const change of [{ eligible: false }, { samples: [] }, { quality: 0.1 }]) {
+    assert.equal(engine.evaluate([team], new Map([[team.key, { ...evidence, ...change }]]), settings, now).teamLean, undefined);
+  }
+  assert.equal(engine.evaluate([{ ...team, updatedAt: new Date(now - 600001).toISOString() }], data, settings, now).teamLean, undefined);
+  const qualified = { ...team, american: 150 };
+  const players = Array.from({ length: 10 }, (_, i) => ({ ...quote, key: `p-${i}`, subject: `P ${i}`, american: 300 }));
+  const all = [...players, qualified];
+  const full = engine.evaluate(all, new Map(all.map(q => [q.key, evidence])), settings, now, 8);
+  assert.equal(full.teamLean.qualifies, true);
+  assert.equal(full.picks.length, 8);
+  assert.equal(full.picks.filter(p => p.market === 'h2h').length, 1, 'Reserve a team candidate even when props fill the pool');
+  assert.ok(!full.rejected.some(row => row.key === qualified.key), 'A reserved team candidate must not also be described as rejected');
+});
+
 test('Top Picks rank by probability bands before value, moneyline preference and verified player usage', () => {
   const base = evaluate().picks[0];
   const candidate = (key, probability, extra = {}) => ({ ...base, key, probability, ...extra });
@@ -359,7 +395,7 @@ test('GamewAIre navigation is ordered correctly and AI styling is bold red witho
   const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const nav = source.slice(source.indexOf('<PrimaryNavigation>'), source.indexOf('</PrimaryNavigation>'));
   assert.ok(nav.indexOf("setView('Analyst')") < nav.indexOf("setView('Gamewaire')"));
-  assert.ok(nav.indexOf("setView('Gamewaire')") < nav.indexOf("setView('LiveWire')"));
+  assert.doesNotMatch(nav, /setView\('LiveWire'\)/);
   assert.match(nav, /Gamew<strong>AI<\/strong>re/);
   assert.match(source, /lazy\(\(\) => import\('\.\/Gamewaire'\)\)/);
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
@@ -372,7 +408,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
@@ -406,22 +442,15 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.doesNotMatch(report, /Admin analysis controls/);
   assert.doesNotMatch(report, /Saved analysis reports|Choose up to four member picks/);
   assert.match(report, /Probability grade/);
-  assert.match(report, /Value\/quality score \(not probability\)/);
-  assert.match(report, /Estimated win probability \(unvalidated\)/);
+  assert.doesNotMatch(report, /class="gai-evidence"|Value\/quality score \(not probability\)|class="gai-metrics gai-row-metrics"/, 'Members receive prose, not technical detail boxes');
   assert.match(report, /Brier score/);
   assert.match(report, /gai-grade-positive/);
-  assert.match(report, /Core rotation/);
-  assert.match(report, /not a confirmed starter/);
-  assert.match(report, /data-method note, not an error/);
-  assert.match(report, /Why the model selected this pick/);
+  assert.match(report, /32\.0 minutes per game/);
+  assert.match(report, /not a confirmed starting assignment/);
+  assert.match(report, /50\/50/);
   assert.match(report, /class="gai-pick-summary" aria-label="Why this pick:/);
-  assert.match(report, /class="gai-evidence"><summary>Full stats &amp; source observations/);
-  assert.ok(report.includes(`The weighted baseline for ${candidate.subject} was ${candidate.projection.toFixed(1)} points`));
-  assert.ok(report.includes(`using ${candidate.sampleSize} prior game observations`));
-  assert.ok(report.includes(`last-five average was ${candidate.last5.toFixed(1)}`));
-  assert.match(report, /four-observation, no-vig sportsbook prior/);
-  assert.match(report, /Key limitation:/);
-  assert.match(report, /model is unvalidated/);
+  assert.ok(report.includes(`${candidate.subject} is averaging ${candidate.seasonAverage.toFixed(1)} points`));
+  assert.match(report, /experimental estimate, not a lock/);
   assert.match(report, /<details class="gai-history">/);
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
@@ -431,6 +460,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(admin, /<section class="gai-workspace">/);
   assert.doesNotMatch(admin, /class="feed-warning"[^>]*>This baseline/);
   assert.match(admin, /<summary>Data notes &amp; excluded markets/);
+  assert.match(admin, /class="gai-evidence"><summary>Admin stats &amp; source observations/);
   const css = readFileSync(new URL('../src/gamewaire.css', import.meta.url), 'utf8');
   assert.match(css, /\.gai-grade-positive \{ color: #8bf0b3;/);
   assert.match(css, /@media \(max-width: 760px\)/);
@@ -464,7 +494,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(teamMarkets, /<h3>Boston Celtics \+4\.5<\/h3>/);
   assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
   assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
-  assert.match(teamMarkets, /team scoring margin/);
+  assert.match(teamMarkets, /scoring margin/);
   assert.match(teamMarkets, /close ties favor moneylines and high-usage players/);
   for (const [market, label] of Object.entries({
     player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
@@ -483,13 +513,22 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   }] } }], [], true]);
   const under = renderToStaticMarkup(createElement(Page));
   assert.match(under, /4\.2 assists/);
-  assert.match(under, /3\.3 assists below/);
-  assert.match(under, /last-five average was 4\.0/);
-  assert.match(under, /last-ten 4\.5/);
+  assert.match(under, /4\.2 assists, below the 7\.5 line/);
   assert.doesNotMatch(under, /Core rotation|Previous full-season average:|Key limitation:/, 'Reasoning never invents rotation, baseline or risks missing from this pick');
   const navCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(navCSS, /font-size: clamp\(9px, 2\.5vw, 11px\)/);
   assert.match(navCSS, /\.primary-nav button > span:last-child[^}]+min-height: 24px/);
+  const leanState = memberState.slice();
+  leanState[27] = [{ sport: 'NBA', event_id: 'lean-game', event_start: quote.start, matchup: 'Lean game', team_lean: {
+    pick: { ...candidate, market: 'h2h', line: null }, qualifies: false, reason: 'Failed value checks. Not a Top Pick.',
+  } }];
+  leanState[23] = 'lean-game';
+  fixture(leanState);
+  const leanView = renderToStaticMarkup(createElement(Page));
+  assert.match(leanView, /Lean only/);
+  assert.match(leanView, /Failed value checks/);
+  assert.match(leanView, /No published picks yet/);
+  assert.equal((leanView.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selecting an unpublished lean game never shows another game\'s published picks');
 });
 
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
@@ -576,6 +615,9 @@ test('Endpoint rate limits before paid API calls and persists deterministic comp
   assert.equal(body.run.status, 'completed');
   assert.equal(api.rpc.at(-1).name, 'gamewaire_finish');
   assert.ok(api.rpc.at(-1).args.candidates.length > 0);
+  const requested = new URL(api.fetches[0]);
+  assert.ok(requested.searchParams.get('markets').split(',').includes('h2h'));
+  assert.ok(requested.searchParams.get('markets').split(',').includes('spreads'));
   assert.ok(body.run.payload.warnings.some((warning) => warning.includes('OPENAI_API_KEY')));
   const filtered = await endpoint({ configured: true }).run({ action: 'analyze', sport: 'NBA', eventId: 'event',
     settings: { ...settings, markets: ['player_points'], player: 'No matching player' } });

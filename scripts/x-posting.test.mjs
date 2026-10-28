@@ -66,7 +66,7 @@ test('Review attachments stay structured for image result marks, not the new-pic
   assert.equal(xImagePostText(source, 'https://gamewire.us'), 'Review\n\nhttps://gamewire.us');
 });
 
-test('Start/Sit tweets contain exactly the LIVEWIRE subject, no URL or other wording, and reference the original PNG', () => {
+test('Start/Sit tweets contain exactly the subject, no URL or other wording, and reference the original PNG', () => {
   for (const kind of ['Start', 'Sit']) for (const position of ['QB', 'RB', 'WR', 'TE']) {
     const title = `Week 7 Must ${kind} Fantasy ${position}`;
     const source = xSource({ title, body: '', fantasy_graphic_id: 'graphic-id',

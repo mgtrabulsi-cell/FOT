@@ -249,7 +249,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
       if (currentScope.current !== savedScope || formScope.current !== savedScope) return;
       setForm(savedDraft.form); setEditing(savedDraft.editing); setDirty(false); setQueries(savedDraft.queries); setPostToX(savedDraft.postToX);
       setRows(nextRows);
-      setNotice(action === 'publish' ? `Graphic published in Start/Sit and LIVEWIRE. The working template is cleared for your next graphic.${postToX ? ' Check X publishing status below for delivery; only first publications are eligible.' : ''}` : action === 'unpublish' ? 'Graphic removed from Start/Sit and LIVEWIRE. The shared draft is still available to admins. Any tweet already sent is unchanged.' : 'Shared draft saved. All admins can continue editing it.');
+      setNotice(action === 'publish' ? `Graphic published in Start/Sit and The Angle. The working template is cleared for your next graphic.${postToX ? ' Check X publishing status below for delivery; only first publications are eligible.' : ''}` : action === 'unpublish' ? 'Graphic removed from Start/Sit and The Angle. The shared draft is still available to admins. Any tweet already sent is unchanged.' : 'Shared draft saved. All admins can continue editing it.');
     } catch (cause) {
       if (formScope.current === savedScope) setError(message(cause));
     }
@@ -315,7 +315,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
         setPostToX(event.target.checked);
         persistDraft({ form: activeForm, editing, dirty, queries, postToX: event.target.checked });
       }} />Post to X on first publication</label>
-      <p>Publishing also posts the subject and graphic only in LIVEWIRE. Checked X posts use the exact same subject and PNG, without extra wording or a link. Edits and republishing do not send another tweet.</p>
+      <p>Publishing also posts the subject and graphic in The Angle. Checked X posts use the exact same subject and PNG, without extra wording or a link. Edits and republishing do not send another tweet.</p>
       <div className="angle-actions">
         <button type="button" disabled={busy || !online || !admin} onClick={() => void save('draft')}>Save shared draft</button>
         <button type="submit" disabled={busy || !online || !admin}>{busy ? 'Saving...' : 'Publish graphic'}</button>

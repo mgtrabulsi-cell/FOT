@@ -73,7 +73,9 @@
 .gai-panel .gai-estimate-note { margin: 10px 0 0; font-size: 10px; }
 .gai-open-cue { display: block; margin-top: 8px; color: #c1d3eb; text-align: right; font-size: 11px; }
 .gai-pick-details[open] > summary .gai-open-cue > span { display: inline-block; transform: rotate(180deg); }
-.gai-reason { margin: 0 14px; padding: 14px 0 0; border-top: 1px solid #304762; }
+.gai-reason { margin: 0 14px; padding: 10px 0; color: #f5f5f5; background: #080808; }
+.gai-reason p { margin: 0; padding: 10px; }
+.gai-team-lean { margin-top: 14px; }
 .gai-reason h4 { margin: 0; font-size: 14px; color: #edf2f8; }
 .gai-evidence { margin: 0 14px 14px; }
 .gai-tag { display: inline-block; padding: 4px 7px; border: 1px solid #30445e; border-radius: 4px; background: #142236; color: #bfcde0; font-size: 10px; font-weight: 500; }

@@ -161,6 +161,6 @@ export default function OwnerUserActivity({ user }: { user: User }) {
     {guestError && <p className="auth-error" role="alert">{guestError}</p>}
     {guests && <p className="owner-users-note">Last guest open: {formatLastOpened(guests.last_opened_at, now)}.</p>}
     <p className="owner-users-note">Account totals above cover signed-in visits starting Oct 19, 2026; the owner account is excluded, but admin visits are counted. Opens count browser/app sessions, not individual logins. Last sign-in is the most recent authentication timestamp, not a full login history. Guest totals are separate and start Oct 23, 2026. Guests are anonymous browser/app sessions, not unique people; no names or emails are collected. Returning after 30+ minutes in the background counts another open. Signed-out owner visits cannot be distinguished from other guests.</p>
-    <p className="owner-users-note">Notification status reflects saved push subscriptions, not current phone permissions. A user may have muted notifications in device settings. Angle and LIVEWIRE alerts go to registered push devices even when score alerts are off.</p>
+    <p className="owner-users-note">Notification status reflects saved push subscriptions, not current phone permissions. A user may have muted notifications in device settings. Angle alerts go to registered push devices even when score alerts are off.</p>
   </section>;
 }
