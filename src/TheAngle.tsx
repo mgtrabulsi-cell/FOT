@@ -55,7 +55,7 @@ async function fetchAngleSuggestions(games: Game[], signal: AbortSignal) {
   return { suggestions: suggestions.sort((a, b) => Date.parse(b.article.published) - Date.parse(a.article.published)), errors };
 }
 
-const generalMatchups = [{ id: 'NFL:0', label: 'NFL' }, { id: 'FANTASY:0', label: 'Fantasy' }] as const;
+const generalMatchups = [{ id: 'NFL:0', label: 'NFL' }, { id: 'FANTASY:0', label: 'Fantasy' }, { id: 'NEWS:0', label: 'News' }] as const;
 
 function newAngle(game: Game | undefined, season: number, week: number, section: AngleSection = 'angle'): Angle {
   return {
@@ -557,7 +557,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {admin && <section className="angle-admin" aria-label={news ? 'Fantasy News admin desk' : 'The Angle admin desk'}>
       <h3>Admin desk <span>Private</span></h3>{!news && <><p>Verify every lead before publishing.</p>
       <div className="angle-actions"><button disabled={scanning || !weeklyGames.length} onClick={() => setScan((value) => value + 1)}>{scanning ? 'Checking news, birthdays, and matchup history...' : 'Refresh suggestions'}</button></div>
-      {!weeklyGames.length && <p>No NFL matchups are available for this week. You can create a general NFL or Fantasy post; matchup suggestions need a loaded game.</p>}
+      {!weeklyGames.length && <p>No NFL matchups are available for this week. You can create a general NFL, Fantasy, or News post; matchup suggestions need a loaded game.</p>}
       {suggestionErrors.length > 0 && <p className="feed-warning" role="status">Some suggestion feeds could not load. {suggestionErrors.join(' ')}</p>}
       {!scanning && weeklyGames.length > 0 && !suggestions.length && <p>No source-backed news, birthday, or matchup-history leads found in the available coverage. Nothing has been invented; you can create an angle manually.</p>}
       <div className="angle-filters" role="group" aria-label="Select lead category">

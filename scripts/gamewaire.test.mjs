@@ -700,7 +700,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ role = 'admin', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false } = {}) {
+function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
     GAMEWIRE_CRON_SECRET: 'fixture-cron',
@@ -724,7 +724,9 @@ function endpoint({ role = 'admin', configured = false, failClaim = false, publi
       };
       return builder;
     },
-    rpc: async (name, args) => { rpc.push({ name, args }); return { data: name === 'gamewaire_claim' ? !failClaim
+    rpc: async (name, args) => {
+      if (name === 'gamewaire_can_admin') return { data: allowed, error: null };
+      rpc.push({ name, args }); return { data: name === 'gamewaire_claim' ? !failClaim
       : name === 'gamewaire_analysis_lock' ? lockBusy ? null : 'lock-fixture'
       : name === 'gamewaire_schedule_claim' ? scheduledJob : null, error: null }; },
   };
@@ -764,6 +766,19 @@ test('Endpoint requires authentication/admin access and honestly reports unconfi
   assert.equal((await member.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 403);
   assert.equal(member.fetches.length, 0);
   assert.equal((await member.run({ action: 'publish', runId: '00000000-0000-0000-0000-000000000001', keys: [quote.key] })).status, 403);
+});
+test('Other admins and owners have member-only GamewAIre access with no paid requests or writes', async () => {
+  for (const role of ['admin', 'owner', 'member']) {
+    const api = endpoint({ role, allowed: false, configured: true });
+    const status = await (await api.run({ action: 'status' })).json();
+    assert.equal(status.canAnalyze, false);
+    for (const action of ['events', 'report', 'analyze', 'publish', 'settle']) {
+      assert.equal((await api.run({ action })).status, 403, `${role}: ${action}`);
+    }
+    assert.equal(api.fetches.length, 0);
+    assert.equal(api.writes.length, 0);
+    assert.equal(api.rpc.length, 0);
+  }
 });
 test('Publication is admin-only, rejects invalid counts, and uses the transactional publication RPC', async () => {
   const api = endpoint();

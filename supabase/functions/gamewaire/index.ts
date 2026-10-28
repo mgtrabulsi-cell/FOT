@@ -124,12 +124,12 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const verified = await client.auth.getUser();
       if (verified.error || !verified.data.user) return json({ error: 'Your session expired. Sign in again.' }, 401);
       userId = verified.data.user.id;
-      const role = await admin.from('livewire_roles').select('role').eq('user_id', userId).maybeSingle();
-      if (role.error) throw new Error('Could not verify analysis permissions.');
-      canAnalyze = role.data?.role === 'admin' || role.data?.role === 'owner';
+      const permission = await client.rpc('gamewaire_can_admin');
+      if (permission.error) throw new Error('Could not verify analysis permissions.');
+      canAnalyze = permission.data === true;
     }
     if (body.action === 'status') return json({ canAnalyze, oddsReady: !!oddsKey, aiReady: !!aiKey, model: modelVersion, experimental: true });
-    if (!canAnalyze) return json({ error: 'Only admins can generate analyses or settle model picks.' }, 403);
+    if (!canAnalyze) return json({ error: 'GamewAIre management is restricted to the designated account.' }, 403);
     if (body.action === 'report') {
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId)) return json({ error: 'Choose a saved report.' }, 400);
       const saved = await admin.from('gamewaire_runs').select('*').eq('id', body.runId).maybeSingle();
