@@ -478,11 +478,12 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   fixture([status, [{ ...run, payload: { picks: [{ ...candidate, probability: 0.49 }] } }], [], true]);
   assert.match(renderToStaticMarkup(createElement(Page)), /gai-grade-neutral">Probability grade C/);
   fixture([status, [{ ...run, payload: { picks: [{
-    ...candidate, side: 'Under', market: 'player_assists', baseline: undefined, rotation: undefined,
+    ...candidate, side: 'Under', market: 'player_assists', line: 7.5, baseline: undefined, rotation: undefined,
     previousSeasonAverage: undefined, risks: [], projection: 4.2, last5: 4, last10: 4.5, seasonAverage: 5.1,
   }] } }], [], true]);
   const under = renderToStaticMarkup(createElement(Page));
   assert.match(under, /4\.2 assists/);
+  assert.match(under, /3\.3 assists below/);
   assert.match(under, /last-five average was 4\.0/);
   assert.match(under, /last-ten 4\.5/);
   assert.doesNotMatch(under, /Core rotation|Previous full-season average:|Key limitation:/, 'Reasoning never invents rotation, baseline or risks missing from this pick');

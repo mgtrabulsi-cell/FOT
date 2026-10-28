@@ -61,6 +61,8 @@ function PickCard({ pick, record, rank, selection }: { pick: Candidate; record?:
         compared with {percent(pick.implied)} implied by the odds. Its push-adjusted edge was {(pick.edge * 100).toFixed(1)} percentage points,
         with estimated EV of {percent(pick.ev)} per unit staked, including pushes.</p>
       <p>The weighted baseline for {pick.subject} was {pick.projection.toFixed(1)} {projectionLabel}, using {pick.sampleSize} prior game observations.
+        {pick.market.startsWith('player_') && pick.line !== null && <> That projection is {pick.projection === pick.line ? 'equal to'
+          : `${Math.abs(pick.projection - pick.line).toFixed(1)} ${projectionLabel} ${pick.projection > pick.line ? 'above' : 'below'}`} the {pick.line} line.</>}
         The available current-season last-five average was {pick.last5.toFixed(1)}, last-ten {pick.last10.toFixed(1)}, and season average {pick.seasonAverage.toFixed(1)}.
         The model combines the weighted game distribution with a four-observation, no-vig sportsbook prior; it does not select on the average alone.</p>
       {pick.baseline && <p className="gai-note">{pick.baseline} Previous full-season average: {pick.previousSeasonAverage?.toFixed(1) ?? 'Unavailable'}. This is a data-method note, not an error.</p>}
@@ -102,7 +104,7 @@ function PublishPicks({ report, refresh }: { report: AnalysisRun; refresh: () =>
   const stale = candidates.some((pick) => Date.now() - Date.parse(pick.updatedAt) > 600_000) || Date.parse(report.event_start) <= Date.now();
   const legacy = candidates.some((pick) => pick.modelVersion !== modelVersion);
   return <section className="gai-publish" aria-label="Choose member picks"><h4>Choose up to four member picks</h4>
-    <p className="gai-note">Tap a pick for the reasoning. Check up to four to publish; only published picks enter member views and tracking.</p>
+    <p className="gai-note">Tap for reasoning. Check up to four picks to publish.</p>
     <div className="gai-picks">{candidates.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1}
       selection={{ checked: selected.includes(pick.key), disabled: busy || (!selected.includes(pick.key) && selected.length >= 4),
         onChange: (checked) => setSelected((previous) => checked ? [...previous, pick.key] : previous.filter((key) => key !== pick.key)) }} />)}</div>
@@ -255,10 +257,10 @@ export default function Gamewaire() {
         <label>Player name filter<input value={settings.player} maxLength={100} onChange={(event) => setSettings((previous) => ({ ...previous, player: event.target.value }))} /></label>
         {([{ key: 'minEV', label: 'Minimum estimated EV %', max: 100 }, { key: 'minEdge', label: 'Minimum probability edge (pp)', max: 50 },
           { key: 'minQuality', label: 'Minimum completeness %', min: 75, max: 100 }, { key: 'recentWeight', label: 'Last-10 weighting %', max: 60 }] as const).map((field) => <label key={field.key}>{field.label}<input type="number" min={'min' in field ? field.min : 0} max={field.max} step="1" value={Math.round(settings[field.key] * 100)} required onChange={(event) => setSettings((previous) => ({ ...previous, [field.key]: Number(event.target.value) / 100 }))} /></label>)}
+        <p className="gai-note">NBA focuses on core rotation and high-usage reserves, not confirmed lineups. Fewer than eight candidates may qualify.</p>
         </details>
         <button className="gai-run" disabled={busy || !eventId || !settings.markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : 'Run analysis'}</button>
       </form>
-      <p className="gai-note">NBA focuses on core rotation and high-usage reserves, not confirmed lineups. Fewer than eight candidates may qualify.</p>
     </section>
     {actionError && <p role="alert" className="feed-warning">{actionError}</p>}
     {(busy || notice) && <p role="status">{busy ? 'Working with verified provider data. Existing reports remain available…' : notice}</p>}
@@ -275,7 +277,7 @@ export default function Gamewaire() {
     </aside>
     <section id="gai-top-picks" className="gai-top-picks gai-outline" aria-label="Top Picks">
       <div className="gai-section-heading"><h3><span aria-hidden="true">★</span> Top Picks</h3><span className="gai-tag">{candidateView ? 'Admin candidates · unpublished' : 'Published picks'}</span></div>
-      <p className="gai-note">Probability-first ranking; close ties favor moneylines and high-usage players. Probability grades summarize unvalidated estimates, not betting value.</p>
+      <p className="gai-note">Unvalidated estimates, not betting value. Probability-first; close ties favor moneylines and high-usage players.</p>
       {candidateView ? <section aria-label="Analysis reports">
         {!!matchingRuns.length && <details className="gai-report-picker"><summary>Saved analysis reports</summary><label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{matchingRuns.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label></details>}
         {loaded && !matchingRuns.length && <div className="gai-empty"><h4>Ready to analyze</h4><p>No model analyses yet for these filters. Choose a game, then run analysis to review up to eight candidates.</p></div>}

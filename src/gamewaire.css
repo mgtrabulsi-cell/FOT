@@ -107,7 +107,7 @@
   .gai-hero { padding: 12px; gap: 10px; }
   .gai-hero h2 { margin: 4px 0; font-size: clamp(22px, 6vw, 28px); }
   .gai-hero-copy .eyebrow { font-size: 8px; }
-  .gai-hero-copy p { margin: 3px 0; font-size: 11px; }
+  .gai-hero-copy p { display: none; }
   .gai-hero-copy small { font-size: 10px; line-height: 1.4; }
   .gai-hero-features { padding: 8px 0; }
   .gai-hero-features > div { gap: 0; padding: 0 4px; }
@@ -115,7 +115,9 @@
   .gai-hero-features span { font-size: 9px; line-height: 1.3; }
   .gai-dashboard { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .gai-filters .gai-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
-  .gai-filters .gai-form > .gai-load, .gai-filters .gai-form > label:has(select[required]), .gai-filters .gai-form > label:has(select:not([required])):last-of-type { grid-column: 1 / -1; }
+  .gai-filters .gai-form > .gai-load { grid-column: 1; }
+  .gai-filters .gai-form > label:has(select[required]) { grid-column: 2; }
+  .gai-filters .gai-form > label:has(select:not([required])):last-of-type { grid-column: 1 / -1; }
   .gai-filters .gai-form > .gai-advanced { grid-column: 1; }
   .gai-filters .gai-form > .gai-advanced[open] { grid-column: 1 / -1; }
   .gai-filters .gai-form > .gai-run { grid-column: 2; }
@@ -141,6 +143,9 @@
   .gai-picks { gap: 8px; margin: 8px 0; }
   .gai-publish > h4 { margin: 10px 0 4px; font-size: 12px; }
   .gai-top-picks > .gai-note { margin: 8px 0; font-size: 10px; line-height: 1.4; }
+  .gai-top-picks > section[aria-label="Analysis reports"] > h4 { margin: 8px 0 4px; font-size: 13px; }
+  .gai-top-picks > section[aria-label="Analysis reports"] > p[role="status"] { margin: 4px 0; font-size: 10px; }
+  .gai-report-picker { margin: 4px 0; }
   .gai-row-metrics { margin-top: 8px; padding-top: 8px; }
   .gai-row-metrics div { padding: 0 5px; }
   .gai-row-metrics dd { margin-top: 3px; font-size: 12px; }
