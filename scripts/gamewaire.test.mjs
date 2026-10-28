@@ -617,6 +617,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(scheduledView, /Publish game lean · 0 credits/);
   assert.match(scheduledView, /Refresh game lean only · up to 2 credits/);
   assert.match(scheduledView, /Analyze players &amp; full game · up to 7 credits/);
+  assert.match(raw, /<ReviewNBALean key=\{`lean:\$\{report\.id\}`\}/, 'Lean review and sibling Top Pick publication have distinct React keys');
   const more = { ...candidate, key: 'top-probability', subject: 'Higher hit estimate', probability: 0.99 };
   const adminState = [status, [{ ...run, payload: { picks: [candidate, more] } }], [], true];
   fixture(adminState);

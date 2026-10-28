@@ -372,7 +372,7 @@ export default function Gamewaire() {
           {report.payload.providerUsage && <p className="gai-note">Odds API: {report.payload.providerUsage.requestCost ?? 'Unknown'} credits for this saved request · {report.payload.providerUsage.creditsRemaining ?? 'Unknown'} remaining as of {stamp(report.payload.providerUsage.checkedAt)}. Opening this report uses no credits.</p>}
           {report.status === 'no_qualifying' && <p>No qualifying value bets found for this matchup.</p>}
           {report.payload.error && <p role="alert" className="feed-warning">{report.payload.error}</p>}
-          {report.sport === 'NBA' ? <ReviewNBALean key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} /> : <section aria-label="Game team lean"><h4>Game team lean</h4>
+          {report.sport === 'NBA' ? <ReviewNBALean key={`lean:${report.id}`} report={report} refresh={refreshHistory} onFreshReport={openReport} /> : <section aria-label="Game team lean"><h4>Game team lean</h4>
             <p className="gai-note">{report.payload.teamLean?.qualifies ? 'Qualifies for Top Picks; one team slot is reserved in this candidate pool.'
               : report.payload.teamLean?.reason ?? 'Unavailable: this report has no verified team lean. Regenerate with current data.'}</p>
             {report.payload.teamLean && !report.payload.teamLean.qualifies && <PickCard pick={report.payload.teamLean.pick} rank={1} technical />}
