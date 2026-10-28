@@ -560,6 +560,16 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
   assert.match(admin, /Choose up to four member picks/);
+  assert.match(admin, /Run analysis · up to 7 credits/);
+  assert.match(admin, /reusing a fresh cached report costs 0 credits/);
+  const costState = [status, [run], [], true];
+  costState[10] = { ...settings, markets: ['player_points'] };
+  fixture(costState);
+  const propCost = renderToStaticMarkup(createElement(Page));
+  assert.match(propCost, /Run analysis · up to 3 credits/, 'One prop market also requests moneyline and spread');
+  costState[10] = { ...settings, markets: ['h2h', 'spreads'] };
+  fixture(costState);
+  assert.match(renderToStaticMarkup(createElement(Page)), /Run analysis · up to 2 credits/, 'Required team markets are not counted twice');
   assert.match(admin, /Publish 0\/4 picks/);
   assert.match(admin, /ODDS_API_KEY/);
   assert.match(admin, /<section class="gai-workspace">/);

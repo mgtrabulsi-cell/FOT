@@ -290,7 +290,8 @@ export default function Gamewaire() {
           { key: 'minQuality', label: 'Minimum completeness %', min: 75, max: 100 }, { key: 'recentWeight', label: 'Last-10 weighting %', max: 60 }] as const).map((field) => <label key={field.key}>{field.label}<input type="number" min={'min' in field ? field.min : 0} max={field.max} step="1" value={Math.round(settings[field.key] * 100)} required onChange={(event) => setSettings((previous) => ({ ...previous, [field.key]: Number(event.target.value) / 100 }))} /></label>)}
         <p className="gai-note">NBA focuses on core rotation and high-usage reserves, not confirmed lineups. Fewer than eight candidates may qualify.</p>
         </details>
-        <button className="gai-run" disabled={busy || !eventId || !settings.markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : 'Run analysis'}</button>
+        <button className="gai-run" disabled={busy || !eventId || !settings.markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : `Run analysis · up to ${new Set([...settings.markets, 'h2h', 'spreads']).size} credits`}</button>
+        <p className="gai-note">Odds API estimate for one game. Only returned markets are charged; reusing a fresh cached report costs 0 credits. Player filters do not reduce market costs.</p>
       </form>
     </section>
     {actionError && <p role="alert" className="feed-warning">{actionError}</p>}
