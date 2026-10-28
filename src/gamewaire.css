@@ -16,6 +16,15 @@
 .gai-scheduled { border: 1px solid #293d57; border-radius: 7px; padding: 0 12px; background: #0c1523; }
 .gai-scheduled-batch { border-top: 1px solid #263b55; padding-top: 8px; }
 .gai-scheduled-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid #263b55; border-radius: 6px; background: #0e1929; }
+.gai-saved-list { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; }
+.gai-saved-list .gai-history-pick { flex: 1; min-width: 0; }
+.gai-saved-list h4 { overflow-wrap: anywhere; }
+.gai-schedule-details { border-top: 1px solid #263b55; }
+.gai-review-tools { margin-top: 8px; border-top: 1px solid #263b55; }
+.gai-review-tools[open] { display: grid; gap: 8px; }
+.gai-back-games { display: inline-flex; align-items: center; min-height: 44px; color: #d7e5f7; font-size: 12px; }
+.gai-actions { display: grid; gap: 8px; }
+.gai-top-pick-tools { margin: 12px 0; border-top: 1px solid #263b55; }
 .gai-hero { position: relative; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; padding: 26px; border: 1px solid #23364e; border-radius: 8px; background: radial-gradient(ellipse at 38% 0%, #24374f66, transparent 65%), linear-gradient(115deg, #080f1c 30%, #1a1523 65%, #080f1c); }
 .gai-hero::after { content: ''; pointer-events: none; position: absolute; top: -50%; left: 44%; width: 45px; height: 200%; transform: rotate(30deg); border-left: 3px solid #9a263b66; border-right: 12px solid #9a263b33; }
 .gai-hero-copy, .gai-hero-features { position: relative; z-index: 1; }
@@ -143,6 +152,23 @@
   .gai-hero { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
+  .gai-saved-list { max-height: 230px; margin: 8px 0; }
+  .gai-saved-list .gai-scheduled-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 8px; }
+  .gai-saved-list .gai-history-pick { grid-column: auto; }
+  .gai-saved-list h4 { margin: 0 0 3px; font-size: 12px; line-height: 1.4; }
+  .gai-saved-list small { font-size: 10px; line-height: 1.4; }
+  .gai-saved-cost { display: block; font-size: 9px; }
+  .gai-scheduled { padding: 0 10px; scroll-margin-top: 90px; }
+  .gai-scheduled > h3 { font-size: 13px; margin: 10px 0 4px; }
+  .gai-scheduled > .gai-note { margin: 4px 0; line-height: 1.4; }
+  .gai-hero-features { display: none; }
+  .gai-hero-copy small { display: none; }
+  .gai-hero::after { display: none; }
+  .gai-filters > h3 { display: none; }
+  .gai-filters .gai-workspace > summary { padding: 6px 0; }
+  .gai-review-tools button { width: 100%; }
+  .gai-top-picks section[aria-label="Review NBA game lean"] > h4 { margin: 10px 0 4px; font-size: 13px; }
+  .gai-top-picks section[aria-label="Review NBA game lean"] > .gai-note { margin: 5px 0; line-height: 1.4; }
   .gai-history { padding: 0 10px 10px; }
   .gai-results-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .gai-results-stats > div { padding: 10px; }

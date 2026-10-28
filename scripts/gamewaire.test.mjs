@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
+import { completedSavedGames, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
 
 const now = Date.parse('2026-10-27T18:00:00Z');
 const quote = { key: 'event|player_points|Player|Over|20.5', eventId: 'event', sport: 'NBA',
@@ -18,6 +19,59 @@ const settings = { ...engine.defaultSettings, markets: ['player_points', 'player
 const evidence = { eligible: true, fetchedAt: new Date(now).toISOString(), quality: 0.8, risks: ['Experimental'],
   samples: Array.from({ length: 30 }, (_, index) => ({ date: new Date(now - (index + 1) * 86_400_000).toISOString(), value: index < 27 ? 30 : 10 })) };
 const evaluate = (quotes = [quote], data = evidence, options = settings, time = now) => engine.evaluate(quotes, new Map(quotes.map((q) => [q.key, data])), options, time);
+
+test('Saved games leave review only after a matching confirmed final, not at tipoff, delay or postponement', async () => {
+  const game = { sport: 'NBA', event_id: 'odds-id', event_start: '2026-10-27T23:00:00Z', matchup: 'LA Lakers @ Boston Celtics' };
+  const event = { date: game.event_start, competitions: [{ status: { type: { completed: true, state: 'post' } },
+    competitors: [{ homeAway: 'away', team: { displayName: 'Los Angeles Lakers' } }, { homeAway: 'home', team: { displayName: 'Boston Celtics' } }] }] };
+  assert.deepEqual(completedSavedGames([game], [event]), ['NBA:odds-id']);
+  for (const state of ['pre', 'in', 'postponed', 'delayed']) {
+    assert.deepEqual(completedSavedGames([game], [{ ...event, competitions: [{
+      ...event.competitions[0], status: { type: { completed: false, state } },
+    }] }]), [], state);
+  }
+  assert.deepEqual(completedSavedGames([game], [{ ...event, date: '2026-10-20T23:00:00Z' }]), [], 'A prior meeting cannot clear this game');
+  assert.deepEqual(completedSavedGames([game], [{ ...event, date: 'invalid' }]), [], 'An invalid start cannot confirm a matching game');
+  assert.deepEqual(completedSavedGames([{ ...game, matchup: 'Atlanta Hawks @ Boston Celtics' }], [event]), []);
+  const requested = [];
+  const result = await loadCompletedSavedGames([game, { ...game, event_id: 'same-day' }], new AbortController().signal,
+    async (url) => {
+      assert.ok(String(url).startsWith('https://site.api.espn.com/'));
+      requested.push(String(url));
+      return Response.json({ events: [event] });
+    });
+  assert.deepEqual(result.completed.sort(), ['NBA:odds-id', 'NBA:same-day']);
+  assert.equal(result.completionWarning, '');
+  assert.equal(requested.length, 2, 'Multiple saved reports share the two date-boundary feeds');
+  assert.ok(requested.some((url) => url.includes('dates=20261027')));
+  assert.ok(requested.some((url) => url.includes('dates=20261028')));
+  const future = await loadCompletedSavedGames([{ ...game, event_start: new Date(Date.now() + 86_400_000).toISOString() }],
+    new AbortController().signal, async () => { throw new Error('Pregame reports do not need a completion request'); });
+  assert.deepEqual(future, { completed: [], completionWarning: '' });
+  const missing = await loadCompletedSavedGames([game], new AbortController().signal, async () => Response.json({ events: [] }));
+  assert.deepEqual(missing.completed, []);
+  assert.match(missing.completionWarning, /Unconfirmed games remain/);
+  const identified = { ...game, payload: { picks: [{ ...evaluate().picks[0], identifiers: { espnEventId: '401234567' } }] } };
+  const rescheduled = { ...event, id: '401234567', date: '2026-10-29T23:00:00Z' };
+  const moved = await loadCompletedSavedGames([identified], new AbortController().signal, async (url) =>
+    String(url).includes('/summary?event=401234567') ? Response.json({ header: rescheduled }) : Response.json({ events: [] }));
+  assert.deepEqual(moved, { completed: ['NBA:odds-id'], completionWarning: '' }, 'Saved ESPN IDs still identify a rescheduled final');
+  assert.deepEqual(completedSavedGames([identified], [{ ...rescheduled, id: 'different-game' }]), [], 'Known ESPN IDs must match');
+  const nfl = { ...game, sport: 'NFL', event_id: 'nfl-id', matchup: 'New York Jets @ New England Patriots' };
+  const nflEvent = { ...event, competitions: [{ ...event.competitions[0], competitors: [
+    { homeAway: 'away', team: { displayName: 'New York Jets' } }, { homeAway: 'home', team: { displayName: 'New England Patriots' } },
+  ] }] };
+  const mixed = await loadCompletedSavedGames([game, nfl], new AbortController().signal, async (url) =>
+    Response.json({ events: String(url).includes('football/nfl') ? [nflEvent] : [event] }));
+  assert.deepEqual(mixed.completed.sort(), ['NBA:odds-id', 'NFL:nfl-id']);
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const failed = await loadCompletedSavedGames([game], new AbortController().signal, async () => new Response('', { status: 503 }));
+    assert.deepEqual(failed.completed, []);
+    assert.match(failed.completionWarning, /Unconfirmed games remain/);
+  } finally { console.error = original; }
+});
 
 test('American conversion, raw implied, no-vig and exact push-aware EV are deterministic', () => {
   assert.equal(engine.decimalOdds(150), 2.5);
@@ -530,6 +584,7 @@ test('GamewAIre navigation is ordered correctly and AI styling is bold red witho
 test('GamewAIre renders provider setup, real reports and complete metrics without fabricated empty-state picks', async () => {
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
   const component = ts.transpileModule(raw, { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
+    .replace(/from ['"]\.\/services\/gamewaireGames['"]/g, `from '${new URL('../src/services/gamewaireGames.ts', import.meta.url)}'`)
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
@@ -592,7 +647,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(renderToStaticMarkup(createElement(Page)), /Run analysis · up to 2 credits/, 'Required team markets are not counted twice');
   assert.match(admin, /Publish 0\/4 picks/);
   assert.match(admin, /ODDS_API_KEY/);
-  assert.match(admin, /<section class="gai-workspace">/);
+  assert.match(admin, /<details class="gai-workspace"><summary>New analysis &amp; settings/);
   assert.doesNotMatch(admin, /class="feed-warning"[^>]*>This baseline/);
   assert.match(admin, /<summary>Data notes &amp; excluded markets/);
   assert.match(admin, /class="gai-evidence"><summary>Admin stats &amp; source observations/);
@@ -622,18 +677,27 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const scheduledState = [status, [scheduledRun], [], true];
   scheduledState[7] = scheduledRun.event_start.slice(0, 10);
   scheduledState[28] = [{ id: 'batch', sport: 'NBA', game_date: scheduledRun.event_start.slice(0, 10), status: 'ready', note: 'Top three.', error: null }];
-  scheduledState[29] = [{ id: 'job', batch_id: 'batch', matchup: 'Away at Home', event_start: scheduledRun.event_start, status: 'completed', run_id: 'run' }];
+  scheduledState[29] = [{ id: 'job', batch_id: 'batch', sport: 'NBA', event_id: 'event', matchup: 'Away at Home', event_start: scheduledRun.event_start, status: 'completed', run_id: 'run' }];
   fixture(scheduledState);
   const scheduledView = renderToStaticMarkup(createElement(Page));
   assert.match(scheduledView, /Scheduled shortlists/);
   assert.match(scheduledView, /Review saved report/);
-  assert.match(scheduledView, /<section class="gai-scheduled" aria-label="Saved analyses">/);
-  assert.match(scheduledView, /Open saved picks · 0 credits/);
+  assert.match(scheduledView, /<section id="gai-saved-games" class="gai-scheduled" aria-label="Saved analyses">/);
+  assert.match(scheduledView, /Open saved picks for Away at Home · 0 credits/);
+  assert.match(scheduledView, /<details class="gai-schedule-details"><summary>Scheduled shortlists/);
+  assert.match(scheduledView, /<details class="gai-top-pick-tools"><summary>Top Pick candidates/);
   assert.match(scheduledView, /0 credits to view picks and explanations/);
   assert.match(scheduledView, /Overnight shortlist · Standings-ranked matchup/);
   assert.match(scheduledView, /Odds API: 7 credits for this saved request · 479 remaining/);
   assert.match(scheduledView, /Refresh prices &amp; review picks · up to 4 credits/);
   assert.match(scheduledView, /No NBA lean or Top Pick publishes automatically/);
+  const finishedState = scheduledState.slice();
+  finishedState[30] = { completed: ['NBA:event'], completionWarning: '' };
+  fixture(finishedState);
+  const finishedView = renderToStaticMarkup(createElement(Page));
+  assert.doesNotMatch(finishedView, /Open saved picks for Away at Home|Review saved report · 0 credits|Review NBA game lean/);
+  assert.match(finishedView, /No saved games awaiting review/);
+  assert.match(finishedView, /Results &amp; pick history/, 'Published results history remains available');
   assert.match(scheduledView, /Publish game lean · 0 credits/);
   assert.match(scheduledView, /Refresh game lean only · up to 2 credits/);
   assert.match(scheduledView, /Analyze players &amp; full game · up to 7 credits/);
