@@ -467,9 +467,16 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(css, /\.gai-dashboard \{ grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /font-size: 16px/);
   assert.match(css, /\.gai-hero-features b \{ display: none; \}/);
-  assert.match(css, /grid-template-columns: minmax\(0, 1fr\) 92px/);
+  assert.match(css, /grid-template-columns: minmax\(0, 1fr\) 94px/);
   const pickSummary = admin.slice(admin.indexOf('<summary class="gai-pick-summary"'), admin.indexOf('</summary>', admin.indexOf('<summary class="gai-pick-summary"')));
   assert.doesNotMatch(pickSummary, /<input|<button/, 'The expandable pick is separate from the admin publication checkbox');
+  assert.match(pickSummary, /gai-pick-identity gai-history-pick/, 'Top Picks share the results row identity styling');
+  assert.match(pickSummary, /class="gai-history-price"><b>\+150<\/b><small>Book A<\/small>/);
+  assert.match(pickSummary, /Probability grade/);
+  assert.match(pickSummary, /aria-label="Rank 1"/);
+  assert.match(pickSummary, /Atlanta Hawks @ Boston Celtics/);
+  assert.doesNotMatch(pickSummary, /gai-rank|gai-metrics|Unvalidated estimate/, 'Closed rows stay compact; expanded content keeps the context and metrics');
+  assert.match(admin, /class="gai-pick-context"/);
   assert.match(admin, /Moneyline \(game winner\)/);
   assert.match(admin, /Player props/);
   assert.match(admin, /Admin candidates · unpublished/);

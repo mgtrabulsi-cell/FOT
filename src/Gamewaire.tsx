@@ -34,16 +34,22 @@ function PickCard({ pick, record, rank, selection, technical = false }: { pick: 
     <details className="gai-pick-details">
     <summary className="gai-pick-summary" aria-label={`Why this pick: ${title}`}>
     <div className="gai-pick-top">
-      <div className="gai-pick-identity">
-        <span className="gai-rank" aria-label={`Rank ${rank}`}>{String(rank).padStart(2, '0')}</span>
-        <div><span className="eyebrow">{pick.sport} · {marketLabel}</span>
+      <div className="gai-pick-identity gai-history-pick">
+        <div><span className="eyebrow"><span aria-label={`Rank ${rank}`}>#{String(rank).padStart(2, '0')}</span> · {pick.sport} · {marketLabel}</span>
           <h3>{title}</h3>
-          <small>{pick.away} @ {pick.home}</small></div>
+          <small>{pick.away} @ {pick.home} · {stamp(pick.start)}</small></div>
       </div>
-      <div className="gai-pick-price"><span className={`gai-grade ${pick.probability >= 0.5 ? 'gai-grade-positive' : 'gai-grade-neutral'}`}>Probability grade {grade}</span>
-        <b>{odds(pick.american)}</b><small>{pick.book}</small></div>
+      <div className="gai-history-price"><b>{odds(pick.american)}</b><small>{pick.book}</small></div>
+      <span className={`gai-grade ${pick.probability >= 0.5 ? 'gai-grade-positive' : 'gai-grade-neutral'}`}>Probability grade {grade}</span>
     </div>
-    {record && <p>{record.withdrawn ? 'Withdrawn · not an active selection · ' : ''}Status: {record.result}</p>}
+    <div className="gai-pick-footer">
+      {record?.withdrawn && <span className="gai-tag">Withdrawn · not an active selection</span>}
+      {record && <span className={`gai-result gai-result-${record.result}`}>{resultLabels[record.result]}</span>}
+      {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <span className="gai-note">Saved price</span>}
+      <span className="gai-open-cue">Why this pick <span aria-hidden="true">↓</span></span>
+    </div>
+    </summary>
+    <div className="gai-pick-context">
     {technical && <dl className="gai-metrics gai-row-metrics">
       <div className="gai-hit"><dt>Estimated hit %</dt><dd>{percent(pick.probability)}</dd></div>
       <div><dt>Market implied</dt><dd>{percent(pick.implied)}</dd></div>
@@ -53,8 +59,7 @@ function PickCard({ pick, record, rank, selection, technical = false }: { pick: 
     <p className="gai-note gai-estimate-note">Unvalidated estimate · Not a guarantee of profit.</p>
     {record && record.result !== 'pending' && <p className="gai-note">Saved analysis, not a new live selection.</p>}
     {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="gai-note">Saved price · refresh analysis before using a changed line.</p>}
-    <span className="gai-open-cue">Why this pick <span aria-hidden="true">↓</span></span>
-    </summary>
+    </div>
     <section className="gai-reason" aria-label={`Analysis behind ${title}`}>
       <p>{pickBlurb(pick)}</p>
     </section>
