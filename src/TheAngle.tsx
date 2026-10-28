@@ -26,7 +26,7 @@ import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapsho
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import ActiveAngleBets from './ActiveAngleBets';
 
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; unreadKeys?: readonly string[]; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The Angle request failed. Please retry.';
 
@@ -68,7 +68,7 @@ function newAngle(game: Game | undefined, season: number, week: number, section:
   };
 }
 
-export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, section = 'angle', onOpenSection, active: visible = true }: Props) {
+export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, unreadKeys = [], section = 'angle', onOpenSection, active: visible = true }: Props) {
   const news = section === 'news';
   const [admin, setAdmin] = useState(false);
   const [savedFeed] = useState(() => readRenderSnapshot('angleFeed', section));
@@ -536,7 +536,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {(!season || !week) && !savedFeed ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     {admin && visible && <XPublishingStatus />}
     <div className={`angle-cards${news ? '' : ' angle-cards-collapsible'}`} ref={readObserver.root}>{published.map((angle) => <article className={`angle-card${news ? '' : ' angle-card-collapsible'}`} id={`angle-${angle.id}`} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
-      {!news && <h3><button type="button" className="angle-post-toggle" aria-expanded={expandedPosts.includes(angle.id)} aria-controls={`angle-body-${angle.id}`} onClick={() => setExpandedPosts((previous) => previous.includes(angle.id) ? previous.filter((id) => id !== angle.id) : [...previous, angle.id])}><span>{!expandedPosts.includes(angle.id) && postThemes.filter((theme) => theme.value === angleThemes(angle)[0]).map((theme) => <span className="angle-post-theme" key={theme.value}>{theme.label}: </span>)}{angle.title}</span><span className="angle-post-chevron" aria-hidden="true" /></button></h3>}
+      {!news && <h3><button type="button" className="angle-post-toggle" aria-expanded={expandedPosts.includes(angle.id)} aria-controls={`angle-body-${angle.id}`} onClick={() => setExpandedPosts((previous) => previous.includes(angle.id) ? previous.filter((id) => id !== angle.id) : [...previous, angle.id])}><span>{unreadKeys.includes(`angle:${angle.id}`) && <span className="angle-post-unread" role="img" aria-label="Unread post" />}{!expandedPosts.includes(angle.id) && postThemes.filter((theme) => theme.value === angleThemes(angle)[0]).map((theme) => <span className="angle-post-theme" key={theme.value}>{theme.label}: </span>)}{angle.title}</span><span className="angle-post-chevron" aria-hidden="true" /></button></h3>}
       <div id={`angle-body-${angle.id}`} className="angle-post-body">
       {(news || expandedPosts.includes(angle.id)) && <div className="angle-post-content" data-post-id={angle.id}>
       <div className="angle-card-meta"><span>{angle.category}</span>{news

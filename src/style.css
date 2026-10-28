@@ -491,6 +491,7 @@ button { color: inherit; }
 .angle-card-collapsible { gap: 0; }
 .angle-post-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
 .angle-post-toggle > span:first-child { min-width: 0; }
+.angle-post-unread { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #ff5261; vertical-align: middle; }
 .angle-post-chevron { flex: 0 0 8px; width: 8px; height: 8px; margin-right: 4px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
 .angle-post-toggle[aria-expanded="true"] .angle-post-chevron { transform: rotate(225deg); }
 .angle-post-toggle:focus-visible { outline: 2px solid #a9bfdf; outline-offset: 4px; border-radius: 2px; }

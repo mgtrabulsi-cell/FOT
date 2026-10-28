@@ -450,6 +450,8 @@ The admin/owner Profile activity tool also shows separate anonymous guest-sessio
 
 The Angle and Fantasy News feeds show newest publications first, based on the original publication timestamp, regardless of pending/settled picks. Editing or grading an older post does not move it above newer posts. Filters and weekly visibility still apply; an explicitly linked storyline remains pinned first when opening its direct link. Active bets remain available in their separate dropdown.
 
+Each unread Angle post has a small red dot beside its title, with an accessible "Unread post" label. Collapsed titles do not mark posts read: opening a post and viewing its content saves the existing account read receipt (or guest local receipt), then clears only that post's dot and updates the navigation indicator. Read-sync failures retain the dot and show the existing retry/reconnect warning. Previously read posts stay read on reload; post edits do not reset receipts.
+
 Selecting **Parlay** in the admin-pick editor expands its text area: press Enter to put each leg on a new line. Line breaks are preserved in The Angle, LIVEWIRE, and Our Results. The full multiline parlay remains one pick with one grade and one parlay-record entry; the existing 500-character limit applies to the whole pick.
 
 On desktop the pick editor uses a compact type dropdown beside a flexible, wider play text box and the remove button. The add-pick button stays content-sized; phone layouts keep the controls stacked with full-width play text and touch-friendly targets.

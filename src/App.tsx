@@ -1290,6 +1290,7 @@ function App() {
           week={lockerRoomWeek}
           user={sessionUser}
           onSeen={analystUnread.markRead}
+          unreadKeys={analystUnread.unreadKeys}
           storyId={/^#analyst-desk\/story\/([0-9a-f-]{36})$/i.exec(notificationHash)?.[1] ?? null}
           storyOpenKey={storyOpenKey}
         />)}
