@@ -124,11 +124,11 @@ test('Conversational blurbs use only saved player or team evidence without inven
   const blurb = engine.pickBlurb(pick);
   assert.match(blurb, /Cade Cunningham averages 5\.1 assists/);
   assert.match(blurb, /32\.0 minutes/);
-  assert.match(blurb, /4\.2 assists, below the 7\.5 line, supporting the under/);
+  assert.match(blurb, /under 7\.5 assists a statistical case/);
   assert.match(blurb, /under 7\.5 assists/);
   assert.doesNotMatch(blurb, /unbeaten|LeBron|home court|injur|lock to|guaranteed/i);
   const team = engine.pickBlurb({ ...pick, market: 'spreads', side: 'Boston Celtics', subject: 'Boston Celtics', line: 4.5 });
-  assert.match(team, /Boston Celtics \+4\.5: they need to win or lose by fewer than 4\.5 points/);
+  assert.match(team, /Boston Celtics \+4\.5 a statistical case/);
   assert.doesNotMatch(team, /minutes per game|averaging.*assists/);
 });
 
@@ -153,7 +153,7 @@ test('Every analyzed game gets a supported team lean, with failed value screens 
   assert.equal(full.picks.filter(p => p.market === 'h2h').length, 1, 'Reserve a team candidate even when props fill the pool');
   assert.ok(!full.rejected.some(row => row.key === qualified.key), 'A reserved team candidate must not also be described as rejected');
 });
-test('Plain-language team blurbs explain the outcome and current-season record without mixing last season', () => {
+test('Conversational team blurbs use recorded form without revealing the formula or mixing seasons', () => {
   const base = { ...evaluate().picks[0], market: 'h2h', subject: 'Los Angeles Lakers', line: null, seasonAverage: 13,
     projection: 5.2, probability: 0.69, baseline: '50/50', samples: [
       { season: 2027, date: '2026-10-26', value: 30, opponent: 'Utah Jazz' },
@@ -161,47 +161,45 @@ test('Plain-language team blurbs explain the outcome and current-season record w
       { season: 2026, date: '2026-04-10', value: -50, opponent: 'Old opponent' },
     ] };
   const ml = engine.pickBlurb(base);
-  assert.match(ml, /moneyline means they need to win the game/);
-  assert.match(ml, /2 recorded games this season, they went 1-1/);
+  assert.match(ml, /Los Angeles Lakers are 1-1 across 2 recorded games this season/);
   assert.match(ml, /outscored opponents by 13\.0 points per game/);
   assert.match(ml, /won by 30 vs\. Utah Jazz; lost by 4 vs\. Boston Celtics/);
-  assert.match(ml, /5\.2-point win/);
-  assert.match(ml, /Estimated chance: 69\.0%/);
-  assert.doesNotMatch(ml, /Old opponent|scoring margin|weighted baseline|LowVig|guaranteed win/);
+  assert.match(ml, /Lakers moneyline a statistical case/);
+  assert.doesNotMatch(ml, /Old opponent|scoring margin|weight|50\/50|model|projection|5\.2|69\.0|LowVig|guaranteed win/i);
   const negative = engine.pickBlurb({ ...base, seasonAverage: -3.2, projection: -2 });
   assert.match(negative, /been outscored by 3\.2 points/);
-  assert.match(negative, /2\.0-point loss/);
-  assert.match(negative, /does not support this pick on average/);
-  for (const [line, requirement, push] of [[4.5, 'win or lose by fewer than 4.5 points', false],
-    [-4, 'win by more than 4 points', true], [0, 'win the game', true]]) {
+  assert.match(negative, /does not favor this side/);
+  for (const line of [4.5, -4, 0]) {
     const spread = engine.pickBlurb({ ...base, market: 'spreads', line });
-    assert.ok(spread.includes(requirement));
-    assert.equal(spread.includes('push (stake returned)'), push);
+    assert.ok(spread.includes(`Los Angeles Lakers ${line > 0 ? '+' : ''}${line}`));
+    assert.doesNotMatch(spread, /they need to|push \(stake returned\)|model|50\/50/i);
   }
 });
-test('All prop units and totals explain the exact target, pushes and evidence that disagrees', () => {
+test('All prop units and totals use relevant statistics and honest trends rather than betting lessons', () => {
   const base = { ...evaluate().picks[0], side: 'Over', line: 7.5, projection: 6, seasonAverage: 6,
     samples: [9, 7, 2].map((value, i) => ({ value, date: `2026-10-${26 - i}`, season: 2027 })) };
   for (const [market, unit] of Object.entries({ player_points: 'points', player_rebounds: 'rebounds',
     player_assists: 'assists', player_threes: 'made threes', player_pass_yds: 'passing yards',
     player_rush_yds: 'rushing yards', player_reception_yds: 'receiving yards', player_receptions: 'receptions' })) {
     const blurb = engine.pickBlurb({ ...base, market });
-    assert.ok(blurb.includes(`needs 8+ ${unit}`));
-    assert.ok(blurb.includes(`Latest 3, newest first: 9, 7, 2 ${unit}`));
-    assert.match(blurb, /1 of those 3 results finished above today's 7\.5 line/);
-    assert.match(blurb, /does not support the over on its own/);
-    assert.doesNotMatch(blurb, /push \(stake returned\)/);
+    assert.ok(blurb.includes(`over 7.5 ${unit}`));
+    assert.ok(blurb.includes(`last 3 outings produced 9, 7, 2 ${unit}`));
+    assert.match(blurb, /1 of those 3 outings cleared the 7\.5 line/);
+    assert.match(blurb, /season average leans the other way/);
+    assert.doesNotMatch(blurb, /needs|push \(stake returned\)|model|weight|Estimated chance/i);
     const under = engine.pickBlurb({ ...base, market, side: 'Under', line: 7 });
-    assert.ok(under.includes(`needs 6 or fewer ${unit}`));
-    assert.match(under, /Exactly 7 is a push/);
-    assert.match(under, /1 of those 3 results finished below today's 7 line/);
+    assert.ok(under.includes(`under 7 ${unit}`));
+    assert.match(under, /1 of those 3 outings stayed below the 7 line/);
   }
   const total = engine.pickBlurb({ ...base, market: 'totals', line: 220.5, projection: 225 });
-  assert.match(total, /needs 221\+ combined points between both teams/);
-  assert.match(total, /each team's past games, not just head-to-head meetings/);
+  assert.match(total, /over 220\.5 combined points/);
+  assert.match(total, /separate past games, not a head-to-head average/);
   assert.doesNotMatch(total, /they went|point win|minutes per game|scoring margin/);
-  const equal = engine.pickBlurb({ ...base, market: 'player_points', projection: 7.5 });
-  assert.match(equal, /average alone does not favor either side/);
+  const equal = engine.pickBlurb({ ...base, market: 'player_points', seasonAverage: 7.5 });
+  assert.match(equal, /season average sits on the line/);
+  const historical = engine.pickBlurb({ ...base, market: 'player_points', previousSeasonAverage: 12.3, baseline: '50/50' });
+  assert.match(historical, /averaged 12\.3 points in the available prior-season games/);
+  assert.doesNotMatch(historical, /50\/50|weight|algorithm|model/i);
 });
 
 test('Top Picks rank by probability bands before value, moneyline preference and verified player usage', () => {
@@ -497,11 +495,11 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /Brier score/);
   assert.match(report, /gai-grade-positive/);
   assert.match(report, /32\.0 minutes per game/);
-  assert.match(report, /not a confirmed starting assignment/);
-  assert.match(report, /50\/50/);
+  assert.match(report, /Recent playing time has averaged/);
+  assert.match(report, /available prior-season games/);
   assert.match(report, /class="gai-pick-summary" aria-label="Why this pick:/);
   assert.ok(report.includes(`${candidate.subject} averages ${candidate.seasonAverage.toFixed(1)} points`));
-  assert.match(report, /estimate is unvalidated, not a guarantee/);
+  assert.match(report, /Small samples and changing roles can change the outlook/);
   assert.match(report, /<details class="gai-history">/);
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
@@ -585,8 +583,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     previousSeasonAverage: undefined, risks: [], projection: 4.2, last5: 4, last10: 4.5, seasonAverage: 5.1,
   }] } }], [], true]);
   const under = renderToStaticMarkup(createElement(Page));
-  assert.match(under, /4\.2 assists/);
-  assert.match(under, /4\.2 assists, below the 7\.5 line/);
+  assert.match(under, /averages 5\.1 assists/);
+  assert.match(under, /under 7\.5 assists a statistical case/);
   assert.doesNotMatch(under, /Core rotation|Previous full-season average:|Key limitation:/, 'Reasoning never invents rotation, baseline or risks missing from this pick');
   const navCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(navCSS, /font-size: clamp\(9px, 2\.5vw, 11px\)/);
