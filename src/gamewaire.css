@@ -88,8 +88,41 @@
 .gai-report-picker { margin: 10px 0; }
 .gai-diagnostics { border-top: 1px solid #23364e; margin-top: 18px; }
 .gai-diagnostics ul { max-height: 320px; overflow-y: auto; padding-left: 20px; }
-.gai-history { border: 1px solid #293d57; border-radius: 7px; padding: 0 16px; }
-.gai-history > summary { font-weight: 700; }
+.gai-history { border: 1px solid #293d57; border-top: 2px solid #cc2633; border-radius: 7px; padding: 0 16px 12px; background: linear-gradient(135deg, #0c1523, #080f1a); }
+.gai-history > summary { font: 700 18px var(--display); padding: 16px 0; }
+.gai-sport-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.gai-sport-tabs button { flex: 1; }
+.gai-sport-tabs [aria-pressed="true"] { border-color: #dc4552; background: #50202d; color: #fff; }
+.gai-results-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 8px; }
+.gai-results-heading h3 { margin: 5px 0; font: 700 24px var(--display); }
+.gai-results-heading .eyebrow { color: #ff5965; font-size: 10px; }
+.gai-results-heading label { min-width: 130px; }
+.gai-results-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 16px 0 10px; gap: 8px; }
+.gai-results-stats > div { padding: 14px; border: 1px solid #263b55; border-radius: 6px; background: #101b2c; min-width: 0; }
+.gai-results-stats dt { font-size: 11px; color: #b6c6db; }
+.gai-results-stats dd { font: 700 24px var(--display); margin: 8px 0 0; overflow-wrap: anywhere; }
+.gai-results-stats dd span { font: 500 11px sans-serif; color: #b6c6db; }
+.gai-profit-positive dd { color: #8bf0b3; }
+.gai-profit-negative dd { color: #ff8791; }
+.gai-history-toolbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 10px; margin-top: 18px; }
+.gai-history-advanced { border-bottom: 1px solid #23364e; }
+.gai-history-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.gai-history-list-heading h4 { margin: 0; font-size: 14px; }
+.gai-history-list { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.gai-history-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px 84px; gap: 12px; align-items: center; padding: 14px; border: 1px solid #263b55; border-radius: 6px; background: #0e1929; }
+.gai-history-pick { min-width: 0; overflow-wrap: anywhere; }
+.gai-history-pick .eyebrow { font-size: 9px; color: #a7b9d1; }
+.gai-history-pick h4 { margin: 5px 0; font-size: 14px; }
+.gai-history-pick small, .gai-history-price small { display: block; font-size: 11px; color: #a7b9d1; line-height: 1.5; }
+.gai-history-price { text-align: right; overflow-wrap: anywhere; }
+.gai-result { display: inline-block; padding: 7px 8px; border: 1px solid #40516a; border-radius: 5px; font-size: 11px; font-weight: 700; text-align: center; }
+.gai-result-win { color: #8bf0b3; border-color: #3e9367; background: #102e25; }
+.gai-result-loss { color: #ffb1b8; border-color: #934450; background: #351c29; }
+.gai-result-pending { color: #f0d998; border-color: #776239; background: #282318; }
+.gai-result-push, .gai-result-void { color: #becde0; background: #192537; }
+.gai-history-actions { grid-column: 1 / -1; display: grid; gap: 8px; border-top: 1px solid #23364e; }
+.gai-history-actions > details > summary { padding: 8px 0; }
+.gai-history-empty { padding: 22px 10px; text-align: center; color: #b6c6db; border: 1px dashed #344963; border-radius: 6px; }
 .gai-why > ul { display: grid; gap: 18px; list-style: none; padding: 0; margin: 18px 0; }
 .gai-why > ul li { position: relative; padding-left: 19px; font-size: 12px; }
 .gai-why > ul li::before { content: '+'; color: #ff5965; position: absolute; left: 0; font-weight: 800; }
@@ -105,6 +138,17 @@
   .gai-hero { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
+  .gai-history { padding: 0 10px 10px; }
+  .gai-results-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .gai-results-stats > div { padding: 10px; }
+  .gai-results-stats > div:first-child { grid-column: 1 / -1; }
+  .gai-results-stats dd { font-size: 22px; }
+  .gai-history-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .gai-history-toolbar > button { grid-column: 1 / -1; }
+  .gai-history-row { grid-template-columns: minmax(0, 1fr) 72px; padding: 10px; gap: 8px; }
+  .gai-history-pick { grid-column: 1 / -1; }
+  .gai-history-price { text-align: left; }
+  .gai-history-list-heading .gai-tag { font-size: 9px; }
   .gai-panel { gap: 8px; }
   .gai-hero { padding: 12px; gap: 10px; }
   .gai-hero h2 { margin: 4px 0; font-size: clamp(22px, 6vw, 28px); }

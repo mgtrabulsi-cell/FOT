@@ -18,14 +18,16 @@ const marketLabels: Record<string, string> = {
   player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
   player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions',
 };
+const pickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject} ML`
+  : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
+  : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
+const resultLabels = { pending: 'Pending', win: 'Won', loss: 'Lost', push: 'Push', void: 'Void' };
 function PickCard({ pick, record, rank, selection, technical = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
   const valueScore = gamewaireGrade(pick).score;
   const grade = probabilityGrade(pick.probability);
   const marketLabel = marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ');
-  const title = pick.market === 'h2h' ? `${pick.subject} ML`
-    : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
-    : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabel}`;
+  const title = pickTitle(pick);
   return <article className="gai-pick angle-card" data-selectable={!!selection}>
     {selection && <label className="gai-select-pick"><input type="checkbox" checked={selection.checked} disabled={selection.disabled}
       aria-label={`Select ${title}`} onChange={(event) => selection.onChange(event.target.checked)} /></label>}
@@ -137,7 +139,7 @@ export default function Gamewaire() {
   const [minEV, setMinEV] = useState(''), [minOdds, setMinOdds] = useState(''), [maxOdds, setMaxOdds] = useState('');
   const [historySport, setHistorySport] = useState('all'), [historyDate, setHistoryDate] = useState('');
   const [published, setPublished] = useState<PublishedGame[]>([]), [memberGame, setMemberGame] = useState('');
-  const [memberSport, setMemberSport] = useState<Sport>('NBA'), [memberDate, setMemberDate] = useState(nbaCalendarDate);
+  const [memberSport, setMemberSport] = useState<Sport | 'all'>('NBA'), [memberDate, setMemberDate] = useState(nbaCalendarDate);
   const [pickView, setPickView] = useState<'published' | 'candidates'>('candidates');
   const [leans, setLeans] = useState<GameLean[]>([]);
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
@@ -155,23 +157,25 @@ export default function Gamewaire() {
   const matchingRuns = runs.filter((run) => run.sport === sport && nbaCalendarDate(new Date(run.event_start)) === date
     && (!eventId || run.event_id === eventId));
   const report = matchingRuns.find((run) => run.id === selectedRun) ?? matchingRuns[0];
-  const memberGames = published.filter((game) => game.sport === memberSport && nbaCalendarDate(new Date(game.event_start)) === memberDate);
+  const memberGames = published.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate);
   const memberReport = memberGames.find((game) => game.event_id === memberGame);
   const candidateView = !!status?.canAnalyze && pickView === 'candidates';
   const publishedPicks = rankTopPicks((memberGame ? (memberReport ? [memberReport] : []) : memberGames).flatMap((game) => game.picks)).slice(0, 4);
-  const visibleLeans = leans.filter((game) => game.sport === memberSport && nbaCalendarDate(new Date(game.event_start)) === memberDate
+  const visibleLeans = leans.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate
     && (!memberGame || game.event_id === memberGame));
-  const gameOptions = [...memberGames, ...leans.filter((game) => game.sport === memberSport
+  const gameOptions = [...memberGames, ...leans.filter((game) => (memberSport === 'all' || game.sport === memberSport)
     && nbaCalendarDate(new Date(game.event_start)) === memberDate && !memberGames.some((publishedGame) => publishedGame.event_id === game.event_id))];
   const refreshHistory = () => setRefresh((value) => value + 1);
-  const record = performance(picks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
+  const historyPicks = picks.filter((pick) => historySport === 'all' || pick.sport === historySport);
+  const record = performance(historyPicks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
     american: pick.american, result: pick.result, closingAmerican: pick.closing_american, withdrawn: pick.withdrawn })));
-  const breakdowns = performanceGroups(picks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
+  const breakdowns = performanceGroups(historyPicks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
     american: pick.american, result: pick.result, closingAmerican: pick.closing_american, withdrawn: pick.withdrawn,
     sport: pick.sport, market: pick.market, createdAt: pick.created_at, edge: pick.data.edge })));
   const visible = picks.filter((pick) => (historySport === 'all' || pick.sport === historySport) && (!historyDate || nbaCalendarDate(new Date(pick.event_start)) === historyDate)
     && (market === 'all' || pick.market === market) && (pickStatus === 'all' || (pickStatus === 'withdrawn' ? pick.withdrawn : pick.result === pickStatus))
-    && (!minEV || pick.data.ev * 100 >= Number(minEV)) && (!minOdds || pick.american >= Number(minOdds)) && (!maxOdds || pick.american <= Number(maxOdds)));
+    && (!minEV || pick.data.ev * 100 >= Number(minEV)) && (!minOdds || pick.american >= Number(minOdds)) && (!maxOdds || pick.american <= Number(maxOdds)))
+    .sort((a, b) => Date.parse(b.event_start) - Date.parse(a.event_start) || a.id.localeCompare(b.id));
   const request = async (action: 'events' | 'analyze') => {
     setBusy(true); setActionError(''); setNotice('');
     try {
@@ -214,7 +218,6 @@ export default function Gamewaire() {
     </div>}
     {!candidateView && <section aria-label="Game picks">
       <div className="gai-form">
-        <label>League<select value={memberSport} onChange={(event) => { setMemberSport(event.target.value as Sport); setMemberGame(''); }}><option>NBA</option><option>NFL</option></select></label>
         <label>Game date (Eastern)<input type="date" value={memberDate} onChange={(event) => { setMemberDate(event.target.value); setMemberGame(''); }} /></label>
         <label>Game<select value={memberGame} onChange={(event) => setMemberGame(event.target.value)}>
           <option value="">All analyzed games</option>
@@ -267,7 +270,10 @@ export default function Gamewaire() {
     </aside>
     <section id="gai-top-picks" className="gai-top-picks gai-outline" aria-label="Top Picks">
       <div className="gai-section-heading"><h3><span aria-hidden="true">★</span> Top Picks</h3><span className="gai-tag">{candidateView ? 'Admin candidates · unpublished' : 'Published picks'}</span></div>
-      <p className="gai-note">Unvalidated estimates, not betting value. Probability-first; close ties favor moneylines and high-usage players.</p>
+      {!candidateView && <div className="gai-sport-tabs" role="group" aria-label="Published sport">
+        {(['all', 'NBA', 'NFL'] as const).map((league) => <button key={league} aria-pressed={memberSport === league}
+          onClick={() => { setMemberSport(league); setMemberGame(''); }}>{league === 'all' ? 'All sports' : league}</button>)}
+      </div>}
       {candidateView ? <section aria-label="Analysis reports">
         {!!matchingRuns.length && <details className="gai-report-picker"><summary>Saved analysis reports</summary><label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{matchingRuns.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label></details>}
         {loaded && !matchingRuns.length && <div className="gai-empty"><h4>Ready to analyze</h4><p>No model analyses yet for these filters. Choose a game, then run analysis to review up to eight candidates.</p></div>}
@@ -311,26 +317,55 @@ export default function Gamewaire() {
     </aside>
     </div>
     <details className="gai-history"><summary>Results &amp; pick history</summary>
-    <section aria-label="Model performance"><h3>All-history model tracking</h3><p>One unit at the recorded odds per unique selection/price. Repeated identical analyses are not counted twice. All settled selections remain included, even if withdrawn. Admin-reported settlements; no historical simulations are mixed in.</p>
-      {loaded && <><dl className="gai-metrics">
-        <div><dt>Total tracked</dt><dd>{record.total}</dd></div><div><dt>Settled</dt><dd>{record.settled}</dd></div><div><dt>Pending</dt><dd>{record.pending}</dd></div>
-        <div><dt>Win rate (excludes pushes)</dt><dd>{percent(record.winRate)}</dd></div><div><dt>Profit / loss</dt><dd>{record.profit.toFixed(2)} units</dd></div>
-        <div><dt>ROI</dt><dd>{percent(record.roi)}</dd></div><div><dt>Brier score</dt><dd>{record.brier?.toFixed(3) ?? 'Unavailable'}</dd></div>
-        <div><dt>Log loss</dt><dd>{record.logLoss?.toFixed(3) ?? 'Unavailable'}</dd></div><div><dt>Closing price value</dt><dd>{percent(record.closingPriceValue)}</dd></div>
-      </dl><p>These are descriptive metrics, not proof of an edge. Calibration requires a meaningful out-of-sample sample size. Closing price value compares prices at the same line, not point-line movement.</p></>}
-      {loaded && <details><summary>Performance by sport, market, price, probability, edge and month</summary>{Object.entries(breakdowns).map(([name, groups]) => <div className="gai-table" key={name}><table><caption>{name} breakdown · all eligible tracked selections</caption><thead><tr><th>Group</th><th>Total</th><th>Settled</th><th>ROI</th><th>Predicted probability</th><th>Observed win rate</th><th>Brier</th></tr></thead><tbody>{groups.map((group) => <tr key={group.label}><th scope="row">{group.label}</th><td>{group.total}</td><td>{group.settled}</td><td>{percent(group.roi)}</td><td>{percent(group.predicted)}</td><td>{percent(group.winRate)}</td><td>{group.brier?.toFixed(3) ?? 'Unavailable'}</td></tr>)}</tbody></table></div>)}</details>}
-      <div className="gai-form">
-        <label>Sport filter<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option><option>NFL</option><option>NBA</option></select></label>
+    <section aria-label="Model performance">
+      <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD</span><h3>Published pick results</h3></div>
+        <label>Results sport<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option><option>NBA</option><option>NFL</option></select></label>
+      </div>
+      <p className="gai-note">Results are recorded by an admin, not automatically settled. Pending picks stay pending until reviewed.</p>
+      {loaded && <dl className="gai-results-stats">
+        <div><dt>Record</dt><dd>{historyPicks.filter((pick) => pick.result === 'win').length}<span> W · </span>{historyPicks.filter((pick) => pick.result === 'loss').length}<span> L</span></dd></div>
+        <div><dt>Pending</dt><dd>{record.pending}</dd></div>
+        <div><dt>Win rate</dt><dd>{percent(record.winRate)}</dd></div>
+        <div className={record.profit > 0 ? 'gai-profit-positive' : record.profit < 0 ? 'gai-profit-negative' : ''}><dt>Profit / loss</dt><dd>{record.profit > 0 ? '+' : ''}{record.profit.toFixed(2)}<span> units</span></dd></div>
+        <div><dt>ROI</dt><dd>{percent(record.roi)}</dd></div>
+      </dl>}
+      <p className="gai-note">Summary: all {historySport === 'all' ? 'sports' : historySport} history · 1 unit per recorded pick. Win rate excludes pushes and voids. Withdrawn settled picks remain included.</p>
+      <div className="gai-history-toolbar">
         <label>Game date (Eastern)<input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} /></label>
-        <label>Market filter<select value={market} onChange={(event) => setMarket(event.target.value)}><option value="all">All markets</option>{[...new Set(picks.map((pick) => pick.market))].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label>Pick status<select value={pickStatus} onChange={(event) => setPickStatus(event.target.value)}>{['all', 'pending', 'win', 'loss', 'push', 'void', 'withdrawn'].map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label>Result<select value={pickStatus} onChange={(event) => setPickStatus(event.target.value)}><option value="all">All results</option>
+          {Object.entries(resultLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}<option value="withdrawn">Withdrawn</option></select></label>
+        <button onClick={() => { setHistoryDate(''); setPickStatus('all'); setMarket('all'); setMinEV(''); setMinOdds(''); setMaxOdds(''); }}>Clear filters</button>
+      </div>
+      <details className="gai-history-advanced"><summary>More filters</summary><div className="gai-form">
+        <label>Market<select value={market} onChange={(event) => setMarket(event.target.value)}><option value="all">All markets</option>{[...new Set(picks.map((pick) => pick.market))].map((item) => <option key={item} value={item}>{marketLabels[item] ?? item.replace(/_/g, ' ')}</option>)}</select></label>
         <label>Minimum EV %<input type="number" value={minEV} onChange={(event) => setMinEV(event.target.value)} /></label>
         <label>Minimum American odds<input type="number" value={minOdds} onChange={(event) => setMinOdds(event.target.value)} /></label>
         <label>Maximum American odds<input type="number" value={maxOdds} onChange={(event) => setMaxOdds(event.target.value)} /></label>
-      </div>
-      <div className="gai-table"><table><caption>{visible.length} selections matching filters (overall metrics above always include all history)</caption><thead><tr><th>Date</th><th>Sport / market</th><th>Selection</th><th>Odds</th><th>EV</th><th>Result</th></tr></thead><tbody>
-        {visible.map((pick) => <tr key={pick.id}><td>{stamp(pick.event_start)}</td><td>{pick.sport} · {pick.market}</td><td>{pick.subject} · {pick.side} {pick.line ?? ''}{status?.canAnalyze && <Settlement key={`${pick.id}:${pick.revision}`} pick={pick} refresh={refreshHistory} />}</td><td>{odds(pick.american)}</td><td>{percent(pick.data.ev)}</td><td>{pick.result}{pick.withdrawn ? ' · withdrawn' : ''}{pick.settlement_note && <small>{pick.settlement_note}</small>}</td></tr>)}
-      </tbody></table></div>
+      </div></details>
+      <div className="gai-history-list-heading"><h4>Pick history</h4><span className="gai-tag">{visible.length} matching picks · newest games first</span></div>
+      {!loaded && <p role="status">Loading pick history…</p>}
+      {loaded && !visible.length && <p className="gai-history-empty">No published picks match these filters.</p>}
+      <ul className="gai-history-list" aria-label="Published pick history">
+        {visible.map((pick) => <li key={pick.id} className="gai-history-row">
+          <div className="gai-history-pick"><span className="eyebrow">{pick.sport} · {marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}</span>
+            <h4>{pickTitle(pick.data)}</h4><small>{pick.data.away} @ {pick.data.home} · {stamp(pick.event_start)}</small>
+            {pick.withdrawn && <span className="gai-tag">Withdrawn</span>}
+          </div>
+          <div className="gai-history-price"><b>{odds(pick.american)}</b><small>{pick.data.book}</small></div>
+          <span className={`gai-result gai-result-${pick.result}`}>{resultLabels[pick.result]}</span>
+          {(pick.settlement_note || status?.canAnalyze) && <div className="gai-history-actions">
+            {pick.settlement_note && <details><summary>Settlement note</summary><p>{pick.settlement_note}</p></details>}
+            {status?.canAnalyze && <Settlement key={`${pick.id}:${pick.revision}`} pick={pick} refresh={refreshHistory} />}
+          </div>}
+        </li>)}
+      </ul>
+      {loaded && <details className="gai-history-advanced"><summary>Model diagnostics &amp; breakdowns</summary>
+        <p className="gai-note">{record.total} tracked · {record.settled} settled. Repeated identical selections are counted once. Admin-reported outcomes only; no simulated results.</p>
+        <dl className="gai-metrics"><div><dt>Brier score</dt><dd>{record.brier?.toFixed(3) ?? 'Unavailable'}</dd></div>
+          <div><dt>Log loss</dt><dd>{record.logLoss?.toFixed(3) ?? 'Unavailable'}</dd></div><div><dt>Closing price value</dt><dd>{percent(record.closingPriceValue)}</dd></div></dl>
+        <p className="gai-note">These descriptive metrics are not proof of an edge. Closing price value compares prices at the same line, not line movement. Breakdowns follow the selected sport, not the list filters.</p>
+        {Object.entries(breakdowns).map(([name, groups]) => <div className="gai-table" key={name}><table><caption>{name} breakdown</caption><thead><tr><th>Group</th><th>Total</th><th>Settled</th><th>ROI</th><th>Predicted probability</th><th>Observed win rate</th><th>Brier</th></tr></thead><tbody>{groups.map((group) => <tr key={group.label}><th scope="row">{group.label}</th><td>{group.total}</td><td>{group.settled}</td><td>{percent(group.roi)}</td><td>{percent(group.predicted)}</td><td>{percent(group.winRate)}</td><td>{group.brier?.toFixed(3) ?? 'Unavailable'}</td></tr>)}</tbody></table></div>)}
+      </details>}
     </section>
     </details>
     <details><summary>Methodology and limitations</summary>

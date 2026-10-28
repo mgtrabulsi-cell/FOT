@@ -495,7 +495,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
   assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
   assert.match(teamMarkets, /scoring margin/);
-  assert.match(teamMarkets, /close ties favor moneylines and high-usage players/);
+  assert.doesNotMatch(teamMarkets, /Unvalidated estimates, not betting value\. Probability-first; close ties/);
   for (const [market, label] of Object.entries({
     player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
     player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions',
@@ -529,6 +529,35 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(leanView, /Failed value checks/);
   assert.match(leanView, /No published picks yet/);
   assert.equal((leanView.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selecting an unpublished lean game never shows another game\'s published picks');
+  const nflCandidate = { ...candidate, key: 'nfl-pick', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds', line: 250.5 };
+  const nbaRecord = { ...pick, sport: 'NBA', event_start: quote.start };
+  const nflRecord = { ...pick, id: 'nfl-record', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds',
+    event_start: quote.start, result: 'win', withdrawn: false, data: nflCandidate };
+  const mixed = memberState.slice();
+  mixed[2] = [nbaRecord, nflRecord];
+  mixed[22] = [...memberState[22], { ...memberState[22][0], sport: 'NFL', event_id: 'nfl', picks: [nflCandidate] }];
+  mixed[23] = ''; mixed[24] = 'all';
+  fixture(mixed);
+  const allSports = renderToStaticMarkup(createElement(Page));
+  assert.match(allSports, /aria-label="Published sport"/);
+  assert.match(allSports, /aria-pressed="true">All sports/);
+  assert.match(allSports, /<h3>NFL Player · Over 250\.5 Passing yards<\/h3>/);
+  assert.match(allSports, /class="gai-history-list" aria-label="Published pick history"/);
+  assert.match(allSports, /gai-result-win">Won/);
+  assert.match(allSports, /gai-result-loss">Lost/);
+  assert.match(allSports, /not automatically settled/);
+  assert.match(allSports, /More filters/);
+  mixed[24] = 'NFL'; mixed[20] = 'NFL';
+  fixture(mixed);
+  const nflOnly = renderToStaticMarkup(createElement(Page));
+  assert.equal((nflOnly.match(/class="gai-pick angle-card"/g) ?? []).length, 1);
+  assert.equal((nflOnly.match(/class="gai-history-row"/g) ?? []).length, 1);
+  assert.match(nflOnly, /Summary: all NFL history/);
+  assert.match(nflOnly, /<dt>Win rate<\/dt><dd>100\.0%/);
+  assert.doesNotMatch(nflOnly, /gai-result-loss">Lost/);
+  mixed[21] = '2025-01-01';
+  fixture(mixed);
+  assert.match(renderToStaticMarkup(createElement(Page)), /No published picks match these filters/);
 });
 
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
