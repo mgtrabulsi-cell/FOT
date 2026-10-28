@@ -366,6 +366,10 @@ Apply [`supabase/livewire.sql`](supabase/livewire.sql) before deploying the fron
 
 Run [`supabase/tests/livewire.sql`](supabase/tests/livewire.sql) through the SQL editor or `supabase db query --linked --file supabase/tests/livewire.sql` to verify guest/member access, posting validation, role escalation prevention, moderation ownership, and revocation. All test data is rolled back.
 
+## Post and box-score readability
+
+Readability: Angle post headlines use responsive 22–26px headings (including collapsed headline buttons), with 16px subject details. NBA/NFL player box-score numbers use regular-weight tabular numerals for clearer digit shapes without changing stat values or table navigation.
+
 ## Mobile push notifications
 
 Profile shows a persistent **Notifications enabled** status when browser permission is granted and this device has a subscription saved for the signed-in account. It rechecks when returning to the tab/window; a failed status check is shown with Retry rather than claiming notifications are active.

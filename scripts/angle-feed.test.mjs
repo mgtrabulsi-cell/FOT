@@ -15,6 +15,16 @@ const story = {
   status: 'published', revision: 1, section: 'angle', image_paths: [],
 };
 const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
+test('Angle headlines inherit readable heading typography instead of the generic small button font', () => {
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.angle-card \.angle-post-toggle \{[^}]*font: inherit;/);
+  assert.match(css, /\.angle-card h3 \{[^}]*clamp\(22px, 2\.5vw, 26px\)\/1\.35/);
+  assert.match(css, /\.angle-card \.angle-subject \{[^}]*font-size: 16px/);
+  assert.match(css, /\.wire-stat-table td\.wire-col-data \{ font: 400 12px var\(--mono\)/);
+  assert.match(css, /font-variant-numeric: tabular-nums/);
+  const nba = readFileSync(new URL('../src/nba.css', import.meta.url), 'utf8');
+  assert.match(nba, /\.nba-box td \{ font-weight: 400; \}/);
+});
 const parsed = ts.createSourceFile('TheAngle.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const component = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'TheAngle');
 const code = ts.transpileModule(component.getText(parsed).replace('export default ', ''), {
