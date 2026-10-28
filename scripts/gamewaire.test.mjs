@@ -7,6 +7,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
+import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
 
 const now = Date.parse('2026-10-27T18:00:00Z');
 const quote = { key: 'event|player_points|Player|Over|20.5', eventId: 'event', sport: 'NBA',
@@ -427,7 +428,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(empty, /disabled=""[^>]*>Load upcoming games/);
   const candidate = { ...evaluate().picks[0], baseline: 'Early-season 50/50 blend', previousSeasonAverage: 20,
     rotation: { label: 'Core rotation', minutes: 32, involvement: 18 } };
-  const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date().toISOString(), matchup: 'Away at Home', created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
+  const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date().toISOString(), matchup: 'Away at Home', settings, created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
   const pick = { ...candidate, id: 'pick', event_start: quote.start, created_at: quote.updatedAt, push_probability: candidate.pushProbability,
     result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1 };
   const memberState = [{ ...status, canAnalyze: false, oddsReady: true }, [run], [pick], true];
@@ -481,6 +482,21 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(admin, /Player props/);
   assert.match(admin, /Admin candidates · unpublished/);
   assert.equal((admin.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selection and evidence share one card, not duplicated rows');
+  const scheduledRun = { ...run, event_start: new Date(Date.now() + 60_000).toISOString(),
+    payload: { ...run.payload, scheduled: { jobId: 'job', selectionNote: 'Standings-ranked matchup.' },
+      providerUsage: { requestCost: 7, creditsUsed: 21, creditsRemaining: 479, checkedAt: quote.updatedAt } } };
+  const scheduledState = [status, [scheduledRun], [], true];
+  scheduledState[7] = scheduledRun.event_start.slice(0, 10);
+  scheduledState[28] = [{ id: 'batch', sport: 'NBA', game_date: scheduledRun.event_start.slice(0, 10), status: 'ready', note: 'Top three.', error: null }];
+  scheduledState[29] = [{ id: 'job', batch_id: 'batch', matchup: 'Away at Home', event_start: scheduledRun.event_start, status: 'completed', run_id: 'run' }];
+  fixture(scheduledState);
+  const scheduledView = renderToStaticMarkup(createElement(Page));
+  assert.match(scheduledView, /Scheduled shortlists/);
+  assert.match(scheduledView, /Review saved report/);
+  assert.match(scheduledView, /Overnight shortlist · Standings-ranked matchup/);
+  assert.match(scheduledView, /Odds API: 7 credits for this saved request · 479 remaining/);
+  assert.match(scheduledView, /Refresh prices &amp; review picks · up to 4 credits/);
+  assert.match(scheduledView, /Nothing publishes automatically/);
   const more = { ...candidate, key: 'top-probability', subject: 'Higher hit estimate', probability: 0.99 };
   const adminState = [status, [{ ...run, payload: { picks: [candidate, more] } }], [], true];
   fixture(adminState);
@@ -570,9 +586,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ role = 'admin', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null } = {}) {
-  const rpc = [], tables = [], fetches = [], env = { get: (name) => ({
+function endpoint({ role = 'admin', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false } = {}) {
+  const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
+    GAMEWIRE_CRON_SECRET: 'fixture-cron',
     ...(configured ? { ODDS_API_KEY: 'fixture-odds' } : {}),
   })[name] };
   const client = {
@@ -581,17 +598,21 @@ function endpoint({ role = 'admin', configured = false, failClaim = false, publi
       tables.push(table);
       const builder = {
         select: (columns) => { builder.columns = columns; return builder; }, eq: () => builder, order: () => builder, limit: () => builder, lt: () => builder,
-        update: () => builder, insert: (value) => { builder.value = value; return builder; },
+        update: (value) => { writes.push({ table, value }); return builder; }, insert: (value) => { builder.value = value; return builder; },
         upsert: () => builder,
+        delete: () => builder,
         maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role }
           : table === 'sports_resources' ? eventCache
-          : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } } : null, error: null }),
+          : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } }
+          : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
       };
       return builder;
     },
-    rpc: async (name, args) => { rpc.push({ name, args }); return { data: name === 'gamewaire_claim' ? !failClaim : null, error: null }; },
+    rpc: async (name, args) => { rpc.push({ name, args }); return { data: name === 'gamewaire_claim' ? !failClaim
+      : name === 'gamewaire_analysis_lock' ? lockBusy ? null : 'lock-fixture'
+      : name === 'gamewaire_schedule_claim' ? scheduledJob : null, error: null }; },
   };
   const fetcher = async (url) => {
     fetches.push(String(url));
@@ -602,6 +623,7 @@ function endpoint({ role = 'admin', configured = false, failClaim = false, publi
   const context = vm.createContext({ exports: {}, Response, Request, URL, AbortSignal, Date: class extends Date { static now() { return now; } }, console,
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
+      if (name.includes('gamewaireSchedule')) return { ...schedule, planScheduledAnalyses: async () => {} };
       if (name.includes('gamewaireSources')) return { ...sources, resolveMatchup: async () => ({}), collectEvidence: async (quotes) => ({
         evidence: new Map(quotes.map((q) => [q.key, evidence])), warnings: [], coverage: {},
       }) };
@@ -609,7 +631,11 @@ function endpoint({ role = 'admin', configured = false, failClaim = false, publi
     },
   });
   vm.runInContext(endpointCode, context);
-  return { rpc, tables, fetches, run: (body, auth = true, customFetcher = fetcher) => context.exports.handleGamewaire(new Request('https://test/engine', {
+  return { rpc, tables, fetches, writes,
+    cron: (body = { action: 'scheduled' }, secret = 'fixture-cron', customFetcher = fetcher) => context.exports.handleGamewaire(new Request('https://test/engine', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-gamewire-cron-secret': secret }, body: JSON.stringify(body),
+    }), env, customFetcher),
+    run: (body, auth = true, customFetcher = fetcher) => context.exports.handleGamewaire(new Request('https://test/engine', {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer fixture' } : {}) }, body: JSON.stringify(body),
   }), env, customFetcher), exports: context.exports };
 }
@@ -690,6 +716,66 @@ test('Quota-free game lists remain available when the paid analysis budget is ex
   const invalid = await stale.run(body, true, async () => Response.json([{ id: 'bad' }]));
   assert.equal(invalid.status, 502, 'Invalid provider data remains an explicit error');
 });
+test('Scheduled worker requires the private cron secret, bypasses only manual caps and never publishes', async () => {
+    const job = { id: 'job', sport: 'NBA', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Top-three matchup.' };
+    const api = endpoint({ configured: true, failClaim: true, scheduledJob: job });
+    assert.equal((await api.cron({ action: 'scheduled' }, 'wrong')).status, 401);
+    assert.equal((await api.cron({ action: 'publish' })).status, 403);
+    assert.equal((await api.run({ action: 'scheduled', sport: 'NBA' })).status, 400, 'A signed-in admin cannot impersonate the worker');
+    assert.equal(api.fetches.length, 0);
+    const result = await api.cron();
+    assert.equal(result.status, 200);
+    const body = await result.json();
+    assert.equal(body.run.payload.scheduled.jobId, 'job');
+    assert.equal(new URL(api.fetches[0]).searchParams.get('markets').split(',').length, 7);
+    assert.ok(!api.rpc.some(({ name }) => ['gamewaire_claim', 'gamewaire_publish'].includes(name)));
+    assert.ok(api.writes.some(({ table, value }) => table === 'gamewaire_schedule_jobs' && value.status === 'completed'));
+    const idle = endpoint({ configured: true });
+    assert.equal((await idle.cron()).status, 200);
+    assert.equal(idle.fetches.length, 0, 'No claimed job means no paid call');
+  });
+  test('Scheduled provider failures are explicit and recorded without a paid retry', async () => {
+    const job = { id: 'job', sport: 'NFL', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Weekly slate.' };
+    const api = endpoint({ configured: true, scheduledJob: job });
+    let fetchCount = 0;
+    const failed = await api.cron(undefined, undefined, async () => {
+      fetchCount++;
+      return new Response('', { status: 429, headers: { 'x-requests-remaining': '0' } });
+    });
+    assert.equal(failed.status, 502);
+    assert.equal(fetchCount, 1);
+    const saved = api.writes.find(({ table, value }) => table === 'gamewaire_schedule_jobs' && value.status === 'failed');
+    assert.match(saved.value.error, /rate limit/);
+    assert.equal(saved.value.provider_usage.creditsRemaining, 0);
+  });
+  test('Fresh reports are reused for ten minutes only while actual quote and data timestamps remain valid', async () => {
+    const candidate = evaluate().picks[0];
+    const cachedRun = { id: 'cached', status: 'completed', event_start: quote.start, created_at: new Date(now - 9 * 60_000).toISOString(),
+      settings, payload: { modelVersion: engine.modelVersion, picks: [candidate] } };
+    const api = endpoint({ configured: true, failClaim: true, cachedRun });
+    const response = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).cached, true);
+    assert.equal(api.rpc.length, 0);
+    assert.equal(api.fetches.length, 0);
+    const stale = endpoint({ configured: true, failClaim: true, cachedRun: { ...cachedRun,
+      payload: { ...cachedRun.payload, picks: [{ ...candidate, updatedAt: new Date(now - 600_001).toISOString() }] } } });
+    assert.equal((await stale.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 429);
+    const changed = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings: { ...settings, minEV: 0.1 } });
+    assert.equal(changed.status, 429, 'Changed settings require a new budgeted analysis');
+  });
+  test('Actual provider credit headers are saved; absent headers are unknown, not zero', async () => {
+    const api = endpoint({ configured: true });
+    let usage;
+    await api.exports.oddsJSON('sports/basketball_nba/events/event/odds', 'fixture', async () => Response.json({}, { headers: {
+      'x-requests-last': '7', 'x-requests-used': '21', 'x-requests-remaining': '479',
+    } }), (value) => { usage = value; });
+    assert.equal(usage.requestCost, 7);
+    assert.equal(usage.creditsUsed, 21);
+    assert.equal(usage.creditsRemaining, 479);
+    await api.exports.oddsJSON('sports/basketball_nba/events', 'fixture', async () => Response.json([]), (value) => { usage = value; });
+    assert.equal(usage.requestCost, null);
+  });
 test('Budget migration and fresh schema use the same atomic, non-consuming rejection logic', () => {
   const schema = readFileSync(new URL('../supabase/gamewaire.sql', import.meta.url), 'utf8');
   const migration = readFileSync(new URL('../supabase/gamewaire-budget.sql', import.meta.url), 'utf8');
@@ -697,6 +783,14 @@ test('Budget migration and fresh schema use the same atomic, non-consuming rejec
   assert.equal(claim(schema), claim(migration));
   assert.ok(migration.indexOf('then return false') < migration.indexOf('attempts = global_amount + 1'));
   assert.match(migration, /where scope = 'global' for update/);
+});
+test('Concurrent game refreshes stop before budget claims or provider calls', async () => {
+  const api = endpoint({ configured: true, lockBusy: true });
+  const response = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
+  assert.equal(response.status, 409);
+  assert.equal(api.fetches.length, 0);
+  assert.ok(!api.rpc.some(({ name }) => name === 'gamewaire_claim'));
+  assert.match((await response.json()).error, /no additional credits were used/);
 });
 test('Client displays a local reset time for analysis limits without changing other errors', async () => {
   const source = readFileSync(new URL('../src/services/gamewaire.ts', import.meta.url), 'utf8');

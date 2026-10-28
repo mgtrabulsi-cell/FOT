@@ -35,6 +35,8 @@ jobs:
         run: node --test scripts/fantasy-graphics.test.mjs scripts/fantasy-graphic-drafts.test.mjs
       - name: Test results sport filters
         run: node --test scripts/results-filter.test.mjs
+      - name: Test GamewAIre analyses and scheduling
+        run: node --test scripts/gamewaire*.test.mjs
       - name: Test foreground score refresh
         run: node --test scripts/foreground-refresh.test.mjs scripts/site-opens*.test.mjs scripts/post-viewers.test.mjs scripts/notification-onboarding.test.mjs
       - name: Test NBA scores, stats and Locker Room

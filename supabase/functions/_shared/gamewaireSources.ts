@@ -3,6 +3,7 @@ import type { Evidence, NBARotation, Observation, Quote, Sport } from './gamewai
 
 const paths = { NBA: 'basketball/nba', NFL: 'football/nfl' };
 const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+export const teamNameKey = (name: string) => normalize(name).replace(/^losangeles/, 'la');
 export async function publicJSON(url: string, fetcher: typeof fetch = fetch) {
   const response = await fetcher(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: 'application/json', 'User-Agent': ua } });
   if (!response.ok) throw new Error(`Sports data provider returned HTTP ${response.status}.`);
@@ -20,7 +21,7 @@ export async function resolveMatchup(quote: Quote, fetcher: typeof fetch = fetch
     const sides = array(competition.competitors).map(object);
     const home = object(sides.find((side) => side.homeAway === 'home')?.team);
     const away = object(sides.find((side) => side.homeAway === 'away')?.team);
-    if (normalize(text(home.displayName)) !== normalize(quote.home) || normalize(text(away.displayName)) !== normalize(quote.away)
+    if (teamNameKey(text(home.displayName)) !== teamNameKey(quote.home) || teamNameKey(text(away.displayName)) !== teamNameKey(quote.away)
       || Math.abs(Date.parse(text(event.date)) - Date.parse(quote.start)) > 6 * 60 * 60_000) return [];
     if (object(object(competition.status).type).state !== 'pre') throw new Error('The game is no longer pregame.');
     const season = numeric(object(event.season).year);

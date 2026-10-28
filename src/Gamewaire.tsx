@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { defaultSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
-import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, Settings, Sport, StoredPick } from './services/gamewaire';
+import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import './gamewaire.css';
@@ -88,7 +88,7 @@ function PickCard({ pick, record, rank, selection, technical = false }: { pick: 
     </details>
   </article>;
 }
-function PublishPicks({ report, refresh }: { report: AnalysisRun; refresh: () => void }) {
+function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun; refresh: () => void; onFreshReport: (run: AnalysisRun) => void }) {
   const candidates = rankTopPicks(report.payload.picks ?? []);
   const [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -99,8 +99,15 @@ function PublishPicks({ report, refresh }: { report: AnalysisRun; refresh: () =>
     <div className="gai-picks">{candidates.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} technical
       selection={{ checked: selected.includes(pick.key), disabled: busy || (!selected.includes(pick.key) && selected.length >= 4),
         onChange: (checked) => setSelected((previous) => checked ? [...previous, pick.key] : previous.filter((key) => key !== pick.key)) }} />)}</div>
-    {stale && <p className="feed-warning">These prices are stale or the game has started. Run a fresh analysis before publishing.</p>}
+    {stale && <p className="gai-note">{Date.parse(report.event_start) <= Date.now() ? 'This game has started; this report cannot be published.'
+      : 'Saved shortlist: prices must be refreshed before publishing. Refresh once, review the new candidates, then select your picks.'}</p>}
     {legacy && <p className="gai-note">Saved under an older model. Generate fresh candidates to apply the current model and ranking before publishing.</p>}
+    {(stale || legacy) && Date.parse(report.event_start) > Date.now() && <button disabled={busy} onClick={() => {
+      setBusy(true); setError(''); setNotice('');
+      void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: report.settings })
+        .then(({ run, cached }) => { setSelected([]); setNotice(cached ? 'Reused a fresh report; no additional Odds API credits used.' : 'Prices refreshed. Review the candidates before publishing.'); onFreshReport(run); refresh(); })
+        .catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
+    }}>{busy ? 'Refreshing…' : `Refresh prices & review picks · up to ${new Set([...report.settings.markets, 'h2h', 'spreads']).size} credits`}</button>}
     <button disabled={busy || stale || legacy || !selected.length} onClick={() => {
       setBusy(true); setError(''); setNotice('');
       void engineRequest({ action: 'publish', runId: report.id, keys: selected })
@@ -147,13 +154,14 @@ export default function Gamewaire() {
   const [memberSport, setMemberSport] = useState<Sport | 'all'>('NBA'), [memberDate, setMemberDate] = useState(nbaCalendarDate);
   const [pickView, setPickView] = useState<'published' | 'candidates'>('candidates');
   const [leans, setLeans] = useState<GameLean[]>([]);
+  const [batches, setBatches] = useState<ScheduleBatch[]>([]), [jobs, setJobs] = useState<ScheduleJob[]>([]);
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => {
     let active = true;
     const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 20_000);
     void engineRequest<EngineStatus>({ action: 'status' }, controller.signal)
       .then(async (nextStatus) => ({ nextStatus, history: await loadEngineHistory(controller.signal, nextStatus.canAnalyze) }))
-      .then(({ nextStatus, history }) => { if (!controller.signal.aborted) { setStatus(nextStatus); setRuns(history.runs); setPicks(history.picks); setPublished(history.published); setLeans(history.leans); setLoaded(true); setError(''); } })
+      .then(({ nextStatus, history }) => { if (!controller.signal.aborted) { setStatus(nextStatus); setRuns(history.runs); setPicks(history.picks); setPublished(history.published); setLeans(history.leans); setBatches(history.batches); setJobs(history.jobs); setLoaded(true); setError(''); } })
       .catch((cause: unknown) => { if (active) setError(controller.signal.aborted ? 'GamewAIre refresh timed out. Retry to update saved reports.' : errorMessage(cause)); })
       .finally(() => window.clearTimeout(timeout));
     const poll = window.setInterval(() => { if (document.visibilityState !== 'hidden' && navigator.onLine) setRefresh((value) => value + 1); }, 60_000);
@@ -171,6 +179,10 @@ export default function Gamewaire() {
   const gameOptions = [...memberGames, ...leans.filter((game) => (memberSport === 'all' || game.sport === memberSport)
     && nbaCalendarDate(new Date(game.event_start)) === memberDate && !memberGames.some((publishedGame) => publishedGame.event_id === game.event_id))];
   const refreshHistory = () => setRefresh((value) => value + 1);
+  const openReport = (run: AnalysisRun) => {
+    setSport(run.sport); setDate(nbaCalendarDate(new Date(run.event_start))); setEventId(run.event_id); setSettings(run.settings);
+    setSelectedRun(run.id); setRuns((previous) => [run, ...previous.filter((saved) => saved.id !== run.id)]); setPickView('candidates');
+  };
   const historyPicks = picks.filter((pick) => historySport === 'all' || pick.sport === historySport);
   const record = performance(historyPicks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
     american: pick.american, result: pick.result, closingAmerican: pick.closing_american, withdrawn: pick.withdrawn })));
@@ -189,9 +201,9 @@ export default function Gamewaire() {
         setEvents(result.events); setEventId(result.events[0]?.id ?? '');
         if (!result.events.length) setNotice('No upcoming provider-listed games on this Eastern date.');
       } else {
-        const result = await engineRequest<{ run: AnalysisRun }>({ action, sport, eventId, settings });
+        const result = await engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action, sport, eventId, settings });
         setSelectedRun(result.run.id); setRuns((previous) => [result.run, ...previous.filter((run) => run.id !== result.run.id)]);
-        setNotice(statusLabels[result.run.status]); refreshHistory();
+        setNotice(result.cached ? 'Reused a fresh report; no additional Odds API credits used.' : statusLabels[result.run.status]); refreshHistory();
         if (window.matchMedia('(max-width: 760px)').matches) window.requestAnimationFrame(() =>
           document.getElementById('gai-top-picks')?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
       }
@@ -214,6 +226,25 @@ export default function Gamewaire() {
     </header>
     {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
     {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
+    {status?.canAnalyze && <details className="gai-scheduled"><summary>Scheduled shortlists · NBA daily / NFL Thursdays · 1 AM Eastern</summary>
+      <p className="gai-note">NBA: up to three games, ranked by both teams’ standings strength and how evenly matched they are; 50/50 current/prior-season records until 12 games per team. NFL: all upcoming Thursday–Monday games.
+        Full markets cost up to 7 credits per game. Jobs run once, one at a time; missing markets or failures are not automatically retried. Nothing publishes automatically.</p>
+      {!batches.length && <p>No scheduled batches yet. The next batch starts at 1 AM Eastern.</p>}
+      {batches.map((batch) => <section key={batch.id} className="gai-scheduled-batch"><h3>{batch.sport} · {batch.game_date}</h3>
+        <p className="gai-note">{batch.note} {batch.status === 'no_games' ? 'No upcoming games in this window.' : ''}</p>
+        {batch.error && <p role="alert" className="feed-warning">{batch.error}</p>}
+        <ul className="gai-history-list">{jobs.filter((job) => job.batch_id === batch.id).map((job) => <li key={job.id} className="gai-scheduled-row">
+          <div className="gai-history-pick"><h4>{job.matchup}</h4><small>{stamp(job.event_start)} · {job.status}</small>
+            {job.error && <p className="feed-warning">{job.error}</p>}</div>
+          {job.run_id && <button disabled={busy} onClick={() => {
+            setBusy(true); setActionError('');
+            void engineRequest<{ run: AnalysisRun }>({ action: 'report', runId: job.run_id })
+              .then(({ run }) => openReport(run)).catch((cause: unknown) => setActionError(errorMessage(cause))).finally(() => setBusy(false));
+          }}>Review saved report</button>}
+        </li>)}</ul>
+      </section>)}
+      {actionError && <p role="alert" className="feed-warning">{actionError}</p>}
+    </details>}
     <div className="gai-dashboard">
     <aside className="gai-filters gai-outline" aria-label="Game filters">
     <h3>Game filters</h3>
@@ -238,7 +269,9 @@ export default function Gamewaire() {
         <label>Sport<select value={sport} disabled={busy} onChange={(event) => changeSport(event.target.value as Sport)}><option>NBA</option><option>NFL</option></select></label>
         <label>Date (Eastern)<input type="date" value={date} disabled={busy} onChange={(event) => { setDate(event.target.value); setEvents([]); setEventId(''); }} required /></label>
         <button className="gai-load" type="button" disabled={busy || !date || !status.oddsReady} onClick={() => void request('events')}>Load upcoming games</button>
-        <label>Matchup<select value={eventId} onChange={(event) => setEventId(event.target.value)} disabled={busy} required><option value="">Select a game</option>{events.map((event) => <option key={event.id} value={event.id}>{event.away} @ {event.home} · {stamp(event.start)}</option>)}</select></label>
+        <label>Matchup<select value={eventId} onChange={(event) => setEventId(event.target.value)} disabled={busy} required><option value="">Select a game</option>
+          {report && report.event_id === eventId && !events.some((event) => event.id === eventId) && <option value={eventId}>{report.matchup} · {stamp(report.event_start)} · Saved report</option>}
+          {events.map((event) => <option key={event.id} value={event.id}>{event.away} @ {event.home} · {stamp(event.start)}</option>)}</select></label>
         <details className="gai-advanced"><summary>Analysis settings</summary>
         <p className="gai-note">Moneyline and spread evidence is always checked for a separate game lean. Failed-value leans never enter Top Picks.</p>
         <fieldset className="gai-market-switches"><legend>Analysis settings</legend>
@@ -268,7 +301,7 @@ export default function Gamewaire() {
         <li>Create your own account at <a href="https://the-odds-api.com/#get-access" target="_blank" rel="noreferrer">The Odds API</a>. Confirm NFL/NBA US odds, player-prop coverage and display rights.</li>
         <li>Add <code>ODDS_API_KEY</code> in <a href="https://supabase.com/dashboard/project/cbwhmouuckrqnhvfnaol/functions/secrets" target="_blank" rel="noreferrer">Supabase Edge Function Secrets</a>. Never share it in chat or a browser variable.</li>
       </ol>
-      <p>Fresh analyses are limited to 6 per admin / 20 site-wide per hour, resetting on the hour. Loading game lists, opening saved reports and publishing do not use that allowance. Only upcoming games. Up to 24 matched players; coverage limits and omissions are disclosed.</p>
+      <p>Manual fresh analyses are limited to 6 per admin / 20 site-wide per hour, resetting on the hour. Scheduled jobs have a separate once-per-game allowance. Loading game lists, opening saved reports and publishing do not use that allowance. Only upcoming games. Up to 24 matched players; coverage limits and omissions are disclosed.</p>
       <button onClick={refreshHistory}>Refresh provider status</button>
     </details>
     </section>}
@@ -283,6 +316,8 @@ export default function Gamewaire() {
         {!!matchingRuns.length && <details className="gai-report-picker"><summary>Saved analysis reports</summary><label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{matchingRuns.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label></details>}
         {loaded && !matchingRuns.length && <div className="gai-empty"><h4>Ready to analyze</h4><p>No model analyses yet for these filters. Choose a game, then run analysis to review up to eight candidates.</p></div>}
         {report && <><h4>{report.matchup}</h4><p role="status">{report.status === 'in_progress' && Date.now() - Date.parse(report.created_at) > 180_000 ? 'Analysis interrupted. Retry this matchup; no completed recommendation is being claimed.' : statusLabels[report.status]}</p>
+          {report.payload.scheduled && <p className="gai-note">Overnight shortlist · {report.payload.scheduled.selectionNote} Saved {stamp(report.created_at)}.</p>}
+          {report.payload.providerUsage && <p className="gai-note">Odds API: {report.payload.providerUsage.requestCost ?? 'Unknown'} credits for this saved request · {report.payload.providerUsage.creditsRemaining ?? 'Unknown'} remaining as of {stamp(report.payload.providerUsage.checkedAt)}. Opening this report uses no credits.</p>}
           {report.status === 'no_qualifying' && <p>No qualifying value bets found for this matchup.</p>}
           {report.payload.error && <p role="alert" className="feed-warning">{report.payload.error}</p>}
           <section aria-label="Game team lean"><h4>Game team lean</h4>
@@ -290,7 +325,13 @@ export default function Gamewaire() {
               : report.payload.teamLean?.reason ?? 'Unavailable: this report has no verified team lean. Regenerate with current data.'}</p>
             {report.payload.teamLean && !report.payload.teamLean.qualifies && <PickCard pick={report.payload.teamLean.pick} rank={1} technical />}
           </section>
-          {report.status === 'completed' && !!report.payload.picks?.length && <PublishPicks key={report.id} report={report} refresh={refreshHistory} />}
+          {report.status === 'completed' && !!report.payload.picks?.length && <PublishPicks key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} />}
+          {report.status !== 'in_progress' && !report.payload.picks?.length && Date.parse(report.event_start) > Date.now() && <button disabled={busy} onClick={() => {
+            setBusy(true); setActionError('');
+            void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: report.settings })
+              .then(({ run, cached }) => { openReport(run); setNotice(cached ? 'Reused a fresh report; no additional Odds API credits used.' : statusLabels[run.status]); refreshHistory(); })
+              .catch((cause: unknown) => setActionError(errorMessage(cause))).finally(() => setBusy(false));
+          }}>Refresh this game · up to {new Set([...report.settings.markets, 'h2h', 'spreads']).size} credits</button>}
           <details className="gai-diagnostics"><summary>Data notes &amp; excluded markets</summary>
             {report.payload.warnings?.map((warning) => <p className="gai-note" key={warning}>{warning}</p>)}
             {report.payload.explanationMode && <p className="gai-note">{report.payload.explanationMode}</p>}

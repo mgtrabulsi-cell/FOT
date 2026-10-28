@@ -13,6 +13,9 @@
 .gai-panel fieldset label { display: flex; align-items: center; min-height: 44px; gap: 8px; }
 .gai-panel summary { cursor: pointer; padding: 12px 0; min-height: 44px; font-size: 12px; }
 .gai-panel :focus-visible { outline: 2px solid #ff5965; outline-offset: 3px; }
+.gai-scheduled { border: 1px solid #293d57; border-radius: 7px; padding: 0 12px; background: #0c1523; }
+.gai-scheduled-batch { border-top: 1px solid #263b55; padding-top: 8px; }
+.gai-scheduled-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid #263b55; border-radius: 6px; background: #0e1929; }
 .gai-hero { position: relative; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; padding: 26px; border: 1px solid #23364e; border-radius: 8px; background: radial-gradient(ellipse at 38% 0%, #24374f66, transparent 65%), linear-gradient(115deg, #080f1c 30%, #1a1523 65%, #080f1c); }
 .gai-hero::after { content: ''; pointer-events: none; position: absolute; top: -50%; left: 44%; width: 45px; height: 200%; transform: rotate(30deg); border-left: 3px solid #9a263b66; border-right: 12px solid #9a263b33; }
 .gai-hero-copy, .gai-hero-features { position: relative; z-index: 1; }
