@@ -20,12 +20,7 @@ begin
   where post.id = record_livewire_view.post_id for update;
   if total is null then raise exception 'Post is no longer available'; end if;
 
-  if public.livewire_role() = 'owner' then
-    insert into public.livewire_owner_views(post_id, user_id)
-    values (record_livewire_view.post_id, auth.uid())
-    on conflict do nothing;
-    if not found then return total; end if;
-  end if;
+  if public.livewire_role() in ('owner','admin') then return total; end if;
 
   update public.livewire_posts post set view_count = post.view_count + 1
   where post.id = record_livewire_view.post_id returning post.view_count into total;

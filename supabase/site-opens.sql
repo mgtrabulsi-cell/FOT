@@ -16,6 +16,7 @@ as $$
 declare total bigint;
 begin
   if auth.uid() is null then return null; end if;
+  if public.livewire_role() in ('owner','admin') then return null; end if;
   insert into public.site_opens as opens(user_id, open_count) values (auth.uid(), 1)
   on conflict (user_id) do update
     set open_count = opens.open_count + 1, last_opened_at = now()

@@ -44,8 +44,9 @@ $$;
 select set_config('request.jwt.claim.sub','c9541111-1111-4111-8111-111111111112',true);
 do $$
 begin
-  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=3,'Admin records view';
-  assert (select view_count from public.angle_view_counts where angle_id='c9541111-1111-4111-8111-111111111121')=3,'Admin reads counts';
+  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=2,'Admin view excluded';
+  assert public.record_angle_view('c9541111-1111-4111-8111-111111111121')=2,'Admin repeat excluded';
+  assert (select view_count from public.angle_view_counts where angle_id='c9541111-1111-4111-8111-111111111121')=2,'Admin reads audience counts';
   begin
     update public.angle_view_counts set view_count=999;
     raise exception 'Admin changed total directly';

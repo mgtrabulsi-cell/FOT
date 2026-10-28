@@ -24,11 +24,8 @@ begin
   perform 1 from public.angles where id=story_id and status='published' for share;
   if not found then raise exception 'Storyline is no longer published'; end if;
   actor_role:=public.livewire_role();
-  if actor_role='owner' then
-    insert into public.angle_owner_views(angle_id,user_id) values(story_id,auth.uid()) on conflict do nothing;
-    if not found then
-      return coalesce((select view_count from public.angle_view_counts where angle_id=story_id),0);
-    end if;
+  if actor_role in ('owner','admin') then
+    return coalesce((select view_count from public.angle_view_counts where angle_id=story_id),0);
   end if;
   insert into public.angle_view_counts(angle_id,view_count) values(story_id,1)
   on conflict(angle_id) do update set view_count=public.angle_view_counts.view_count+1

@@ -35,7 +35,7 @@ begin
   perform 1 from public.angles where id=story_id and status='published' for share;
   if not found then raise exception 'Storyline is no longer published'; end if;
   actor_role:=public.livewire_role();
-  if actor_role='owner' then
+  if actor_role in ('owner','admin') then
     return coalesce((select view_count from public.angle_view_counts where angle_id=story_id),0);
   end if;
   insert into public.angle_view_counts(angle_id,view_count) values(story_id,1)
@@ -43,7 +43,6 @@ begin
   returning view_count into total;
   insert into public.post_view_receipts(surface,post_id,user_id,guest)
   values('angle',story_id,auth.uid(),auth.uid() is null);
-  if actor_role='admin' then return total; end if;
   return null;
 end;
 $$;
@@ -56,7 +55,7 @@ begin
   select post.view_count into total from public.livewire_posts post
   where post.id=record_livewire_view.post_id for update;
   if total is null then raise exception 'Post is no longer available'; end if;
-  if public.livewire_role()='owner' then return total; end if;
+  if public.livewire_role() in ('owner','admin') then return total; end if;
   update public.livewire_posts post set view_count=post.view_count+1
   where post.id=record_livewire_view.post_id returning post.view_count into total;
   insert into public.post_view_receipts(surface,post_id,user_id,guest)

@@ -63,3 +63,23 @@ test('Both counts load viewers only on click, close accessibly, and expose failu
     assert.equal(app.nodes().some((node) => node.type === 'button' && node.props.children === 'Retry'), true);
   }
 });
+
+test('Staff views are excluded before increments and receipts in deployed and base counter functions', () => {
+  const migration = readFileSync(new URL('../supabase/exclude-admin-views.sql', import.meta.url), 'utf8');
+  for (const [file, name, insert] of [
+    ['post-viewers.sql', 'record_angle_view', 'insert into public.angle_view_counts'],
+    ['post-viewers.sql', 'record_livewire_view', 'update public.livewire_posts'],
+    ['site-opens.sql', 'record_site_open', 'insert into public.site_opens'],
+  ]) {
+    for (const sql of [readFileSync(new URL(`../supabase/${file}`, import.meta.url), 'utf8'), migration]) {
+      const start = sql.indexOf(`function public.${name}(`), end = sql.indexOf('$$;', start);
+      const body = sql.slice(start, end);
+      assert.match(body, /(?:actor_role|public\.livewire_role\(\))\s*in \('owner','admin'\)/);
+      assert.ok(body.indexOf("in ('owner','admin')") < body.indexOf(insert), `${name} skips staff before counting`);
+    }
+  }
+  assert.match(migration, /delete from public\.post_view_receipts receipt using public\.livewire_roles actor/);
+  assert.match(migration, /greatest\(0,views\.view_count-counts\.total\)/);
+  assert.match(migration, /greatest\(0,post\.view_count-counts\.total\)/);
+  assert.match(migration, /delete from public\.site_opens/);
+});

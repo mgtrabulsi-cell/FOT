@@ -34,6 +34,11 @@ select set_config('request.jwt.claim.sub','a9703333-3333-4333-8333-333333333331'
 select public.record_angle_view(current_setting('test.viewer_post')::uuid);
 select public.record_livewire_view(current_setting('test.viewer_livewire')::uuid);
 select set_config('request.jwt.claim.sub','a9703333-3333-4333-8333-333333333332',true);
+select public.record_angle_view(current_setting('test.viewer_post')::uuid);
+select public.record_angle_view(current_setting('test.viewer_post')::uuid);
+select public.record_livewire_view(current_setting('test.viewer_livewire')::uuid);
+select public.record_livewire_view(current_setting('test.viewer_livewire')::uuid);
+select public.record_site_open();
 do $$
 declare summary jsonb;
 begin
@@ -41,12 +46,19 @@ begin
   assert (summary->>'guest_views')::bigint>=1,'Guests counted';
   assert summary->'viewers' @> '[{"display_name":"Viewer Member","views":1}]'::jsonb,'Member attributed';
   assert not summary->'viewers' @> '[{"display_name":"Owner"}]'::jsonb,'Owner excluded';
+  assert not summary->'viewers' @> '[{"display_name":"Viewer Admin"}]'::jsonb,'Admin excluded';
   summary:=public.admin_post_viewers('livewire',current_setting('test.viewer_livewire')::uuid);
   assert (summary->>'guest_views')::bigint>=1,'LIVEWIRE guests counted';
   assert summary->'viewers' @> '[{"display_name":"Viewer Member","views":1}]'::jsonb,'LIVEWIRE member attributed';
   assert not summary->'viewers' @> '[{"display_name":"Owner"}]'::jsonb,'LIVEWIRE owner excluded';
+  assert not summary->'viewers' @> '[{"display_name":"Viewer Admin"}]'::jsonb,'LIVEWIRE admin excluded';
 end; $$;
 reset role;
+do $$ begin
+  assert not exists(select 1 from public.site_opens where user_id='a9703333-3333-4333-8333-333333333332'),'Admin site opens excluded';
+  assert not exists(select 1 from public.post_view_receipts where user_id in (
+    'a9703333-3333-4333-8333-333333333331','a9703333-3333-4333-8333-333333333332')),'Staff views create no receipts';
+end; $$;
 delete from auth.users where id='a9703333-3333-4333-8333-333333333333';
 do $$ begin
   assert exists(select 1 from public.post_view_receipts where surface='angle'
