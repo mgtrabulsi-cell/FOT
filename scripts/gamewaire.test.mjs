@@ -613,7 +613,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(scheduledView, /Overnight shortlist · Standings-ranked matchup/);
   assert.match(scheduledView, /Odds API: 7 credits for this saved request · 479 remaining/);
   assert.match(scheduledView, /Refresh prices &amp; review picks · up to 4 credits/);
-  assert.match(scheduledView, /Nothing publishes automatically/);
+  assert.match(scheduledView, /No NBA lean or Top Pick publishes automatically/);
+  assert.match(scheduledView, /Publish game lean · 0 credits/);
+  assert.match(scheduledView, /Refresh game lean only · up to 2 credits/);
+  assert.match(scheduledView, /Analyze players &amp; full game · up to 7 credits/);
   const more = { ...candidate, key: 'top-probability', subject: 'Higher hit estimate', probability: 0.99 };
   const adminState = [status, [{ ...run, payload: { picks: [candidate, more] } }], [], true];
   fixture(adminState);
@@ -775,7 +778,7 @@ test('Other admins and owners have member-only GamewAIre access with no paid req
     const api = endpoint({ role, allowed: false, configured: true });
     const status = await (await api.run({ action: 'status' })).json();
     assert.equal(status.canAnalyze, false);
-    for (const action of ['events', 'report', 'analyze', 'publish', 'settle']) {
+    for (const action of ['events', 'report', 'analyze', 'publish', 'publishLean', 'settle']) {
       assert.equal((await api.run({ action })).status, 403, `${role}: ${action}`);
     }
     assert.equal(api.fetches.length, 0);
@@ -872,13 +875,77 @@ test('Scheduled worker requires the private cron secret, bypasses only manual ca
     assert.equal(result.status, 200);
     const body = await result.json();
     assert.equal(body.run.payload.scheduled.jobId, 'job');
-    assert.equal(new URL(api.fetches[0]).searchParams.get('markets').split(',').length, 7);
-    assert.ok(!api.rpc.some(({ name }) => ['gamewaire_claim', 'gamewaire_publish'].includes(name)));
+    assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), ['h2h', 'spreads']);
+    assert.deepEqual([...body.run.settings.markets], ['h2h', 'spreads']);
+    assert.ok((body.run.payload.picks ?? []).every((pick) => ['h2h', 'spreads'].includes(pick.market)));
+    assert.ok(!api.rpc.some(({ name }) => ['gamewaire_claim', 'gamewaire_publish', 'gamewaire_publish_lean'].includes(name)));
     assert.ok(api.writes.some(({ table, value }) => table === 'gamewaire_schedule_jobs' && value.status === 'completed'));
     const idle = endpoint({ configured: true });
     assert.equal((await idle.cron()).status, 200);
     assert.equal(idle.fetches.length, 0, 'No claimed job means no paid call');
   });
+test('NFL scheduled requests retain full markets; publishing an NBA lean is explicit and uses no provider credits', async () => {
+  const api = endpoint({ configured: true, scheduledJob: {
+    id: 'nfl-job', sport: 'NFL', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Weekly slate.',
+  } });
+  assert.equal((await api.cron()).status, 200);
+  assert.equal(new URL(api.fetches[0]).searchParams.get('markets').split(',').length, 7);
+  const publish = endpoint();
+  assert.equal((await publish.run({ action: 'publishLean', runId: '00000000-0000-0000-0000-000000000001' })).status, 200);
+  assert.equal(publish.rpc.at(-1).name, 'gamewaire_publish_lean');
+  assert.equal(publish.fetches.length, 0);
+  const legacy = endpoint({ publicationVersion: 'old' });
+  assert.equal((await legacy.run({ action: 'publishLean', runId: '00000000-0000-0000-0000-000000000001' })).status, 400);
+});
+test('Team-only evidence never fetches player rosters or player game logs', async () => {
+  const calls = [];
+  const teamQuote = { ...quote, market: 'h2h', subject: quote.home, side: quote.home, line: null };
+  await sources.collectEvidence([teamQuote], {
+    id: 'event', season: 2027, home: { id: '1', name: quote.home }, away: { id: '2', name: quote.away },
+  }, now, async (url) => {
+    calls.push(String(url));
+    return Response.json({ events: [] });
+  });
+  assert.ok(calls.length > 0);
+  assert.ok(calls.every((url) => !url.includes('/roster') && !url.includes('/athletes/')));
+});
+test('NBA review buttons publish freely, refresh only team markets, and request players only explicitly', async () => {
+  const source = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8')
+    .replace('function ReviewNBALean(', 'export function ReviewNBALean(');
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+  const calls = [], refreshed = [];
+  const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date(Date.now() + 86400000).toISOString(),
+    settings, payload: { teamLean: { reason: 'Lean only', pick: { ...evaluate().picks[0],
+      updatedAt: new Date().toISOString(), dataAt: new Date().toISOString() } } } };
+  const jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, Date, console, require(name) {
+    if (name === 'react') return { useState: (value) => [value, () => {}] };
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name.includes('services/gamewaire')) return { ...engine, engineRequest: async (body) => {
+      calls.push(body); return { run };
+    } };
+    return {};
+  } });
+  vm.runInContext(code, context);
+  const tree = context.exports.ReviewNBALean({ report: run, refresh() {}, onFreshReport: (next) => refreshed.push(next) });
+  const nodes = (node) => !node || typeof node !== 'object' ? [] : Array.isArray(node)
+    ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
+  const buttons = nodes(tree).filter((node) => node.type === 'button');
+  assert.equal(buttons.length, 3);
+  assert.equal(buttons[0].props.disabled, false);
+  buttons[0].props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls[0].action, 'publishLean');
+  assert.equal(calls[0].settings, undefined, 'Publishing cannot launch analysis');
+  buttons[1].props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual([...calls[1].settings.markets], ['h2h', 'spreads']);
+  buttons[2].props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual([...calls[2].settings.markets], [...engine.markets.NBA]);
+  assert.equal(refreshed.length, 2, 'Both analyses return to review, never publish automatically');
+  assert.equal(calls.filter((call) => call.action === 'publishLean').length, 1);
+});
   test('Scheduled provider failures are explicit and recorded without a paid retry', async () => {
     const job = { id: 'job', sport: 'NFL', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Weekly slate.' };
     const api = endpoint({ configured: true, scheduledJob: job });

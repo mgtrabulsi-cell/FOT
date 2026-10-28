@@ -156,10 +156,11 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
   } catch (cause) {
     warnings.push(`Opponent defensive ranking unavailable: ${cause instanceof Error ? cause.message : 'request failed'}. No defensive rank is assumed.`);
   }
+  const players = [...new Set(quotes.filter((quote) => quote.market.startsWith('player_')).map((quote) => quote.subject))].slice(0, 24);
   const teamData = await Promise.all([matchup.away, matchup.home].map(async (team) => {
     const [schedule, roster] = await Promise.all([
       get(`${base}/teams/${team.id}/schedule?season=${matchup.season}&seasontype=2`),
-      get(`${base}/teams/${team.id}/roster?season=${matchup.season}`),
+      players.length ? get(`${base}/teams/${team.id}/roster?season=${matchup.season}`) : Promise.resolve(null),
     ]);
     const athletes = array(object(roster).athletes).flatMap((row) => Array.isArray(object(row).items) ? array(object(row).items) : [row]).map(object);
     const current = teamSamples(schedule, team.id, now);
@@ -174,7 +175,6 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
     }
     return { team, games, athletes };
   }));
-  const players = [...new Set(quotes.filter((quote) => quote.market.startsWith('player_')).map((quote) => quote.subject))].slice(0, 24);
   const logs = new Map<string, unknown>();
   const previousLogs = new Map<string, unknown>();
   const rotationSamples = new Map<string, Observation[]>();

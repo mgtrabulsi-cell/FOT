@@ -118,6 +118,42 @@ function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun;
     {notice && <p role="status">{notice}</p>}
   </section>;
 }
+function ReviewNBALean({ report, refresh, onFreshReport }: { report: AnalysisRun; refresh: () => void; onFreshReport: (run: AnalysisRun) => void }) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const lean = report.payload.teamLean;
+  const started = Date.parse(report.event_start) <= Date.now();
+  const stale = !lean || Date.now() - Date.parse(lean.pick.updatedAt) > 600_000
+    || Date.now() - Date.parse(lean.pick.dataAt) > 3_600_000 || lean.pick.modelVersion !== modelVersion;
+  const analyze = async (players: boolean) => {
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const { run } = await engineRequest<{ run: AnalysisRun }>({ action: 'analyze', sport: 'NBA', eventId: report.event_id,
+        settings: { ...report.settings, player: '', markets: players ? [...markets.NBA] : ['h2h', 'spreads'] } });
+      onFreshReport(run); refresh();
+    } catch (cause) { setError(errorMessage(cause)); }
+    finally { setBusy(false); }
+  };
+  return <section aria-label="Review NBA game lean">
+    <h4>Game lean · review before publishing</h4>
+    <p className="gai-note">NBA analyses stay private until you publish. Game leans are moneyline/spread only and are separate from Top Picks.</p>
+    {lean ? <><p className="gai-note">{lean.reason}</p><PickCard pick={lean.pick} rank={1} technical /></>
+      : <p>No verified game lean is available in this report. Missing data is not replaced with a forced pick.</p>}
+    {stale && !started && <p className="gai-note">Saved prices/data need refreshing before publication. Refreshing only the game lean never requests player markets.</p>}
+    <div className="gai-actions">
+      <button disabled={busy || started || stale} onClick={() => {
+        setBusy(true); setError(''); setNotice('');
+        void engineRequest({ action: 'publishLean', runId: report.id })
+          .then(() => { setNotice('Game lean published · 0 additional credits.'); refresh(); })
+          .catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
+      }}>Publish game lean · 0 credits</button>
+      <button disabled={busy || started} onClick={() => void analyze(false)}>Refresh game lean only · up to 2 credits</button>
+      <button disabled={busy || started} onClick={() => void analyze(true)}>Analyze players &amp; full game · up to 7 credits</button>
+    </div>
+    {started && <p className="gai-note">This game has started; it can no longer be analyzed or published.</p>}
+    {error && <p role="alert" className="feed-warning">{error}</p>}
+    {notice && <p role="status">{notice}</p>}
+  </section>;
+}
 function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }) {
   const [result, setResult] = useState(pick.result), [note, setNote] = useState('');
   const [closing, setClosing] = useState(''), [closingAt, setClosingAt] = useState('');
@@ -241,8 +277,9 @@ export default function Gamewaire() {
       </li>)}</ul>
       <h3>Scheduled shortlists</h3>
       <details><summary>Schedule &amp; analysis costs · 1 AM Eastern</summary>
-      <p className="gai-note">NBA: up to three games, ranked by both teams’ standings strength and how evenly matched they are; 50/50 current/prior-season records until 12 games per team. NFL: all upcoming Thursday–Monday games.
-        Generating each full-market analysis costs up to 7 credits per game once; accessing the saved report afterwards costs 0. Jobs run once, one at a time; missing markets or failures are not automatically retried. Nothing publishes automatically.</p></details>
+      <p className="gai-note">NBA: every upcoming game each day, moneyline/spread only, up to 2 credits per game. NBA game leans stay private until you review and publish; player markets run only when you explicitly request them.
+        NFL: all upcoming Thursday–Monday games, full markets up to 7 credits per game, with the existing game-lean behavior unchanged.
+        Accessing saved reports costs 0. Jobs run once, one at a time; missing markets or failures are not automatically retried. No NBA lean or Top Pick publishes automatically.</p></details>
       {!batches.length && <p>No scheduled batches yet. The next batch starts at 1 AM Eastern.</p>}
       {batches.map((batch) => <section key={batch.id} className="gai-scheduled-batch"><h3>{batch.sport} · {batch.game_date}</h3>
         <p className="gai-note">{batch.note} {batch.status === 'no_games' ? 'No upcoming games in this window.' : ''}</p>
@@ -335,11 +372,11 @@ export default function Gamewaire() {
           {report.payload.providerUsage && <p className="gai-note">Odds API: {report.payload.providerUsage.requestCost ?? 'Unknown'} credits for this saved request · {report.payload.providerUsage.creditsRemaining ?? 'Unknown'} remaining as of {stamp(report.payload.providerUsage.checkedAt)}. Opening this report uses no credits.</p>}
           {report.status === 'no_qualifying' && <p>No qualifying value bets found for this matchup.</p>}
           {report.payload.error && <p role="alert" className="feed-warning">{report.payload.error}</p>}
-          <section aria-label="Game team lean"><h4>Game team lean</h4>
+          {report.sport === 'NBA' ? <ReviewNBALean key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} /> : <section aria-label="Game team lean"><h4>Game team lean</h4>
             <p className="gai-note">{report.payload.teamLean?.qualifies ? 'Qualifies for Top Picks; one team slot is reserved in this candidate pool.'
               : report.payload.teamLean?.reason ?? 'Unavailable: this report has no verified team lean. Regenerate with current data.'}</p>
             {report.payload.teamLean && !report.payload.teamLean.qualifies && <PickCard pick={report.payload.teamLean.pick} rank={1} technical />}
-          </section>
+          </section>}
           {report.status === 'completed' && !!report.payload.picks?.length && <PublishPicks key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} />}
           {report.status !== 'in_progress' && !report.payload.picks?.length && Date.parse(report.event_start) > Date.now() && <button disabled={busy} onClick={() => {
             setBusy(true); setActionError('');
@@ -359,7 +396,7 @@ export default function Gamewaire() {
         <div className="gai-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
           record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />)}</div>
         <section aria-label="Game team leans"><h4>Game team leans</h4>
-          <p className="gai-note">One data-supported moneyline or spread per analyzed game. Leans are separate from admin-published Top Picks and are not betting recommendations.</p>
+          <p className="gai-note">One data-supported moneyline or spread per game. NBA leans appear only after owner review and publication. Leans are separate from Top Picks and are not betting recommendations.</p>
           {!visibleLeans.length && <p className="gai-note">No team analyses saved for these filters yet. An admin must analyze each game first.</p>}
           {visibleLeans.map((game) => <section key={game.event_id} className="gai-team-lean"><h4>{game.matchup}</h4>
             <p className="gai-note">{game.team_lean ? game.team_lean.qualifies ? 'Passed model screens when analyzed; not an admin-published Top Pick.'

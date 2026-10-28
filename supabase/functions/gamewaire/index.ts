@@ -118,7 +118,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       scheduledJob = { id: job.id, sport: job.sport, event_id: job.event_id, event_start: job.event_start,
         matchup: job.matchup, selection_note: job.selection_note };
       body = { action: 'analyze', sport: scheduledJob.sport, eventId: scheduledJob.event_id,
-        settings: { ...defaultSettings, markets: [...markets[scheduledJob.sport]] } };
+        settings: { ...defaultSettings, markets: scheduledJob.sport === 'NBA' ? ['h2h', 'spreads'] : [...markets.NFL] } };
       canAnalyze = true;
     } else {
       const verified = await client.auth.getUser();
@@ -136,6 +136,17 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (saved.error) throw new Error('Could not load the saved report.');
       if (!saved.data) return json({ error: 'Saved report not found.' }, 404);
       return json({ run: saved.data });
+    }
+    if (body.action === 'publishLean') {
+      if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId))
+        return json({ error: 'Choose a saved NBA game lean.' }, 400);
+      const source = await admin.from('gamewaire_runs').select('payload').eq('id', body.runId).maybeSingle();
+      if (source.error) throw new Error('Could not verify the saved lean.');
+      if (!source.data || object(source.data.payload).modelVersion !== modelVersion)
+        return json({ error: 'This saved analysis uses an older model. Refresh the game lean before publishing.' }, 400);
+      const saved = await admin.rpc('gamewaire_publish_lean', { target_run: body.runId });
+      if (saved.error) return json({ error: `Could not publish game lean: ${saved.error.message}` }, 400);
+      return json({ saved: true });
     }
     if (body.action === 'publish') {
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId) || !Array.isArray(body.keys)
@@ -230,7 +241,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       await finishScheduled(null, 'Only upcoming games can be analyzed.');
       return json({ error: 'Only upcoming games can be analyzed.' }, 400);
     }
-    const allQuotes = readQuotes(raw, sport);
+    const allQuotes = readQuotes(raw, sport).filter((quote) => requestedMarkets.includes(quote.market));
     const quotes = allQuotes.filter((quote) => !settings.player || !quote.market.startsWith('player_') || normalize(quote.subject).includes(normalize(settings.player)));
     const created = await admin.from('gamewaire_runs').insert({ sport, event_id: body.eventId, event_start: start,
       matchup: `${text(event.away_team)} @ ${text(event.home_team)}`, settings, status: 'in_progress' }).select('*').single();

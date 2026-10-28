@@ -18,7 +18,7 @@ begin
   delete from public.gamewaire_schedule_batches where sport='NBA' and game_date=day;
   games := jsonb_build_array(jsonb_build_object('event_id','schedule-test','event_start',
     (day::timestamp+interval '20 hours') at time zone 'America/New_York','matchup','Away @ Home','selection_note','Test ranking'));
-  batch := public.gamewaire_schedule_plan('NBA',day,games,null,'Test top three');
+  batch := public.gamewaire_schedule_plan('NBA',day,games,null,'Test daily game leans');
   if batch is null then raise exception 'Plan must create a batch'; end if;
   if public.gamewaire_schedule_plan('NBA',day,games,null,'Duplicate') is not null then raise exception 'Duplicate plan must be ignored'; end if;
   select count(*) into total from public.gamewaire_schedule_jobs where batch_id=batch;
@@ -31,10 +31,10 @@ begin
   if not exists(select 1 from public.gamewaire_schedule_jobs where id=(job->>'id')::uuid and status='failed')
     then raise exception 'Interrupted job must remain visibly failed'; end if;
   begin
-    perform public.gamewaire_schedule_plan('NBA',day+1,games||games||games||games,null,'Too many');
-    raise exception 'NBA schedule must cap at three';
+    perform public.gamewaire_schedule_plan('NBA',day+1,games||games||games||games||games||games||games||games||games||games||games||games||games||games||games||games,null,'Too many');
+    raise exception 'NBA schedule must cap at fifteen';
   exception when raise_exception then
-    if sqlerrm='NBA schedule must cap at three' then raise; end if;
+    if sqlerrm='NBA schedule must cap at fifteen' then raise; end if;
   end;
   if exists(select 1 from public.gamewaire_publications where event_id='schedule-test')
     or exists(select 1 from public.gamewaire_picks where event_id='schedule-test')

@@ -43,7 +43,7 @@ returns uuid language plpgsql security definer set search_path=public,pg_temp as
 declare batch uuid; game jsonb;
 begin
   if target_sport is null or target_sport not in ('NBA','NFL') or target_date is null or games is null or jsonb_typeof(games) <> 'array'
-    or jsonb_array_length(games) > (case when target_sport='NBA' then 3 else 16 end)
+    or jsonb_array_length(games) > (case when target_sport='NBA' then 15 else 16 end)
     or (problem is not null and jsonb_array_length(games)>0)
     or (target_sport='NFL' and extract(isodow from target_date)<>4)
     then raise exception 'Invalid scheduled analysis plan'; end if;
