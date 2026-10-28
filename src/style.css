@@ -1403,7 +1403,7 @@ td:first-child { color: #828c84; }
 .wire-stat-table tr:hover td.wire-col-athlete { background: #172538; }
 .wire-stat-table th.wire-col-data, .wire-stat-table td.wire-col-data { text-align: center; min-width: 62px; font-variant-numeric: tabular-nums; }
 .wire-stat-table th.wire-col-data { text-align: center; }
-.wire-stat-table td.wire-col-data { font: 400 12px var(--mono); color: #cad5e6; text-align: center; }
+.wire-stat-table td.wire-col-data { font: 400 12px var(--mono); font-variant-numeric: tabular-nums; color: #cad5e6; text-align: center; }
 .wire-stat-table tr.wire-totals-row td { font-weight: 700; color: #fff; background: #0f1826; border-top: 1px solid #30435c; }
 .wire-stat-table tr.wire-totals-row td.wire-col-athlete { background: #0f1826; font-family: var(--display); letter-spacing: .5px; }
 .wire-stat-table tr.wire-totals-row td.wire-col-data { font-weight: 500; text-align: center; color: #fff; }

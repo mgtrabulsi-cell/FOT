@@ -23,7 +23,7 @@ test('Angle headlines inherit readable heading typography instead of the generic
   assert.match(css, /\.wire-stat-table td\.wire-col-data \{ font: 400 12px var\(--mono\)/);
   assert.match(css, /font-variant-numeric: tabular-nums/);
   const nba = readFileSync(new URL('../src/nba.css', import.meta.url), 'utf8');
-  assert.match(nba, /\.nba-box td \{ font-weight: 400; \}/);
+  assert.match(nba, /\.nba-box td \{ font-weight: 400; font-variant-numeric: tabular-nums; \}/);
 });
 const parsed = ts.createSourceFile('TheAngle.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const component = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'TheAngle');

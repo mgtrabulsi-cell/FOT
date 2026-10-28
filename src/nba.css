@@ -45,7 +45,7 @@
 .nba-table { width: 100%; border-collapse: collapse; font: 600 16px var(--mono); color: #fff; font-variant-numeric: tabular-nums; }
 .nba-table th, .nba-table td { padding: 9px 10px; border-bottom: 1px solid #1c2a3d; text-align: center; white-space: nowrap; }
 .nba-table td { font: 600 16px var(--mono); color: #fff; }
-.nba-box td { font-weight: 400; }
+.nba-box td { font-weight: 400; font-variant-numeric: tabular-nums; }
 .nba-table th { font-family: var(--mono); color: #bbc7d9; background: #0f1724; }
 .nba-table thead { background: #0f1724; color: #bbc7d9; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .5px; }
 .nba-table th { font-weight: 600; }
