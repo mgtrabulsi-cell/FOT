@@ -7,6 +7,7 @@ export type XPostSource = {
   picks: ReturnType<typeof readAnglePicks>;
   reviews?: ReturnType<typeof readAngleReviews>;
   graphicImage?: string;
+  imagePaths?: string[];
 };
 
 export function xSource(row: Record<string, unknown>, angle: boolean, id: string): XPostSource {
@@ -33,9 +34,16 @@ export function xSource(row: Record<string, unknown>, angle: boolean, id: string
   const evidence = text('evidence');
   const counterpoint = text('counterpoint');
   const reviews = row.review_picks === undefined ? [] : readAngleReviews(row.review_picks);
+  const attachments = row.image_paths ?? [];
+  if (!Array.isArray(attachments) || attachments.length > 4 || attachments.some(path =>
+    typeof path !== 'string' || !/^[0-9a-f-]+\/[0-9a-f-]+\.(?:jpe?g|png|webp|gif|mp4|webm|mov)$/i.test(path))) {
+    throw new Error('Published source has invalid image attachments. No tweet was sent.');
+  }
+  const imagePaths = attachments.filter((path: string) => /\.(?:jpe?g|png|webp|gif)$/i.test(path));
   return {
     title, subject: text('subject'), gameId: text('game_id'),
     picks: anglePicks({ id, pick: text('pick'), picks }), reviews,
+    ...(imagePaths.length ? { imagePaths } : {}),
     analysis: [narrative, evidence.trim() ? `Evidence\n${evidence}` : '', counterpoint.trim() ? `Counterpoint\n${counterpoint}` : '',
     ].filter(Boolean).join('\n\n'),
   };

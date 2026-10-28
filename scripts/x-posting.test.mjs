@@ -2,6 +2,37 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
 import { xAuthorization, xImagePostText, xSource } from '../supabase/functions/_shared/xPosting.ts';
+import { attachmentImage } from '../supabase/functions/send-x-posts/xMedia.ts';
+
+test('Angle photos are preserved in order while videos keep the generated-image fallback', () => {
+  const row = { title: 'Headline', subject: '', game_id: 'NEWS:0', narrative: 'Analysis', evidence: '', counterpoint: '', pick: '' };
+  const path = '11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222';
+  const paths = ['jpg', 'png', 'webp', 'gif'].map(ext => `${path}.${ext}`);
+  assert.deepEqual(xSource({ ...row, image_paths: paths }, true, 'id').imagePaths, paths);
+  assert.deepEqual(xSource({ ...row, image_paths: [`${path}.mp4`, paths[1]] }, true, 'id').imagePaths, [paths[1]]);
+  assert.equal(xSource({ ...row, image_paths: [`${path}.mp4`] }, true, 'id').imagePaths, undefined);
+  for (const image_paths of [['https://example.test/a.png'], ['../a.png'], [...paths, paths[0]], 'bad']) {
+    assert.throws(() => xSource({ ...row, image_paths }, true, 'id'), /invalid image attachments/);
+  }
+});
+
+test('Photo preparation preserves original bytes and validates supported format and size', async () => {
+  for (const [type, bytes] of [
+    ['image/png', [137,80,78,71,13,10,26,10]],
+    ['image/jpeg', [255,216,255,224]],
+    ['image/gif', [71,73,70,56,57,97]],
+    ['image/webp', [82,73,70,70,0,0,0,0,87,69,66,80]],
+  ]) {
+    const image = await attachmentImage(new Blob([new Uint8Array(bytes)], { type }), 'Photo');
+    assert.equal(image.type, type);
+    assert.deepEqual([...image.bytes], bytes);
+    assert.equal(image.alt, 'Photo');
+  }
+  await assert.rejects(attachmentImage(new Blob([]), 'Photo'), /empty/);
+  await assert.rejects(attachmentImage(new Blob([new Uint8Array(5 * 1024 * 1024 + 1)]), 'Photo'), /5 MB/);
+  await assert.rejects(attachmentImage(new Blob(['not a photo'], { type: 'image/png' }), 'Photo'), /invalid/);
+  await assert.rejects(attachmentImage(new Blob([new Uint8Array([255,216,255])], { type: 'image/png' }), 'Photo'), /mismatched/);
+});
 
 test('OAuth 1.0a signature includes query parameters and token secrets, not the JSON body', async () => {
   const credentials = { apiKey: 'key!', apiSecret: 'secret&', accessToken: 'token', accessSecret: 'access/' };

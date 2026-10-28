@@ -28,6 +28,8 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
   let overlongCaption = false;
   let graphic = false;
   let graphicFailure = false;
+  let photoCount = 0;
+  let photoChanged = false;
   const graphicPng = new Uint8Array(1500);
   graphicPng.set([137,80,78,71,13,10,26,10]);
   try {
@@ -46,7 +48,7 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
           const form = await request.formData();
           const media = form.get('media');
           assert(media instanceof File && media.type === 'image/png' && media.size > 1000, 'Rendered PNG attached');
-          if (graphic && media instanceof File) {
+          if ((graphic || photoCount) && media instanceof File) {
             const bytes = new Uint8Array(await media.arrayBuffer());
             assert(bytes.length === graphicPng.length && bytes.every((byte, index) => byte === graphicPng[index]), 'Original graphic PNG is uploaded byte-for-byte, not an analysis replacement');
           }
@@ -91,6 +93,8 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
           evidence: '', counterpoint: '', pick: '', game_id: 'NBA:123',
           picks: [{ id: '11111111-1111-4111-8111-111111111111', text: 'Player 6+ assists', result: 'pending' }],
           status: 'published',
+          ...(photoCount ? { image_paths: Array.from({ length: photoCount }, (_, index) =>
+            `11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-${String(photoChanged && sourceReads > 1 ? index + 10 : index).padStart(12, '0')}.png`) } : {}),
           ...(graphic ? { fantasy_graphic_id: '11111111-1111-4111-8111-111111111111',
             image_paths: ['11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.png'] } : {}),
         });
@@ -112,7 +116,7 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
     };
     await import('./index.ts');
     const invoke = () => handler(new Request('https://test.invalid', { method: 'POST', headers: { 'x-gamewire-cron-secret': 'fixture' } }));
-    const reset = () => { claimed = false; writes = []; texts = []; failure = ''; missing = false; account = '123'; uploads = 0; sourceReads = 0; changed = false; removedDuringUpload = false; longAnalysis = false; fourPages = false; overlongCaption = false; };
+    const reset = () => { claimed = false; writes = []; texts = []; failure = ''; missing = false; account = '123'; uploads = 0; sourceReads = 0; changed = false; removedDuringUpload = false; longAnalysis = false; fourPages = false; overlongCaption = false; photoCount = 0; photoChanged = false; };
     assert((await handler(new Request('https://test.invalid', { method: 'POST' }))).status === 401 && calls === 0, 'Unauthorized calls cannot read queues');
     assert((await handler(new Request('https://test.invalid', { headers: { 'x-gamewire-cron-secret': 'fixture' } }))).status === 405, 'GET cannot dispatch');
     enabled = false;
@@ -128,6 +132,17 @@ Deno.test('X dispatcher checks account, sends once, reports failures, and never 
     assert(!texts[0].includes('Our editorial text.') && uploads === 1, 'Analysis moves to an attached image');
     assert(writes.some(row => row.status === 'sent' && row.tweet_id === '999'), 'Accepted ID saved');
     assert((await invoke()).status === 200 && texts.length === 1, 'Claimed row cannot post twice');
+    for (const count of [1, 4]) {
+      reset(); photoCount = count; longAnalysis = true;
+      assert((await invoke()).status === 200 && texts.length === 1 && uploads === count, 'Attached photos replace generated analysis and upload original bytes');
+    }
+    reset(); photoCount = 1; graphicFailure = true;
+    assert((await invoke()).status === 503 && !texts.length && uploads === 0, 'Missing attached photo never falls back to analysis or sends text-only');
+    graphicFailure = false;
+    reset(); photoCount = 1; photoChanged = true;
+    assert((await invoke()).status === 503 && !texts.length && writes.some(row => row.status === 'failed'), 'Attachment changes during upload prevent stale tweets');
+    reset(); photoCount = 2; failure = 'upload';
+    assert((await invoke()).status === 503 && !texts.length, 'Photo upload failure prevents tweet');
     reset(); fourPages = true;
     assert((await invoke()).status === 200 && texts.length === 1 && uploads === 4, 'All four analysis images upload before one tweet');
     reset(); overlongCaption = true;

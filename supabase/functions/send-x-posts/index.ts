@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { xAuthorization, xImagePostText, xSource } from '../_shared/xPosting.ts';
 import { analysisImages } from './analysisImages.ts';
-import { uploadAnalysisImage } from './xMedia.ts';
+import { attachmentImage, uploadImage, type XImage } from './xMedia.ts';
 
 Deno.serve(async (request: Request) => {
   const secret = Deno.env.get('GAMEWIRE_CRON_SECRET');
@@ -73,16 +73,21 @@ Deno.serve(async (request: Request) => {
         const link = `https://gamewire.us/#analyst-desk/story/${delivery.source_id}`;
         const text = xImagePostText(source, link);
         const graphicImage = source.graphicImage;
-        const images = graphicImage ? await (async () => {
+        const images: XImage[] = graphicImage ? await (async () => {
           const { data, error } = await admin.storage.from('livewire-photos').download(graphicImage);
           if (error) throw error;
           if (!data || data.type !== 'image/png' || data.size > 5 * 1024 * 1024) throw new Error('The published Start/Sit PNG is missing or invalid. No tweet was sent.');
           const png = new Uint8Array(await data.arrayBuffer());
           if (![137,80,78,71,13,10,26,10].every((byte, index) => png[index] === byte)) throw new Error('The published Start/Sit attachment is not a PNG. No tweet was sent.');
-          return [{ png, alt: source.title }];
-        })() : await analysisImages(source);
+          return [{ bytes: png, type: 'image/png', alt: source.title }];
+        })() : source.imagePaths?.length ? await Promise.all(source.imagePaths.map(async (path, index) => {
+          const { data, error } = await admin.storage.from('livewire-photos').download(path);
+          if (error) throw new Error(`Could not download attached image ${index + 1}. No tweet was sent: ${error.message}`);
+          if (!data) throw new Error(`Attached image ${index + 1} is missing. No tweet was sent.`);
+          return attachmentImage(data, `${source.title} · Attached image ${index + 1} of ${source.imagePaths!.length}`);
+        })) : (await analysisImages(source)).map(image => ({ bytes: image.png, type: 'image/png', alt: image.alt }));
         const mediaIds: string[] = [];
-        for (const image of images) mediaIds.push(await uploadAnalysisImage(credentials, image));
+        for (const image of images) mediaIds.push(await uploadImage(credentials, image));
         const latest = await loadSource();
         if (!latest) {
           const { error } = await admin.from('x_publications').update({

@@ -508,6 +508,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
         <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button>
           <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? false} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
+          <p>Attached photos are included on X instead of generated analysis images. With no photos, X uses generated analysis images. Videos stay on GameWire.</p>
         </div>
         <p>Requires a connected X account. Edits and republishing do not create another tweet. Attached videos play in The Angle; X keeps the existing headline, story link, and analysis-image format.</p>
       </fieldset>
