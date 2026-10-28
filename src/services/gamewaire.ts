@@ -29,7 +29,10 @@ export async function engineRequest<T>(body: Record<string, unknown>, signal?: A
     const response = result.error.context;
     if (response instanceof Response) {
       const data: unknown = await response.json();
-      if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') throw new Error(data.error);
+      if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+        const retryAt = 'retryAt' in data && typeof data.retryAt === 'string' ? Date.parse(data.retryAt) : NaN;
+        throw new Error(`${data.error}${Number.isFinite(retryAt) ? ` Try again at ${new Date(retryAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}.` : ''}`);
+      }
     }
     throw new Error(result.error.message || 'GamewAIre request failed.');
   }

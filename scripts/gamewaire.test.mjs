@@ -570,7 +570,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ role = 'admin', configured = false, failClaim = false, publicationVersion = engine.modelVersion } = {}) {
+function endpoint({ role = 'admin', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null } = {}) {
   const rpc = [], tables = [], fetches = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
     ...(configured ? { ODDS_API_KEY: 'fixture-odds' } : {}),
@@ -584,6 +584,7 @@ function endpoint({ role = 'admin', configured = false, failClaim = false, publi
         update: () => builder, insert: (value) => { builder.value = value; return builder; },
         upsert: () => builder,
         maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role }
+          : table === 'sports_resources' ? eventCache
           : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } } : null, error: null }),
         single: async () => ({ data: { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
@@ -642,7 +643,12 @@ test('Publication is admin-only, rejects invalid counts, and uses the transactio
 });
 test('Endpoint rate limits before paid API calls and persists deterministic complete reports transactionally', async () => {
   const limited = endpoint({ configured: true, failClaim: true });
-  assert.equal((await limited.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 429);
+  const limitedResponse = await limited.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
+  assert.equal(limitedResponse.status, 429);
+  const limit = await limitedResponse.json();
+  assert.equal(limit.retryAt, '2026-10-27T19:00:00.000Z');
+  assert.match(limit.error, /Hourly analysis limit/);
+  assert.match(limit.error, /Saved reports, published picks and game lists are still available/);
   assert.equal(limited.fetches.length, 0);
   const api = endpoint({ configured: true });
   const response = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
@@ -659,6 +665,54 @@ test('Endpoint rate limits before paid API calls and persists deterministic comp
     settings: { ...settings, markets: ['player_points'], player: 'No matching player' } });
   assert.equal(filtered.status, 200);
   assert.equal((await filtered.json()).run.status, 'no_qualifying', 'An empty player filter is an abstention, not a provider failure');
+});
+test('Quota-free game lists remain available when the paid analysis budget is exhausted', async () => {
+  const upcoming = { id: 'event', sport: 'NBA', home: quote.home, away: quote.away, start: quote.start };
+  const cached = { payload: { events: [upcoming, { ...upcoming, id: 'started', start: new Date(now - 60_000).toISOString() }] },
+    updated_at: new Date(now - 60_000).toISOString() };
+  const api = endpoint({ configured: true, failClaim: true, eventCache: cached });
+  const body = { action: 'events', sport: 'NBA', date: quote.start.slice(0, 10) };
+  const response = await api.run(body);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).events, [upcoming]);
+  assert.equal(api.rpc.length, 0);
+  assert.equal(api.fetches.length, 0);
+  const stale = endpoint({ configured: true, failClaim: true, eventCache: { ...cached, updated_at: new Date(now - 300_001).toISOString() } });
+  let fetchCount = 0;
+  const refreshed = await stale.run(body, true, async () => {
+    fetchCount++;
+    return Response.json([{ id: 'event', home_team: quote.home, away_team: quote.away, commence_time: quote.start }]);
+  });
+  assert.equal(refreshed.status, 200);
+  assert.deepEqual((await refreshed.json()).events, [upcoming]);
+  assert.equal(fetchCount, 1);
+  assert.equal(stale.rpc.length, 0, 'Refreshing an expired event list must not spend an analysis slot');
+  const invalid = await stale.run(body, true, async () => Response.json([{ id: 'bad' }]));
+  assert.equal(invalid.status, 502, 'Invalid provider data remains an explicit error');
+});
+test('Budget migration and fresh schema use the same atomic, non-consuming rejection logic', () => {
+  const schema = readFileSync(new URL('../supabase/gamewaire.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/gamewaire-budget.sql', import.meta.url), 'utf8');
+  const claim = (sql) => sql.slice(sql.indexOf('create or replace function public.gamewaire_claim('), sql.indexOf('grant execute on function public.gamewaire_claim(uuid) to service_role;') + 'grant execute on function public.gamewaire_claim(uuid) to service_role;'.length);
+  assert.equal(claim(schema), claim(migration));
+  assert.ok(migration.indexOf('then return false') < migration.indexOf('attempts = global_amount + 1'));
+  assert.match(migration, /where scope = 'global' for update/);
+});
+test('Client displays a local reset time for analysis limits without changing other errors', async () => {
+  const source = readFileSync(new URL('../src/services/gamewaire.ts', import.meta.url), 'utf8');
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  let payload = { error: 'Hourly analysis limit reached.', retryAt: '2026-10-27T19:00:00.000Z' };
+  const client = {
+    auth: { getSession: async () => ({ data: { session: null }, error: null }) },
+    functions: { invoke: async () => ({ error: { context: Response.json(payload, { status: 429 }) } }) },
+  };
+  const context = vm.createContext({ exports: {}, Response, Date, require: (name) => name.includes('supabaseClient') ? { supabase: client } : engine });
+  vm.runInContext(code, context);
+  const localTime = new Date(payload.retryAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  await assert.rejects(context.exports.engineRequest({ action: 'analyze' }), (error) =>
+    error.message === `Hourly analysis limit reached. Try again at ${localTime}.`);
+  payload = { error: 'Provider failed.', retryAt: 'invalid' };
+  await assert.rejects(context.exports.engineRequest({ action: 'events' }), (error) => error.message === 'Provider failed.');
 });
 test('Provider errors, invalid lines and AI failures remain explicit; AI only selects supplied factual phrases', async () => {
   const api = endpoint({ configured: true });

@@ -119,9 +119,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
           const row = object(value); return { id: text(row.id), sport, home: text(row.home), away: text(row.away), start: text(row.start) };
         });
       } else {
-        const claim = await admin.rpc('gamewaire_claim', { target_user: verified.data.user.id });
-        if (claim.error) throw new Error('Could not check provider rate limits.');
-        if (!claim.data) return json({ error: 'GamewAIre provider budget reached. Try again next hour.' }, 429);
+        // The provider's event-list endpoint is quota-free; only odds analyses consume our paid-call budget.
         const raw = await oddsJSON(`sports/${oddsSport[sport]}/events`, oddsKey, fetcher);
         if (!Array.isArray(raw)) throw new Error('Odds provider returned an invalid event list.');
         events = raw.map((value) => {
@@ -150,7 +148,12 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       && JSON.stringify(readSettings(cached.data.settings, sport)) === JSON.stringify(settings)) return json({ run: cached.data, cached: true });
     const claim = await admin.rpc('gamewaire_claim', { target_user: verified.data.user.id });
     if (claim.error) throw new Error('Could not check analysis rate limits.');
-    if (!claim.data) return json({ error: 'GamewAIre budget reached: up to 6 requests per admin and 20 site-wide per hour.' }, 429);
+    if (!claim.data) {
+      const retryAt = new Date(Date.now());
+      retryAt.setUTCHours(retryAt.getUTCHours() + 1, 0, 0, 0);
+      return json({ error: 'Hourly analysis limit reached (6 per admin / 20 site-wide). Saved reports, published picks and game lists are still available.',
+        retryAt: retryAt.toISOString() }, 429);
+    }
     const requestedMarkets = [...new Set([...settings.markets, 'h2h', 'spreads'])];
     const raw = await oddsJSON(`sports/${oddsSport[sport]}/events/${encodeURIComponent(text(body.eventId))}/odds?regions=us&oddsFormat=american&markets=${requestedMarkets.join(',')}`, oddsKey, fetcher);
     const event = object(raw), start = text(event.commence_time);

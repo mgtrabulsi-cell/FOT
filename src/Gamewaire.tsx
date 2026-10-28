@@ -268,7 +268,7 @@ export default function Gamewaire() {
         <li>Create your own account at <a href="https://the-odds-api.com/#get-access" target="_blank" rel="noreferrer">The Odds API</a>. Confirm NFL/NBA US odds, player-prop coverage and display rights.</li>
         <li>Add <code>ODDS_API_KEY</code> in <a href="https://supabase.com/dashboard/project/cbwhmouuckrqnhvfnaol/functions/secrets" target="_blank" rel="noreferrer">Supabase Edge Function Secrets</a>. Never share it in chat or a browser variable.</li>
       </ol>
-      <p>Calls are cached and limited to 6 requests per admin / 20 site-wide per hour. Only upcoming games. Up to 24 matched players; coverage limits and omissions are disclosed.</p>
+      <p>Fresh analyses are limited to 6 per admin / 20 site-wide per hour, resetting on the hour. Loading game lists, opening saved reports and publishing do not use that allowance. Only upcoming games. Up to 24 matched players; coverage limits and omissions are disclosed.</p>
       <button onClick={refreshHistory}>Refresh provider status</button>
     </details>
     </section>}
