@@ -14,6 +14,7 @@ const cases = [
   { tag: 'gamewire-test', url: `${scope}#wire`, hash: '#wire' },
   { tag: 'gamewire-update', url: `${scope}#wire/game/401872980`, hash: '#wire/game/401872980' },
   { tag: 'gamewire-nba-401-points:p1:35', url: `${scope}#wire/nba/2026-10-23/401`, hash: '#wire/nba/2026-10-23/401' },
+  { tag: 'gamewire-gamewaire-2026-10-28', url: 'https://gamewire.us/#gamewaire', hash: '#gamewaire' },
 ];
 
 for (const existing of [false, true]) {
