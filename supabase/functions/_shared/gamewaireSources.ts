@@ -1,9 +1,35 @@
 import { array, markets, normalize, numeric, object, text } from './gamewaire.ts';
-import type { Evidence, NBARotation, Observation, Quote, Sport } from './gamewaire.ts';
+import type { Evidence, NBARotation, Observation, OpponentContext, Quote, Sport } from './gamewaire.ts';
 
 const paths = { NBA: 'basketball/nba', NFL: 'football/nfl' };
 const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 export const teamNameKey = (name: string) => normalize(name).replace(/^losangeles/, 'la');
+export function defensiveStandings(value: unknown, sport: Sport, season: number, fetchedAt: string): Map<string, OpponentContext> {
+  if (numeric(object(object(value).season).year) !== season) throw new Error('Defensive standings returned the wrong season.');
+  const teams = new Map<string, { team: string; games: number; pointsAllowed: number; pointsScored: number }>();
+  const visit = (value: unknown) => {
+    const row = object(value);
+    for (const raw of array(object(row.standings).entries)) {
+      const entry = object(raw), stats = array(entry.stats).map(object), team = text(object(entry.team).displayName);
+      const stat = (name: string) => numeric(stats.find((item) => item.name === name)?.value);
+      const wins = stat('wins'), losses = stat('losses'), ties = stat('ties') ?? 0;
+      const against = stat('pointsAgainst'), scored = stat('pointsFor');
+      if (!team || wins === undefined || losses === undefined || wins < 0 || losses < 0 || ties < 0
+        || against === undefined || scored === undefined || against < 0 || scored < 0) continue;
+      const games = wins + losses + ties;
+      if (!Number.isInteger(games) || !games) continue;
+      teams.set(teamNameKey(team), { team, games, pointsAllowed: against / games, pointsScored: scored / games });
+    }
+    array(row.children).forEach(visit);
+  };
+  visit(value);
+  const leagueSize = sport === 'NBA' ? 30 : 32;
+  if (teams.size !== leagueSize) throw new Error(`Defensive league ranking requires all ${leagueSize} teams with recorded games.`);
+  const entries = [...teams.entries()];
+  return new Map(entries.map(([key, team]) => [key, { ...team, leagueSize, season, fetchedAt,
+    rank: 1 + entries.filter(([, other]) => other.pointsAllowed < team.pointsAllowed - 1e-8).length,
+    tied: entries.some(([otherKey, other]) => otherKey !== key && Math.abs(other.pointsAllowed - team.pointsAllowed) < 1e-8) }]));
+}
 export async function publicJSON(url: string, fetcher: typeof fetch = fetch) {
   const response = await fetcher(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: 'application/json', 'User-Agent': ua } });
   if (!response.ok) throw new Error(`Sports data provider returned HTTP ${response.status}.`);
@@ -124,6 +150,12 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
     let task = memo.get(url); if (!task) { task = publicJSON(url, fetcher); memo.set(url, task); }
     return task;
   };
+  let defense = new Map<string, OpponentContext>();
+  try {
+    defense = defensiveStandings(await get(`https://site.web.api.espn.com/apis/v2/sports/${path}/standings?season=${matchup.season}&type=0&level=2`), sport, matchup.season, fetchedAt);
+  } catch (cause) {
+    warnings.push(`Opponent defensive ranking unavailable: ${cause instanceof Error ? cause.message : 'request failed'}. No defensive rank is assumed.`);
+  }
   const teamData = await Promise.all([matchup.away, matchup.home].map(async (team) => {
     const [schedule, roster] = await Promise.all([
       get(`${base}/teams/${team.id}/schedule?season=${matchup.season}&seasontype=2`),
@@ -208,7 +240,7 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       }
       risks.push('Current roster status is not a confirmed starting lineup; recheck before tipoff/kickoff.');
     } else {
-      const own = teamData.find((row) => normalize(row.team.name) === normalize(quote.side));
+      const own = teamData.find((row) => teamNameKey(row.team.name) === teamNameKey(quote.side));
       const away = teamData[0], home = teamData[1];
       if (quote.market === 'totals') {
         if (teamData.some((row) => row.games.length < (sport === 'NBA' ? 12 : 8))) {
@@ -235,8 +267,12 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       risks.push('No home-court/home-field coefficient is assumed without fitted historical evidence.');
     }
     if (sport === 'NBA' && quote.market.startsWith('player_')) risks.push('Rotation is ranked by recent minutes among matched offered players, not a confirmed starting five. Offensive involvement is FGA + 0.44 × FTA + turnovers, not official usage percentage.');
+    const ownTeam = quote.market.startsWith('player_') ? identities.get(quote.subject)?.teamId
+      : teamData.find((row) => teamNameKey(row.team.name) === teamNameKey(quote.side))?.team.id;
+    const opponents = teamData.filter((row) => quote.market === 'totals' || ownTeam && row.team.id !== ownTeam)
+      .flatMap((row) => { const stats = defense.get(teamNameKey(row.team.name)); return stats ? [stats] : []; });
     evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: sport === 'NBA' ? matchup.season : undefined, rotation: sport === 'NBA' && quote.market.startsWith('player_') ? rotation.get(quote.subject) : undefined,
-      identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
+      opponents, identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
   }
   return { evidence, warnings, coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };
 }

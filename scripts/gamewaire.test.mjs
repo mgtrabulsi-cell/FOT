@@ -201,6 +201,59 @@ test('All prop units and totals use relevant statistics and honest trends rather
   assert.match(historical, /averaged 12\.3 points in the available prior-season games/);
   assert.doesNotMatch(historical, /50\/50|weight|algorithm|model/i);
 });
+const defenseFixture = (sport = 'NBA', season = 2027) => ({ season: { year: season }, children: [{ standings: {
+  entries: Array.from({ length: sport === 'NBA' ? 30 : 32 }, (_, i) => ({
+    team: { displayName: i === 0 ? quote.home : i === 1 ? quote.away : `Team ${i}` },
+    stats: [{ name: 'wins', value: 2 }, { name: 'losses', value: 1 }, { name: 'ties', value: 0 },
+      { name: 'pointsAgainst', value: i < 2 ? 300 : 300 + i * 3 }, { name: 'pointsFor', value: 330 }],
+  })),
+} }] });
+test('Defensive context ranks actual points allowed per game across a complete same-season league', () => {
+  for (const sport of ['NBA', 'NFL']) {
+    const raw = defenseFixture(sport);
+    const result = sources.defensiveStandings(raw, sport, 2027, new Date(now).toISOString());
+    const team = result.get(engine.normalize(quote.away));
+    assert.equal(team.rank, 1);
+    assert.equal(team.tied, true);
+    assert.equal(team.pointsAllowed, 100);
+    assert.equal(team.pointsScored, 110);
+    assert.equal(team.games, 3);
+    assert.equal(result.get('team2').rank, 3);
+    assert.equal(team.leagueSize, sport === 'NBA' ? 30 : 32);
+    raw.children[0].standings.entries.pop();
+    assert.throws(() => sources.defensiveStandings(raw, sport, 2027, ''), /requires all/);
+    assert.throws(() => sources.defensiveStandings(defenseFixture(sport), sport, 2026, ''), /wrong season/);
+  }
+  const nfl = defenseFixture('NFL');
+  nfl.children[0].standings.entries[0].stats.find((row) => row.name === 'ties').value = 1;
+  assert.equal(sources.defensiveStandings(nfl, 'NFL', 2027, '').get(engine.normalize(quote.home)).pointsAllowed, 75);
+});
+test('Opponent context is persisted without changing the picks, probability, projection or value screens', () => {
+  const opponents = [...sources.defensiveStandings(defenseFixture(), 'NBA', 2027, quote.updatedAt).values()].slice(1, 2);
+  const original = evaluate();
+  const enriched = evaluate([quote], { ...evidence, opponents });
+  assert.deepEqual(enriched.picks[0].opponents, opponents);
+  for (const field of ['probability', 'projection', 'ev', 'conservativeEV', 'quality', 'edge']) {
+    assert.equal(enriched.picks[0][field], original.picks[0][field]);
+  }
+  const blurb = engine.pickBlurb(enriched.picks[0]);
+  assert.match(blurb, /Atlanta Hawks have allowed 100\.0 points per game, tied for No\. 1 of 30/);
+  assert.match(blurb, /not a ranking against this position or stat/);
+  assert.match(blurb, /early-season ranking can move quickly/);
+  assert.doesNotMatch(blurb, /50\/50|weight|efficiency rating|defense boosts|algorithm/i);
+  assert.doesNotMatch(engine.pickBlurb(original.picks[0]), /No\. \d|points allowed per game/);
+});
+test('Matchup history uses verified opponent matches only and never counts prior-season logs as current form', () => {
+  const opponent = { team: quote.away, games: 20, pointsAllowed: 110, pointsScored: 115, rank: 12, tied: false, leagueSize: 30, season: 2027, fetchedAt: quote.updatedAt };
+  const pick = { ...evaluate().picks[0], opponents: [opponent], samples: [
+    { date: '2026-10-25', season: 2027, value: 20, opponent: quote.away },
+    { date: '2026-10-24', season: 2027, value: 10, opponent: 'Other Team' },
+    { date: '2026-04-01', season: 2026, value: 99, opponent: quote.away },
+  ] };
+  assert.match(engine.pickBlurb(pick), /1 recorded current-season meeting with Atlanta Hawks, Player averaged 20\.0 points/);
+  assert.doesNotMatch(engine.pickBlurb(pick), /99|early-season ranking/);
+  assert.doesNotMatch(engine.pickBlurb({ ...pick, samples: pick.samples.slice(1) }), /recorded current-season meeting/);
+});
 
 test('Top Picks rank by probability bands before value, moneyline preference and verified player usage', () => {
   const base = evaluate().picks[0];
@@ -288,6 +341,7 @@ test('Early-season NBA totals and player minutes use real previous-season eviden
   const matchup = { eventId: 'espn-event', season: 2027, home: { id: '1', name: quote.home }, away: { id: '2', name: quote.away } };
   const fetcher = async (url) => {
     const parsed = new URL(url), year = Number(parsed.searchParams.get('season')), n = year === 2027 ? 3 : 82;
+    if (parsed.pathname.endsWith('/standings')) return Response.json(defenseFixture());
     if (parsed.pathname.endsWith('/schedule')) return Response.json({ events: Array.from({ length: n }, (_, i) => ({
       id: `${year}-${i}`, date: new Date(now - (year === 2027 ? i + 1 : 200 + i) * 86_400_000).toISOString(), seasonType: { type: 2 },
       competitions: [{ status: { type: { completed: true } }, competitors: [
@@ -317,6 +371,8 @@ test('Early-season NBA totals and player minutes use real previous-season eviden
   }
   assert.ok(engine.evaluate([{ ...quote, line: 15.5 }], data.evidence, settings, now).picks[0], 'Three valid current games with minutes can use the prior-season baseline');
   assert.equal(data.evidence.get(quote.key).rotation.label, 'Core rotation');
+  assert.equal(data.evidence.get(quote.key).opponents[0].team, quote.away, 'A home player gets the away defense');
+  assert.equal(data.evidence.get(total.key).opponents.length, 2, 'Totals get both defenses');
   for (const [minutes, attempts, expected] of [['20', '5', false], ['20', '12', true], ['17', '20', false]]) {
     const calls = [];
     const tested = await sources.collectEvidence([quote], matchup, now, async (url) => {

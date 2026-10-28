@@ -18,11 +18,16 @@ export type Quote = {
 };
 export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string; season?: number; weight?: number; offensiveInvolvement?: number };
 export type NBARotation = { label: 'Core rotation' | 'High-usage rotation'; minutes: number; involvement?: number };
+export type OpponentContext = {
+  team: string; games: number; pointsAllowed: number; pointsScored: number;
+  rank: number; leagueSize: number; tied: boolean; season: number; fetchedAt: string;
+};
 export type Evidence = {
   samples: Observation[]; fetchedAt: string; quality: number; risks: string[];
   eligible: boolean; reason?: string; adjustment?: number;
   currentSeason?: number;
   rotation?: NBARotation;
+  opponents?: OpponentContext[];
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
@@ -33,6 +38,7 @@ export type Candidate = Quote & {
   identifiers?: Evidence['identifiers'];
   baseline?: string; previousSeasonAverage?: number;
   rotation?: NBARotation;
+  opponents?: OpponentContext[];
 };
 export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
 export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean };
@@ -88,11 +94,21 @@ export function pickBlurb(pick: Candidate) {
       : `The ${target} is a less straightforward call: their average scoring ${pick.seasonAverage === threshold ? 'sits right on the line' : 'does not favor this side'}, so the recent results deserve a cautious read.`;
     explanation = `${record}${latest} ${support}`;
   }
+  const recentFive = current.slice(0, 5);
+  const form = recentFive.length > 3 ? ` Over the last ${recentFive.length}, ${player ? `${pick.subject} has averaged` : pick.market === 'totals' ? 'those games have averaged' : 'their average point difference is'} ${(recentFive.reduce((sum, row) => sum + row.value, 0) / recentFive.length).toFixed(1)} ${unit}.` : '';
+  const opponentName = player ? undefined : pick.subject === pick.home ? pick.away : pick.home;
+  const meetings = pick.market === 'totals' ? [] : current.filter((row) =>
+    row.opponent && normalize(row.opponent).replace(/^losangeles/, 'la') === normalize(opponentName ?? pick.opponents?.[0]?.team ?? '').replace(/^losangeles/, 'la'));
+  const matchupForm = meetings.length ? ` In ${meetings.length} recorded ${currentSeason === undefined ? '' : 'current-season '}meeting${meetings.length === 1 ? '' : 's'} with ${opponentName ?? pick.opponents?.[0]?.team}, ${player
+    ? `${pick.subject} averaged ${(meetings.reduce((sum, row) => sum + row.value, 0) / meetings.length).toFixed(1)} ${unit}`
+    : `${pick.subject} went ${meetings.filter((row) => row.value > 0).length}-${meetings.filter((row) => row.value < 0).length}${meetings.some((row) => row.value === 0) ? `-${meetings.filter((row) => row.value === 0).length} (W-L-T)` : ''}`}.` : '';
+  const defense = (pick.opponents ?? []).map((opponent) => ` ${opponent.team} have allowed ${opponent.pointsAllowed.toFixed(1)} points per game, ${opponent.tied ? 'tied for ' : ''}No. ${opponent.rank} of ${opponent.leagueSize} in fewest points allowed per game, across ${opponent.games} games this season. They've scored ${opponent.pointsScored.toFixed(1)} per game themselves.`).join('');
+  const defensiveCaveat = defense ? ` That's team scoring-defense context${player ? ', not a ranking against this position or stat' : ', not a pace-adjusted defensive-efficiency rating'}; it does not change the saved probability.${(pick.opponents ?? []).some((opponent) => opponent.games < 12) ? ' The early-season ranking can move quickly.' : ''}` : '';
   const history = pick.previousSeasonAverage === undefined ? '' : player
     ? ` For a longer view, ${pick.subject} averaged ${pick.previousSeasonAverage.toFixed(1)} ${unit} in the available prior-season games.`
     : pick.market === 'totals' ? ` The available prior-season games averaged ${pick.previousSeasonAverage.toFixed(1)} combined points.`
     : ` In the available prior-season games, they had ${margin(pick.previousSeasonAverage)}.`;
-  return `${explanation}${history} Small samples and changing ${player ? 'roles' : 'lineups'} can change the outlook.`;
+  return `${explanation}${form}${matchupForm}${defense}${defensiveCaveat}${history} Small samples and changing ${player ? 'roles' : 'lineups'} can change the outlook.`;
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
   return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)
@@ -254,7 +270,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
-      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation };
+      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents };
     if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
       reason: qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
     if (!qualifies) { reject('Exact price fails edge, EV or conservative uncertainty threshold.'); continue; }
