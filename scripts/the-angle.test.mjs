@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { pendingAnglesFirst } from '../src/services/theAngle.ts';
+import { newestAnglesFirst } from '../src/services/theAngle.ts';
 import { angleReviewKey, readAngleReviews, settledAngleReviews } from '../src/services/angleReviews.ts';
 import { readLivewirePosts } from '../src/services/livewirePosts.ts';
 import { angleMediaAccept, angleMediaError, isPostVideo, postMediaExtensions } from '../src/services/postMedia.ts';
@@ -110,32 +110,24 @@ test('Malformed, pending, duplicate and oversized review snapshots fail explicit
   }
 });
 
-test('Pending bets lead the Angle feed, preserving order and treating mixed, legacy and sprinkle picks correctly', () => {
-  const story = (id, picks) => ({ id, pick: '', picks });
-  const pick = (result, category = 'straight') => ({ id: 'pick', text: 'Admin pick', result, category });
+test('Newest publications lead regardless of pending picks or later edits, without mutating the feed', () => {
   const stories = [
-    story('settled', [pick('hit'), pick('miss')]),
-    story('mixed', [pick('hit'), pick('pending', 'parlay')]),
-    story('no-picks', []),
-    story('sprinkle', [pick('pending', 'sprinkle')]),
-    { id: 'legacy', pick: 'Legacy unsettled pick' },
-    story('empty', []),
-    story('pending', [pick('pending')]),
-    story('lost', [pick('miss')]),
+    { id: 'older-pending', published_at: '2026-10-25T18:00:00Z', updated_at: '2026-10-28T18:00:00Z', pick: 'Pending pick' },
+    { id: 'newest-news', published_at: '2026-10-27T18:00:00Z', pick: '' },
+    { id: 'missing-date', published_at: null },
+    { id: 'recent-settled', published_at: '2026-10-26T18:00:00Z', picks: [{ result: 'hit' }] },
+    { id: 'same-date', published_at: '2026-10-26T18:00:00Z' },
   ];
   const original = [...stories];
-  assert.deepEqual(pendingAnglesFirst(stories).map((story) => story.id),
-    ['mixed', 'sprinkle', 'legacy', 'pending', 'settled', 'no-picks', 'empty', 'lost']);
+  assert.deepEqual(newestAnglesFirst(stories).map((story) => story.id),
+    ['newest-news', 'recent-settled', 'same-date', 'older-pending', 'missing-date']);
   assert.deepEqual(stories, original, 'Does not mutate the fetched feed');
-  stories[1].picks[1].result = 'hit';
-  assert.deepEqual(pendingAnglesFirst(stories).map((story) => story.id),
-    ['sprinkle', 'legacy', 'pending', 'settled', 'mixed', 'no-picks', 'empty', 'lost']);
-  assert.deepEqual(pendingAnglesFirst([]), []);
+  assert.deepEqual(newestAnglesFirst([]), []);
 });
 
-test('Only The Angle uses pending-first ordering, with a linked story still pinned first', () => {
+test('Angle feeds use newest-first ordering, with an explicitly linked story still pinned first', () => {
   const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
-  assert.match(source, /\.\.\.\(visibleLinked \? \[visibleLinked\] : \[\]\),\s*\.\.\.\(news \? feedStories : pendingAnglesFirst\(feedStories\)\)/);
+  assert.match(source, /\.\.\.\(visibleLinked \? \[visibleLinked\] : \[\]\),\s*\.\.\.newestAnglesFirst\(feedStories\)/);
   assert.match(source, /row\.id !== visibleLinked\?\.id/);
 });
 

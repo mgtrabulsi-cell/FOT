@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { BookOpen, ExternalLink, Plus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleThemes, angleVisibleInWeek, angleWriteFields, isAngleSource, newsTypes, pendingAnglesFirst, readAngles, selectAngleSuggestions } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleThemes, angleVisibleInWeek, angleWriteFields, isAngleSource, newsTypes, newestAnglesFirst, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSection, AngleSuggestion, NewsType } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
@@ -370,7 +370,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     : kind === 'all' || row.kind === kind));
   const published = [
     ...(visibleLinked ? [visibleLinked] : []),
-    ...(news ? feedStories : pendingAnglesFirst(feedStories)),
+    ...newestAnglesFirst(feedStories),
   ];
   const readObserver = useAnalystReadObserver(news ? 'news' : 'angle', onSeen, user?.id, published.map((angle) => angle.id).join('|'));
   const publishedKey = published.map((angle) => angle.id).join('|');

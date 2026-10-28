@@ -59,13 +59,9 @@ export function publishedAnglePicks(stories: Angle[]) {
 export function activeAnglePicks(stories: Angle[]) {
   return publishedAnglePicks(stories).filter(({ pick }) => pick.result === 'pending');
 }
-export function pendingAnglesFirst<T extends Pick<Angle, 'id' | 'pick' | 'picks'>>(stories: T[]): T[] {
-  const pending: T[] = [];
-  const remaining: T[] = [];
-  for (const story of stories) {
-    (anglePicks(story).some((pick) => pick.result === 'pending') ? pending : remaining).push(story);
-  }
-  return [...pending, ...remaining];
+export function newestAnglesFirst<T extends Pick<Angle, 'published_at'>>(stories: T[]): T[] {
+  const published = (story: T) => Date.parse(story.published_at ?? '') || 0;
+  return [...stories].sort((a, b) => published(b) - published(a));
 }
 export type AngleSuggestion = {
   key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string; subject?: string;

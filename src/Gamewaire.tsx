@@ -182,7 +182,13 @@ export default function Gamewaire() {
   const openReport = (run: AnalysisRun) => {
     setSport(run.sport); setDate(nbaCalendarDate(new Date(run.event_start))); setEventId(run.event_id); setSettings(run.settings);
     setSelectedRun(run.id); setRuns((previous) => [run, ...previous.filter((saved) => saved.id !== run.id)]); setPickView('candidates');
+    setNotice('Opened saved analysis · 0 additional credits. Prices are the saved snapshot; refreshing prices is optional and may use credits.');
+    window.requestAnimationFrame(() => document.getElementById('gai-top-picks')?.scrollIntoView({
+      block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    }));
   };
+  const savedGames = runs.filter((run, index) => run.status !== 'in_progress'
+    && runs.findIndex((other) => other.sport === run.sport && other.event_id === run.event_id && other.status !== 'in_progress') === index);
   const historyPicks = picks.filter((pick) => historySport === 'all' || pick.sport === historySport);
   const record = performance(historyPicks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
     american: pick.american, result: pick.result, closingAmerican: pick.closing_american, withdrawn: pick.withdrawn })));
@@ -226,9 +232,17 @@ export default function Gamewaire() {
     </header>
     {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
     {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
-    {status?.canAnalyze && <details className="gai-scheduled"><summary>Scheduled shortlists · NBA daily / NFL Thursdays · 1 AM Eastern</summary>
+    {status?.canAnalyze && <section className="gai-scheduled" aria-label="Saved analyses">
+      <h3>Saved analyses · 0 credits to open</h3>
+      <p className="gai-note">Open any saved game and its picks without rerunning analysis or buying new odds. Viewing, reopening and publishing saved picks use 0 additional credits. A fresh analysis or price refresh can use credits and is a separate action.</p>
+      <ul className="gai-history-list">{savedGames.map((run) => <li key={run.id} className="gai-scheduled-row">
+        <div className="gai-history-pick"><h4>{run.matchup}</h4><small>{run.sport} · {stamp(run.event_start)} · {statusLabels[run.status]}</small></div>
+        <button disabled={busy} onClick={() => openReport(run)}>Open saved picks · 0 credits</button>
+      </li>)}</ul>
+      <h3>Scheduled shortlists</h3>
+      <details><summary>Schedule &amp; analysis costs · 1 AM Eastern</summary>
       <p className="gai-note">NBA: up to three games, ranked by both teams’ standings strength and how evenly matched they are; 50/50 current/prior-season records until 12 games per team. NFL: all upcoming Thursday–Monday games.
-        Full markets cost up to 7 credits per game. Jobs run once, one at a time; missing markets or failures are not automatically retried. Nothing publishes automatically.</p>
+        Generating each full-market analysis costs up to 7 credits per game once; accessing the saved report afterwards costs 0. Jobs run once, one at a time; missing markets or failures are not automatically retried. Nothing publishes automatically.</p></details>
       {!batches.length && <p>No scheduled batches yet. The next batch starts at 1 AM Eastern.</p>}
       {batches.map((batch) => <section key={batch.id} className="gai-scheduled-batch"><h3>{batch.sport} · {batch.game_date}</h3>
         <p className="gai-note">{batch.note} {batch.status === 'no_games' ? 'No upcoming games in this window.' : ''}</p>
@@ -240,11 +254,11 @@ export default function Gamewaire() {
             setBusy(true); setActionError('');
             void engineRequest<{ run: AnalysisRun }>({ action: 'report', runId: job.run_id })
               .then(({ run }) => openReport(run)).catch((cause: unknown) => setActionError(errorMessage(cause))).finally(() => setBusy(false));
-          }}>Review saved report</button>}
+          }}>Review saved report · 0 credits</button>}
         </li>)}</ul>
       </section>)}
       {actionError && <p role="alert" className="feed-warning">{actionError}</p>}
-    </details>}
+    </section>}
     <div className="gai-dashboard">
     <aside className="gai-filters gai-outline" aria-label="Game filters">
     <h3>Game filters</h3>
@@ -316,7 +330,7 @@ export default function Gamewaire() {
       {candidateView ? <section aria-label="Analysis reports">
         {!!matchingRuns.length && <details className="gai-report-picker"><summary>Saved analysis reports</summary><label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{matchingRuns.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label></details>}
         {loaded && !matchingRuns.length && <div className="gai-empty"><h4>Ready to analyze</h4><p>No model analyses yet for these filters. Choose a game, then run analysis to review up to eight candidates.</p></div>}
-        {report && <><h4>{report.matchup}</h4><p role="status">{report.status === 'in_progress' && Date.now() - Date.parse(report.created_at) > 180_000 ? 'Analysis interrupted. Retry this matchup; no completed recommendation is being claimed.' : statusLabels[report.status]}</p>
+        {report && <><h4>{report.matchup}</h4><p className="gai-note">Saved report · 0 credits to view picks and explanations. Refreshing prices is optional and may use credits.</p><p role="status">{report.status === 'in_progress' && Date.now() - Date.parse(report.created_at) > 180_000 ? 'Analysis interrupted. Retry this matchup; no completed recommendation is being claimed.' : statusLabels[report.status]}</p>
           {report.payload.scheduled && <p className="gai-note">Overnight shortlist · {report.payload.scheduled.selectionNote} Saved {stamp(report.created_at)}.</p>}
           {report.payload.providerUsage && <p className="gai-note">Odds API: {report.payload.providerUsage.requestCost ?? 'Unknown'} credits for this saved request · {report.payload.providerUsage.creditsRemaining ?? 'Unknown'} remaining as of {stamp(report.payload.providerUsage.checkedAt)}. Opening this report uses no credits.</p>}
           {report.status === 'no_qualifying' && <p>No qualifying value bets found for this matchup.</p>}

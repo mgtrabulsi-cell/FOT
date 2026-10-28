@@ -607,6 +607,9 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const scheduledView = renderToStaticMarkup(createElement(Page));
   assert.match(scheduledView, /Scheduled shortlists/);
   assert.match(scheduledView, /Review saved report/);
+  assert.match(scheduledView, /<section class="gai-scheduled" aria-label="Saved analyses">/);
+  assert.match(scheduledView, /Open saved picks · 0 credits/);
+  assert.match(scheduledView, /0 credits to view picks and explanations/);
   assert.match(scheduledView, /Overnight shortlist · Standings-ranked matchup/);
   assert.match(scheduledView, /Odds API: 7 credits for this saved request · 479 remaining/);
   assert.match(scheduledView, /Refresh prices &amp; review picks · up to 4 credits/);
@@ -779,6 +782,19 @@ test('Other admins and owners have member-only GamewAIre access with no paid req
     assert.equal(api.writes.length, 0);
     assert.equal(api.rpc.length, 0);
   }
+});
+test('Opening even an old saved automatic analysis returns its original picks without provider calls or budget claims', async () => {
+  const cachedRun = { id: '00000000-0000-0000-0000-000000000001', status: 'completed',
+    event_start: '2025-01-01T00:00:00Z', payload: { scheduled: { jobId: 'old-job' }, picks: [{ key: 'saved-pick' }] } };
+  const api = endpoint({ cachedRun, configured: false });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await api.run({ action: 'report', runId: cachedRun.id });
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).run, cachedRun);
+  }
+  assert.equal(api.fetches.length, 0, 'No Odds API or ESPN request to open saved picks');
+  assert.equal(api.rpc.length, 0, 'No budget claim, paid analysis, or refresh');
+  assert.equal(api.writes.length, 0);
 });
 test('Publication is admin-only, rejects invalid counts, and uses the transactional publication RPC', async () => {
   const api = endpoint();
