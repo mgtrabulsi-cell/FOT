@@ -43,7 +43,10 @@
 .gai-advanced { grid-column: 1 / -1; border-top: 1px solid #23364e; }
 .gai-advanced[open] { display: grid; gap: 14px; }
 .gai-picks { display: grid; gap: 10px; margin: 14px 0; }
-.gai-panel .gai-pick { min-width: 0; padding: 14px; border: 1px solid #263b55; border-radius: 6px; background: linear-gradient(110deg, #111e30, #0b1321); box-shadow: none; }
+.gai-panel .gai-pick { position: relative; min-width: 0; padding: 0; border: 1px solid #263b55; border-radius: 6px; background: linear-gradient(110deg, #111e30, #0b1321); box-shadow: none; }
+.gai-panel .gai-pick-summary { display: block; padding: 14px; list-style: none; }
+.gai-pick-summary::-webkit-details-marker { display: none; }
+.gai-pick[data-selectable="true"] .gai-pick-identity { padding-left: 44px; }
 .gai-pick-top { display: flex; justify-content: space-between; align-items: start; gap: 14px; }
 .gai-pick-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .gai-pick-identity > div { min-width: 0; overflow-wrap: anywhere; }
@@ -51,7 +54,7 @@
 .gai-pick-identity small, .gai-pick-price small { display: block; color: #a7b9d1; font-size: 10px; line-height: 1.5; }
 .gai-pick-identity .eyebrow { font-size: 9px; color: #a5b7d0; }
 .gai-rank { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid #304762; border-radius: 50%; color: #bccce0; font-weight: 700; font-size: 11px; }
-.gai-panel .gai-select-pick { align-self: stretch; justify-content: center; min-width: 44px; min-height: 44px; }
+.gai-panel .gai-select-pick { position: absolute; top: 8px; left: 8px; z-index: 1; place-items: center; min-width: 44px; min-height: 44px; cursor: pointer; }
 .gai-pick-price { display: grid; justify-items: end; flex: 0 0 auto; gap: 5px; text-align: right; }
 .gai-pick-price > b { font-size: 14px; }
 .gai-grade { display: inline-block; font-size: 11px; font-weight: 800; border: 1px solid #52647e; background: #192537; border-radius: 5px; padding: 5px 8px; white-space: nowrap; }
@@ -68,9 +71,11 @@
 .gai-row-metrics .gai-hit dd { color: #8bf0b3; }
 .gai-panel .gai-note { color: #b3c1d5; font-size: 11px; }
 .gai-panel .gai-estimate-note { margin: 10px 0 0; font-size: 10px; }
-.gai-pick > details > summary { width: fit-content; margin: 10px 0 0 auto; padding: 11px 14px; border: 1px solid #344963; border-radius: 5px; font-weight: 600; }
-.gai-pick > details > summary span { margin-left: 8px; }
-.gai-pick > details[open] > summary { margin-bottom: 14px; }
+.gai-open-cue { display: block; margin-top: 8px; color: #c1d3eb; text-align: right; font-size: 11px; }
+.gai-pick-details[open] > summary .gai-open-cue > span { display: inline-block; transform: rotate(180deg); }
+.gai-reason { margin: 0 14px; padding: 14px 0 0; border-top: 1px solid #304762; }
+.gai-reason h4 { margin: 0; font-size: 14px; color: #edf2f8; }
+.gai-evidence { margin: 0 14px 14px; }
 .gai-tag { display: inline-block; padding: 4px 7px; border: 1px solid #30445e; border-radius: 4px; background: #142236; color: #bfcde0; font-size: 10px; font-weight: 500; }
 .gai-rotation { color: #c2d4eb; }
 .gai-rotation small { display: block; margin-top: 4px; }
@@ -98,24 +103,52 @@
   .gai-hero { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .gai-panel { gap: 12px; }
-  .gai-hero { padding: 18px; gap: 18px; }
-  .gai-hero h2 { font-size: clamp(24px, 7vw, 32px); }
-  .gai-hero-features { padding: 12px 0; }
-  .gai-hero-features span { font-size: 9px; }
-  .gai-dashboard { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .gai-filters .gai-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .gai-filters .gai-form > button, .gai-filters .gai-form > label:has(select[required]), .gai-filters .gai-form > label:has(select:not([required])):last-of-type { grid-column: 1 / -1; }
+  .gai-panel { gap: 8px; }
+  .gai-hero { padding: 12px; gap: 10px; }
+  .gai-hero h2 { margin: 4px 0; font-size: clamp(22px, 6vw, 28px); }
+  .gai-hero-copy .eyebrow { font-size: 8px; }
+  .gai-hero-copy p { margin: 3px 0; font-size: 11px; }
+  .gai-hero-copy small { font-size: 10px; line-height: 1.4; }
+  .gai-hero-features { padding: 8px 0; }
+  .gai-hero-features > div { gap: 0; padding: 0 4px; }
+  .gai-hero-features b { display: none; }
+  .gai-hero-features span { font-size: 9px; line-height: 1.3; }
+  .gai-dashboard { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .gai-filters .gai-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+  .gai-filters .gai-form > .gai-load, .gai-filters .gai-form > label:has(select[required]), .gai-filters .gai-form > label:has(select:not([required])):last-of-type { grid-column: 1 / -1; }
+  .gai-filters .gai-form > .gai-advanced { grid-column: 1; }
+  .gai-filters .gai-form > .gai-advanced[open] { grid-column: 1 / -1; }
+  .gai-filters .gai-form > .gai-run { grid-column: 2; }
+  .gai-view-switch { margin: 8px 0; }
+  .gai-provider > summary { padding: 6px 0; }
   .gai-panel input, .gai-panel select { font-size: 16px; }
-  .gai-outline { padding: 14px; }
-  .gai-pick-top { flex-wrap: wrap; gap: 10px; }
-  .gai-pick-price { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; flex: 1 1 100%; gap: 10px; }
-  .gai-pick-price small { max-width: 120px; }
-  .gai-pick-identity h3 { font-size: 16px; }
-  .gai-section-heading .gai-tag { font-size: 9px; }
-  .gai-panel .gai-pick { padding: 12px; }
+  .gai-outline { padding: 10px; }
+  .gai-outline > h3, .gai-section-heading { padding-bottom: 8px; }
+  .gai-panel .gai-pick-summary { padding: 10px; }
+  .gai-pick-top { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 6px; }
+  .gai-pick-identity { gap: 6px; }
+  .gai-pick[data-selectable="true"] .gai-pick-identity { padding-left: 34px; }
+  .gai-pick[data-selectable="true"] .gai-rank { display: none; }
+  .gai-panel .gai-select-pick { top: 4px; left: 0; }
+  .gai-rank { flex-basis: 22px; width: 22px; height: 22px; font-size: 9px; }
+  .gai-pick-identity h3 { margin: 3px 0; font-size: 13px; line-height: 1.3; }
+  .gai-pick-identity .eyebrow, .gai-pick-identity small { font-size: 9px; line-height: 1.3; }
+  .gai-pick-price { gap: 4px; align-content: start; }
+  .gai-pick-price > b { font-size: 12px; }
+  .gai-pick-price small { max-width: 92px; overflow-wrap: anywhere; }
+  .gai-grade { padding: 3px 5px; font-size: 9px; white-space: normal; text-align: center; }
+  .gai-section-heading .gai-tag { font-size: 8px; }
+  .gai-picks { gap: 8px; margin: 8px 0; }
+  .gai-publish > h4 { margin: 10px 0 4px; font-size: 12px; }
+  .gai-top-picks > .gai-note { margin: 8px 0; font-size: 10px; line-height: 1.4; }
+  .gai-row-metrics { margin-top: 8px; padding-top: 8px; }
   .gai-row-metrics div { padding: 0 5px; }
-  .gai-row-metrics dd { font-size: 13px; }
+  .gai-row-metrics dd { margin-top: 3px; font-size: 12px; }
   .gai-row-metrics dt { font-size: 9px; }
-  .gai-empty { min-height: 180px; padding: 14px; }
+  .gai-panel .gai-estimate-note { margin-top: 6px; font-size: 9px; line-height: 1.4; }
+  .gai-open-cue { margin-top: 4px; font-size: 10px; }
+  .gai-reason { margin: 0 10px; padding-top: 10px; }
+  .gai-reason p { font-size: 12px; }
+  .gai-evidence { margin: 0 10px 10px; }
+  .gai-empty { min-height: 120px; padding: 10px; }
 }

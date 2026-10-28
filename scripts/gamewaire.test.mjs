@@ -413,6 +413,15 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /Core rotation/);
   assert.match(report, /not a confirmed starter/);
   assert.match(report, /data-method note, not an error/);
+  assert.match(report, /Why the model selected this pick/);
+  assert.match(report, /class="gai-pick-summary" aria-label="Why this pick:/);
+  assert.match(report, /class="gai-evidence"><summary>Full stats &amp; source observations/);
+  assert.ok(report.includes(`The weighted baseline for ${candidate.subject} was ${candidate.projection.toFixed(1)} points`));
+  assert.ok(report.includes(`using ${candidate.sampleSize} prior game observations`));
+  assert.ok(report.includes(`last-five average was ${candidate.last5.toFixed(1)}`));
+  assert.match(report, /four-observation, no-vig sportsbook prior/);
+  assert.match(report, /Key limitation:/);
+  assert.match(report, /model is unvalidated/);
   assert.match(report, /<details class="gai-history">/);
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
@@ -427,6 +436,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /\.gai-dashboard \{ grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /font-size: 16px/);
+  assert.match(css, /\.gai-hero-features b \{ display: none; \}/);
+  assert.match(css, /grid-template-columns: minmax\(0, 1fr\) 92px/);
+  const pickSummary = admin.slice(admin.indexOf('<summary class="gai-pick-summary"'), admin.indexOf('</summary>', admin.indexOf('<summary class="gai-pick-summary"')));
+  assert.doesNotMatch(pickSummary, /<input|<button/, 'The expandable pick is separate from the admin publication checkbox');
   assert.match(admin, /Moneyline \(game winner\)/);
   assert.match(admin, /Player props/);
   assert.match(admin, /Admin candidates · unpublished/);
@@ -451,6 +464,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(teamMarkets, /<h3>Boston Celtics \+4\.5<\/h3>/);
   assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
   assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
+  assert.match(teamMarkets, /team scoring margin/);
   assert.match(teamMarkets, /close ties favor moneylines and high-usage players/);
   for (const [market, label] of Object.entries({
     player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
@@ -463,6 +477,15 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   }
   fixture([status, [{ ...run, payload: { picks: [{ ...candidate, probability: 0.49 }] } }], [], true]);
   assert.match(renderToStaticMarkup(createElement(Page)), /gai-grade-neutral">Probability grade C/);
+  fixture([status, [{ ...run, payload: { picks: [{
+    ...candidate, side: 'Under', market: 'player_assists', baseline: undefined, rotation: undefined,
+    previousSeasonAverage: undefined, risks: [], projection: 4.2, last5: 4, last10: 4.5, seasonAverage: 5.1,
+  }] } }], [], true]);
+  const under = renderToStaticMarkup(createElement(Page));
+  assert.match(under, /4\.2 assists/);
+  assert.match(under, /last-five average was 4\.0/);
+  assert.match(under, /last-ten 4\.5/);
+  assert.doesNotMatch(under, /Core rotation|Previous full-season average:|Key limitation:/, 'Reasoning never invents rotation, baseline or risks missing from this pick');
   const navCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(navCSS, /font-size: clamp\(9px, 2\.5vw, 11px\)/);
   assert.match(navCSS, /\.primary-nav button > span:last-child[^}]+min-height: 24px/);
