@@ -16,14 +16,17 @@ const statusLabels = {
 function PickCard({ pick, record, rank, selection }: { pick: Candidate; record?: StoredPick; rank: number;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
   const grade = gamewaireGrade(pick);
+  const title = pick.market === 'h2h' ? `${pick.subject} ML`
+    : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
+    : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`}`;
   return <article className="gai-pick angle-card">
     <div className="gai-pick-top">
       <div className="gai-pick-identity">
         {selection && <label className="gai-select-pick"><input type="checkbox" checked={selection.checked} disabled={selection.disabled}
-          aria-label={`Select ${pick.subject} ${pick.side} ${pick.line ?? 'moneyline'}`} onChange={(event) => selection.onChange(event.target.checked)} /></label>}
+          aria-label={`Select ${title}`} onChange={(event) => selection.onChange(event.target.checked)} /></label>}
         <span className="gai-rank" aria-label={`Rank ${rank}`}>{String(rank).padStart(2, '0')}</span>
         <div><span className="eyebrow">{pick.sport} · {pick.market === 'h2h' ? 'MONEYLINE' : pick.market.replace(/_/g, ' ')}</span>
-          <h3>{pick.market === 'h2h' ? `${pick.subject} ML` : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`}`}</h3>
+          <h3>{title}</h3>
           <small>{pick.away} @ {pick.home}</small></div>
       </div>
       <div className="gai-pick-price"><span className={`gai-grade gai-grade-${grade.letter.toLowerCase()}`}>Grade {grade.letter} · {grade.score}/100</span>
@@ -78,7 +81,7 @@ function PublishPicks({ report, refresh }: { report: AnalysisRun; refresh: () =>
       selection={{ checked: selected.includes(pick.key), disabled: busy || (!selected.includes(pick.key) && selected.length >= 4),
         onChange: (checked) => setSelected((previous) => checked ? [...previous, pick.key] : previous.filter((key) => key !== pick.key)) }} />)}</div>
     {stale && <p className="feed-warning">These prices are stale or the game has started. Run a fresh analysis before publishing.</p>}
-    {legacy && <p className="gai-note">Saved under an older model. Generate fresh candidates to apply the rotation filter before publishing.</p>}
+    {legacy && <p className="gai-note">Saved under an older model. Generate fresh candidates to apply the current model and ranking before publishing.</p>}
     <button disabled={busy || stale || legacy || !selected.length} onClick={() => {
       setBusy(true); setError(''); setNotice('');
       void engineRequest({ action: 'publish', runId: report.id, keys: selected })
@@ -247,7 +250,7 @@ export default function Gamewaire() {
     </aside>
     <section id="gai-top-picks" className="gai-top-picks gai-outline" aria-label="Top Picks">
       <div className="gai-section-heading"><h3><span aria-hidden="true">★</span> Top Picks</h3><span className="gai-tag">{candidateView ? 'Admin candidates · unpublished' : 'Published picks'}</span></div>
-      <p className="gai-note">Highest estimated hit probability first. Estimates are unvalidated; grades measure value/quality, not hit rate.</p>
+      <p className="gai-note">Probability-first ranking; close ties favor moneylines and high-usage players. Estimates are unvalidated; grades measure value/quality, not hit rate.</p>
       {candidateView ? <section aria-label="Analysis reports">
         {!!matchingRuns.length && <details className="gai-report-picker"><summary>Saved analysis reports</summary><label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{matchingRuns.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label></details>}
         {loaded && !matchingRuns.length && <div className="gai-empty"><h4>Ready to analyze</h4><p>No model analyses yet for these filters. Choose a game, then run analysis to review up to eight candidates.</p></div>}

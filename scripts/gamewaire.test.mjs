@@ -433,6 +433,15 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const archived = [...adminState]; archived[7] = '2025-01-01';
   fixture(archived);
   assert.doesNotMatch(renderToStaticMarkup(createElement(Page)), /class="gai-pick angle-card"/, 'Report date follows the Eastern game date filter');
+  fixture([status, [{ ...run, payload: { picks: [
+    { ...candidate, key: 'spread', market: 'spreads', subject: 'Boston Celtics', side: 'Boston Celtics', line: 4.5 },
+    { ...candidate, key: 'ml', market: 'h2h', subject: 'Denver Nuggets', side: 'Denver Nuggets', line: null },
+  ] } }], [], true]);
+  const teamMarkets = renderToStaticMarkup(createElement(Page));
+  assert.match(teamMarkets, /<h3>Boston Celtics \+4\.5<\/h3>/);
+  assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
+  assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
+  assert.match(teamMarkets, /close ties favor moneylines and high-usage players/);
 });
 
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
