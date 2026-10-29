@@ -1,5 +1,5 @@
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v6';
+export const modelVersion = 'empirical-baseline-v7';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -21,13 +21,24 @@ export type NBARotation = { label: 'Core rotation' | 'High-usage rotation'; minu
 export type OpponentContext = {
   team: string; games: number; pointsAllowed: number; pointsScored: number;
   rank: number; leagueSize: number; tied: boolean; season: number; fetchedAt: string;
+  teamId?: string;
+  yardage?: Partial<Record<'receiving' | 'passing' | 'rushing', { perGame: number; rank: number }>>;
 };
+export type FormRecord = { wins: number; losses: number; ties: number };
+export type TeamForm = { afterLoss: FormRecord; afterWin: FormRecord; primetime: FormRecord; latestResult: 'win' | 'loss' | 'tie'; seasons: number[] };
+export function isNFLPrimetime(start: string) {
+  if (!Number.isFinite(Date.parse(start))) return false;
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(start));
+  return ['Thu', 'Sun', 'Mon'].includes(parts.find((part) => part.type === 'weekday')?.value ?? '')
+    && Number(parts.find((part) => part.type === 'hour')?.value) >= 19;
+}
 export type Evidence = {
   samples: Observation[]; fetchedAt: string; quality: number; risks: string[];
   eligible: boolean; reason?: string; adjustment?: number;
   currentSeason?: number;
   rotation?: NBARotation;
   opponents?: OpponentContext[];
+  teamForm?: TeamForm;
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
@@ -39,6 +50,7 @@ export type Candidate = Quote & {
   baseline?: string; previousSeasonAverage?: number;
   rotation?: NBARotation;
   opponents?: OpponentContext[];
+  teamForm?: TeamForm;
 };
 export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
 export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; stretchKeys?: string[] };
@@ -65,8 +77,6 @@ export function pickBlurb(pick: Candidate) {
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
   const recent = current.slice(0, 3);
   const sample = `${current.length} recorded ${currentSeason === undefined ? 'games' : 'games this season'}`;
-  const margin = (value: number) => value > 0 ? `outscored opponents by ${value.toFixed(1)} points per game`
-    : value < 0 ? `been outscored by ${Math.abs(value).toFixed(1)} points per game` : 'scored the same number of points as opponents on average';
   const sentences: string[] = [];
   let takeaway: string;
   if (player || pick.market === 'totals') {
@@ -76,23 +86,19 @@ export function pickBlurb(pick: Candidate) {
       : `For ${pick.away} vs ${pick.home}, the teams' ${sample} averaged ${pick.seasonAverage.toFixed(1)} combined points in their separate past games, not a head-to-head average.`);
     if (recent.length) {
       const hitCount = line === null ? '' : `; ${recent.filter((row) => over ? row.value > line : row.value < line).length} of those ${recent.length} ${player ? 'outings' : 'games'} ${over ? 'cleared' : 'stayed below'} the ${line} line`;
-      sentences.push(`The last ${recent.length} ${player ? 'outings produced' : 'games in those logs finished with'} ${recent.map((row) => String(row.value)).join(', ')} ${unit}, most recent first${hitCount}.`);
+      sentences.push(`Across the last ${recent.length} ${player ? 'outings' : 'games'}, the average is ${mean(recent.map((row) => row.value)).toFixed(1)} ${unit}${hitCount}.`);
     }
     const supports = line !== null && (over ? pick.seasonAverage > line : pick.seasonAverage < line);
-    takeaway = line === null ? 'The available form is useful context, but not a guarantee of the next result.' : supports
-      ? `That gives the ${target} a statistical case, but ${player ? 'a change in role or minutes' : 'a change in scoring pace'} could shift the outlook.`
-      : `The ${target} is a more cautious lean: the season average ${pick.seasonAverage === line ? 'sits on the line' : 'leans the other way'}, rather than backing it cleanly.`;
+    takeaway = `GamewAIre's selection is ${target}${supports || line === null ? '.' : `; the season average ${pick.seasonAverage === line ? 'sits on the line' : 'leans the other way'}.`}`;
   } else {
     const wins = current.filter((row) => row.value > 0).length, losses = current.filter((row) => row.value < 0).length;
     const ties = current.length - wins - losses;
-    if (current.length) sentences.push(`${pick.subject} are ${wins}-${losses}${ties ? `-${ties} (W-L-T)` : ''} across ${sample} and have ${margin(pick.seasonAverage)}.`);
+    if (current.length) sentences.push(`${pick.subject} are ${wins}-${losses}${ties ? `-${ties} (W-L-T)` : ''} across ${sample}.`);
     const line = pick.line;
     const target = pick.market === 'h2h' ? `${pick.subject} moneyline`
       : `${pick.subject}${line === null ? ' spread' : ` ${line > 0 ? '+' : ''}${line}`}`;
-    if (recent.length) sentences.push(`Their last ${recent.length} results: ${recent.map((row) => `${row.value > 0 ? 'won' : row.value < 0 ? 'lost' : 'tied'}${row.value === 0 ? '' : ` by ${Math.abs(row.value)}`}${row.opponent ? ` vs ${row.opponent}` : ''}`).join('; ')}, most recent first.`);
-    const threshold = pick.market === 'h2h' ? 0 : -(line ?? 0);
-    takeaway = pick.seasonAverage > threshold ? `That scoring edge gives the ${target} a statistical case, though lineup changes and a small sample can shift the outlook.`
-      : `The ${target} is a more cautious lean: their average scoring ${pick.seasonAverage === threshold ? 'sits right on the line' : 'does not favor this side'}, so the recent results are not a clean endorsement.`;
+    if (recent.length) sentences.push(`Their last ${recent.length} games: ${recent.filter((row) => row.value > 0).length}-${recent.filter((row) => row.value < 0).length}${recent.some((row) => row.value === 0) ? `-${recent.filter((row) => row.value === 0).length} (W-L-T)` : ' (W-L)'}.`);
+    takeaway = `GamewAIre's selection is ${target}.`;
   }
   const opponentName = player ? undefined : pick.subject === pick.home ? pick.away : pick.home;
   const meetings = pick.market === 'totals' ? [] : current.filter((row) =>
@@ -100,22 +106,53 @@ export function pickBlurb(pick: Candidate) {
   const matchupForm = meetings.length ? `In ${meetings.length} recorded ${currentSeason === undefined ? '' : 'current-season '}meeting${meetings.length === 1 ? '' : 's'} with ${opponentName ?? pick.opponents?.[0]?.team}, ${player
     ? `${pick.subject} averaged ${(meetings.reduce((sum, row) => sum + row.value, 0) / meetings.length).toFixed(1)} ${unit}`
     : `${pick.subject} went ${meetings.filter((row) => row.value > 0).length}-${meetings.filter((row) => row.value < 0).length}${meetings.some((row) => row.value === 0) ? `-${meetings.filter((row) => row.value === 0).length} (W-L-T)` : ''}`}.` : '';
-  const defense = (pick.opponents ?? []).map((opponent) => `${opponent.team} have allowed ${opponent.pointsAllowed.toFixed(1)} points per game (${opponent.tied ? 'tied for ' : ''}rank ${opponent.rank} of ${opponent.leagueSize} in team scoring defense over ${opponent.games} games${player ? ', not a ranking against this position or stat' : ''})${pick.market === 'totals' ? ` and scored ${opponent.pointsScored.toFixed(1)} per game` : ''}`).join('; ');
+  const defense = (pick.opponents ?? []).map((opponent) => {
+    const category = pick.market === 'player_reception_yds' || pick.market === 'player_receptions' ? 'receiving'
+      : pick.market === 'player_pass_yds' ? 'passing' : pick.market === 'player_rush_yds' ? 'rushing' : null;
+    const yardage = category ? opponent.yardage?.[category] : undefined;
+    return `${opponent.team} rank ${opponent.rank} of ${opponent.leagueSize}${opponent.tied ? ' (tied)' : ''} in scoring defense, allowing ${opponent.pointsAllowed.toFixed(1)} points per game`
+      + (yardage ? `, and allow ${yardage.perGame.toFixed(1)} ${category} yards per game (rank ${yardage.rank} of 32; 1 allows fewest)` : player ? ' (team scoring, not a position-specific ranking)' : '');
+  }).join('; ');
   const history = pick.previousSeasonAverage === undefined ? '' : player
     ? `For a longer view, ${pick.subject} averaged ${pick.previousSeasonAverage.toFixed(1)} ${unit} in the available prior-season games.`
     : pick.market === 'totals' ? `The available prior-season games averaged ${pick.previousSeasonAverage.toFixed(1)} combined points.`
-    : `In the available prior-season games, they had ${margin(pick.previousSeasonAverage)}.`;
-  if (defense) sentences.push(`${defense}${(pick.opponents ?? []).some((opponent) => opponent.games < 12) ? '; the early-season ranking can move quickly' : ''}.`);
-  if (matchupForm || history) sentences.push(matchupForm || history);
+    : '';
+  if (defense) sentences.push(`${defense}.`);
+  const form = pick.teamForm;
+  const recordText = (record: FormRecord) => `${record.wins}-${record.losses}${record.ties ? `-${record.ties} W-L-T` : ''}`;
+  if (!player && pick.market !== 'totals' && form) {
+    const context: string[] = [];
+    if (form.latestResult !== 'tie') {
+      const record = form.latestResult === 'loss' ? form.afterLoss : form.afterWin;
+      if (record.wins + record.losses + record.ties) context.push(`${recordText(record)} following a ${form.latestResult}`);
+    }
+    if (pick.sport === 'NFL' && isNFLPrimetime(pick.start) && form.primetime.wins + form.primetime.losses + form.primetime.ties) context.push(`${recordText(form.primetime)} in Thursday/Sunday/Monday night games`);
+    if (context.length) sentences.push(`Across the available ${form.seasons.join('/')} regular seasons, ${pick.subject} are ${context.join(' and ')} straight up, not ATS.`);
+  }
+  if (sentences.length < 4 && (matchupForm || history)) sentences.push(matchupForm || history);
   return [...sentences.slice(0, 4), takeaway].join(' ');
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
   return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)
     || Number(b.market === 'h2h') - Number(a.market === 'h2h')
+    || matchupPreference(b) - matchupPreference(a)
     || (b.rotation?.involvement ?? 0) - (a.rotation?.involvement ?? 0)
     || (b.rotation?.minutes ?? 0) - (a.rotation?.minutes ?? 0)
     || b.probability - a.probability || gamewaireGrade(b).score - gamewaireGrade(a).score
     || a.key.localeCompare(b.key));
+}
+export function matchupPreference(pick: Candidate) {
+  if (pick.sport === 'NFL' && ['h2h', 'spreads'].includes(pick.market) && pick.teamForm) {
+    const form = pick.teamForm;
+    const records = [form.latestResult === 'loss' ? form.afterLoss : form.latestResult === 'win' ? form.afterWin : undefined,
+      isNFLPrimetime(pick.start) ? form.primetime : undefined].filter((row): row is FormRecord => !!row && row.wins + row.losses + row.ties >= 3);
+    return records.length ? records.reduce((sum, row) => sum + (row.wins + row.ties / 2) / (row.wins + row.losses + row.ties) - 0.5, 0) / records.length : 0;
+  }
+  const category = pick.market === 'player_reception_yds' || pick.market === 'player_receptions' ? 'receiving'
+    : pick.market === 'player_pass_yds' ? 'passing' : pick.market === 'player_rush_yds' ? 'rushing' : null;
+  if (pick.sport !== 'NFL' || !category) return 0;
+  const rank = pick.opponents?.[0]?.yardage?.[category]?.rank;
+  return rank === undefined ? 0 : pick.side === 'Over' ? (rank - 16.5) / 16 : pick.side === 'Under' ? (16.5 - rank) / 16 : 0;
 }
 export function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -194,7 +231,7 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
   return result;
 }
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 = 4, minimumPlayerPicks: 0 | 3 = 0): Evaluation {
+export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 | 9 = 4, minimumPlayerPicks: 0 | 3 | 8 = 0): Evaluation {
   const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [], teamOptions: TeamLean[] = [];
   const stretchOptions: Candidate[] = [];
   const best = new Map<string, Quote>();
@@ -271,7 +308,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
-      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents };
+      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents, teamForm: data.teamForm };
     if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
       reason: qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
     if (!qualifies) {
@@ -285,13 +322,18 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
   for (const candidate of rankTopPicks(candidates)) {
     const player = candidate.market.startsWith('player_');
     const identity = normalize(candidate.subject);
+    if (player && minimumPlayerPicks === 8 && picks.filter((pick) => pick.market.startsWith('player_')).length >= 8) {
+      rejected.push({ key: candidate.key, reason: 'Excluded after eight distinct primetime player selections.' }); continue;
+    }
     if ((player && subjects.has(identity)) || (!player && teamMarket)) {
       rejected.push({ key: candidate.key, reason: 'Excluded as a duplicate or correlated player/team-market selection.' }); continue;
     }
     picks.push(candidate); subjects.add(identity); if (!player) teamMarket = true;
     if (picks.length === limit) break;
   }
-  const teamLean = [...teamOptions].sort((a, b) => Number(b.qualifies) - Number(a.qualifies) || b.pick.probability - a.pick.probability
+  const teamLean = [...teamOptions].sort((a, b) => Number(b.qualifies) - Number(a.qualifies)
+    || Math.floor(b.pick.probability * 100) - Math.floor(a.pick.probability * 100)
+    || matchupPreference(b.pick) - matchupPreference(a.pick) || b.pick.probability - a.pick.probability
     || b.pick.ev - a.pick.ev || a.pick.key.localeCompare(b.pick.key))[0];
   if (teamLean?.qualifies && !picks.some((pick) => pick.key === teamLean.pick.key)) {
     const existing = picks.findIndex((pick) => !pick.market.startsWith('player_'));
@@ -303,6 +345,10 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
   }
   const stretchKeys: string[] = [];
   if (minimumPlayerPicks && teamLean && !picks.some((pick) => !pick.market.startsWith('player_'))) {
+    if (picks.length >= limit) {
+      const displaced = picks.pop()!;
+      rejected.push({ key: displaced.key, reason: 'Excluded to reserve a verified game-lean slot.' });
+    }
     picks.push(teamLean.pick);
     if (!teamLean.qualifies) stretchKeys.push(teamLean.pick.key);
     const index = rejected.findIndex((row) => row.key === teamLean.pick.key);

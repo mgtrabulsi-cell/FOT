@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { array, decimalOdds, defaultSettings, evaluate, markets, modelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
+import { array, decimalOdds, defaultSettings, evaluate, isNFLPrimetime, markets, modelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses } from '../_shared/gamewaireSchedule.ts';
@@ -207,12 +207,13 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (body.action !== 'analyze' || !/^[a-zA-Z0-9_-]{1,100}$/.test(text(body.eventId))) return json({ error: 'Choose an event to analyze.' }, 400);
     let settings;
     try { settings = readSettings(body.settings, sport); } catch (error) { return json({ error: message(error) }, 400); }
-    const minimumPlayerPicks = !scheduledJob && settings.markets.some((market) => market.startsWith('player_')) ? 3 : 0;
+    const playerAnalysis = !scheduledJob && settings.markets.some((market) => market.startsWith('player_'));
     const expired = await admin.from('gamewaire_runs').update({ status: 'provider_error', payload: { error: 'Prior analysis was interrupted. Retry with fresh provider data.' }, finished_at: new Date().toISOString() })
       .eq('sport', sport).eq('event_id', body.eventId).eq('status', 'in_progress').lt('created_at', new Date(Date.now() - 180_000).toISOString());
     if (expired.error) throw new Error('Could not clear an interrupted analysis.');
     const cached = await admin.from('gamewaire_runs').select('*').eq('sport', sport).eq('event_id', body.eventId).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (cached.error) throw new Error('Could not read the shared analysis cache.');
+    let minimumPlayerPicks: 0 | 3 | 8 = playerAnalysis ? sport === 'NFL' && cached.data && isNFLPrimetime(cached.data.event_start) ? 8 : 3 : 0;
     if (cached.data?.status === 'in_progress' && Date.now() - Date.parse(cached.data.created_at) < 180_000) {
       await finishScheduled(null, 'This game was already being analyzed. Review the saved report; no scheduled paid retry.');
       return json({ error: 'This game is already being analyzed. Reopen its saved report shortly.' }, 409);
@@ -248,6 +249,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     const raw = await oddsJSON(`sports/${oddsSport[sport]}/events/${encodeURIComponent(text(body.eventId))}/odds?regions=us&oddsFormat=american&markets=${requestedMarkets.join(',')}`, oddsKey, fetcher,
       (usage) => { providerUsage = usage; });
     const event = object(raw), start = text(event.commence_time);
+    minimumPlayerPicks = playerAnalysis ? sport === 'NFL' && isNFLPrimetime(start) ? 8 : 3 : 0;
     if (text(event.id) !== body.eventId) throw new Error('Odds provider returned a different event than requested.');
     if (!Number.isFinite(Date.parse(start)) || Date.parse(start) <= Date.now()) {
       await finishScheduled(null, 'Only upcoming games can be analyzed.');
@@ -266,13 +268,13 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const anchor: Quote = quotes[0];
       const matchup = await resolveMatchup(anchor, fetcher);
       const data = await collectEvidence(allQuotes, matchup, Date.now(), fetcher);
-      report = { ...evaluate(quotes, data.evidence, settings, Date.now(), 8, minimumPlayerPicks), warnings: data.warnings, coverage: data.coverage,
+      report = { ...evaluate(quotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (aiKey && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }
     if (minimumPlayerPicks && report.picks.filter((pick: Candidate) => pick.market.startsWith('player_')).length < minimumPlayerPicks) {
-      report.warnings.push('Fewer than three distinct players have verified, fresh, complete markets and sufficient eligible data. Missing or unsafe player props were not invented.');
+      report.warnings.push(`Fewer than ${minimumPlayerPicks} distinct players have verified, fresh, complete markets and sufficient eligible data. Missing or unsafe player props were not invented.`);
     }
     const availableMarkets = new Set(allQuotes.map((quote) => quote.market));
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));

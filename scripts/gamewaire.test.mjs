@@ -178,11 +178,11 @@ test('Conversational blurbs use only saved player or team evidence without inven
   const blurb = engine.pickBlurb(pick);
   assert.match(blurb, /Cade Cunningham averages 5\.1 assists/);
   assert.match(blurb, /32\.0 minutes/);
-  assert.match(blurb, /under 7\.5 assists a statistical case/);
+  assert.match(blurb, /GamewAIre's selection is under 7\.5 assists/);
   assert.match(blurb, /under 7\.5 assists/);
   assert.doesNotMatch(blurb, /unbeaten|LeBron|home court|injur|lock to|guaranteed/i);
   const team = engine.pickBlurb({ ...pick, market: 'spreads', side: 'Boston Celtics', subject: 'Boston Celtics', line: 4.5 });
-  assert.match(team, /Boston Celtics \+4\.5 a statistical case/);
+  assert.match(team, /GamewAIre's selection is Boston Celtics \+4\.5/);
   assert.doesNotMatch(team, /minutes per game|averaging.*assists/);
 });
 
@@ -216,13 +216,13 @@ test('Conversational team blurbs use recorded form without revealing the formula
     ] };
   const ml = engine.pickBlurb(base);
   assert.match(ml, /Los Angeles Lakers are 1-1 across 2 recorded games this season/);
-  assert.match(ml, /outscored opponents by 13\.0 points per game/);
-  assert.match(ml, /won by 30 vs Utah Jazz; lost by 4 vs Boston Celtics/);
-  assert.match(ml, /Lakers moneyline a statistical case/);
+  assert.doesNotMatch(ml, /outscored|won by|lost by/);
+  assert.match(ml, /last 2 games: 1-1 \(W-L\)/);
+  assert.match(ml, /GamewAIre's selection is Los Angeles Lakers moneyline/);
   assert.doesNotMatch(ml, /Old opponent|scoring margin|weight|50\/50|model|projection|5\.2|69\.0|LowVig|guaranteed win/i);
   const negative = engine.pickBlurb({ ...base, seasonAverage: -3.2, projection: -2 });
-  assert.match(negative, /been outscored by 3\.2 points/);
-  assert.match(negative, /does not favor this side/);
+  assert.doesNotMatch(negative, /outscored|shift the outlook/);
+  assert.match(negative, /GamewAIre's selection is/);
   for (const line of [4.5, -4, 0]) {
     const spread = engine.pickBlurb({ ...base, market: 'spreads', line });
     assert.ok(spread.includes(`Los Angeles Lakers ${line > 0 ? '+' : ''}${line}`));
@@ -237,7 +237,7 @@ test('All prop units and totals use relevant statistics and honest trends rather
     player_rush_yds: 'rushing yards', player_reception_yds: 'receiving yards', player_receptions: 'receptions' })) {
     const blurb = engine.pickBlurb({ ...base, market });
     assert.ok(blurb.includes(`over 7.5 ${unit}`));
-    assert.ok(blurb.includes(`last 3 outings produced 9, 7, 2 ${unit}`));
+    assert.ok(blurb.includes(`last 3 outings, the average is 6.0 ${unit}`));
     assert.match(blurb, /1 of those 3 outings cleared the 7\.5 line/);
     assert.match(blurb, /season average leans the other way/);
     assert.doesNotMatch(blurb, /needs|push \(stake returned\)|model|weight|Estimated chance/i);
@@ -291,9 +291,8 @@ test('Opponent context is persisted without changing the picks, probability, pro
     assert.equal(enriched.picks[0][field], original.picks[0][field]);
   }
   const blurb = engine.pickBlurb(enriched.picks[0]);
-  assert.match(blurb, /Atlanta Hawks have allowed 100\.0 points per game \(tied for rank 1 of 30/);
-  assert.match(blurb, /not a ranking against this position or stat/);
-  assert.match(blurb, /early-season ranking can move quickly/);
+  assert.match(blurb, /Atlanta Hawks rank 1 of 30 \(tied\) in scoring defense, allowing 100\.0 points per game/);
+  assert.match(blurb, /not a position-specific ranking/);
   assert.doesNotMatch(blurb, /50\/50|weight|efficiency rating|defense boosts|algorithm/i);
   assert.doesNotMatch(engine.pickBlurb(original.picks[0]), /No\. \d|points allowed per game/);
 });
@@ -667,7 +666,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /available prior-season games/);
   assert.match(report, /class="gai-pick-summary" aria-label="Why this pick:/);
   assert.ok(report.includes(`${candidate.subject} averages ${candidate.seasonAverage.toFixed(1)} points`));
-  assert.match(report, /a change in role or minutes/);
+  assert.match(report, /GamewAIre&#x27;s selection is/);
   assert.match(report, /<details id="gai-results" class="gai-history">/);
   assert.match(report, /aria-label="GamewAIre record overview"/);
   assert.match(report, /aria-label="View Top Picks results"/);
@@ -770,7 +769,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(teamMarkets, /<h3>Boston Celtics \+4\.5<\/h3>/);
   assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
   assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
-  assert.match(teamMarkets, /outscored opponents by/);
+  assert.match(teamMarkets, /GamewAIre&#x27;s selection is/);
+  assert.doesNotMatch(teamMarkets, /outscored opponents by|lost by|shift the outlook/);
   assert.doesNotMatch(teamMarkets, /Unvalidated estimates, not betting value\. Probability-first; close ties/);
   for (const [market, label] of Object.entries({
     player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
@@ -789,7 +789,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   }] } }], [], true]);
   const under = renderToStaticMarkup(createElement(Page));
   assert.match(under, /averages 5\.1 assists/);
-  assert.match(under, /under 7\.5 assists a statistical case/);
+  assert.match(under, /selection is under 7\.5 assists/);
   assert.doesNotMatch(under, /Core rotation|Previous full-season average:|Key limitation:/, 'Reasoning never invents rotation, baseline or risks missing from this pick');
   const navCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(navCSS, /font-size: clamp\(9px, 2\.5vw, 11px\)/);
@@ -1044,7 +1044,7 @@ test('Endpoint rate limits before paid API calls and persists deterministic comp
   assert.equal(body.run.status, 'completed');
   assert.equal(body.run.payload.playerPropMinimum, 3);
   assert.ok(Array.isArray(body.run.payload.stretchKeys));
-  assert.ok(body.run.payload.warnings.some((warning) => warning.includes('Fewer than three distinct players')));
+  assert.ok(body.run.payload.warnings.some((warning) => warning.includes('Fewer than 3 distinct players')));
   assert.equal(api.rpc.at(-1).name, 'gamewaire_finish');
   assert.ok(api.rpc.at(-1).args.candidates.length > 0);
   const requested = new URL(api.fetches[0]);
@@ -1055,6 +1055,29 @@ test('Endpoint rate limits before paid API calls and persists deterministic comp
     settings: { ...settings, markets: ['player_points'], player: 'No matching player' } });
   assert.equal(filtered.status, 200);
   assert.equal((await filtered.json()).run.status, 'no_qualifying', 'An empty player filter is an abstention, not a provider failure');
+});
+test('NFL primetime endpoint expands the full analysis to eight distinct props and persists its target', async () => {
+  const api = endpoint({ configured: true });
+  const response = await api.run({ action: 'analyze', sport: 'NFL', eventId: 'event',
+    settings: { ...engine.defaultSettings, markets: ['player_receptions'], minEdge: 0.3 } }, true, async () => Response.json({
+      id: 'event', home_team: quote.home, away_team: quote.away, commence_time: '2026-10-30T00:15:00Z',
+      bookmakers: [{ key: 'book', title: 'Book', markets: [{ key: 'player_receptions', last_update: quote.updatedAt,
+        outcomes: Array.from({ length: 10 }, (_, i) => [
+          { name: 'Over', description: `Player ${i}`, point: 20.5, price: -110 },
+          { name: 'Under', description: `Player ${i}`, point: 20.5, price: -110 },
+        ]).flat() }] }],
+    }));
+  assert.equal(response.status, 200);
+  const { run } = await response.json();
+  assert.equal(run.payload.playerPropMinimum, 8);
+  assert.equal(run.payload.picks.filter((p) => p.market.startsWith('player_')).length, 8);
+  assert.ok(!run.payload.warnings.some((warning) => warning.includes('Fewer than 8')));
+  const cached = endpoint({ configured: true, cachedRun: { ...run, created_at: new Date(now).toISOString(),
+    event_start: '2026-10-30T00:15:00Z' } });
+  const reused = await cached.run({ action: 'analyze', sport: 'NFL', eventId: 'event',
+    settings: { ...engine.defaultSettings, markets: ['player_receptions'], minEdge: 0.3 } });
+  assert.equal((await reused.json()).cached, true);
+  assert.equal(cached.fetches.length, 0, 'Reopening a fresh primetime report does not spend more credits');
 });
 test('Quota-free game lists remain available when the paid analysis budget is exhausted', async () => {
   const upcoming = { id: 'event', sport: 'NBA', home: quote.home, away: quote.away, start: quote.start };
