@@ -26,15 +26,16 @@ begin
   insert into public.gamewaire_runs(sport,event_id,event_start,matchup,settings,status)
     values ('NFL','team-lean-test',now()+interval '1 day','Team lean test','{}','in_progress') returning id into run;
   lean := jsonb_build_object('qualifies',false,'reason','Not a Top Pick','pick',
-    jsonb_build_object('key','lean','eventId','team-lean-test','market','h2h','probability',0.55,'updatedAt',now(),'dataAt',now()));
+    jsonb_build_object('key','team-lean-test|h2h','eventId','team-lean-test','market','h2h','probability',0.55,
+      'subject','Away','side','Away','american',-110,'pushProbability',0,'book','Test','modelVersion','empirical-baseline-v5','updatedAt',now(),'dataAt',now()));
   perform public.gamewaire_finish(run,'no_qualifying',jsonb_build_object('picks','[]'::jsonb,'teamLean',lean),'[]');
   if exists(select 1 from public.gamewaire_team_leans where event_id='team-lean-test')
     then raise exception 'NFL analysis must stay private'; end if;
   perform public.gamewaire_publish_lean(run);
   if not exists(select 1 from public.gamewaire_team_leans where event_id='team-lean-test' and team_lean=lean)
     then raise exception 'Explicit publication must save the NFL lean'; end if;
-  if exists(select 1 from public.gamewaire_picks where event_id='team-lean-test')
-    then raise exception 'Team leans must never enter published performance automatically'; end if;
+  if not exists(select 1 from public.gamewaire_picks where event_id='team-lean-test' and is_game_lean and not is_top_pick)
+    then raise exception 'Explicitly published team lean must enter only the Game Leans record'; end if;
   begin
     perform public.gamewaire_publish(run,array['lean']);
     raise exception 'A failed-value lean cannot publish as a Top Pick';

@@ -6,12 +6,13 @@ begin
     values ('NBA','nba-private-lean-test',now()+interval '1 day','Private lean test','{"markets":["h2h","spreads"]}','in_progress')
     returning id into run;
   lean:=jsonb_build_object('qualifies',false,'reason','Lean only, not a Top Pick','pick',
-    jsonb_build_object('key','lean','eventId','nba-private-lean-test','market','h2h','updatedAt',now(),'dataAt',now()));
+    jsonb_build_object('key','nba-private-lean-test|h2h','eventId','nba-private-lean-test','market','h2h',
+      'subject','Away','side','Away','american',-110,'probability',0.55,'pushProbability',0,'book','Test','modelVersion','empirical-baseline-v5','updatedAt',now(),'dataAt',now()));
   perform public.gamewaire_finish(run,'no_qualifying',jsonb_build_object('picks','[]'::jsonb,'teamLean',lean),'[]');
   assert not exists(select 1 from public.gamewaire_team_leans where event_id='nba-private-lean-test'),'NBA analysis cannot publish automatically';
   perform public.gamewaire_publish_lean(run);
   assert exists(select 1 from public.gamewaire_team_leans where event_id='nba-private-lean-test' and team_lean=lean),'Explicit lean publication succeeds';
-  assert not exists(select 1 from public.gamewaire_picks where event_id='nba-private-lean-test'),'Lean does not create Top Pick performance';
+  assert exists(select 1 from public.gamewaire_picks where event_id='nba-private-lean-test' and is_game_lean and not is_top_pick),'Lean creates only Game Leans performance';
   -- A later private refresh must not overwrite the owner's published snapshot.
   insert into public.gamewaire_runs(sport,event_id,event_start,matchup,settings,status)
     values ('NBA','nba-private-lean-test',now()+interval '1 day','Private lean test','{}','in_progress') returning id into run;

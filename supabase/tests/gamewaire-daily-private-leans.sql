@@ -8,7 +8,8 @@ begin
     insert into public.gamewaire_runs(sport,event_id,event_start,matchup,settings,status)
       values(league,'daily-private-'||league,now()+interval '1 day','Daily private test','{}','in_progress') returning id into run;
     lean:=jsonb_build_object('qualifies',false,'reason','Lean only','pick',
-      jsonb_build_object('key','lean','eventId','daily-private-'||league,'market','spreads','updatedAt',now(),'dataAt',now()));
+      jsonb_build_object('key','daily-private-'||league||'|spreads','eventId','daily-private-'||league,'market','spreads',
+        'subject','Away','side','Away','line',3.5,'american',-110,'probability',0.55,'pushProbability',0,'book','Test','modelVersion','empirical-baseline-v5','updatedAt',now(),'dataAt',now()));
     perform public.gamewaire_finish(run,'no_qualifying',jsonb_build_object('teamLean',lean,'picks','[]'::jsonb),'[]');
     assert not exists(select 1 from public.gamewaire_team_leans where event_id='daily-private-'||league),
       'Neither sport may publish on analysis completion';
@@ -32,7 +33,7 @@ begin
       raise exception 'Cross-day slate accepted';
     exception when raise_exception then if sqlerrm='Cross-day slate accepted' then raise; end if;
     end;
-    assert not exists(select 1 from public.gamewaire_picks where event_id='daily-private-'||league),
+    assert not exists(select 1 from public.gamewaire_picks where event_id='daily-private-'||league and is_top_pick),
       'Leans do not create Top Pick performance records';
   end loop;
 end $$;

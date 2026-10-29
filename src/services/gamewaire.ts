@@ -16,6 +16,7 @@ export type StoredPick = {
   american: number; probability: number; push_probability: number; data: Candidate;
   result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closing_american: number | null; withdrawn: boolean;
   revision: number; created_at: string; settlement_note: string | null;
+  is_top_pick: boolean; is_game_lean: boolean;
 };
 export type EngineStatus = { canAnalyze: boolean; oddsReady: boolean; aiReady: boolean; model: string; experimental: boolean };
 export type StretchPick = { run_id: string; pick_key: string };

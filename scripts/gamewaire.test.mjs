@@ -624,7 +624,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.doesNotMatch(renderToStaticMarkup(createElement(PickCard, { pick: candidate, rank: 1 })), /Stretch/);
   const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date().toISOString(), matchup: 'Away at Home', settings, created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
   const pick = { ...candidate, id: 'pick', event_start: quote.start, created_at: quote.updatedAt, push_probability: candidate.pushProbability,
-    result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1 };
+    result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1, is_top_pick: true, is_game_lean: false };
   const memberState = [{ ...status, canAnalyze: false, oddsReady: true }, [run], [pick], true];
   memberState[22] = [{ sport: 'NBA', event_id: 'event', event_start: quote.start, matchup: 'Away at Home', picks: [candidate], published_at: quote.updatedAt }];
   memberState[23] = 'event'; memberState[25] = quote.start.slice(0, 10);
@@ -793,6 +793,23 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(allSports, /gai-result-loss">Lost/);
   assert.match(allSports, /not automatically settled/);
   assert.match(allSports, /More filters/);
+  const leanRecord = { ...nbaRecord, id: 'lean-record', is_top_pick: false, is_game_lean: true, result: 'win' };
+  const sharedRecord = { ...nflRecord, is_game_lean: true };
+  const sourceState = mixed.slice();
+  sourceState[2] = [nbaRecord, leanRecord, sharedRecord];
+  for (const [view, count, label, rate] of [['top', 2, 'Top Picks record only', '50.0%'], ['leans', 2, 'Published Game Leans record only', '100.0%'], ['all', 3, 'All published Top Picks and Game Leans', '66.7%']]) {
+    sourceState[33] = view;
+    fixture(sourceState);
+    const output = renderToStaticMarkup(createElement(Page));
+    assert.equal((output.match(/class="gai-history-row"/g) ?? []).length, count);
+    assert.match(output, /aria-label="Results type"/);
+    assert.ok(output.includes(label));
+    assert.ok(output.includes(`<dt>Win rate</dt><dd>${rate}`), 'Each record calculates its own summary, without duplicate shared rows');
+    assert.match(output, /Top Pick \+ Game Lean/);
+  }
+  sourceState[33] = 'leans'; sourceState[20] = 'NFL';
+  fixture(sourceState);
+  assert.equal((renderToStaticMarkup(createElement(Page)).match(/class="gai-history-row"/g) ?? []).length, 1, 'Lean results sport filter is isolated');
   mixed[24] = 'NFL'; mixed[20] = 'NFL';
   fixture(mixed);
   const nflOnly = renderToStaticMarkup(createElement(Page));

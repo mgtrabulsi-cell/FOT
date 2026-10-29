@@ -201,6 +201,7 @@ export default function Gamewaire() {
   const [completion, setCompletion] = useState<{ completed: string[]; completionWarning: string }>({ completed: [], completionWarning: '' });
   const [orders, setOrders] = useState<PickOrder[]>([]);
   const [stretches, setStretches] = useState<StretchPick[]>([]);
+  const [resultsView, setResultsView] = useState<'top' | 'leans' | 'all'>('top');
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => subscribePickOrderRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => {
@@ -253,13 +254,14 @@ export default function Gamewaire() {
   };
   const savedGames = reviewRuns.filter((run, index) => run.status !== 'in_progress'
     && reviewRuns.findIndex((other) => other.sport === run.sport && other.event_id === run.event_id && other.status !== 'in_progress') === index);
-  const historyPicks = picks.filter((pick) => historySport === 'all' || pick.sport === historySport);
+  const resultPicks = picks.filter((pick) => resultsView === 'all' || (resultsView === 'leans' ? pick.is_game_lean : pick.is_top_pick));
+  const historyPicks = resultPicks.filter((pick) => historySport === 'all' || pick.sport === historySport);
   const record = performance(historyPicks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
     american: pick.american, result: pick.result, closingAmerican: pick.closing_american, withdrawn: pick.withdrawn })));
   const breakdowns = performanceGroups(historyPicks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
     american: pick.american, result: pick.result, closingAmerican: pick.closing_american, withdrawn: pick.withdrawn,
     sport: pick.sport, market: pick.market, createdAt: pick.created_at, edge: pick.data.edge })));
-  const visible = picks.filter((pick) => (historySport === 'all' || pick.sport === historySport) && (!historyDate || nbaCalendarDate(new Date(pick.event_start)) === historyDate)
+  const visible = resultPicks.filter((pick) => (historySport === 'all' || pick.sport === historySport) && (!historyDate || nbaCalendarDate(new Date(pick.event_start)) === historyDate)
     && (market === 'all' || pick.market === market) && (pickStatus === 'all' || (pickStatus === 'withdrawn' ? pick.withdrawn : pick.result === pickStatus))
     && (!minEV || pick.data.ev * 100 >= Number(minEV)) && (!minOdds || pick.american >= Number(minOdds)) && (!maxOdds || pick.american <= Number(maxOdds)))
     .sort((a, b) => Date.parse(b.event_start) - Date.parse(a.event_start) || a.id.localeCompare(b.id));
@@ -472,6 +474,12 @@ export default function Gamewaire() {
         <label>Results sport<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option><option>NBA</option><option>NFL</option></select></label>
       </div>
       <p className="gai-note">Results are recorded by an admin, not automatically settled. Pending picks stay pending until reviewed.</p>
+      <div className="gai-sport-tabs" role="group" aria-label="Results type">
+        {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['all', 'All Picks']] as const).map(([value, label]) =>
+          <button key={value} aria-pressed={resultsView === value} onClick={() => { setResultsView(value); setMarket('all'); }}>{label}</button>)}
+      </div>
+      <p className="gai-note">{resultsView === 'top' ? 'Top Picks record only.' : resultsView === 'leans' ? 'Published Game Leans record only, including lean-only selections.' : 'All published Top Picks and Game Leans. Identical selections at the same price and model version count once.'}
+        {' '}A selection published in both areas shares one Hit/Missed result. Private analyses do not enter either record.</p>
       {loaded && <dl className="gai-results-stats">
         <div><dt>Record</dt><dd>{historyPicks.filter((pick) => pick.result === 'win').length}<span> W · </span>{historyPicks.filter((pick) => pick.result === 'loss').length}<span> L</span></dd></div>
         <div><dt>Pending</dt><dd>{record.pending}</dd></div>
@@ -487,7 +495,7 @@ export default function Gamewaire() {
         <button onClick={() => { setHistoryDate(''); setPickStatus('all'); setMarket('all'); setMinEV(''); setMinOdds(''); setMaxOdds(''); }}>Clear filters</button>
       </div>
       <details className="gai-history-advanced"><summary>More filters</summary><div className="gai-form">
-        <label>Market<select value={market} onChange={(event) => setMarket(event.target.value)}><option value="all">All markets</option>{[...new Set(picks.map((pick) => pick.market))].map((item) => <option key={item} value={item}>{marketLabels[item] ?? item.replace(/_/g, ' ')}</option>)}</select></label>
+        <label>Market<select value={market} onChange={(event) => setMarket(event.target.value)}><option value="all">All markets</option>{[...new Set(resultPicks.map((pick) => pick.market))].map((item) => <option key={item} value={item}>{marketLabels[item] ?? item.replace(/_/g, ' ')}</option>)}</select></label>
         <label>Minimum EV %<input type="number" value={minEV} onChange={(event) => setMinEV(event.target.value)} /></label>
         <label>Minimum American odds<input type="number" value={minOdds} onChange={(event) => setMinOdds(event.target.value)} /></label>
         <label>Maximum American odds<input type="number" value={maxOdds} onChange={(event) => setMaxOdds(event.target.value)} /></label>
@@ -498,6 +506,7 @@ export default function Gamewaire() {
       <ul className="gai-history-list" aria-label="Published pick history">
         {visible.map((pick) => <li key={pick.id} className="gai-history-row">
           <div className="gai-history-pick"><span className="eyebrow">{pick.sport} · {marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}</span>
+            <span className="gai-tag">{pick.is_top_pick && pick.is_game_lean ? 'Top Pick + Game Lean' : pick.is_game_lean ? 'Game Lean' : 'Top Pick'}</span>
             <h4>{pickTitle(pick.data)}</h4>{status?.canAnalyze && stretches.some((row) => row.run_id === pick.run_id && row.pick_key === pick.data.key) && <span className="gai-stretch">Stretch · only you</span>}<small>{pick.data.away} @ {pick.data.home} · {stamp(pick.event_start)}</small>
             {pick.withdrawn && <span className="gai-tag">Withdrawn</span>}
           </div>
