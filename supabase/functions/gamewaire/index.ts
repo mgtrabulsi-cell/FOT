@@ -160,6 +160,13 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (saved.error) return json({ error: `Could not publish picks: ${saved.error.message}` }, 400);
       return json({ saved: true });
     }
+    if (body.action === 'deleteLean') {
+      if (typeof body.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.id) || !Number.isInteger(body.revision))
+        return json({ error: 'Choose a game lean and its current revision.' }, 400);
+      const deleted = await admin.rpc('gamewaire_delete_lean', { target_pick: body.id, expected_revision: body.revision });
+      if (deleted.error) return json({ error: `Could not delete game lean: ${deleted.error.message}` }, 400);
+      return json({ saved: true });
+    }
     if (body.action === 'settle') {
       if (typeof body.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.id) || !Number.isInteger(body.revision)
         || !['win', 'loss', 'push', 'void', 'pending'].includes(String(body.result))

@@ -168,6 +168,7 @@ function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }
     pick.result === 'win' || pick.result === 'loss' || pick.result === 'pending' ? pick.result : '');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   return <details><summary>Log result · {pick.subject}</summary><form className="gai-form" onSubmit={(event) => {
     event.preventDefault(); setBusy(true); setError('');
     setSaved(false);
@@ -179,6 +180,17 @@ function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }
         checked={result === value} onChange={() => { setResult(value); setSaved(false); }} required />{value === 'win' ? 'Hit' : value === 'loss' ? 'Missed' : 'Pending'}</label>)}
     </fieldset>
     <button disabled={busy || !result}>{busy ? 'Saving…' : 'Save result'}</button>
+    {pick.is_game_lean && <div>
+      {!confirmDelete ? <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete game lean</button> : <>
+        <p>Delete this Game Lean from published leans and results?{pick.is_top_pick ? ' Its separate Top Pick and recorded outcome will stay.' : ' It will no longer count in the record.'}</p>
+        <button type="button" disabled={busy} onClick={() => {
+          setBusy(true); setError(''); setSaved(false);
+          void engineRequest({ action: 'deleteLean', id: pick.id, revision: pick.revision })
+            .then(() => { refresh(); }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
+        }}>{busy ? 'Deleting…' : 'Confirm delete game lean'}</button>
+        <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>Cancel</button>
+      </>}
+    </div>}
     {saved && <p role="status">Result saved.</p>}
     {error && <p role="alert" className="feed-warning">{error}</p>}
   </form></details>;

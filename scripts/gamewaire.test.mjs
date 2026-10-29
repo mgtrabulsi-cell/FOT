@@ -610,6 +610,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(settlement, /Save result/);
   assert.equal((settlement.match(/type="radio"/g) ?? []).length, 3);
   assert.doesNotMatch(settlement, /Source|reason|Closing|Withdrawn|<select/);
+  assert.doesNotMatch(settlement, /Delete game lean/);
+  fixture([]);
+  const leanSettlement = renderToStaticMarkup(createElement(Settlement, { pick: { id: 'lean', result: 'pending', subject: 'Team', is_game_lean: true }, refresh() {} }));
+  assert.match(leanSettlement, /Delete game lean/);
   for (const result of ['win', 'loss']) {
     fixture([]);
     const settled = renderToStaticMarkup(createElement(Settlement, { pick: { id: 'pick', result, subject: 'Player' }, refresh() {} }));
@@ -941,12 +945,23 @@ test('Hit/Missed/Pending result logging preserves metadata, clears pending settl
   assert.equal((await endpoint({ allowed: false }).run({ ...body, result: 'win' })).status, 403);
   assert.equal((await endpoint({ allowed: false }).run({ ...body, result: 'pending' })).status, 403);
 });
+test('Owner can delete an exact lean revision without provider calls; invalid requests are rejected', async () => {
+  const api = endpoint();
+  const id = '00000000-0000-0000-0000-000000000001';
+  assert.equal((await api.run({ action: 'deleteLean', id, revision: 2 })).status, 200);
+  const deletion = api.rpc.find(({ name }) => name === 'gamewaire_delete_lean');
+  assert.equal(deletion.args.target_pick, id);
+  assert.equal(deletion.args.expected_revision, 2);
+  assert.equal(api.fetches.length, 0);
+  assert.equal((await api.run({ action: 'deleteLean', id })).status, 400);
+  assert.equal((await api.run({ action: 'deleteLean', id: 'invalid', revision: 2 })).status, 400);
+});
 test('Other admins and owners have member-only GamewAIre access with no paid requests or writes', async () => {
   for (const role of ['admin', 'owner', 'member']) {
     const api = endpoint({ role, allowed: false, configured: true });
     const status = await (await api.run({ action: 'status' })).json();
     assert.equal(status.canAnalyze, false);
-    for (const action of ['events', 'report', 'analyze', 'publish', 'publishLean', 'settle']) {
+    for (const action of ['events', 'report', 'analyze', 'publish', 'publishLean', 'deleteLean', 'settle']) {
       assert.equal((await api.run({ action })).status, 403, `${role}: ${action}`);
     }
     assert.equal(api.fetches.length, 0);

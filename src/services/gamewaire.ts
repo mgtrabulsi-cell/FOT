@@ -68,7 +68,8 @@ export async function loadEngineHistory(signal: AbortSignal, canAnalyze = false)
     .order('event_start', { ascending: false }).abortSignal(signal) : { data: [], error: null };
   if (jobs.error) throw new Error(`Could not load scheduled game reports: ${jobs.error.message}`);
   for (let offset = 0; ; offset += 500) {
-    const page = await supabase.from('gamewaire_picks').select('*').order('created_at', { ascending: false }).order('id').range(offset, offset + 499).abortSignal(signal);
+    const page = await supabase.from('gamewaire_picks').select('*').or('is_top_pick.eq.true,is_game_lean.eq.true')
+      .order('created_at', { ascending: false }).order('id').range(offset, offset + 499).abortSignal(signal);
     if (page.error) throw new Error(`Could not load complete model performance: ${page.error.message}`);
     picks.push(...page.data);
     if (page.data.length < 500) break;
