@@ -57,7 +57,7 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
     </div>
     </summary>
     <div className="gai-pick-context">
-    {stretch && <p className="gai-note">Stretch: misses at least one edge, EV or conservative uncertainty screen. Included to provide three player options, not because it passed the normal value checks. You may publish it; this label stays private to your account.</p>}
+    {stretch && <p className="gai-note">Stretch: misses at least one edge, EV or conservative uncertainty screen. Included as an additional verified selection, not because it passed the normal value checks. You may publish it; this label stays private to your account.</p>}
     {technical && <dl className="gai-metrics gai-row-metrics">
       <div className="gai-hit"><dt>Estimated hit %</dt><dd>{percent(pick.probability)}</dd></div>
       <div><dt>Market implied</dt><dd>{percent(pick.implied)}</dd></div>
@@ -362,7 +362,7 @@ export default function Gamewaire() {
       </label>
       <details className="gai-schedule-details"><summary>Scheduled shortlists &amp; job status</summary>
       <details><summary>Schedule &amp; analysis costs · 1 AM Eastern</summary>
-      <p className="gai-note">NBA and NFL: every upcoming game each day, moneyline/spread only, up to 2 credits per game. Game leans stay private until you review and publish; player markets run only when you explicitly request them.
+      <p className="gai-note">NBA: daily at 1 AM Eastern. NFL: Thursdays at 1 AM Eastern for every upcoming game through Wednesday. Moneyline/spread only, up to 2 credits per game. Game leans stay private until you review and publish; player markets run only when you explicitly request them.
         Accessing saved reports costs 0. Jobs run once, one at a time; missing markets or failures are not automatically retried. No game lean or Top Pick publishes automatically.</p></details>
       {!batches.length && <p>No scheduled batches yet. The next batch starts at 1 AM Eastern.</p>}
       {batches.filter((batch) => batch.status !== 'ready' || reviewJobs.some((job) => job.batch_id === batch.id)).map((batch) => <section key={batch.id} className="gai-scheduled-batch"><h3>{batch.sport} · {batch.game_date}</h3>

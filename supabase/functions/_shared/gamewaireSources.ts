@@ -122,6 +122,14 @@ export function nbaSeasonBlend<T extends Observation>(current: T[], previous: T[
   return [...tagged.map((row) => ({ ...row, weight: 0.5 / current.length })),
     ...previous.map((row) => ({ ...row, season: season - 1, weight: 0.5 / previous.length }))];
 }
+export function nflSeasonSupplement<T extends Observation>(current: T[], previous: T[], season: number): T[] {
+  const tagged = current.map((row) => ({ ...row, season }));
+  if (!current.length || current.length >= 8) return tagged;
+  const ids = new Set(current.map((row) => row.eventId ?? row.date));
+  const prior = previous.filter((row) => !ids.has(row.eventId ?? row.date))
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 8 - current.length);
+  return [...tagged, ...prior.map((row) => ({ ...row, season: season - 1 }))];
+}
 export function nbaRotationPool(players: Array<{ name: string; teamId: string; samples: Observation[] }>) {
   const result = new Map<string, NBARotation>();
   const ranked = players.flatMap((player) => {
@@ -172,6 +180,13 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
         catch (cause) { warnings.push(`${team.name}: previous-season schedule unavailable: ${cause instanceof Error ? cause.message : 'request failed'}`); }
       }
       games = nbaSeasonBlend(current, previous, matchup.season);
+    } else {
+      let previous: typeof current = [];
+      if (current.length > 0 && current.length < 8) {
+        try { previous = teamSamples(await get(`${base}/teams/${team.id}/schedule?season=${matchup.season - 1}&seasontype=2`), team.id, now); }
+        catch (cause) { warnings.push(`${team.name}: previous-season schedule unavailable: ${cause instanceof Error ? cause.message : 'request failed'}`); }
+      }
+      games = nflSeasonSupplement(current, previous, matchup.season);
     }
     return { team, games, athletes };
   }));
@@ -198,8 +213,9 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
     }));
   }
   const rotation = nbaRotationPool([...rotationSamples].map(([name, samples]) => ({ name, samples, teamId: identities.get(name)!.teamId })));
-  if (sport === 'NBA') {
-    const eligible = players.filter((name) => rotation.has(name) && (rotationSamples.get(name)?.length ?? 0) < 12);
+  {
+    const eligible = players.filter((name) => sport === 'NBA'
+      ? rotation.has(name) && (rotationSamples.get(name)?.length ?? 0) < 12 : logs.has(name));
     for (let start = 0; start < eligible.length; start += 4) {
       await Promise.all(eligible.slice(start, start + 4).map(async (name) => {
         try { previousLogs.set(name, await get(`https://site.web.api.espn.com/apis/common/v3/sports/${path}/athletes/${encodeURIComponent(identities.get(name)!.playerId)}/gamelog?season=${matchup.season - 1}`)); }
@@ -236,6 +252,12 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
           evidence.set(quote.key, { eligible: false, reason: `Previous-season baseline unavailable: ${cause instanceof Error ? cause.message : 'invalid logs'}`, samples: [], fetchedAt, quality: 0, risks }); continue;
         }
       } else {
+        try {
+          const previous = previousLogs.get(quote.subject);
+          samples = nflSeasonSupplement(samples, samples.length > 0 && samples.length < 8 && previous ? playerSamples(previous, quote.market, now) : [], matchup.season);
+        } catch (cause) {
+          warnings.push(`${quote.subject}: previous-season ${quote.market} baseline unavailable: ${cause instanceof Error ? cause.message : 'invalid logs'}`);
+        }
         risks.push('Snap share and confirmed future role are unavailable; current-season opportunity can change.');
       }
       risks.push('Current roster status is not a confirmed starting lineup; recheck before tipoff/kickoff.');
@@ -244,7 +266,7 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       const away = teamData[0], home = teamData[1];
       if (quote.market === 'totals') {
         if (teamData.some((row) => row.games.length < (sport === 'NBA' ? 12 : 8))) {
-          evidence.set(quote.key, { eligible: false, reason: 'Both teams need a sufficient current-season sample for totals.', samples, fetchedAt, quality: 0, risks }); continue;
+          evidence.set(quote.key, { eligible: false, reason: 'Both teams need a sufficient verified regular-season sample for totals.', samples, fetchedAt, quality: 0, risks }); continue;
         }
         const blended = [...away.games, ...home.games].some((row) => row.weight !== undefined);
         const seen = new Map<string, Observation>();
@@ -267,13 +289,16 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       risks.push('No home-court/home-field coefficient is assumed without fitted historical evidence.');
     }
     if (sport === 'NBA' && quote.market.startsWith('player_')) risks.push('Rotation is ranked by recent minutes among matched offered players, not a confirmed starting five. Offensive involvement is FGA + 0.44 × FTA + turnovers, not official usage percentage.');
+    if (sport === 'NFL' && (samples.some((row) => row.season === matchup.season - 1) || !quote.market.startsWith('player_') && teamData.some((row) => row.games.some((game) => game.season === matchup.season - 1)))) {
+      risks.push('Early-season NFL baseline supplements current games with verified previous-season games. Prior roles, teammates, coaching and team strength may differ; carryover increases uncertainty.');
+    }
     const ownTeam = quote.market.startsWith('player_') ? identities.get(quote.subject)?.teamId
       : teamData.find((row) => teamNameKey(row.team.name) === teamNameKey(quote.side))?.team.id;
     const opponents = teamData.filter((row) => quote.market === 'totals' || ownTeam && row.team.id !== ownTeam)
       .flatMap((row) => { const stats = defense.get(teamNameKey(row.team.name)); return stats ? [stats] : []; });
-    evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: sport === 'NBA' ? matchup.season : undefined, rotation: sport === 'NBA' && quote.market.startsWith('player_') ? rotation.get(quote.subject) : undefined,
+    evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: matchup.season, rotation: sport === 'NBA' && quote.market.startsWith('player_') ? rotation.get(quote.subject) : undefined,
       opponents, identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
   }
-  return { evidence, warnings, coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };
+  return { evidence, warnings: [...new Set(warnings)], coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };
 }
 export const oddsSport: Record<Sport, string> = { NFL: 'americanfootball_nfl', NBA: 'basketball_nba' };

@@ -280,7 +280,10 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     report = { ...report, modelVersion, providerUsage, playerPropMinimum: minimumPlayerPicks,
       ...(scheduledJob ? { scheduled: { jobId: scheduledJob.id, selectionNote: scheduledJob.selection_note } } : {}) };
     const finished = await admin.rpc('gamewaire_finish', { target_run: runId, final_status: report.status, report, candidates: report.picks });
-    if (finished.error) throw new Error('Could not persist the complete analysis. No successful report is being claimed.');
+    if (finished.error) {
+      console.error('GamewAIre finalization failed', finished.error.message);
+      throw new Error('Could not persist the complete analysis. No successful report is being claimed.');
+    }
     await finishScheduled(runId, null);
     return json({ run: { ...created.data, status: report.status, payload: report, finished_at: new Date().toISOString() } });
   } catch (cause) {

@@ -11,8 +11,10 @@ export function easternClock(now: number) {
   const part = (name: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === name)?.value;
   return { date: `${part('year')}-${part('month')}-${part('day')}`, hour: Number(part('hour')), weekday: part('weekday') };
 }
-export function scheduleWindow(_sport: Sport, date: string) {
-  return { first: date, last: date };
+export function scheduleWindow(sport: Sport, date: string) {
+  const last = new Date(`${date}T12:00:00Z`);
+  if (sport === 'NFL') last.setUTCDate(last.getUTCDate() + 6);
+  return { first: date, last: last.toISOString().slice(0, 10) };
 }
 export function scheduleEvents(events: ScheduleEvent[], sport: Sport, date: string, now: number) {
   const window = scheduleWindow(sport, date);
@@ -25,13 +27,13 @@ export async function planScheduledAnalyses(admin: SupabaseClient, listEvents: (
   _fetcher: typeof fetch = fetch, now = Date.now()) {
   const clock = easternClock(now);
   if (clock.hour !== 1) return;
-  const sports: Sport[] = ['NBA', 'NFL'];
+  const sports: Sport[] = clock.weekday === 'Thu' ? ['NBA', 'NFL'] : ['NBA'];
   for (const sport of sports) {
-    const existing = await admin.from('gamewaire_schedule_batches').select('id').eq('sport', sport).eq('game_date', clock.date).maybeSingle();
+    const note = `Every upcoming ${sport} game ${sport === 'NFL' ? 'Thursday through Wednesday' : 'today'}. Moneyline/spread only; private until reviewed and published.`;
+    const existing = await admin.from('gamewaire_schedule_batches').select('id,note').eq('sport', sport).eq('game_date', clock.date).maybeSingle();
     if (existing.error) throw new Error('Could not read the scheduled analysis plan.');
-    if (existing.data) continue;
+    if (existing.data && (sport !== 'NFL' || existing.data.note === note)) continue;
     let games: Array<ScheduleEvent & { selection_note: string }> = [], error: string | null = null;
-    const note = `Every upcoming ${sport} game today. Moneyline/spread only; private until reviewed and published.`;
     try {
       const events = scheduleEvents(await listEvents(sport), sport, clock.date, now);
       games = events.map((event) => ({ ...event, selection_note: note }));

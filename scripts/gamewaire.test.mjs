@@ -1113,6 +1113,65 @@ test('NFL scheduled requests use only team markets; explicit lean publication us
   const legacy = endpoint({ publicationVersion: 'old' });
   assert.equal((await legacy.run({ action: 'publishLean', runId: '00000000-0000-0000-0000-000000000001' })).status, 400);
 });
+test('NFL supplements short current-season team samples with verified prior games, not a lowered minimum', async () => {
+  const time = Date.parse('2026-10-29T13:00:00Z');
+  const matchup = { eventId: 'espn-event', season: 2026, home: { id: '1', name: quote.home }, away: { id: '2', name: quote.away } };
+  const q = { ...quote, sport: 'NFL', market: 'h2h', subject: quote.home, side: quote.home, line: null,
+    start: new Date(time + 86400000).toISOString(), updatedAt: new Date(time).toISOString() };
+  const data = await sources.collectEvidence([q], matchup, time, async (url) => {
+    const parsed = new URL(url), year = Number(parsed.searchParams.get('season'));
+    if (!parsed.pathname.endsWith('/schedule')) return Response.json({});
+    return Response.json({ events: Array.from({ length: year === 2026 ? 6 : 17 }, (_, i) => ({
+      id: `${year}-${i}`, date: new Date(time - (year === 2026 ? 4 + i * 7 : 300 + i * 7) * 86400000).toISOString(), seasonType: { type: 2 },
+      competitions: [{ status: { type: { completed: true } }, competitors: [
+        { team: { id: '1' }, score: 30 }, { team: { id: '2' }, score: 20 },
+      ] }],
+    })) });
+  });
+  const item = data.evidence.get(q.key);
+  assert.equal(item.samples.length, 8);
+  assert.equal(item.samples.filter((row) => row.season === 2026).length, 6);
+  assert.equal(item.samples.filter((row) => row.season === 2025).length, 2);
+  assert.match(item.risks.join(' '), /carryover/);
+  const result = engine.evaluate([q], data.evidence, { ...engine.defaultSettings, markets: ['h2h'] }, time);
+  assert.ok(result.teamLean);
+  assert.match(result.teamLean.pick.baseline, /NFL supplement/);
+  assert.equal(result.teamLean.pick.seasonAverage, 10);
+  assert.equal(sources.nflSeasonSupplement([], item.samples, 2026).length, 0);
+  assert.equal(sources.nflSeasonSupplement(item.samples.slice(0, 6), [], 2026).length, 6);
+});
+test('NFL full analysis gets three verified player props from short current logs plus prior-season evidence', async () => {
+  const time = Date.parse('2026-10-29T13:00:00Z');
+  const matchup = { eventId: 'nfl', season: 2026, home: { id: '1', name: quote.home }, away: { id: '2', name: quote.away } };
+  const qs = Array.from({ length: 3 }, (_, i) => ({ ...quote, key: `nfl-player-${i}`, sport: 'NFL',
+    subject: `Player ${i}`, market: 'player_receptions', line: 4.5,
+    start: new Date(time + 86400000).toISOString(), updatedAt: new Date(time).toISOString() }));
+  const calls = [];
+  const data = await sources.collectEvidence(qs, matchup, time, async (url) => {
+    calls.push(String(url));
+    const parsed = new URL(url), year = Number(parsed.searchParams.get('season'));
+    if (parsed.pathname.endsWith('/roster')) return Response.json({ athletes: parsed.pathname.includes('/teams/1/') ? qs.map((q, i) => ({
+      id: String(i), displayName: q.subject, status: { type: 'active' }, injuries: [],
+    })) : [] });
+    if (parsed.pathname.endsWith('/gamelog')) {
+      const rows = Array.from({ length: year === 2026 ? 6 : 17 }, (_, i) => ({ eventId: `${year}-${i}`, stats: ['5'] }));
+      return Response.json({ names: ['receptions'], events: Object.fromEntries(rows.map((row, i) => [row.eventId, {
+        gameDate: new Date(time - (year === 2026 ? 4 + i * 7 : 300 + i * 7) * 86400000).toISOString(),
+      }])), seasonTypes: [{ type: 2, categories: [{ events: rows }] }] });
+    }
+    return Response.json({ events: [] });
+  });
+  const result = engine.evaluate(qs, data.evidence, { ...engine.defaultSettings, markets: ['player_receptions'], minEdge: 1 }, time, 8, 3);
+  assert.equal(result.picks.length, 3);
+  assert.equal(result.stretchKeys.length, 3);
+  for (const pick of result.picks) {
+    assert.equal(pick.samples.length, 8);
+    assert.equal(pick.samples.filter((row) => row.season === 2026).length, 6);
+    assert.equal(pick.seasonAverage, 5);
+    assert.match(pick.risks.join(' '), /carryover/);
+  }
+  assert.equal(calls.filter((url) => url.includes('/gamelog?season=2025')).length, 3);
+});
 test('Team-only evidence never fetches player rosters or player game logs', async () => {
   const calls = [];
   const teamQuote = { ...quote, market: 'h2h', subject: quote.home, side: quote.home, line: null };

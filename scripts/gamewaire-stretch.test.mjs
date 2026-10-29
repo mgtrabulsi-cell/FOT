@@ -66,3 +66,15 @@ test('Stretch never duplicates a player across markets and never adds extras whe
   assert.equal(allStretch.picks.length, 3);
   assert.equal(allStretch.stretchKeys.length, 3);
 });
+test('Manual full analysis includes a verified team lean as private Stretch without relaxing safety gates', () => {
+  const team = { ...quotes[0], sport: 'NFL', key: 'team', market: 'h2h', subject: 'Home', side: 'Home', line: null };
+  const data = new Map([...evidence, [team.key, evidence.get(quotes[0].key)]]);
+  const options = { ...settings, minEV: 1 };
+  const result = evaluate([...quotes, team], data, options, now, 8, 3);
+  assert.equal(result.picks.length, 4);
+  assert.ok(result.stretchKeys.includes(team.key));
+  assert.equal(result.teamLean.qualifies, false);
+  assert.equal(evaluate([team], data, options, now).picks.length, 0, 'Scheduled lean-only analysis does not manufacture Top Picks');
+  data.set(team.key, { ...data.get(team.key), eligible: false });
+  assert.ok(!evaluate([...quotes, team], data, options, now, 8, 3).picks.some((pick) => pick.key === team.key));
+});

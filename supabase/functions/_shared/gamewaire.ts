@@ -1,5 +1,5 @@
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v5';
+export const modelVersion = 'empirical-baseline-v6';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -240,7 +240,8 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const current = data.currentSeason === undefined ? samples : samples.filter((row) => row.season === data.currentSeason);
     const previous = data.currentSeason === undefined ? [] : samples.filter((row) => row.season === data.currentSeason! - 1);
     if (!current.length || (blended && !previous.length)) { reject('Current or previous-season baseline unavailable.'); continue; }
-    const baseline = blended ? 'Early-season 50/50 blend: current-season and previous full-season game logs. Recent weighting is paused until 12 current-season games.' : undefined;
+    const baseline = blended ? 'Early-season 50/50 blend: current-season and previous full-season game logs. Recent weighting is paused until 12 current-season games.'
+      : quote.sport === 'NFL' && previous.length ? 'Early-season NFL supplement: current-season games plus the most recent verified previous-season games to reach eight observations. Previous roles and team strength may differ.' : undefined;
     const weights = samples.map((row, index) => blended ? row.weight!
       : (1 - settings.recentWeight) / samples.length + (index < 10 ? settings.recentWeight / Math.min(10, samples.length) : 0));
     const sign = quote.side === 'Under' ? -1 : 1;
@@ -301,6 +302,12 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     picks.push(teamLean.pick);
   }
   const stretchKeys: string[] = [];
+  if (minimumPlayerPicks && teamLean && !picks.some((pick) => !pick.market.startsWith('player_'))) {
+    picks.push(teamLean.pick);
+    if (!teamLean.qualifies) stretchKeys.push(teamLean.pick.key);
+    const index = rejected.findIndex((row) => row.key === teamLean.pick.key);
+    if (index >= 0) rejected.splice(index, 1);
+  }
   const playerSubjects = new Set(picks.filter((pick) => pick.market.startsWith('player_')).map((pick) => normalize(pick.subject)));
   for (const candidate of minimumPlayerPicks ? rankTopPicks(stretchOptions) : []) {
     if (playerSubjects.size >= minimumPlayerPicks) break;
