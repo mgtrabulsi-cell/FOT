@@ -82,7 +82,7 @@ export function gameLeanBlurb(pick: Candidate) {
   const target = pick.market === 'h2h' ? `${pick.subject} moneyline`
     : `${pick.subject}${line === null ? ' spread' : ` ${line > 0 ? '+' : ''}${line}`}`;
   const first: string[] = [];
-  const reasons: string[] = [];
+  let hasSupport = false;
   if (own) first.push(`${pick.subject} are ${recordText(own.record)} this season.`);
   else if (current.length) first.push(`${pick.subject} are ${recordText({ wins: current.filter((row) => row.value > 0).length,
     losses: current.filter((row) => row.value < 0).length, ties: current.filter((row) => row.value === 0).length })} across ${current.length} recorded games${Number.isFinite(season) ? ' this season' : ''}.`);
@@ -96,7 +96,10 @@ export function gameLeanBlurb(pick: Candidate) {
   const wins = recent.filter((row) => row.value > 0).map(scoredResult).filter(Boolean).slice(0, 2);
   if (wins.length) first.push(`Their recent results include a ${wins.join(' and a ')}.`);
   const recentWins = recent.filter((row) => row.value > 0).length;
-  if (recent.length >= 3 && recentWins > recent.length / 2) reasons.push(`${pick.subject}'s recent winning form`);
+  if (recent.length >= 3 && recentWins > recent.length / 2) {
+    hasSupport = true;
+    first.push(`Winning ${recentWins} of their last ${recent.length} gives ${pick.subject} some momentum heading into this matchup.`);
+  }
   const last = recent[0], lastResult = last && scoredResult(last);
   if (lastResult && last.value <= 0) first.push(`They enter this matchup after a ${lastResult}${last.value < 0 ? ', looking to respond' : ''}.`);
   else if (!wins.length && recent.length) first.push(`Their last ${recent.length} games: ${recent.filter((row) => row.value > 0).length}-${recent.filter((row) => row.value < 0).length}${recent.some((row) => row.value === 0) ? `-${recent.filter((row) => row.value === 0).length} (W-L-T)` : ' (W-L)'}.`);
@@ -117,25 +120,26 @@ export function gameLeanBlurb(pick: Candidate) {
     const weak = defense.rank > defense.leagueSize * 2 / 3, strong = defense.rank <= defense.leagueSize / 3;
     second.push(`${defense.team} rank ${defense.rank} of ${defense.leagueSize}${defense.tied ? ' (tied)' : ''} in scoring defense, allowing ${defense.pointsAllowed.toFixed(1)} points per game${weak
       ? `; that gives ${pick.subject}'s offense a favorable scoring matchup` : strong ? `; breaking down that defense is the main challenge for ${pick.subject}` : ''}.`);
-    if (weak) reasons.unshift(`${defense.team}'s lower-third scoring defense`);
+    if (weak) hasSupport = true;
   }
   const form = pick.teamForm;
   if (form) {
     const context: string[] = [];
+    let response = '';
     if (form.latestResult !== 'tie') {
       const record = form.latestResult === 'loss' ? form.afterLoss : form.afterWin;
       if (record.wins + record.losses + record.ties) context.push(`${recordText(record)} following a ${form.latestResult}`);
-      if (record.wins + record.losses + record.ties >= 3 && record.wins > record.losses + record.ties)
-        reasons.push(form.latestResult === 'loss' ? 'their winning record in games following a loss' : 'their winning record in games following a win');
+      if (record.wins + record.losses + record.ties >= 3 && record.wins > record.losses + record.ties) {
+        hasSupport = true;
+        response = form.latestResult === 'loss' ? '; they have responded well to defeats in that sample' : '; they have built on wins in that sample';
+      }
     }
     if (pick.sport === 'NFL' && isNFLPrimetime(pick.start) && form.primetime.wins + form.primetime.losses + form.primetime.ties)
       context.push(`${recordText(form.primetime)} in Thursday/Sunday/Monday night games`);
-    if (context.length) second.push(`Across the available ${form.seasons.join('/')} regular seasons, ${pick.subject} are ${context.join(' and ')} straight up, not ATS.`);
+    if (context.length) second.push(`Across the available ${form.seasons.join('/')} regular seasons, ${pick.subject} are ${context.join(' and ')} straight up, not ATS${response}.`);
   }
-  if (meetings.length && meetings.filter((row) => row.value > 0).length > meetings.length / 2)
-    reasons.push('their winning results in the recorded meetings with this opponent');
-  if (reasons.length) second.push(`The case for ${target} is ${reasons.slice(0, 2).join(' and ')}.`);
-  else second.push(`The saved scoring baseline is the basis for ${target}; the available recent form and matchup context do not establish a separate supporting edge.`);
+  if (meetings.length && meetings.filter((row) => row.value > 0).length > meetings.length / 2) hasSupport = true;
+  if (!hasSupport) second.push('The available recent form and matchup context offer limited backing beyond the saved scoring estimate.');
   second.push(pick.market === 'spreads' ? `We're taking ${target} to cover.` : `We're taking ${pick.subject} to win outright.`);
   return `${first.join(' ')}\n\n${second.join(' ')}`;
 }
@@ -153,20 +157,20 @@ export function pickBlurb(pick: Candidate) {
   const recent = current.slice(0, 3);
   const sample = `${current.length} recorded ${currentSeason === undefined ? 'games' : 'games this season'}`;
   const sentences: string[] = [];
-  const reasons: string[] = [];
+  let hasSupport = false;
   const over = pick.side === 'Over', line = pick.line;
   const supports = (value: number) => line !== null && (over ? value > line : value < line);
   let takeaway: string;
   if (player || pick.market === 'totals') {
     const target = line === null ? `${pick.side.toLowerCase()} ${unit}` : `${pick.side.toLowerCase()} ${line} ${unit}`;
-    sentences.push(player ? `${pick.subject} averages ${pick.seasonAverage.toFixed(1)} ${unit} across ${sample}${pick.rotation ? `, with ${pick.rotation.minutes.toFixed(1)} minutes per game recently` : ''}.`
-      : `For ${pick.away} vs ${pick.home}, the teams' ${sample} averaged ${pick.seasonAverage.toFixed(1)} combined points in their separate past games, not a head-to-head average.`);
+    const production = player ? `${pick.subject} averages ${pick.seasonAverage.toFixed(1)} ${unit} across ${sample}${pick.rotation ? `, with ${pick.rotation.minutes.toFixed(1)} minutes per game recently` : ''}`
+      : `For ${pick.away} vs ${pick.home}, the teams' ${sample} averaged ${pick.seasonAverage.toFixed(1)} combined points in their separate past games, not a head-to-head average`;
+    sentences.push(`${production}${supports(pick.seasonAverage) ? `; that ${over ? 'puts the line below typical production' : 'leaves the line above typical production'}` : ''}.`);
     if (recent.length) {
       const hitCount = line === null ? '' : `; ${recent.filter((row) => over ? row.value > line : row.value < line).length} of those ${recent.length} ${player ? 'outings' : 'games'} ${over ? 'cleared' : 'stayed below'} the ${line} line`;
-      sentences.push(`Across the last ${recent.length} ${player ? 'outings' : 'games'}, the average is ${mean(recent.map((row) => row.value)).toFixed(1)} ${unit}${hitCount}.`);
+      sentences.push(`Across the last ${recent.length} ${player ? 'outings' : 'games'}, the average is ${mean(recent.map((row) => row.value)).toFixed(1)} ${unit}${hitCount}${recent.length >= 3 && supports(mean(recent.map((row) => row.value))) ? `, keeping the ${over ? 'over' : 'under'} aligned with recent production` : ''}.`);
     }
-    if (supports(pick.seasonAverage)) reasons.push(`season production ${over ? 'above' : 'below'} this line`);
-    if (recent.length >= 3 && supports(mean(recent.map((row) => row.value)))) reasons.push(`recent output ${over ? 'above' : 'below'} it`);
+    if (supports(pick.seasonAverage) || recent.length >= 3 && supports(mean(recent.map((row) => row.value)))) hasSupport = true;
     takeaway = `GamewAIre's selection is ${target}${supports(pick.seasonAverage) || line === null ? '.' : `; the season average ${pick.seasonAverage === line ? 'sits on the line' : 'leans the other way'}.`}`;
   } else {
     const wins = current.filter((row) => row.value > 0).length, losses = current.filter((row) => row.value < 0).length;
@@ -191,11 +195,13 @@ export function pickBlurb(pick: Candidate) {
     // Yardage allowed describes the matchup, not an individual player's reception count.
     const ranked = yardage && pick.market !== 'player_receptions' ? { rank: yardage.rank, size: 32, label: `${category}-yardage` }
       : pick.market === 'player_points' ? { rank: opponent.rank, size: opponent.leagueSize, label: 'scoring' } : undefined;
-    if (ranked && (over ? ranked.rank > ranked.size * 2 / 3 : ranked.rank <= ranked.size / 3))
-      reasons.unshift(`${opponent.team}'s ${over ? 'lower-third' : 'top-third'} ${ranked.label} defense`);
-    if (yardage) return `${opponent.team} allow ${yardage.perGame.toFixed(1)} ${category} yards per game (rank ${yardage.rank} of 32; 1 allows fewest)${pick.market === 'player_receptions' ? '; yards allowed do not establish how many catches an individual receiver will make' : ''}`;
+    const favorable = ranked && (over ? ranked.rank > ranked.size * 2 / 3 : ranked.rank <= ranked.size / 3);
+    if (favorable) hasSupport = true;
+    const connection = favorable ? over ? '; that defensive weakness makes this a favorable matchup for the over'
+      : '; that defensive strength adds resistance to production and favors the under' : '';
+    if (yardage) return `${opponent.team} allow ${yardage.perGame.toFixed(1)} ${category} yards per game (rank ${yardage.rank} of 32; 1 allows fewest)${pick.market === 'player_receptions' ? '; yards allowed do not establish how many catches an individual receiver will make' : connection}`;
     if (player && pick.market !== 'player_points') return '';
-    return `${opponent.team} rank ${opponent.rank} of ${opponent.leagueSize}${opponent.tied ? ' (tied)' : ''} in scoring defense, allowing ${opponent.pointsAllowed.toFixed(1)} points per game`;
+    return `${opponent.team} rank ${opponent.rank} of ${opponent.leagueSize}${opponent.tied ? ' (tied)' : ''} in scoring defense, allowing ${opponent.pointsAllowed.toFixed(1)} points per game${connection}`;
   }).filter(Boolean).join('; ');
   const history = pick.previousSeasonAverage === undefined ? '' : player
     ? `For a longer view, ${pick.subject} averaged ${pick.previousSeasonAverage.toFixed(1)} ${unit} in the available prior-season games.`
@@ -215,11 +221,10 @@ export function pickBlurb(pick: Candidate) {
   }
   if (sentences.length < 4 && (matchupForm || history)) sentences.push(matchupForm || history);
   const matchupAverage = meetings.length ? mean(meetings.map((row) => row.value)) : undefined;
-  if (matchupAverage !== undefined && supports(matchupAverage)) reasons.push('production on this side of the line in the recorded matchup history');
-  const rationale = reasons.length ? `The case is ${reasons.slice(0, 2).join(' and ')}`
-    : 'The saved estimate favors this side, but the available averages and matchup stats do not provide a clear supporting case';
+  if (matchupAverage !== undefined && supports(matchupAverage)) hasSupport = true;
+  const caveat = hasSupport ? '' : '; the available averages and matchup stats offer limited backing for this selection';
   const recentAgainst = recent.length >= 3 && line !== null && !supports(mean(recent.map((row) => row.value)));
-  return [...sentences.slice(0, 4), `${takeaway.slice(0, -1)}; ${rationale.charAt(0).toLowerCase()}${rationale.slice(1)}${recentAgainst ? '; recent production is a counterpoint, not supporting evidence' : ''}${player ? '; sportsbook lines may vary' : ''}.`].join(' ');
+  return [...sentences.slice(0, 4), `${takeaway.slice(0, -1)}${caveat}${recentAgainst ? '; recent production is a counterpoint, not supporting evidence' : ''}${player ? '; sportsbook lines may vary' : ''}.`].join(' ');
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
   return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)

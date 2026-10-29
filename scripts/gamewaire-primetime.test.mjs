@@ -97,7 +97,9 @@ test('Team blurbs summarize form, retain defense and verified situational record
   assert.match(blurb, /straight up, not ATS/);
   assert.match(blurb, /rank 24 of 32/);
   assert.match(blurb, /We're taking Home \+3\.5 to cover/);
-  assert.match(blurb, /The case for Home \+3\.5 is Away's lower-third scoring defense and Home's recent winning form/);
+  assert.match(blurb, /that gives Home's offense a favorable scoring matchup/);
+  assert.match(blurb, /Winning 3 of their last 3 gives Home some momentum/);
+  assert.doesNotMatch(blurb, /the case (?:for|is)|basis for/i);
   assert.doesNotMatch(blurb, /outscored|lost by|won by|shift the outlook|guaranteed|ATS record/i);
 });
 test('Prop reasoning connects the selected line to relevant production and matchup evidence, with honest counterpoints', () => {
@@ -107,26 +109,31 @@ test('Prop reasoning connects the selected line to relevant production and match
   const pick = { ...base, market: 'player_reception_yds', side: 'Over', line: 40.5, seasonAverage: 60,
     samples: [60, 55, 65].map((value, i) => ({ date: `2026-10-${25 - i}`, season: 2026, value })), opponents: [opponent] };
   const over = pickBlurb(pick);
-  assert.match(over, /the case is Away's lower-third receiving-yardage defense and season production above this line/);
+  assert.match(over, /defensive weakness makes this a favorable matchup for the over/);
+  assert.match(over, /puts the line below typical production/);
   assert.match(over, /280.0 receiving yards per game/);
   assert.doesNotMatch(over, /scoring defense|unassessed|displayed line and price/);
   assert.match(over, /; sportsbook lines may vary\.$/);
   const under = pickBlurb({ ...pick, side: 'Under', line: 70.5,
     opponents: [{ ...opponent, yardage: { receiving: { perGame: 170, rank: 3 } } }] });
-  assert.match(under, /the case is Away's top-third receiving-yardage defense and season production below this line/);
-  assert.doesNotMatch(under, /lower-third|above this line/);
+  assert.match(under, /defensive strength adds resistance to production and favors the under/);
+  assert.match(under, /leaves the line above typical production/);
+  assert.doesNotMatch(under, /weakness|puts the line below/);
   const opposingForm = pickBlurb({ ...pick, seasonAverage: 30, samples: pick.samples.map((row) => ({ ...row, value: 25 })) });
   assert.match(opposingForm, /season average leans the other way/);
   assert.match(opposingForm, /recent production is a counterpoint, not supporting evidence/);
-  assert.doesNotMatch(opposingForm, /case is .*production above|recent output above/);
+  assert.doesNotMatch(opposingForm, /typical production|aligned with recent production/);
   const catchCount = pickBlurb({ ...pick, market: 'player_receptions', line: 4.5 });
-  assert.doesNotMatch(catchCount, /case is Away's lower-third receiving-yardage/);
+  assert.doesNotMatch(catchCount, /defensive weakness makes this a favorable matchup/);
   assert.match(catchCount, /yards allowed do not establish how many catches/);
   const rebound = pickBlurb({ ...pick, sport: 'NBA', market: 'player_rebounds', line: 7.5 });
   assert.doesNotMatch(rebound, /scoring defense|receiving-yardage defense|receiving yards per game/);
-  assert.match(rebound, /case is season production above this line and recent output above it/);
+  assert.match(rebound, /puts the line below typical production/);
+  assert.match(rebound, /keeping the over aligned with recent production/);
   const unsupported = pickBlurb({ ...pick, opponents: [], seasonAverage: 30, samples: pick.samples.map((row) => ({ ...row, value: 25 })) });
-  assert.match(unsupported, /available averages and matchup stats do not provide a clear supporting case/);
+  assert.match(unsupported, /available averages and matchup stats offer limited backing/);
+  for (const text of [over, under, opposingForm, catchCount, rebound, unsupported])
+    assert.doesNotMatch(text, /the case (?:for|is)|basis for/i);
 });
 test('Detailed game leans use verified results from both teams without spread tutorials, invented wins or ATS', () => {
   const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];
@@ -149,7 +156,7 @@ test('Detailed game leans use verified results from both teams without spread tu
   const bounceBack = pickBlurb({ ...pick, teamForm: { latestResult: 'loss', seasons: [2025, 2026],
     afterLoss: { wins: 8, losses: 2, ties: 0 }, afterWin: { wins: 2, losses: 8, ties: 0 },
     primetime: { wins: 0, losses: 0, ties: 0 } } });
-  assert.match(bounceBack, /The case for Home \+3.5 is their winning record in games following a loss/);
+  assert.match(bounceBack, /they have responded well to defeats in that sample/);
   assert.equal(text.split('\n\n').length, 2);
   assert.doesNotMatch(text, /quality opposition|projects to be a close|ATS record|blown out/);
   for (const line of [3.5, -3.5, 3, -3, 0, .5]) {

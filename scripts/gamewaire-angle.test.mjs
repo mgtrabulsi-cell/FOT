@@ -12,8 +12,9 @@ test('Manual post contains ordered published selections and reasoning, with exac
   assert.match(draft.narrative, /^#1 Game Lean: Home \+3.5 \(\+105\)/);
   assert.match(draft.narrative, /#2 Top Pick: Receiver - Over 55.5 Receiving yards \(-110\)/);
   assert.match(draft.narrative, /Away @ Home/);
-  assert.match(draft.evidence, /season production above this line/);
-  assert.match(draft.evidence, /basis for Home \+3.5/);
+  assert.match(draft.evidence, /puts the line below typical production/);
+  assert.match(draft.evidence, /limited backing beyond the saved scoring estimate/);
+  assert.doesNotMatch(draft.evidence, /the case (?:for|is)|basis for/i);
   assert.equal(draft.status, 'draft'); assert.equal(draft.reviewed, false);
   assert.equal(draft.post_to_x, false); assert.deepEqual(draft.themes, ['betting']);
   assert.deepEqual(draft.picks, []);
