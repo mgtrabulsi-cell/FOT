@@ -5,6 +5,9 @@ import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, Publish
 import { nbaCalendarDate } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import './gamewaire.css';
+import GamewairePickOrder from './GamewairePickOrder';
+import { orderedTopPicks } from './services/gamewaireOrder';
+import type { PickOrder } from './services/gamewaireOrder';
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
 const odds = (value: number) => value > 0 ? `+${value}` : String(value);
@@ -195,13 +198,14 @@ export default function Gamewaire() {
   const [leans, setLeans] = useState<GameLean[]>([]);
   const [batches, setBatches] = useState<ScheduleBatch[]>([]), [jobs, setJobs] = useState<ScheduleJob[]>([]);
   const [completion, setCompletion] = useState<{ completed: string[]; completionWarning: string }>({ completed: [], completionWarning: '' });
+  const [orders, setOrders] = useState<PickOrder[]>([]);
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => {
     let active = true;
     const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 20_000);
     void engineRequest<EngineStatus>({ action: 'status' }, controller.signal)
       .then(async (nextStatus) => ({ nextStatus, history: await loadEngineHistory(controller.signal, nextStatus.canAnalyze) }))
-      .then(({ nextStatus, history }) => { if (!controller.signal.aborted) { setStatus(nextStatus); setRuns(history.runs); setPicks(history.picks); setPublished(history.published); setLeans(history.leans); setBatches(history.batches); setJobs(history.jobs); setLoaded(true); setError(''); } })
+      .then(({ nextStatus, history }) => { if (!controller.signal.aborted) { setStatus(nextStatus); setRuns(history.runs); setPicks(history.picks); setPublished(history.published); setLeans(history.leans); setBatches(history.batches); setJobs(history.jobs); setOrders(history.orders); setLoaded(true); setError(''); } })
       .catch((cause: unknown) => { if (active) setError(controller.signal.aborted ? 'GamewAIre refresh timed out. Retry to update saved reports.' : errorMessage(cause)); })
       .finally(() => window.clearTimeout(timeout));
     const poll = window.setInterval(() => { if (document.visibilityState !== 'hidden' && navigator.onLine) setRefresh((value) => value + 1); }, 60_000);
@@ -230,7 +234,7 @@ export default function Gamewaire() {
   const memberGames = published.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate);
   const memberReport = memberGames.find((game) => game.event_id === memberGame);
   const candidateView = !!status?.canAnalyze && pickView === 'candidates';
-  const publishedPicks = rankTopPicks((memberGame ? (memberReport ? [memberReport] : []) : memberGames).flatMap((game) => game.picks)).slice(0, 4);
+  const publishedPicks = orderedTopPicks((memberGame ? (memberReport ? [memberReport] : []) : memberGames).flatMap((game) => game.picks), orders).slice(0, 5);
   const visibleLeans = leans.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate
     && (!memberGame || game.event_id === memberGame));
   const gameOptions = [...memberGames, ...leans.filter((game) => (memberSport === 'all' || game.sport === memberSport)
@@ -420,9 +424,15 @@ export default function Gamewaire() {
           </details>
         </>}
       </section> : <>
+        {status?.canAnalyze && <details className="gai-order-tools"><summary>Arrange published Top Picks</summary>
+          <GamewairePickOrder key={memberDate} date={memberDate} refresh={refreshHistory}
+            picks={published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate).flatMap((game) => game.picks)}
+            order={orders.find((order) => order.game_date === memberDate)}
+            onSave={(saved) => { setOrders((previous) => [saved, ...previous.filter((order) => order.game_date !== saved.game_date)]); refreshHistory(); }} />
+        </details>}
         {memberReport && <p>{memberReport.matchup} · Published {stamp(memberReport.published_at)}</p>}
         {loaded && !publishedPicks.length && <div className="gai-empty"><h4>No published picks yet</h4><p>No published picks for this league and date yet. An admin must analyze and publish a game first.</p></div>}
-        <div className="gai-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
+        <div className="gai-picks gai-published-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
           record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />)}</div>
         <section aria-label="Game team leans"><h4>Game team leans</h4>
           <p className="gai-note">One data-supported moneyline or spread per game. NBA and NFL leans appear only after owner review and publication. Leans are separate from Top Picks and are not betting recommendations.</p>

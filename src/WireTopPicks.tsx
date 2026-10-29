@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { PickCard } from './Gamewaire';
-import { rankTopPicks } from './services/gamewaire';
+import { orderedTopPicks, wirePickLimit } from './services/gamewaireOrder';
+import type { PickOrder } from './services/gamewaireOrder';
 import type { PublishedGame, Sport } from './services/gamewaire';
 import type { Game } from './services/sportsData';
 import { supabase } from './services/supabaseClient';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
-export default function WireTopPicks({ games, sport, userId }: { games: Game[]; sport: Sport; userId?: string }) {
+export default function WireTopPicks({ games, sport, userId, desktop }: { games: Game[]; sport: Sport; userId?: string; desktop: boolean }) {
   const [reports, setReports] = useState<PublishedGame[]>([]);
   const [loaded, setLoaded] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
+  const [orders, setOrders] = useState<PickOrder[]>([]);
   const eventIds = [...new Set(games.filter((game) => game.status !== 'FINAL').map((game) => game.eventId))].sort().join(',');
   useEffect(() => subscribeForegroundRefresh(() => setRetry((value) => value + 1)), []);
   useEffect(() => {
@@ -19,10 +21,15 @@ export default function WireTopPicks({ games, sport, userId }: { games: Game[]; 
     const load = async () => {
       if (!supabase) throw new Error('Account services are not configured.');
       // Odds-provider IDs differ from ESPN IDs, so match the published candidates' saved ESPN identity.
-      const { data, error: problem } = await supabase.from('gamewaire_publications').select('*')
-        .eq('sport', sport).order('event_start', { ascending: false }).limit(200).abortSignal(controller.signal);
+      const [{ data, error: problem }, orderResult] = await Promise.all([
+        supabase.from('gamewaire_publications').select('*')
+          .eq('sport', sport).order('event_start', { ascending: false }).limit(200).abortSignal(controller.signal),
+        supabase.from('gamewaire_pick_orders').select('*')
+          .order('game_date', { ascending: false }).limit(200).abortSignal(controller.signal),
+      ]);
       if (problem) throw problem;
-      if (!controller.signal.aborted) { setReports(data as PublishedGame[]); setLoaded(true); setError(''); }
+      if (orderResult.error) throw orderResult.error;
+      if (!controller.signal.aborted) { setReports(data as PublishedGame[]); setOrders(orderResult.data as PickOrder[]); setLoaded(true); setError(''); }
     };
     void load().catch((cause: unknown) => {
       if (!active) return;
@@ -36,8 +43,8 @@ export default function WireTopPicks({ games, sport, userId }: { games: Game[]; 
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); window.clearInterval(poll); };
   }, [userId, sport, eventIds, retry]);
   const activeIds = new Set(eventIds.split(','));
-  const picks = rankTopPicks(reports.flatMap((report) => report.picks).filter((pick) =>
-    !!pick.identifiers?.espnEventId && activeIds.has(pick.identifiers.espnEventId))).slice(0, 4);
+  const picks = orderedTopPicks(reports.flatMap((report) => report.picks).filter((pick) =>
+    !!pick.identifiers?.espnEventId && activeIds.has(pick.identifiers.espnEventId)), orders).slice(0, wirePickLimit(desktop));
   return <aside className="gai-panel wire-top-picks" aria-label="GamewAIre Top Picks">
     <header><span className="eyebrow">PUBLISHED PICKS · {sport}</span>
       <h2><span className="gamewaire-name">Gamew<strong>AI</strong>re</span></h2><h3>Top Picks</h3></header>

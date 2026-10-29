@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import type { PickOrder } from './gamewaireOrder';
 import type { Candidate, Settings, Sport } from '../../supabase/functions/_shared/gamewaire';
 export { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '../../supabase/functions/_shared/gamewaire';
 export type { Candidate, Settings, Sport, TeamLean } from '../../supabase/functions/_shared/gamewaire';
@@ -49,8 +50,12 @@ export async function loadEngineHistory(signal: AbortSignal, canAnalyze = false)
   const runs = canAnalyze ? await supabase.from('gamewaire_runs').select('*').order('created_at', { ascending: false }).limit(50).abortSignal(signal)
     : { data: [], error: null };
   if (runs.error) throw new Error(`Could not load GamewAIre reports: ${runs.error.message}`);
-  const published = await supabase.from('gamewaire_publications').select('*').order('event_start', { ascending: false }).limit(200).abortSignal(signal);
+  const [published, orders] = await Promise.all([
+    supabase.from('gamewaire_publications').select('*').order('event_start', { ascending: false }).limit(200).abortSignal(signal),
+    supabase.from('gamewaire_pick_orders').select('*').order('game_date', { ascending: false }).limit(200).abortSignal(signal),
+  ]);
   if (published.error) throw new Error(`Could not load published GamewAIre games: ${published.error.message}`);
+  if (orders.error) throw new Error(`Could not load published pick order: ${orders.error.message}`);
   const picks: StoredPick[] = [];
   const leans = await supabase.from('gamewaire_team_leans').select('*').order('event_start', { ascending: false }).limit(200).abortSignal(signal);
   if (leans.error) throw new Error(`Could not load GamewAIre team leans: ${leans.error.message}`);
@@ -67,5 +72,5 @@ export async function loadEngineHistory(signal: AbortSignal, canAnalyze = false)
     if (page.data.length < 500) break;
   }
   return { runs: runs.data as AnalysisRun[], picks, published: published.data as PublishedGame[], leans: leans.data as GameLean[],
-    batches: batches.data as ScheduleBatch[], jobs: jobs.data as ScheduleJob[] };
+    batches: batches.data as ScheduleBatch[], jobs: jobs.data as ScheduleJob[], orders: orders.data as PickOrder[] };
 }
