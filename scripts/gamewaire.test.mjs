@@ -590,7 +590,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
   const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
     .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
-    .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key)).map((p,i)=>renderPick(p,i+1));')
+    .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>{const visible=picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key));return visible.map((p,i)=>renderPick(p,i+1,visible.map(p=>p.key)));};')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
     .replace(/from ['"]\.\/services\/gamewaireGames['"]/g, `from '${new URL('../src/services/gamewaireGames.ts', import.meta.url)}'`)
@@ -641,6 +641,12 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(stretchCard, /-2\.0 pp/);
   assert.doesNotMatch(stretchCard, /\+-/);
   assert.doesNotMatch(renderToStaticMarkup(createElement(PickCard, { pick: candidate, rank: 1 })), /Stretch/);
+  const bestBet = renderToStaticMarkup(createElement(PickCard, { pick: candidate, rank: 1, bestBet: 'Top Pick' }));
+  assert.match(bestBet, /gai-best-bet-banner/);
+  assert.match(bestBet, /Gamew<strong>AI<\/strong>re/);
+  assert.match(bestBet, /BEST BET/);
+  assert.match(bestBet, /#1 Top Pick/);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(PickCard, { pick: candidate, rank: 2 })), /BEST BET/);
   const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date().toISOString(), matchup: 'Away at Home', settings, created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
   const pick = { ...candidate, id: 'pick', event_start: quote.start, created_at: quote.updatedAt, push_probability: candidate.pushProbability,
     result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1, is_top_pick: true, is_game_lean: false };
@@ -649,7 +655,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   memberState[23] = 'event'; memberState[25] = quote.start.slice(0, 10);
   fixture(memberState);
   const report = renderToStaticMarkup(createElement(Page));
-  assert.match(report, /class="gai-pick angle-card"/);
+  assert.match(report, /class="gai-pick angle-card gai-best-bet"/);
   assert.match(report, /Book A/);
   assert.match(report, /loss/);
   assert.match(report, /withdrawn/);
@@ -757,10 +763,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const nflFilter = [...adminState]; nflFilter[6] = 'NFL';
   fixture(nflFilter);
   const wrongLeague = renderToStaticMarkup(createElement(Page));
-  assert.doesNotMatch(wrongLeague, /class="gai-pick angle-card"/, 'Changing league never displays an unrelated saved NBA report');
+  assert.doesNotMatch(wrongLeague, /class="gai-pick angle-card(?: gai-best-bet)?"/, 'Changing league never displays an unrelated saved NBA report');
   const archived = [...adminState]; archived[7] = '2025-01-01';
   fixture(archived);
-  assert.doesNotMatch(renderToStaticMarkup(createElement(Page)), /class="gai-pick angle-card"/, 'Report date follows the Eastern game date filter');
+  assert.doesNotMatch(renderToStaticMarkup(createElement(Page)), /class="gai-pick angle-card(?: gai-best-bet)?"/, 'Report date follows the Eastern game date filter');
   fixture([status, [{ ...run, payload: { picks: [
     { ...candidate, key: 'spread', market: 'spreads', subject: 'Boston Celtics', side: 'Boston Celtics', line: 4.5 },
     { ...candidate, key: 'ml', market: 'h2h', subject: 'Denver Nuggets', side: 'Denver Nuggets', line: null },
@@ -803,7 +809,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const leanView = renderToStaticMarkup(createElement(Page));
   assert.match(leanView, /Game Lean · Not a Top Pick/);
   assert.doesNotMatch(leanView, /No published picks yet/);
-  assert.equal((leanView.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selecting an unpublished lean game never shows another game\'s published picks');
+  assert.equal((leanView.match(/class="gai-pick angle-card(?: gai-best-bet)?"/g) ?? []).length, 1, 'Selecting an unpublished lean game never shows another game\'s published picks');
+  assert.match(leanView, /#1 Game Lean/);
   const publishedLean = leanState[27][0].team_lean.pick;
   for (const canAnalyze of [false, true]) {
     for (const result of ['win', 'loss', 'pending', 'push', 'void']) {
@@ -861,7 +868,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     assert.equal((output.match(/class="gai-history-row"/g) ?? []).length, count);
     assert.match(output, /aria-label="Results type"/);
     assert.ok(output.includes(label));
-    assert.ok(output.includes(`<dt>Win rate</dt><dd>${rate}`), 'Each record calculates its own summary, without duplicate shared rows');
+    assert.ok(output.includes(`<dt>Win rate</dt><dd${view === 'top' ? '' : ' class="gai-hit-rate-positive"'}>${rate}`),
+      'Each record calculates its own summary and colors only rates above 50 percent green');
     assert.match(output, /Top Pick \+ Game Lean/);
     assert.match(output, /class="gai-record-card"/);
   }
@@ -871,10 +879,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   mixed[24] = 'NFL'; mixed[20] = 'NFL';
   fixture(mixed);
   const nflOnly = renderToStaticMarkup(createElement(Page));
-  assert.equal((nflOnly.match(/class="gai-pick angle-card"/g) ?? []).length, 1);
+  assert.equal((nflOnly.match(/class="gai-pick angle-card gai-best-bet"/g) ?? []).length, 1);
   assert.equal((nflOnly.match(/class="gai-history-row"/g) ?? []).length, 1);
   assert.match(nflOnly, /Summary: all NFL history/);
-  assert.match(nflOnly, /<dt>Win rate<\/dt><dd>100\.0%/);
+  assert.match(nflOnly, /<dt>Win rate<\/dt><dd class="gai-hit-rate-positive">100\.0%/);
   assert.doesNotMatch(nflOnly, /gai-result-loss">Lost/);
   mixed[21] = '2025-01-01';
   fixture(mixed);

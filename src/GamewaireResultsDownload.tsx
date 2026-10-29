@@ -20,10 +20,10 @@ export default function GamewaireResultsDownload({ picks, disabled }: { picks: S
   };
   return <div className="gai-results-download">
     <button type="button" disabled={disabled || busy} onClick={() => void download()}>{busy ? 'Creating graphic...' : 'Download results graphic'}</button>
-    <small>All-time NBA + NFL: Game Leans, Top Picks and All Picks. Records, hit rates and three latest picks each. List filters do not change the export.</small>
+    <small>Instagram portrait PNG (1080 x 1350). All-time NBA + NFL records and hit rates only, with no past picks. List filters do not change the export.</small>
     {error && <p role="alert" className="feed-warning">{error}</p>}
     {preview && <details><summary>View downloaded graphic</summary>
-      <img src={preview} alt="GamewAIre results graphic with all-time records, hit rates and three recent picks per section" />
+      <img src={preview} alt="GamewAIre results graphic with Top Picks, Game Leans and All Picks records, pending counts and hit rates" />
       <a href={preview} download="GameWire-GamewAIre-Results.png">Save PNG again</a>
       <p className="gai-note">Snapshot from your last download. Download again after grading or changing results.</p>
     </details>}

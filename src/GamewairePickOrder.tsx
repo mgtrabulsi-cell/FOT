@@ -8,7 +8,7 @@ import { notifyPickOrderSaved } from './services/gamewaireOrderRefresh';
 
 export default function GamewairePickOrder({ picks, order, date, refresh, onSave, visibleKeys, renderPick }: {
   picks: Candidate[]; order?: PickOrder; date: string; refresh: () => void; onSave: (order: PickOrder) => void;
-  visibleKeys?: string[]; renderPick?: (pick: Candidate, rank: number) => ReactNode;
+  visibleKeys?: string[]; renderPick?: (pick: Candidate, rank: number, orderedKeys: string[]) => ReactNode;
 }) {
   const [keys, setKeys] = useState(() => orderedTopPicks(picks, order ? [order] : []).map((pick) => pick.key));
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
@@ -87,7 +87,7 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
       if (!pick) return null;
       return <li key={key} data-pick-key={key} className={dragging === key ? 'is-dragging' : ''}>
         <span className="gai-order-number">{index + 1}</span>
-        <div className="gai-order-pick">{renderPick ? renderPick(pick, index + 1) : <><b>{pick.subject} · {pick.market === 'h2h' ? 'ML' : `${pick.side} ${pick.line ?? ''}`}</b><small>{pick.sport} · {pick.away} @ {pick.home}</small></>}</div>
+        <div className="gai-order-pick">{renderPick ? renderPick(pick, index + 1, displayedKeys) : <><b>{pick.subject} · {pick.market === 'h2h' ? 'ML' : `${pick.side} ${pick.line ?? ''}`}</b><small>{pick.sport} · {pick.away} @ {pick.home}</small></>}</div>
         <button type="button" className="gai-order-handle" disabled={busy} aria-label={`Reorder ${pick.subject}, position ${index + 1} of ${displayedKeys.length}`}
           onKeyDown={(event) => {
             const to = event.key === 'ArrowUp' ? Math.max(0, index - 1) : event.key === 'ArrowDown' ? Math.min(displayedKeys.length - 1, index + 1)

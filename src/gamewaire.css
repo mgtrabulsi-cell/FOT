@@ -103,6 +103,12 @@
 .gai-advanced[open] { display: grid; gap: 14px; }
 .gai-picks { display: grid; gap: 10px; margin: 14px 0; }
 .gai-panel .gai-pick { position: relative; min-width: 0; padding: 0; border: 1px solid #263b55; border-radius: 6px; background: #0e1929; box-shadow: none; }
+.gai-panel .gai-pick.gai-best-bet { border-color: #b94a59; background: linear-gradient(135deg, #34202e, #0e1929 65%); box-shadow: inset 3px 0 #ff5965; }
+.gai-best-bet-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px; padding: 0 0 10px; margin-bottom: 10px; border-bottom: 1px solid #753443; font-size: 11px; color: #e5eaf3; }
+.gai-best-bet-banner .gamewaire-name { font: 600 17px var(--display); }
+.gai-best-bet-banner b { padding: 4px 7px; border-radius: 3px; background: #cc2633; color: #fff; font-size: 10px; letter-spacing: 0.08em; }
+.gai-best-bet-banner > span:last-child { color: #ffc0c6; }
+.gai-panel .gai-hit-rate-positive { color: #86d9ad; }
 .gai-panel .gai-pick-summary { display: block; padding: 14px; list-style: none; }
 .gai-pick-summary::-webkit-details-marker { display: none; }
 .gai-pick[data-selectable="true"] .gai-pick-top { padding-left: 44px; }

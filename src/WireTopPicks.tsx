@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PickCard } from './Gamewaire';
-import { orderedTopPicks, publishedSelections, wirePickLimit } from './services/gamewaireOrder';
+import { bestBetLabels, orderedTopPicks, publishedSelections, wirePickLimit } from './services/gamewaireOrder';
 import type { PickOrder } from './services/gamewaireOrder';
 import type { GameLean, PublishedGame, Sport } from './services/gamewaire';
 import type { Game } from './services/sportsData';
@@ -52,6 +52,7 @@ export default function WireTopPicks({ games, sport, userId, desktop }: { games:
   const activeIds = new Set(eventIds.split(','));
   const picks = orderedTopPicks(publishedSelections(reports, leans).filter((pick) =>
     !!pick.identifiers?.espnEventId && activeIds.has(pick.identifiers.espnEventId)), orders).slice(0, wirePickLimit(desktop));
+  const bestBets = bestBetLabels(picks);
   return <aside className="gai-panel wire-top-picks" aria-label="GamewAIre Top Picks and Game Leans">
     <header><span className="eyebrow">PUBLISHED PICKS · {sport}</span>
       <h2><span className="gamewaire-name">Gamew<strong>AI</strong>re</span></h2><h3>Top Picks &amp; Game Leans</h3></header>
@@ -59,7 +60,7 @@ export default function WireTopPicks({ games, sport, userId, desktop }: { games:
       {error && <p role="alert" className="feed-warning">{error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
       {!loaded && !error && <p role="status">Loading published picks and leans…</p>}
       {loaded && !picks.length && <p>No published picks or leans for the unfinished games on this scoreboard.</p>}
-      <div className="gai-picks">{picks.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} lean={pick.isGameLean} />)}</div>
+      <div className="gai-picks">{picks.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} lean={pick.isGameLean} bestBet={bestBets.get(pick.key)} />)}</div>
     </>}
     <a className="wire-picks-link" href="#gamewaire">Open GamewAIre</a>
     <p className="gai-note">Published selections only. Estimates are unvalidated, not guarantees or betting recommendations.</p>

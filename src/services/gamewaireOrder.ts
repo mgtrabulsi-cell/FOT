@@ -4,13 +4,24 @@ import type { Candidate } from '../../supabase/functions/_shared/gamewaire.ts';
 export type PickOrder = { game_date: string; pick_keys: string[]; revision: number };
 export const wirePickLimit = (desktop: boolean) => desktop ? 5 : 3;
 export function publishedSelections(publications: { picks: Candidate[] }[], leans: { team_lean: { pick: Candidate } | null }[]) {
-  const selections = new Map<string, Candidate & { isGameLean: boolean }>();
-  for (const game of publications) for (const pick of game.picks) selections.set(pick.key, { ...pick, isGameLean: false });
+  const selections = new Map<string, Candidate & { isGameLean: boolean; isPublishedLean: boolean }>();
+  for (const game of publications) for (const pick of game.picks) selections.set(pick.key, { ...pick, isGameLean: false, isPublishedLean: false });
   for (const game of leans) {
     const pick = game.team_lean?.pick;
-    if (pick && !selections.has(pick.key)) selections.set(pick.key, { ...pick, isGameLean: true });
+    if (!pick) continue;
+    const shared = selections.get(pick.key);
+    if (shared) shared.isPublishedLean = true;
+    else selections.set(pick.key, { ...pick, isGameLean: true, isPublishedLean: true });
   }
   return [...selections.values()];
+}
+export function bestBetLabels(picks: { key: string; isGameLean: boolean; isPublishedLean?: boolean }[]) {
+  const top = picks.find((pick) => !pick.isGameLean);
+  const lean = picks.find((pick) => pick.isGameLean || pick.isPublishedLean);
+  const labels = new Map<string, string>();
+  if (top) labels.set(top.key, 'Top Pick');
+  if (lean) labels.set(lean.key, lean.key === top?.key ? 'Top Pick + Game Lean' : 'Game Lean');
+  return labels;
 }
 export function pickOrderDate(start: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })

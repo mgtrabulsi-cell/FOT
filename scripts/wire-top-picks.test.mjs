@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { orderedTopPicks, publishedSelections, wirePickLimit } from '../src/services/gamewaireOrder.ts';
+import { bestBetLabels, orderedTopPicks, publishedSelections, wirePickLimit } from '../src/services/gamewaireOrder.ts';
 
 const source = readFileSync(new URL('../src/WireTopPicks.tsx', import.meta.url), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
@@ -14,7 +14,7 @@ function render(reports, props, orders = [], leans = []) {
     if (name === 'react') return { useEffect() {}, useState: () => [states[slot++], () => {}] };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === './Gamewaire') return { PickCard: 'PickCard' };
-    if (name === './services/gamewaireOrder') return { orderedTopPicks, publishedSelections, wirePickLimit };
+    if (name === './services/gamewaireOrder') return { bestBetLabels, orderedTopPicks, publishedSelections, wirePickLimit };
     return {};
   } });
   vm.runInContext(code, context);
@@ -55,6 +55,7 @@ test('Wire includes published leans in the shared order and limit, deduplicates 
     .filter((node) => node.type === 'PickCard');
   assert.deepEqual(cards.map((card) => card.props.pick.key), ['lean', 'top']);
   assert.deepEqual(cards.map((card) => card.props.lean), [true, false]);
+  assert.deepEqual(cards.map((card) => card.props.bestBet), ['Game Lean', 'Top Pick']);
 });
 test('Wire panels load on desktop or inside an explicitly expanded mobile disclosure', () => {
   const wrapper = readFileSync(new URL('../src/WireWithPicks.tsx', import.meta.url), 'utf8');

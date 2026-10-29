@@ -33,6 +33,17 @@ test('Editorial order spans sports, ignores removed keys and appends new picks w
   assert.deepEqual(movePick(['a', 'b', 'c'], 0, 2), ['b', 'c', 'a']);
   assert.deepEqual(movePick(['a', 'b'], 0, -1), ['a', 'b']);
 });
+test('Best Bet branding follows the first selection in each category, including a shared Top Pick/Game Lean', () => {
+  const merged = orderHelpers.publishedSelections([{ picks: [picks[0], picks[1]] }],
+    [{ team_lean: { pick: picks[2] } }, { team_lean: { pick: picks[0] } }]);
+  const snapshot = JSON.stringify(merged);
+  assert.deepEqual([...orderHelpers.bestBetLabels(merged)], [['0', 'Top Pick + Game Lean']]);
+  assert.deepEqual([...orderHelpers.bestBetLabels([merged[2], merged[1], merged[0]])],
+    [['1', 'Top Pick'], ['2', 'Game Lean']]);
+  assert.deepEqual([...orderHelpers.bestBetLabels([merged[2]])], [['2', 'Game Lean']]);
+  assert.equal(orderHelpers.bestBetLabels([]).size, 0);
+  assert.equal(JSON.stringify(merged), snapshot);
+});
 
 const source = readFileSync(new URL('../src/GamewairePickOrder.tsx', import.meta.url), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: {

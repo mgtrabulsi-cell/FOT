@@ -9,7 +9,7 @@ function fixture({ noContext = false, noBlob = false } = {}) {
   const source = readFileSync(new URL('../src/services/gamewaireResultsGraphic.ts', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const texts = [];
-  const ctx = new Proxy({ measureText: (text) => ({ width: text.length * 13 }), fillText: (text, x, y) => texts.push({ text, x, y }),
+  const ctx = new Proxy({ measureText: (text) => ({ width: text.length * 13 }), fillText: (text, x, y) => texts.push({ text, x, y, color: ctx.fillStyle }),
     createLinearGradient: () => ({ addColorStop() {} }) }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = { width: 0, height: 0, getContext: () => noContext ? null : ctx,
     toBlob: (callback) => callback(noBlob ? null : new Blob(['png'], { type: 'image/png' })) };
@@ -26,43 +26,45 @@ const rows = [
   pick(4, 'push', { is_top_pick: false, is_game_lean: true }), pick(5, 'void', { is_top_pick: false, is_game_lean: true }),
   pick(6, 'win', { is_game_lean: true, withdrawn: true }),
 ];
-test('Results graphic has exactly three sections, accurate all-time records and latest three picks without double-counting shared picks', () => {
+test('Results graphic has exactly three record-only sections without double-counting shared picks', () => {
   const { resultsGraphicSections } = fixture();
   const sections = resultsGraphicSections([...rows, rows[0], pick(7, 'win', { is_top_pick: false })]);
   assert.equal(sections.length, 3);
-  assert.deepEqual(Array.from(sections, (s) => s.title), ['GAME LEANS', 'TOP PICKS', 'ALL PICKS']);
-  const [leans, top, all] = sections;
+  assert.deepEqual(Array.from(sections, (s) => s.title), ['TOP PICKS', 'GAME LEANS', 'ALL PICKS']);
+  const [top, leans, all] = sections;
   assert.equal(leans.wins, 2); assert.equal(leans.losses, 0); assert.equal(leans.hitRate, 1);
   assert.equal(top.wins, 2); assert.equal(top.losses, 1); assert.equal(top.hitRate, 2 / 3);
   assert.equal(all.wins, 2); assert.equal(all.losses, 1); assert.equal(all.hitRate, 2 / 3);
   assert.equal(all.pending, 1); assert.equal(all.pushes, 1); assert.equal(all.voids, 1);
-  assert.deepEqual(Array.from(all.recent, (p) => p.id), [6, 5, 4]);
+  assert.ok(sections.every((section) => !('recent' in section)));
   const reset = resultsGraphicSections(rows.map((p) => p.id === 6 ? { ...p, result: 'pending' } : p))[2];
   assert.equal(reset.hitRate, 0.5); assert.equal(reset.pending, 2);
 });
-test('Renderer exports a fixed portrait PNG with result labels and percentages, without private financial/Stretch data or network requests', async () => {
+test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no picks or private financial/Stretch data', async () => {
   const r = fixture();
   const blob = await r.renderResultsGraphic(rows, new Date('2026-10-29T13:00:00Z'));
   assert.equal(blob.type, 'image/png');
-  assert.equal(r.canvas.width, 1080); assert.equal(r.canvas.height, 1800);
+  assert.equal(r.canvas.width, 1080); assert.equal(r.canvas.height, 1350);
   const text = r.texts.map((row) => row.text).join('\n');
-  for (const expected of ['GAME LEANS', 'TOP PICKS', 'ALL PICKS', '66.7%', '100.0%', 'HIT', 'PENDING', 'PUSH', 'VOID', 'Withdrawn']) assert.ok(text.includes(expected), expected);
-  assert.doesNotMatch(text, /ROI|profit|units|Stretch|settlement_note|closing/i);
-  assert.ok(r.texts.every((row) => row.y > 0 && row.y < 1800));
+  for (const expected of ['GAME LEANS', 'TOP PICKS', 'ALL PICKS', '66.7%', '100.0%', 'HIT RATE', 'PENDING', '2 W / 1 L']) assert.ok(text.includes(expected), expected);
+  assert.doesNotMatch(text, /ROI|profit|units|Stretch|settlement_note|closing|Player \d|recent|Withdrawn/i);
+  assert.ok(r.texts.every((row) => row.y > 0 && row.y < 1350 && row.x >= 60 && row.x < 1020));
+  assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.color === '#86d9ad'));
 });
 test('Empty and pending-only sections do not invent a hit rate, and rendering failures are explicit', async () => {
   const r = fixture();
   await r.renderResultsGraphic([]);
   assert.equal(r.texts.filter((row) => row.text === 'N/A').length, 3);
-  assert.equal(r.texts.filter((row) => row.text === 'No published results yet.').length, 3);
   assert.equal(r.resultsGraphicSections([pick(1, 'pending')])[2].hitRate, null);
   await assert.rejects(fixture({ noContext: true }).renderResultsGraphic(rows), /could not create/);
   await assert.rejects(fixture({ noBlob: true }).renderResultsGraphic(rows), /could not export/);
 });
-test('Recent rows include exact spread and moneyline selections with explicit outcomes', async () => {
-  const r = fixture();
-  await r.renderResultsGraphic([pick(1, 'loss', { market: 'spreads', subject: 'Team A', line: 3.5 }),
-    pick(2, 'win', { market: 'h2h', subject: 'Team B' })]);
-  const texts = r.texts.map((row) => row.text);
-  assert.ok(texts.includes('Team A +3.5')); assert.ok(texts.includes('Team B ML')); assert.ok(texts.includes('MISSED'));
+test('Only hit rates strictly above 50 percent are green; exactly 50, below and unavailable stay neutral', async () => {
+  for (const [results, expected] of [[['win', 'loss'], '50.0%'], [['win', 'loss', 'loss'], '33.3%'], [['pending'], 'N/A']]) {
+    const r = fixture();
+    await r.renderResultsGraphic(results.map((result, index) => pick(index + 1, result)));
+    const rates = r.texts.filter((row) => row.text === expected);
+    assert.ok(rates.length >= 2);
+    assert.ok(rates.every((row) => row.color === '#e5eaf3'));
+  }
 });

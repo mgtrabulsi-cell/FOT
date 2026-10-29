@@ -7,7 +7,7 @@ import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import './gamewaire.css';
 import GamewairePickOrder from './GamewairePickOrder';
 import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
-import { orderedTopPicks, publishedSelections } from './services/gamewaireOrder';
+import { bestBetLabels, orderedTopPicks, publishedSelections } from './services/gamewaireOrder';
 import type { PickOrder } from './services/gamewaireOrder';
 import GamewaireResultsDownload from './GamewaireResultsDownload';
 
@@ -28,17 +28,18 @@ const pickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject} 
   : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
   : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
 const resultLabels = { pending: 'Pending', win: 'Won', loss: 'Lost', push: 'Push', void: 'Void' };
-export function PickCard({ pick, record, rank, selection, technical = false, stretch = false, lean = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean; stretch?: boolean; lean?: boolean;
+export function PickCard({ pick, record, rank, selection, technical = false, stretch = false, lean = false, bestBet }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean; stretch?: boolean; lean?: boolean; bestBet?: string;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
   const valueScore = gamewaireGrade(pick).score;
   const grade = probabilityGrade(pick.probability);
   const marketLabel = marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ');
   const title = pickTitle(pick);
-  return <article className="gai-pick angle-card" data-selectable={!!selection}>
+  return <article className={`gai-pick angle-card${bestBet ? ' gai-best-bet' : ''}`} data-selectable={!!selection}>
     {selection && <label className="gai-select-pick"><input type="checkbox" checked={selection.checked} disabled={selection.disabled}
       aria-label={`Select ${title}`} onChange={(event) => selection.onChange(event.target.checked)} /></label>}
     <details className="gai-pick-details">
     <summary className="gai-pick-summary" aria-label={`Why this pick: ${title}`}>
+    {bestBet && <div className="gai-best-bet-banner"><span className="gamewaire-name">Gamew<strong>AI</strong>re</span><b>BEST BET</b><span>#1 {bestBet}</span></div>}
     <div className="gai-pick-top">
       <div className="gai-pick-identity gai-history-pick">
         <div><span className="eyebrow"><span aria-label={`Rank ${rank}`}>#{String(rank).padStart(2, '0')}</span> · {pick.sport} · {marketLabel}</span>
@@ -260,6 +261,7 @@ export default function Gamewaire() {
     published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate),
     leans.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate));
   const publishedPicks = orderedTopPicks(matchingSelections, orders).slice(0, 5);
+  const publishedBestBets = bestBetLabels(publishedPicks);
   const gameOptions = [...memberGames, ...leans.filter((game) => (memberSport === 'all' || game.sport === memberSport)
     && nbaCalendarDate(new Date(game.event_start)) === memberDate && !memberGames.some((publishedGame) => publishedGame.event_id === game.event_id))];
   const refreshHistory = () => setRefresh((value) => value + 1);
@@ -337,7 +339,7 @@ export default function Gamewaire() {
             return <button key={view} className="gai-record-card" onClick={() => openResults(view)} aria-label={`View ${label} results`}>
               <span className="gai-record-label">{label}</span>
               <strong>{summary.wins}<small> Hit · </small>{rows.filter((pick) => pick.result === 'loss').length}<small> Missed</small></strong>
-              <span>{percent(summary.winRate)} hit rate · {summary.pending} pending</span>
+              <span><span className={summary.winRate !== null && summary.winRate > 0.5 ? 'gai-hit-rate-positive' : undefined}>{percent(summary.winRate)}</span> hit rate · {summary.pending} pending</span>
               <span className="gai-record-link">View results <span aria-hidden="true">→</span></span>
             </button>;
           })}
@@ -487,7 +489,8 @@ export default function Gamewaire() {
           <GamewairePickOrder key={memberDate} date={memberDate} refresh={refreshHistory}
             picks={dateSelections}
             visibleKeys={matchingSelections.map((pick) => pick.key)}
-            renderPick={(pick, rank) => <PickCard pick={pick} rank={rank}
+            renderPick={(pick, rank, orderedKeys) => <PickCard pick={pick} rank={rank}
+              bestBet={bestBetLabels(orderedKeys.flatMap((key) => matchingSelections.filter((selection) => selection.key === key))).get(pick.key)}
               lean={dateSelections.find((selection) => selection.key === pick.key)?.isGameLean}
               stretch={stretches.some((row) => row.pick_key === pick.key && published.some((game) => game.run_id === row.run_id && game.picks.some((candidate) => candidate.key === pick.key)))}
               record={picks.find((row) => (dateSelections.find((selection) => selection.key === pick.key)?.isGameLean ? row.is_game_lean : row.is_top_pick)
@@ -498,6 +501,7 @@ export default function Gamewaire() {
         {memberReport && <p>{memberReport.matchup} · Published {stamp(memberReport.published_at)}</p>}
         {loaded && !publishedPicks.length && <div className="gai-empty"><h4>No published picks yet</h4><p>No published picks or Game Leans for this league and date yet. An admin must analyze and publish a game first.</p></div>}
         {!status?.canAnalyze && <div className="gai-picks gai-published-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
+          bestBet={publishedBestBets.get(pick.key)}
           lean={pick.isGameLean}
           record={picks.find((row) => (pick.isGameLean ? row.is_game_lean : row.is_top_pick)
             && row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />)}</div>
@@ -528,7 +532,7 @@ export default function Gamewaire() {
       {loaded && <dl className={`gai-results-stats${status?.canAnalyze ? '' : ' gai-results-public'}`}>
         <div><dt>Record</dt><dd>{historyPicks.filter((pick) => pick.result === 'win').length}<span> W · </span>{historyPicks.filter((pick) => pick.result === 'loss').length}<span> L</span></dd></div>
         <div><dt>Pending</dt><dd>{record.pending}</dd></div>
-        <div><dt>Win rate</dt><dd>{percent(record.winRate)}</dd></div>
+        <div><dt>Win rate</dt><dd className={record.winRate !== null && record.winRate > 0.5 ? 'gai-hit-rate-positive' : undefined}>{percent(record.winRate)}</dd></div>
         {status?.canAnalyze && <><div className={record.profit > 0 ? 'gai-profit-positive' : record.profit < 0 ? 'gai-profit-negative' : ''}><dt>Profit / loss</dt><dd>{record.profit > 0 ? '+' : ''}{record.profit.toFixed(2)}<span> units</span></dd></div>
         <div><dt>ROI</dt><dd>{percent(record.roi)}</dd></div></>}
       </dl>}
