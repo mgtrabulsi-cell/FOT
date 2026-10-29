@@ -1,5 +1,5 @@
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v7';
+export const modelVersion = 'empirical-baseline-v8';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -242,6 +242,9 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       rejected.push({ key: quote.key, reason: 'Invalid price, probability, line or timestamp.' }); continue;
     }
     if ((!settings.markets.includes(quote.market) && !['h2h', 'spreads'].includes(quote.market)) || (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player)))) continue;
+    if (quote.market.startsWith('player_') && quote.american < -200) {
+      rejected.push({ key: quote.key, reason: 'Player props must be priced at -200 or better; worse prices are excluded, including Stretch picks.' }); continue;
+    }
     if (settings.direction !== 'both' && ['Over', 'Under'].includes(quote.side) && quote.side.toLowerCase() !== settings.direction) continue;
     if (Date.parse(quote.start) <= now) { rejected.push({ key: quote.key, reason: 'Game has started; pregame analysis only.' }); continue; }
     if (now - Date.parse(quote.updatedAt) > 10 * 60_000 || Date.parse(quote.updatedAt) > now + 60_000) {

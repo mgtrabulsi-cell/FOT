@@ -274,7 +274,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }
     if (minimumPlayerPicks && report.picks.filter((pick: Candidate) => pick.market.startsWith('player_')).length < minimumPlayerPicks) {
-      report.warnings.push(`Fewer than ${minimumPlayerPicks} distinct players have verified, fresh, complete markets and sufficient eligible data. Missing or unsafe player props were not invented.`);
+      report.warnings.push(`Fewer than ${minimumPlayerPicks} distinct players have verified, fresh, complete markets priced at -200 or better and sufficient eligible data. Missing or unsafe player props were not invented.`);
     }
     const availableMarkets = new Set(allQuotes.map((quote) => quote.market));
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));

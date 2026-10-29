@@ -464,6 +464,7 @@ export default function Gamewaire() {
           {!!report.payload.playerPropMinimum && <p className="gai-note">
             {report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0} player props · {report.payload.stretchKeys?.length ?? 0} Stretch (private label).
             {' '}Stretch options may be published but did not pass every normal value screen.
+            {' '}New player-prop analyses require odds of -200 or better, including Stretch options.
             {' '}Target: {report.payload.playerPropMinimum} distinct players{report.payload.playerPropMinimum === 8 ? ' for this primetime NFL game' : ''}.
             {(report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0) < report.payload.playerPropMinimum && ' Fewer eligible players had sufficient verified data and fresh markets; no missing props were invented.'}
           </p>}

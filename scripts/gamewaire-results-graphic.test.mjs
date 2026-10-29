@@ -5,18 +5,20 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { performance } from '../supabase/functions/_shared/gamewaire.ts';
 
-function fixture({ noContext = false, noBlob = false } = {}) {
+function fixture({ noContext = false, noBlob = false, noFonts = false } = {}) {
   const source = readFileSync(new URL('../src/services/gamewaireResultsGraphic.ts', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const texts = [];
-  const ctx = new Proxy({ measureText: (text) => ({ width: text.length * 13 }), fillText: (text, x, y) => texts.push({ text, x, y, color: ctx.fillStyle }),
+  const texts = [], fontLoads = [], boxes = [];
+  const ctx = new Proxy({ measureText: (text) => ({ width: text.length * 13 }), fillText: (text, x, y) => texts.push({ text, x, y, color: ctx.fillStyle, font: ctx.font }),
+    roundRect: (...args) => boxes.push(args),
     createLinearGradient: () => ({ addColorStop() {} }) }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = { width: 0, height: 0, getContext: () => noContext ? null : ctx,
     toBlob: (callback) => callback(noBlob ? null : new Blob(['png'], { type: 'image/png' })) };
-  const context = vm.createContext({ exports: {}, Intl, Date, Blob, Map,
-    document: { createElement: () => canvas }, require: () => ({ performance }) });
+  const context = vm.createContext({ exports: {}, Intl, Date, Blob, Map, setTimeout, clearTimeout,
+    document: { createElement: () => canvas, fonts: { load: async (font) => { fontLoads.push(font); return noFonts ? [] : [{}]; }, check: () => !noFonts } },
+    require: () => ({ performance }) });
   vm.runInContext(code, context);
-  return { ...context.exports, texts, canvas };
+  return { ...context.exports, texts, canvas, fontLoads, boxes };
 }
 const pick = (id, result, patch = {}) => ({ id, result, sport: 'NBA', event_start: `2026-10-${String(20 + id).padStart(2, '0')}T23:00:00Z`,
   is_top_pick: true, is_game_lean: false, probability: 0.6, push_probability: 0, american: -110, withdrawn: false,
@@ -46,21 +48,28 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
   assert.equal(blob.type, 'image/png');
   assert.equal(r.canvas.width, 1080); assert.equal(r.canvas.height, 1350);
   const text = r.texts.map((row) => row.text).join('\n');
-  for (const expected of ['GAME LEANS', 'TOP PICKS', 'ALL PICKS', '66.7%', '100.0%', 'HIT RATE', 'PENDING', '2 W / 1 L']) assert.ok(text.includes(expected), expected);
+  for (const expected of ['GAME LEANS', 'TOP PICKS', 'ALL PICKS', '66.7%', '100.0%', 'Win rate', 'Pending', 'Record', ' W · ', ' L']) assert.ok(text.includes(expected), expected);
   assert.doesNotMatch(text, /ROI|profit|units|Stretch|settlement_note|closing|Player \d|recent|Withdrawn/i);
   assert.ok(r.texts.every((row) => row.y > 0 && row.y < 1350 && row.x >= 60 && row.x < 1020));
   assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.color === '#86d9ad'));
+  assert.ok(r.fontLoads.includes('700 48px Oswald'));
+  assert.ok(r.fontLoads.includes('400 22px "DM Sans"'));
+  assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.font === '700 48px Oswald'));
+  assert.ok(r.texts.filter((row) => row.text === 'Record').every((row) => row.font === '400 22px "DM Sans"'));
+  assert.equal(r.boxes.length, 9);
+  assert.ok(r.boxes.every((box) => box[2] === (960 - 32) / 3 && box[3] === 162 && box[4] === 12));
 });
 test('Empty and pending-only sections do not invent a hit rate, and rendering failures are explicit', async () => {
   const r = fixture();
   await r.renderResultsGraphic([]);
-  assert.equal(r.texts.filter((row) => row.text === 'N/A').length, 3);
+  assert.equal(r.texts.filter((row) => row.text === 'Unavailable').length, 3);
   assert.equal(r.resultsGraphicSections([pick(1, 'pending')])[2].hitRate, null);
   await assert.rejects(fixture({ noContext: true }).renderResultsGraphic(rows), /could not create/);
   await assert.rejects(fixture({ noBlob: true }).renderResultsGraphic(rows), /could not export/);
+  await assert.rejects(fixture({ noFonts: true }).renderResultsGraphic(rows), /fonts could not load/);
 });
 test('Only hit rates strictly above 50 percent are green; exactly 50, below and unavailable stay neutral', async () => {
-  for (const [results, expected] of [[['win', 'loss'], '50.0%'], [['win', 'loss', 'loss'], '33.3%'], [['pending'], 'N/A']]) {
+  for (const [results, expected] of [[['win', 'loss'], '50.0%'], [['win', 'loss', 'loss'], '33.3%'], [['pending'], 'Unavailable']]) {
     const r = fixture();
     await r.renderResultsGraphic(results.map((result, index) => pick(index + 1, result)));
     const rates = r.texts.filter((row) => row.text === expected);

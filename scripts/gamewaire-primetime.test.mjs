@@ -39,6 +39,24 @@ test('Defensive yardage parser reads opponent statistics only and rejects wrong 
   assert.throws(() => nflOpponentYardage(body, '1', 2026, 7), /game count/);
   assert.throws(() => nflOpponentYardage({ ...body, results: {} }, '1', 2026), /unavailable/);
 });
+test('NBA and NFL prop odds stop at -200 for normal and Stretch candidates without restricting team leans', () => {
+  for (const sport of ['NBA', 'NFL']) for (const minEdge of [0, 1]) {
+    const prices = [-400, -210, -201, -200, -199, -110, 100, 210];
+    const pool = prices.map((american, i) => ({ ...quotes[0], sport, american, key: `price-${i}`, subject: `Player ${i}` }));
+    const team = { ...pool[0], key: 'team', subject: 'Home', side: 'Home', market: 'h2h', line: null };
+    const data = new Map([...pool, team].map((q) => [q.key, { eligible: true, quality: 1, fetchedAt: new Date(now).toISOString(), risks: [],
+      samples: Array.from({ length: 12 }, (_, i) => ({ value: 80, date: new Date(now - (1 + i) * 86400000).toISOString() })) }]));
+    const result = evaluate([...pool, team], data, { ...defaultSettings, markets: ['player_reception_yds'], minEdge, minEV: 0 }, now, 9, 8);
+    const props = result.picks.filter((q) => q.market.startsWith('player_'));
+    assert.deepEqual(props.map((q) => q.american).sort((a, b) => a - b), prices.slice(3));
+    assert.equal(result.rejected.filter((q) => /-200 or better/.test(q.reason)).length, 3);
+    assert.equal(result.teamLean.pick.american, -400);
+    if (minEdge === 1) assert.ok(props.every((q) => result.stretchKeys.includes(q.key)));
+    const duplicate = evaluate([...pool, { ...pool[3], american: -250, book: 'Worse book' }], data,
+      { ...defaultSettings, markets: ['player_reception_yds'], minEdge: 1 }, now, 9, 8);
+    assert.equal(duplicate.picks.find((q) => q.key === pool[3].key).american, -200);
+  }
+});
 test('Situational records use real consecutive games within each season, not ATS or cross-season transitions', () => {
   const form = teamSituationalForm([
     { date: '2025-12-29T01:20:00Z', season: 2025, value: -7 },
