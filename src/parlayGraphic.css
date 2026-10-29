@@ -1,0 +1,35 @@
+.parlay-add-on, .parlay-builder { grid-column: 1 / -1; min-width: 0; border: 1px solid #26476b; border-radius: 12px; padding: 18px; background: linear-gradient(140deg, #10243b, #0a111c 70%); }
+.parlay-builder { display: grid; gap: 18px; }
+.parlay-builder header h3 { margin: 4px 0 8px; color: #e8f3ff; font-size: 26px; }
+.parlay-builder p, .parlay-add-on p { color: #b7c5df; font-size: 14px; line-height: 1.5; margin: 6px 0; }
+.parlay-builder fieldset { min-width: 0; border: 1px solid #294567; border-radius: 9px; padding: 14px; margin: 0; }
+.parlay-builder legend { color: #69baff; font-weight: 700; padding: 0 8px; }
+.parlay-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.parlay-fields label, .parlay-builder fieldset > label { display: grid; gap: 6px; min-width: 0; color: #d3def0; font-size: 13px; }
+.parlay-fields input, .parlay-fields select, .parlay-builder input[type="search"] { width: 100%; min-width: 0; box-sizing: border-box; font-size: 16px; min-height: 44px; }
+.parlay-wide { grid-column: 1 / -1; }
+.parlay-builder .parlay-checkbox { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.parlay-builder .parlay-checkbox input { width: 20px; height: 20px; }
+.parlay-builder small { color: #91a7c7; line-height: 1.5; }
+.parlay-player-list { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.parlay-builder button { min-height: 44px; white-space: normal; }
+.parlay-player-list button { display: grid; text-align: left; gap: 3px; padding: 10px; min-width: 0; }
+.parlay-leg-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.parlay-leg-list > li { padding: 15px; border: 1px solid #263d5a; border-radius: 10px; background: #101c2c; min-width: 0; }
+.parlay-leg-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.parlay-leg-heading > div { display: grid; gap: 3px; min-width: 0; }
+.parlay-leg-heading strong { color: #43aaff; overflow-wrap: anywhere; font-size: 18px; }
+.parlay-leg-number { display: grid; place-items: center; border: 1px solid #199aff; width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; color: #69baff; }
+.parlay-leg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.parlay-leg-summary { color: #e6eefb !important; }
+.parlay-builder .parlay-warning { color: #f1c48b; overflow-wrap: anywhere; }
+.parlay-preview { display: grid; justify-items: center; gap: 10px; }
+.parlay-preview img { width: min(100%, 380px); height: auto; border: 1px solid #24609a; border-radius: 10px; }
+.parlay-preview a { color: #69baff; padding: 12px; }
+.parlay-builder .parlay-save-note { font-size: 12px; }
+@media (max-width: 600px) {
+  .parlay-builder, .parlay-add-on { padding: 12px; }
+  .parlay-fields { grid-template-columns: minmax(0, 1fr); }
+  .parlay-player-list { grid-template-columns: minmax(0, 1fr); }
+  .parlay-leg-actions button { flex: 1 1 auto; }
+}

@@ -25,6 +25,9 @@ import { postThemes } from './services/postThemes';
 import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import ActiveAngleBets from './ActiveAngleBets';
+import ParlayGraphicBuilder from './ParlayGraphicBuilder';
+import { parlayGraphicError, withParlayPick } from './services/parlayGraphic';
+import { renderParlayGraphic } from './services/parlayGraphicImage';
 
 type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; unreadKeys?: readonly string[]; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
@@ -134,7 +137,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         resetPhotos();
         setForm(draft.form);
         setDirty(true);
-        setPhotos(draft.photos.map((photo) => {
+        setPhotos(draft.photos.filter((photo) => !photo.path || photo.path !== draft.form.parlay_graphic?.image_path).map((photo) => {
           const preview = photo.file ? URL.createObjectURL(photo.file) : postPhotoUrl(photo.path ?? '');
           if (photo.file) previews.current.add(preview);
           return { ...photo, preview };
@@ -261,7 +264,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       return;
     }
     resetPhotos();
-    setPhotos((next?.image_paths ?? []).map((path) => ({ path, preview: postPhotoUrl(path) })));
+    setPhotos((next?.image_paths ?? []).filter((path) => path !== next?.parlay_graphic?.image_path).map((path) => ({ path, preview: postPhotoUrl(path) })));
     setForm(next ? { ...next, picks: anglePicks(next) } : null); setDirty(false); setActionError(''); setNotice('');
     if (next) window.setTimeout(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
   }
@@ -294,6 +297,11 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     if (!angleThemes(form).length) { setActionError('Choose at least one theme. The first selected theme labels the notification.'); return; }
     const validation = status === 'published' ? anglePublishError(form) : !form.matchup.trim() ? 'Add the matchup before saving.' : '';
     if (validation) { setActionError(validation); return; }
+    if (form.parlay_graphic) {
+      const error = parlayGraphicError(form.parlay_graphic);
+      if (error) { setActionError(error); return; }
+      if (photos.length >= 4) { setActionError('The parlay graphic needs one attachment slot. Keep at most three other photos or videos.'); return; }
+    }
     if (status === 'draft' && form.status === 'published' && !window.confirm('Move this published angle back to private drafts?')) return;
     setBusy(true); setActionError(''); setNotice('');
     const uploaded: string[] = [];
@@ -301,6 +309,19 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     try {
       if (!user) throw new Error('Sign in to upload storyline attachments.');
       const paths: string[] = [];
+      let prepared = form;
+      if (form.parlay_graphic) {
+        const blob = await renderParlayGraphic(form.parlay_graphic);
+        const file = new File([blob], 'GameWire-Parlay.png', { type: 'image/png' });
+        const validation = angleMediaError(file);
+        if (validation) throw new Error(validation);
+        const path = `${user.id}/${crypto.randomUUID()}.png`;
+        const upload = await supabase.storage.from('livewire-photos').upload(path, file, { contentType: file.type, upsert: false });
+        if (upload.error) throw upload.error;
+        uploaded.push(path); paths.push(path);
+        prepared = { ...form, picks: withParlayPick(form.picks ?? [], form.parlay_graphic),
+          parlay_graphic: { ...form.parlay_graphic, image_path: path } };
+      }
       for (const photo of photos) {
         if (photo.path) { paths.push(photo.path); continue; }
         if (!photo.file) throw new Error('Attachment file is missing. Select it again.');
@@ -313,7 +334,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         uploaded.push(path); paths.push(path);
       }
       const { id, revision, season: boardSeason, week: boardWeek } = form;
-      const payload = angleWriteFields({ ...form, image_paths: paths }, status);
+      const payload = angleWriteFields({ ...prepared, image_paths: paths }, status);
       if (payload.source_url && !isAngleSource(payload.source_url)) throw new Error('Use a valid HTTP or HTTPS source link.');
       const result = id
         ? await supabase.from('angles').update({ ...payload, revision: revision + 1 }).eq('id', id).eq('revision', revision).select('*').maybeSingle()
@@ -325,7 +346,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       setRows((previous) => [saved, ...previous.filter((row) => row.id !== saved.id)]);
       if (saved.id === storyId) setLinkedStory(saved.status === 'published' ? saved : null);
       resetPhotos();
-      setPhotos((saved.image_paths ?? []).map((path) => ({ path, preview: postPhotoUrl(path) })));
+      setPhotos((saved.image_paths ?? []).filter((path) => path !== saved.parlay_graphic?.image_path).map((path) => ({ path, preview: postPhotoUrl(path) })));
       setForm(saved); setDirty(false); setRefresh((value) => value + 1);
       if (status === 'published') {
         try {
@@ -476,9 +497,18 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         {(form.evidence || form.counterpoint) && <details><summary>Retained source context</summary>{form.evidence && <p>{form.evidence}</p>}{form.counterpoint && <p>{form.counterpoint}</p>}</details>}
         {field('title', 'Headline (your own words)', 140)}
         {field('narrative', 'Storyline', 1500, true)}
+        {!news && <ParlayGraphicBuilder value={form.parlay_graphic ?? null} onChange={(value) => {
+          setForm((previous) => {
+            if (!previous) return previous;
+            const picks = value ? previous.picks
+              : (previous.picks ?? []).filter((pick) => pick.id !== previous.parlay_graphic?.pickId);
+            return { ...previous, parlay_graphic: value, picks, reviewed: false };
+          });
+          setDirty(true);
+        }} />}
         <div className="angle-pick-editor">
           <p>Admin picks (optional opinions). Add each straight, sprinkle, or complete parlay separately.</p>
-          {(form.picks ?? []).map((pick, index) => <div key={pick.id}>
+          {(form.picks ?? []).filter((pick) => pick.id !== form.parlay_graphic?.pickId).map((pick, index) => <div key={pick.id}>
             <label className="angle-pick-type-field">Pick {index + 1} type<select className="pick-type-select" value={pickCategory(pick)} onChange={(event) => {
               const category = pickCategories.find((value) => value === event.target.value);
               if (category) change('picks', (form.picks ?? []).map((item) => item.id === pick.id ? { ...item, category } : item));
@@ -491,10 +521,11 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           <p>Straights and parlays have separate records. Sprinkles are shown but excluded from records. Enter each parlay as one pick, not one pick per leg.</p>
         </div>
         <AngleReviewPicker picks={form.review_picks ?? []} storyId={form.id} onChange={(picks) => change('review_picks', picks)} />
-        <label htmlFor={`angle-${section}-photos`}>Photos and videos (optional, up to four total)</label>
-        <input id={`angle-${section}-photos`} type="file" accept={angleMediaAccept} multiple disabled={photos.length >= 4} onChange={(event) => {
+        {form.parlay_graphic && <p>One tracked parlay is managed by the graphic builder above. Its generated image uses one of your four attachment slots and is included when posting to X.</p>}
+        <label htmlFor={`angle-${section}-photos`}>Photos and videos (optional, up to {form.parlay_graphic ? 'three plus the parlay graphic' : 'four total'})</label>
+        <input id={`angle-${section}-photos`} type="file" accept={angleMediaAccept} multiple disabled={photos.length >= (form.parlay_graphic ? 3 : 4)} onChange={(event) => {
           const files = Array.from(event.target.files ?? []); event.target.value = '';
-          if (photos.length + files.length > 4) { setActionError('Attach at most four photos or videos total.'); return; }
+          if (photos.length + files.length + (form.parlay_graphic ? 1 : 0) > 4) { setActionError('Attach at most four photos or videos total, including the parlay graphic.'); return; }
           const validation = files.map(angleMediaError).find(Boolean);
           if (validation) { setActionError(validation); return; }
           setActionError(''); setDirty(true); change('reviewed', false);

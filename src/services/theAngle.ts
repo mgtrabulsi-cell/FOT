@@ -5,6 +5,8 @@ import { anglePicks, angleSport, angleSports, nflSport, pickCategory, readAngleP
 import type { AnglePick, PickCategory } from './anglePicks.ts';
 import { readAngleReviews } from './angleReviews.ts';
 import type { AngleReviewPick } from './angleReviews.ts';
+import { readParlayGraphic } from './parlayGraphic.ts';
+import type { ParlayGraphic } from './parlayGraphic.ts';
 export { anglePicks, angleSport, angleSports, readAnglePicks } from './anglePicks.ts';
 export type { AnglePick, AngleSportKey } from './anglePicks.ts';
 
@@ -37,6 +39,7 @@ export type Angle = {
   news_types?: NewsType[];
   themes?: PostTheme[];
   post_to_x?: boolean;
+  parlay_graphic?: ParlayGraphic | null;
 };
 export type AngleSection = 'angle' | 'news';
 export const newsTypes = [
@@ -100,6 +103,7 @@ export function angleWriteFields(angle: Angle, status: Angle['status']) {
     news_types: angleSection(angle) === 'news' ? [...new Set(angle.news_types ?? [])] : [],
     themes: angleThemes(angle),
     post_to_x: angle.post_to_x ?? false,
+    parlay_graphic: angle.parlay_graphic ?? null,
   };
 }
 
@@ -128,6 +132,7 @@ export function readAngles(value: unknown): Angle[] {
   };
   if (!Array.isArray(value) || !value.every(isAngle)) throw new Error('The server returned invalid angle data. Please reload.');
   value.forEach((angle) => {
+    if (angle.parlay_graphic !== undefined && angle.parlay_graphic !== null) readParlayGraphic(angle.parlay_graphic);
     if ('picks' in angle) readAnglePicks(angle.picks);
     if ('review_picks' in angle) readAngleReviews(angle.review_picks);
     if ('published_at' in angle && angle.published_at !== null
