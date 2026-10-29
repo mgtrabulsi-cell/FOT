@@ -164,23 +164,21 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
   </section>;
 }
 function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }) {
-  const [result, setResult] = useState(pick.result), [note, setNote] = useState('');
-  const [closing, setClosing] = useState(''), [closingAt, setClosingAt] = useState('');
-  const [withdrawn, setWithdrawn] = useState(pick.withdrawn), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  return <details><summary>Admin: settle or withdraw {pick.subject}</summary><form className="gai-form" onSubmit={(event) => {
+  const [result, setResult] = useState<'win' | 'loss' | ''>(pick.result === 'win' || pick.result === 'loss' ? pick.result : '');
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+  return <details><summary>Log result · {pick.subject}</summary><form className="gai-form" onSubmit={(event) => {
     event.preventDefault(); setBusy(true); setError('');
-    void engineRequest({ action: 'settle', id: pick.id, revision: pick.revision, result, note, withdrawn,
-      closingAmerican: closing ? Number(closing) : null, closingLine: pick.line, closingAt: closingAt ? new Date(closingAt).toISOString() : null })
-      .then(refresh).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
+    setSaved(false);
+    void engineRequest({ action: 'settle', id: pick.id, revision: pick.revision, result })
+      .then(() => { setSaved(true); refresh(); }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
   }}>
-    <label>Result<select value={result} onChange={(event) => setResult(event.target.value as StoredPick['result'])}>
-      {(['pending', 'win', 'loss', 'push', 'void'] as const).map((value) => <option key={value}>{value}</option>)}
-    </select></label>
-    <label>Source / reason<input value={note} onChange={(event) => setNote(event.target.value)} minLength={5} maxLength={1000} required /></label>
-    <label>Closing American odds (same line, optional)<input type="number" value={closing} onChange={(event) => setClosing(event.target.value)} /></label>
-    <label>Closing-price timestamp (local)<input type="datetime-local" value={closingAt} onChange={(event) => setClosingAt(event.target.value)} required={!!closing} /></label>
-    <label><input type="checkbox" checked={withdrawn} onChange={(event) => setWithdrawn(event.target.checked)} />Withdrawn (remains in all-history reporting)</label>
-    <button disabled={busy}>{busy ? 'Saving…' : 'Save settlement'}</button>
+    <fieldset disabled={busy}><legend>Result</legend>
+      {(['win', 'loss'] as const).map((value) => <label key={value}><input type="radio" name={`result-${pick.id}`} value={value}
+        checked={result === value} onChange={() => { setResult(value); setSaved(false); }} required />{value === 'win' ? 'Hit' : 'Missed'}</label>)}
+    </fieldset>
+    <button disabled={busy || !result}>{busy ? 'Saving…' : 'Save result'}</button>
+    {saved && <p role="status">Result saved.</p>}
     {error && <p role="alert" className="feed-warning">{error}</p>}
   </form></details>;
 }

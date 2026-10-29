@@ -583,7 +583,7 @@ test('GamewAIre navigation is ordered correctly and AI styling is bold red witho
 
 test('GamewAIre renders provider setup, real reports and complete metrics without fabricated empty-state picks', async () => {
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
-  const component = ts.transpileModule(raw, { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
+  const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=()=>null;')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
@@ -594,7 +594,14 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
-  const { default: Page, fixture, PickCard } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
+  const { default: Page, fixture, PickCard, Settlement } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
+  fixture([]);
+  const settlement = renderToStaticMarkup(createElement(Settlement, { pick: { id: 'pick', result: 'pending', subject: 'Player' }, refresh() {} }));
+  assert.match(settlement, />Hit<\/label>/);
+  assert.match(settlement, />Missed<\/label>/);
+  assert.match(settlement, /Save result/);
+  assert.equal((settlement.match(/type="radio"/g) ?? []).length, 2);
+  assert.doesNotMatch(settlement, /Source|reason|Closing|Withdrawn|<select/);
   const status = { canAnalyze: true, oddsReady: false, aiReady: false, model: engine.modelVersion, experimental: true };
   fixture([status, [], [], true]);
   const empty = renderToStaticMarkup(createElement(Page));
@@ -802,7 +809,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false } = {}) {
+function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
+  settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
     GAMEWIRE_CRON_SECRET: 'fixture-cron',
@@ -818,10 +826,11 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
         upsert: () => builder,
         delete: () => builder,
         maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role }
+          : table === 'gamewaire_picks' ? settlementConflict ? null : { id: 'pick' }
           : table === 'sports_resources' ? eventCache
           : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } }
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
-        single: async () => ({ data: { ...builder.value, id: 'run-fixture' }, error: null }),
+        single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
       };
       return builder;
@@ -868,6 +877,24 @@ test('Endpoint requires authentication/admin access and honestly reports unconfi
   assert.equal((await member.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 403);
   assert.equal(member.fetches.length, 0);
   assert.equal((await member.run({ action: 'publish', runId: '00000000-0000-0000-0000-000000000001', keys: [quote.key] })).status, 403);
+});
+test('Hit/Missed result logging needs no note or closing fields and preserves existing metadata and conflict guards', async () => {
+  const body = { action: 'settle', id: '00000000-0000-0000-0000-000000000001', revision: 1 };
+  for (const result of ['win', 'loss']) {
+    const api = endpoint();
+    assert.equal((await api.run({ ...body, result })).status, 200);
+    const update = api.writes.find(({ table }) => table === 'gamewaire_picks').value;
+    assert.equal(update.result, result);
+    assert.equal(update.revision, 2);
+    for (const field of ['settlement_note', 'withdrawn', 'closing_american', 'closing_line', 'closing_at']) {
+      assert.equal(field in update, false, `Simple logging preserves historical ${field}`);
+    }
+    assert.equal(api.fetches.length, 0);
+  }
+  assert.equal((await endpoint().run({ ...body, result: 'invented' })).status, 400);
+  assert.equal((await endpoint({ settlementConflict: true }).run({ ...body, result: 'win' })).status, 409);
+  assert.equal((await endpoint({ settlementPick: { event_start: quote.start } }).run({ ...body, result: 'win' })).status, 400);
+  assert.equal((await endpoint({ allowed: false }).run({ ...body, result: 'win' })).status, 403);
 });
 test('Other admins and owners have member-only GamewAIre access with no paid requests or writes', async () => {
   for (const role of ['admin', 'owner', 'member']) {

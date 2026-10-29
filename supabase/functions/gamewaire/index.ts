@@ -163,7 +163,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (body.action === 'settle') {
       if (typeof body.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.id) || !Number.isInteger(body.revision)
         || !['win', 'loss', 'push', 'void', 'pending'].includes(String(body.result))
-        || typeof body.note !== 'string' || body.note.trim().length < 5 || body.note.length > 1000 || typeof body.withdrawn !== 'boolean') return json({ error: 'Provide a pick, revision, result and a source/reason for the change.' }, 400);
+        || (body.note !== undefined && (typeof body.note !== 'string' || body.note.length > 1000))
+        || (body.withdrawn !== undefined && typeof body.withdrawn !== 'boolean')) return json({ error: 'Provide a pick, revision and valid result.' }, 400);
       let closing: number | null = null;
       if (body.closingAmerican !== null && body.closingAmerican !== undefined) {
         if (typeof body.closingAmerican !== 'number') return json({ error: 'Invalid closing odds.' }, 400);
@@ -176,7 +177,9 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (closing !== null && (typeof body.closingAt !== 'string' || !Number.isFinite(Date.parse(body.closingAt)) || Date.parse(body.closingAt) >= Date.parse(pick.data.event_start)
         || typeof body.closingLine !== 'number' && body.closingLine !== null || body.closingLine !== pick.data.line)) return json({ error: 'Closing price must be timestamped before the event and match the original line for price-value comparison.' }, 400);
       const update = await admin.from('gamewaire_picks').update({
-        result: body.result, withdrawn: body.withdrawn, settlement_note: body.note.trim(),
+        result: body.result,
+        ...(typeof body.withdrawn === 'boolean' ? { withdrawn: body.withdrawn } : {}),
+        ...(typeof body.note === 'string' ? { settlement_note: body.note.trim() || null } : {}),
         settled_at: body.result === 'pending' ? null : new Date().toISOString(), revision: Number(body.revision) + 1,
         ...(closing === null ? {} : { closing_american: closing, closing_line: body.closingLine, closing_at: body.closingAt }),
       }).eq('id', body.id).eq('revision', body.revision).select('id').maybeSingle();
