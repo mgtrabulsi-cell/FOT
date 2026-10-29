@@ -11,12 +11,19 @@ set local role authenticated;
 do $$
 declare target date; keys text[]; saved public.gamewaire_pick_orders; old_revision integer;
 begin
-  select (event_start at time zone 'America/New_York')::date into target
-    from public.gamewaire_publications order by event_start desc limit 1;
+  select max((event_start at time zone 'America/New_York')::date) into target from (
+    select event_start from public.gamewaire_publications
+    union all select event_start from public.gamewaire_team_leans
+  ) games;
   if target is null then raise exception 'Test requires an existing publication'; end if;
-  select array_agg(distinct pick->>'key' order by pick->>'key' desc) into keys
-    from public.gamewaire_publications p cross join lateral jsonb_array_elements(p.picks) pick
-    where (p.event_start at time zone 'America/New_York')::date=target;
+  select array_agg(distinct key order by key desc) into keys from (
+    select pick->>'key' as key
+      from public.gamewaire_publications p cross join lateral jsonb_array_elements(p.picks) pick
+      where (p.event_start at time zone 'America/New_York')::date=target
+    union
+    select team_lean->'pick'->>'key' from public.gamewaire_team_leans
+      where (event_start at time zone 'America/New_York')::date=target and team_lean->'pick'->>'key' is not null
+  ) selections;
   select coalesce((select revision from public.gamewaire_pick_orders where game_date=target),0) into old_revision;
   saved:=public.gamewaire_save_pick_order(target,keys,old_revision);
   if saved.pick_keys<>keys or saved.revision<>old_revision+1 then raise exception 'Saved order/revision mismatch'; end if;

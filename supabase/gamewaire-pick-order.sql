@@ -24,9 +24,16 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('gamewaire-order:'||target_date::text,0));
   select * into saved from public.gamewaire_pick_orders where game_date=target_date for update;
   if coalesce(saved.revision,0)<>expected_revision then raise exception 'Pick order changed in another window. Reload before saving'; end if;
-  select array_agg(distinct pick->>'key' order by pick->>'key') into available
-    from public.gamewaire_publications publication cross join lateral jsonb_array_elements(publication.picks) pick
-    where (publication.event_start at time zone 'America/New_York')::date=target_date;
+  select array_agg(distinct selection.key order by selection.key) into available from (
+    select pick->>'key' as key
+      from public.gamewaire_publications publication cross join lateral jsonb_array_elements(publication.picks) pick
+      where (publication.event_start at time zone 'America/New_York')::date=target_date
+    union
+    select lean.team_lean->'pick'->>'key'
+      from public.gamewaire_team_leans lean
+      where (lean.event_start at time zone 'America/New_York')::date=target_date
+        and lean.team_lean->'pick'->>'key' is not null
+  ) selection;
   if (select array_agg(value order by value) from unnest(ordered_keys) value) is distinct from available
     then raise exception 'Published picks changed. Reload the published list before saving'; end if;
   insert into public.gamewaire_pick_orders(game_date,pick_keys,revision)

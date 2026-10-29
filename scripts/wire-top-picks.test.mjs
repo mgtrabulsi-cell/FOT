@@ -3,18 +3,18 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { orderedTopPicks, wirePickLimit } from '../src/services/gamewaireOrder.ts';
+import { orderedTopPicks, publishedSelections, wirePickLimit } from '../src/services/gamewaireOrder.ts';
 
 const source = readFileSync(new URL('../src/WireTopPicks.tsx', import.meta.url), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-function render(reports, props, orders = []) {
+function render(reports, props, orders = [], leans = []) {
   let slot = 0;
-  const states = [reports, true, '', 0, orders], jsx = (type, props) => ({ type, props });
+  const states = [reports, true, '', 0, orders, leans], jsx = (type, props) => ({ type, props });
   const context = vm.createContext({ exports: {}, console, Set, require(name) {
     if (name === 'react') return { useEffect() {}, useState: () => [states[slot++], () => {}] };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === './Gamewaire') return { PickCard: 'PickCard' };
-    if (name === './services/gamewaireOrder') return { orderedTopPicks, wirePickLimit };
+    if (name === './services/gamewaireOrder') return { orderedTopPicks, publishedSelections, wirePickLimit };
     return {};
   } });
   vm.runInContext(code, context);
@@ -42,7 +42,19 @@ test('Wire shows exactly three mobile / five desktop picks, matching only unfini
   }
   assert.ok(nodes.some((node) => node.type === 'a' && node.props.href === '#gamewaire'));
   assert.equal(render([], { sport: 'NBA', games: [] }).filter((node) => node.type === 'PickCard').length, 0);
-  assert.doesNotMatch(source, /engineRequest|loadEngineHistory|gamewaire_runs|gamewaire_team_leans/);
+  assert.doesNotMatch(source, /engineRequest|loadEngineHistory|gamewaire_runs/);
+  assert.match(source, /gamewaire_team_leans/);
+});
+test('Wire includes published leans in the shared order and limit, deduplicates Top Pick keys and excludes finished games', () => {
+  const pick = { key: 'top', start: '2026-10-28T23:00:00Z', sport: 'NBA', market: 'h2h', probability: 0.6,
+    identifiers: { espnEventId: 'live' } };
+  const lean = { ...pick, key: 'lean' };
+  const leans = [lean, pick, { ...lean, key: 'final', identifiers: { espnEventId: 'final' } }].map((pick) => ({ team_lean: { pick } }));
+  const props = { sport: 'NBA', userId: 'member', desktop: false, games: [{ eventId: 'live', status: 'LIVE' }, { eventId: 'final', status: 'FINAL' }] };
+  const cards = render([{ picks: [pick] }], props, [{ game_date: '2026-10-28', pick_keys: ['lean', 'top'] }], leans)
+    .filter((node) => node.type === 'PickCard');
+  assert.deepEqual(cards.map((card) => card.props.pick.key), ['lean', 'top']);
+  assert.deepEqual(cards.map((card) => card.props.lean), [true, false]);
 });
 test('Wire panels load on desktop or inside an explicitly expanded mobile disclosure', () => {
   const wrapper = readFileSync(new URL('../src/WireWithPicks.tsx', import.meta.url), 'utf8');

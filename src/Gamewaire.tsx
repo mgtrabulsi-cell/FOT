@@ -7,7 +7,7 @@ import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import './gamewaire.css';
 import GamewairePickOrder from './GamewairePickOrder';
 import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
-import { orderedTopPicks } from './services/gamewaireOrder';
+import { orderedTopPicks, publishedSelections } from './services/gamewaireOrder';
 import type { PickOrder } from './services/gamewaireOrder';
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
@@ -27,7 +27,7 @@ const pickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject} 
   : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
   : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
 const resultLabels = { pending: 'Pending', win: 'Won', loss: 'Lost', push: 'Push', void: 'Void' };
-export function PickCard({ pick, record, rank, selection, technical = false, stretch = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean; stretch?: boolean;
+export function PickCard({ pick, record, rank, selection, technical = false, stretch = false, lean = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean; stretch?: boolean; lean?: boolean;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
   const valueScore = gamewaireGrade(pick).score;
   const grade = probabilityGrade(pick.probability);
@@ -48,6 +48,7 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
       <span className={`gai-grade ${pick.probability >= 0.5 ? 'gai-grade-positive' : 'gai-grade-neutral'}`}>Probability grade {grade}</span>
     </div>
     <div className="gai-pick-footer">
+      {lean && <span className="gai-tag">Game Lean · Not a Top Pick</span>}
       {stretch && <span className="gai-stretch">Stretch · only you</span>}
       {record?.withdrawn && <span className="gai-tag">Withdrawn · not an active selection</span>}
       {record && <span className={`gai-result gai-result-${record.result}`}>{resultLabels[record.result]}</span>}
@@ -251,9 +252,13 @@ export default function Gamewaire() {
   const memberGames = published.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate);
   const memberReport = memberGames.find((game) => game.event_id === memberGame);
   const candidateView = !!status?.canAnalyze && pickView === 'candidates';
-  const publishedPicks = orderedTopPicks((memberGame ? (memberReport ? [memberReport] : []) : memberGames).flatMap((game) => game.picks), orders).slice(0, 5);
   const visibleLeans = leans.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate
     && (!memberGame || game.event_id === memberGame));
+  const matchingSelections = publishedSelections(memberGame ? (memberReport ? [memberReport] : []) : memberGames, visibleLeans);
+  const dateSelections = publishedSelections(
+    published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate),
+    leans.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate));
+  const publishedPicks = orderedTopPicks(matchingSelections, orders).slice(0, 5);
   const gameOptions = [...memberGames, ...leans.filter((game) => (memberSport === 'all' || game.sport === memberSport)
     && nbaCalendarDate(new Date(game.event_start)) === memberDate && !memberGames.some((publishedGame) => publishedGame.event_id === game.event_id))];
   const refreshHistory = () => setRefresh((value) => value + 1);
@@ -438,8 +443,8 @@ export default function Gamewaire() {
     </details>
     </details>}
     </aside>
-    <section id="gai-top-picks" className="gai-top-picks gai-outline" aria-label="Top Picks">
-      <div className="gai-section-heading"><h3><span aria-hidden="true">★</span> Top Picks</h3><span className="gai-tag">{candidateView ? 'Admin candidates · unpublished' : 'Published picks'}</span></div>
+    <section id="gai-top-picks" className="gai-top-picks gai-outline" aria-label={candidateView ? 'Top Picks' : 'Top Picks and Game Leans'}>
+      <div className="gai-section-heading"><h3><span aria-hidden="true">★</span> {candidateView ? 'Top Picks' : 'Top Picks & Game Leans'}</h3><span className="gai-tag">{candidateView ? 'Admin candidates · unpublished' : 'Published picks'}</span></div>
       {!candidateView && <div className="gai-sport-tabs" role="group" aria-label="Published sport">
         {(['all', 'NBA', 'NFL'] as const).map((league) => <button key={league} aria-pressed={memberSport === league}
           onClick={() => { setMemberSport(league); setMemberGame(''); }}>{league === 'all' ? 'All sports' : league}</button>)}
@@ -478,31 +483,23 @@ export default function Gamewaire() {
       </section> : <>
         {status?.canAnalyze &&
           <GamewairePickOrder key={memberDate} date={memberDate} refresh={refreshHistory}
-            picks={published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate).flatMap((game) => game.picks)}
-            visibleKeys={(memberGame ? (memberReport ? [memberReport] : []) : memberGames).flatMap((game) => game.picks.map((pick) => pick.key))}
+            picks={dateSelections}
+            visibleKeys={matchingSelections.map((pick) => pick.key)}
             renderPick={(pick, rank) => <PickCard pick={pick} rank={rank}
+              lean={dateSelections.find((selection) => selection.key === pick.key)?.isGameLean}
               stretch={stretches.some((row) => row.pick_key === pick.key && published.some((game) => game.run_id === row.run_id && game.picks.some((candidate) => candidate.key === pick.key)))}
-              record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />}
+              record={picks.find((row) => (dateSelections.find((selection) => selection.key === pick.key)?.isGameLean ? row.is_game_lean : row.is_top_pick)
+                && row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />}
             order={orders.find((order) => order.game_date === memberDate)}
             onSave={(saved) => { setOrders((previous) => [saved, ...previous.filter((order) => order.game_date !== saved.game_date)]); refreshHistory(); }} />
         }
         {memberReport && <p>{memberReport.matchup} · Published {stamp(memberReport.published_at)}</p>}
-        {loaded && !publishedPicks.length && <div className="gai-empty"><h4>No published picks yet</h4><p>No published picks for this league and date yet. An admin must analyze and publish a game first.</p></div>}
+        {loaded && !publishedPicks.length && <div className="gai-empty"><h4>No published picks yet</h4><p>No published picks or Game Leans for this league and date yet. An admin must analyze and publish a game first.</p></div>}
         {!status?.canAnalyze && <div className="gai-picks gai-published-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
-          record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />)}</div>
+          lean={pick.isGameLean}
+          record={picks.find((row) => (pick.isGameLean ? row.is_game_lean : row.is_top_pick)
+            && row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />)}</div>
         }
-        <section aria-label="Game team leans"><h4>Game team leans</h4>
-          <p className="gai-note">One data-supported moneyline or spread per game. NBA and NFL leans appear only after owner review and publication. Leans are separate from Top Picks and are not betting recommendations.</p>
-          {!visibleLeans.length && <p className="gai-note">No team analyses saved for these filters yet. An admin must analyze each game first.</p>}
-          {visibleLeans.map((game) => <section key={game.event_id} className="gai-team-lean"><h4>{game.matchup}</h4>
-            <p className="gai-note">{game.team_lean ? game.team_lean.qualifies ? 'Passed model screens when analyzed; not an admin-published Top Pick.'
-              : <><strong>Lean only · Not a Top Pick.</strong> {game.team_lean.reason}</> : 'Unavailable: verified team data or a complete fresh market was insufficient.'}</p>
-            {game.team_lean && <PickCard pick={game.team_lean.pick} rank={1}
-              record={picks.find((row) => row.is_game_lean && row.data.key === game.team_lean?.pick.key
-                && row.data.book === game.team_lean?.pick.book && row.american === game.team_lean?.pick.american
-                && row.data.modelVersion === game.team_lean?.pick.modelVersion)} />}
-          </section>)}
-        </section>
       </>}
     </section>
     <aside className="gai-why gai-outline" aria-label="How picks are ranked">

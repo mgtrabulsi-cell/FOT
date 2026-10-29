@@ -590,7 +590,7 @@ test('GamewAIre navigation is ordered correctly and AI styling is bold red witho
 test('GamewAIre renders provider setup, real reports and complete metrics without fabricated empty-state picks', async () => {
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
   const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
-    .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=()=>null;')
+    .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key)).map((p,i)=>renderPick(p,i+1));')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
     .replace(/from ['"]\.\/services\/gamewaireGames['"]/g, `from '${new URL('../src/services/gamewaireGames.ts', import.meta.url)}'`)
@@ -793,14 +793,13 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(navCSS, /\.primary-nav button > span:last-child[^}]+min-height: 24px/);
   const leanState = memberState.slice();
   leanState[27] = [{ sport: 'NBA', event_id: 'lean-game', event_start: quote.start, matchup: 'Lean game', team_lean: {
-    pick: { ...candidate, market: 'h2h', line: null }, qualifies: false, reason: 'Failed value checks. Not a Top Pick.',
+    pick: { ...candidate, key: 'lean-game|h2h', eventId: 'lean-game', market: 'h2h', line: null }, qualifies: false, reason: 'Failed value checks. Not a Top Pick.',
   } }];
   leanState[23] = 'lean-game';
   fixture(leanState);
   const leanView = renderToStaticMarkup(createElement(Page));
-  assert.match(leanView, /Lean only/);
-  assert.match(leanView, /Failed value checks/);
-  assert.match(leanView, /No published picks yet/);
+  assert.match(leanView, /Game Lean · Not a Top Pick/);
+  assert.doesNotMatch(leanView, /No published picks yet/);
   assert.equal((leanView.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selecting an unpublished lean game never shows another game\'s published picks');
   const publishedLean = leanState[27][0].team_lean.pick;
   for (const canAnalyze of [false, true]) {
@@ -811,9 +810,9 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
       state[2] = [{ ...pick, is_top_pick: false, is_game_lean: true, result, data: publishedLean, american: publishedLean.american }];
       fixture(state);
       const html = renderToStaticMarkup(createElement(Page));
-      const publishedArea = html.slice(html.indexOf('<section aria-label="Game team leans">'), html.indexOf('<aside class="gai-why'));
+      const publishedArea = html.slice(html.indexOf('<section id="gai-top-picks"'), html.indexOf('<aside class="gai-why'));
       const label = { win: 'Won', loss: 'Lost', pending: 'Pending', push: 'Push', void: 'Void' }[result];
-      assert.ok(publishedArea.includes(`gai-result-${result}">${label}`), 'Published lean shows saved outcome for members and owner');
+      assert.ok(publishedArea.includes(`gai-result-${result}">${label}`), `Published lean shows ${result}, owner=${canAnalyze}`);
     }
   }
   for (const mismatch of [
@@ -827,7 +826,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     state[2] = [{ ...pick, is_top_pick: false, is_game_lean: true, result: 'win', data: publishedLean, american: publishedLean.american, ...mismatch }];
     fixture(state);
     const html = renderToStaticMarkup(createElement(Page));
-    const publishedArea = html.slice(html.indexOf('<section aria-label="Game team leans">'), html.indexOf('<aside class="gai-why'));
+    const publishedArea = html.slice(html.indexOf('<section id="gai-top-picks"'), html.indexOf('<aside class="gai-why'));
     assert.doesNotMatch(publishedArea, /gai-result-win/, 'A different selection, price, book, model or removed lean cannot supply the outcome');
   }
   const nflCandidate = { ...candidate, key: 'nfl-pick', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds', line: 250.5 };

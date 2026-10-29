@@ -3,6 +3,15 @@ import type { Candidate } from '../../supabase/functions/_shared/gamewaire.ts';
 
 export type PickOrder = { game_date: string; pick_keys: string[]; revision: number };
 export const wirePickLimit = (desktop: boolean) => desktop ? 5 : 3;
+export function publishedSelections(publications: { picks: Candidate[] }[], leans: { team_lean: { pick: Candidate } | null }[]) {
+  const selections = new Map<string, Candidate & { isGameLean: boolean }>();
+  for (const game of publications) for (const pick of game.picks) selections.set(pick.key, { ...pick, isGameLean: false });
+  for (const game of leans) {
+    const pick = game.team_lean?.pick;
+    if (pick && !selections.has(pick.key)) selections.set(pick.key, { ...pick, isGameLean: true });
+  }
+  return [...selections.values()];
+}
 export function pickOrderDate(start: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date(start));

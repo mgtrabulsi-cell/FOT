@@ -17,12 +17,12 @@ export default function WireWithPicks({ children, games, sport, userId }: {
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
   }, []);
-  const panel = <Suspense fallback={<aside className="wire-picks-loading" role="status">Loading published Top Picks…</aside>}>
+  const panel = <Suspense fallback={<aside className="wire-picks-loading" role="status">Loading published picks and leans…</aside>}>
     <WireTopPicks key={`${userId ?? 'guest'}:${sport}`} games={games} sport={sport} userId={userId} desktop={desktop} />
   </Suspense>;
   return <div className="wire-with-picks">
     {!desktop && <details className="wire-mobile-picks" onToggle={(event) => setExpanded(event.currentTarget.open)}>
-      <summary><span className="gamewaire-name">Gamew<strong>AI</strong>re</span> Top Picks</summary>
+      <summary><span className="gamewaire-name">Gamew<strong>AI</strong>re</span> Picks &amp; Leans</summary>
       {expanded && panel}
     </details>}
     <div className="wire-score-content">{children}</div>

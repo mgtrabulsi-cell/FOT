@@ -63,10 +63,10 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
         ? cause.message : 'Could not save pick order. Your changes are still here.');
     } finally { setBusy(false); }
   };
-  if (!picks.length) return <p className="gai-note">No published Top Picks to arrange for this date.</p>;
-  return <section className="gai-order-editor" aria-label="Order published Top Picks">
+  if (!picks.length) return <p className="gai-note">No published picks or Game Leans to arrange for this date.</p>;
+  return <section className="gai-order-editor" aria-label="Order published picks and Game Leans">
     <h4>Reorder published picks · {date}</h4>
-    <p className="gai-note">Drag a pick’s three-line handle, then save to update GamewAIre and The Wire for everyone. All matching published picks are shown here so you can choose the top 3 on mobile and top 5 on desktop. Use Up/Down arrow keys on a handle for keyboard ordering.</p>
+    <p className="gai-note">Drag a pick’s three-line handle, then save to update GamewAIre and The Wire for everyone. Top Picks and published Game Leans share this order: choose the top 3 on mobile and top 5 on desktop. Use Up/Down arrow keys on a handle for keyboard ordering.</p>
     <ol ref={list} className={`gai-order-list${dragging ? ' is-sorting' : ''}`}
       onPointerMove={(event) => {
         if (!dragging) return;

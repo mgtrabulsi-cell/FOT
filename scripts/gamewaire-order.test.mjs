@@ -10,6 +10,17 @@ const picks = Array.from({ length: 7 }, (_, index) => ({
   key: `${index}`, start: '2026-10-28T01:00:00Z', sport: index % 2 ? 'NFL' : 'NBA',
   market: 'h2h', subject: `Team ${index}`, home: 'Home', away: 'Away', probability: 0.6 + index / 100,
 }));
+test('Published selection union includes lean-only games, deduplicates keys with Top Pick precedence and leaves inputs unchanged', () => {
+  const top = picks[0], lean = { ...picks[1], american: -110 };
+  const publications = [{ picks: [top] }];
+  const leans = [{ team_lean: { pick: lean } }, { team_lean: { pick: { ...top, american: -120 } } }, { team_lean: null }];
+  const snapshot = JSON.stringify({ publications, leans });
+  const merged = orderHelpers.publishedSelections(publications, leans);
+  assert.deepEqual(merged.map((pick) => [pick.key, pick.isGameLean]), [['0', false], ['1', true]]);
+  assert.equal(merged[0].american, top.american);
+  assert.equal(JSON.stringify({ publications, leans }), snapshot);
+  assert.deepEqual(orderedTopPicks(merged, [{ game_date: '2026-10-27', pick_keys: ['1', '0'] }]).map((pick) => pick.key), ['1', '0']);
+});
 test('Editorial order spans sports, ignores removed keys and appends new picks with model ranking without mutating estimates', () => {
   const snapshot = JSON.stringify(picks);
   const orders = [{ game_date: '2026-10-27', pick_keys: ['removed', '0', '1', '2'], revision: 2 }];
