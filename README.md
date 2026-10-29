@@ -372,7 +372,7 @@ Readability: Angle post headlines use responsive 22–26px headings (including c
 
 Angle posts show their original publication date and time (including the reader's timezone) below the headline, even when collapsed; edits do not change this timestamp. Legacy posts without a publication timestamp do not display an invented time.
 
-On desktop viewports of at least 1100px, The Wire places a GamewAIre-themed Top Picks rectangle to the right of NFL/NBA scores. It ranks up to four existing published picks for unfinished games on the displayed scoreboard and links to GamewAIre. It never requests private analyses, game leans, or paid providers. The panel refreshes every minute and on foreground return, with explicit errors/retry. Signed-out viewers see a sign-in notice. Phones and narrower screens do not mount or fetch the panel.
+On desktop viewports of at least 1100px, The Wire places a GamewAIre-themed Top Picks rectangle to the right of NFL/NBA scores. It ranks up to four existing published picks for unfinished games on the displayed scoreboard and links to GamewAIre. It never requests private analyses, game leans, or paid providers. The panel refreshes every minute and on foreground return, with explicit errors/retry. Signed-out viewers see a sign-in notice. Phones and narrower screens instead show a compact, initially collapsed **GamewAIre Top Picks** bar above scores. Opening it loads the same published picks, prices, grades, reasoning and GamewAIre link; closing it unmounts the panel and stops its polling. Closed mobile bars do not fetch picks or load the panel bundle.
 
 ## Mobile push notifications
 

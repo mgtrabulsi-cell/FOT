@@ -158,11 +158,15 @@ button { color: inherit; }
 .wire-page { padding-top: 8px; }
 .wire-score-content { min-width: 0; }
 .wire-with-picks { min-width: 0; }
+.wire-mobile-picks { min-width: 0; margin-bottom: 14px; border: 1px solid #593044; border-radius: 8px; background: linear-gradient(110deg, #0c1523, #301b2a); }
+.wire-mobile-picks > summary { min-height: 48px; padding: 13px 14px; color: #edf2f8; font-size: 15px; font-weight: 600; cursor: pointer; }
+.wire-mobile-picks > summary:focus-visible { outline: 2px solid #ff5965; outline-offset: 3px; border-radius: 6px; }
+.wire-mobile-picks .wire-picks-loading { padding: 14px; }
 @media (min-width: 1100px) {
   .wire-with-picks { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; gap: 20px; }
 }
 @media (max-width: 1099px) {
-  .wire-top-picks, .wire-picks-loading { display: none; }
+  .wire-mobile-picks .wire-top-picks { border: 0; border-top: 1px solid #593044; border-radius: 0 0 8px 8px; padding: 12px; }
 }
 .wire-page .page-heading { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 8px; }
 .date-line, .eyebrow { color: #78849a; font: 10px var(--mono); letter-spacing: .45px; }
