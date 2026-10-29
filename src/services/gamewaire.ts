@@ -7,17 +7,18 @@ export type AnalysisStatus = 'in_progress' | 'completed' | 'no_qualifying' | 'in
 export type AnalysisRun = {
   id: string; sport: Sport; event_id: string; event_start: string; matchup: string; settings: Settings; status: AnalysisStatus;
   created_at: string; finished_at: string | null;
-  payload: { picks?: Candidate[]; teamLean?: import('../../supabase/functions/_shared/gamewaire').TeamLean; rejected?: Array<{ key: string; reason: string }>; warnings?: string[]; error?: string; explanationMode?: string;
+  payload: { picks?: Candidate[]; stretchKeys?: string[]; playerPropMinimum?: number; teamLean?: import('../../supabase/functions/_shared/gamewaire').TeamLean; rejected?: Array<{ key: string; reason: string }>; warnings?: string[]; error?: string; explanationMode?: string;
     providerUsage?: { requestCost: number | null; creditsUsed: number | null; creditsRemaining: number | null; checkedAt: string };
     scheduled?: { jobId: string; selectionNote: string } };
 };
 export type StoredPick = {
-  id: string; sport: Sport; event_id: string; event_start: string; market: string; subject: string; side: string; line: number | null;
+  id: string; run_id: string; sport: Sport; event_id: string; event_start: string; market: string; subject: string; side: string; line: number | null;
   american: number; probability: number; push_probability: number; data: Candidate;
   result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closing_american: number | null; withdrawn: boolean;
   revision: number; created_at: string; settlement_note: string | null;
 };
 export type EngineStatus = { canAnalyze: boolean; oddsReady: boolean; aiReady: boolean; model: string; experimental: boolean };
+export type StretchPick = { run_id: string; pick_key: string };
 export type OddsEvent = { id: string; sport: Sport; home: string; away: string; start: string };
 export type PublishedGame = {
   sport: Sport; event_id: string; run_id: string; event_start: string; matchup: string; picks: Candidate[]; published_at: string;
@@ -71,6 +72,14 @@ export async function loadEngineHistory(signal: AbortSignal, canAnalyze = false)
     picks.push(...page.data);
     if (page.data.length < 500) break;
   }
+  const stretches: StretchPick[] = [];
+  if (canAnalyze) for (let offset = 0; ; offset += 500) {
+    const page = await supabase.from('gamewaire_stretch_picks').select('run_id,pick_key')
+      .order('run_id').order('pick_key').range(offset, offset + 499).abortSignal(signal);
+    if (page.error) throw new Error(`Could not load private Stretch labels: ${page.error.message}`);
+    stretches.push(...page.data);
+    if (page.data.length < 500) break;
+  }
   return { runs: runs.data as AnalysisRun[], picks, published: published.data as PublishedGame[], leans: leans.data as GameLean[],
-    batches: batches.data as ScheduleBatch[], jobs: jobs.data as ScheduleJob[], orders: orders.data as PickOrder[] };
+    batches: batches.data as ScheduleBatch[], jobs: jobs.data as ScheduleJob[], orders: orders.data as PickOrder[], stretches };
 }

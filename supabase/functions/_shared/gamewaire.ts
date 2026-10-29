@@ -41,7 +41,7 @@ export type Candidate = Quote & {
   opponents?: OpponentContext[];
 };
 export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
-export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean };
+export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; stretchKeys?: string[] };
 export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
   const scale = (value: number, target: number) => Math.max(0, Math.min(1, value / target));
   const score = Math.round(40 * scale(pick.conservativeEV, 0.15) + 25 * scale(pick.edge, 0.15)
@@ -194,8 +194,9 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
   return result;
 }
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 = 4): Evaluation {
+export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 = 4, minimumPlayerPicks: 0 | 3 = 0): Evaluation {
   const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [], teamOptions: TeamLean[] = [];
+  const stretchOptions: Candidate[] = [];
   const best = new Map<string, Quote>();
   for (const quote of quotes) {
     if (!Number.isFinite(Date.parse(quote.updatedAt)) || !Number.isFinite(Date.parse(quote.start))
@@ -272,7 +273,10 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents };
     if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
       reason: qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
-    if (!qualifies) { reject('Exact price fails edge, EV or conservative uncertainty threshold.'); continue; }
+    if (!qualifies) {
+      if (quote.market.startsWith('player_')) stretchOptions.push(candidate);
+      reject('Exact price fails edge, EV or conservative uncertainty threshold.'); continue;
+    }
     candidates.push(candidate);
   }
   const picks: Candidate[] = [], subjects = new Set<string>();
@@ -296,8 +300,19 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (previouslyRejected >= 0) rejected.splice(previouslyRejected, 1);
     picks.push(teamLean.pick);
   }
+  const stretchKeys: string[] = [];
+  const playerSubjects = new Set(picks.filter((pick) => pick.market.startsWith('player_')).map((pick) => normalize(pick.subject)));
+  for (const candidate of minimumPlayerPicks ? rankTopPicks(stretchOptions) : []) {
+    if (playerSubjects.size >= minimumPlayerPicks) break;
+    const identity = normalize(candidate.subject);
+    if (playerSubjects.has(identity)) continue;
+    picks.push(candidate); playerSubjects.add(identity); stretchKeys.push(candidate.key);
+    const index = rejected.findIndex((row) => row.key === candidate.key);
+    if (index >= 0) rejected.splice(index, 1);
+  }
   return { status: picks.length ? 'completed' : !best.size && rejected.some((row) => row.reason.startsWith('Stale')) ? 'stale_odds'
-    : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks: rankTopPicks(picks), rejected, teamLean };
+    : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks: rankTopPicks(picks), rejected, teamLean,
+    ...(minimumPlayerPicks ? { stretchKeys } : {}) };
 }
 export type Settled = { probability: number; pushProbability: number; american: number; result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closingAmerican?: number | null; withdrawn?: boolean };
 export function performance(rows: Settled[]) {

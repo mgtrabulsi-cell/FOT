@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
 import { defaultSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
-import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick } from './services/gamewaire';
+import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import './gamewaire.css';
@@ -27,7 +27,7 @@ const pickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject} 
   : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
   : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
 const resultLabels = { pending: 'Pending', win: 'Won', loss: 'Lost', push: 'Push', void: 'Void' };
-export function PickCard({ pick, record, rank, selection, technical = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean;
+export function PickCard({ pick, record, rank, selection, technical = false, stretch = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean; stretch?: boolean;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
   const valueScore = gamewaireGrade(pick).score;
   const grade = probabilityGrade(pick.probability);
@@ -48,6 +48,7 @@ export function PickCard({ pick, record, rank, selection, technical = false }: {
       <span className={`gai-grade ${pick.probability >= 0.5 ? 'gai-grade-positive' : 'gai-grade-neutral'}`}>Probability grade {grade}</span>
     </div>
     <div className="gai-pick-footer">
+      {stretch && <span className="gai-stretch">Stretch · only you</span>}
       {record?.withdrawn && <span className="gai-tag">Withdrawn · not an active selection</span>}
       {record && <span className={`gai-result gai-result-${record.result}`}>{resultLabels[record.result]}</span>}
       {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <span className="gai-note">Saved price</span>}
@@ -55,11 +56,12 @@ export function PickCard({ pick, record, rank, selection, technical = false }: {
     </div>
     </summary>
     <div className="gai-pick-context">
+    {stretch && <p className="gai-note">Stretch: misses at least one edge, EV or conservative uncertainty screen. Included to provide three player options, not because it passed the normal value checks. You may publish it; this label stays private to your account.</p>}
     {technical && <dl className="gai-metrics gai-row-metrics">
       <div className="gai-hit"><dt>Estimated hit %</dt><dd>{percent(pick.probability)}</dd></div>
       <div><dt>Market implied</dt><dd>{percent(pick.implied)}</dd></div>
-      <div><dt>Edge</dt><dd>+{(pick.edge * 100).toFixed(1)} pp</dd></div>
-      <div><dt>Est. EV</dt><dd>+{percent(pick.ev)}</dd></div>
+      <div><dt>Edge</dt><dd>{pick.edge >= 0 ? '+' : ''}{(pick.edge * 100).toFixed(1)} pp</dd></div>
+      <div><dt>Est. EV</dt><dd>{pick.ev >= 0 ? '+' : ''}{percent(pick.ev)}</dd></div>
     </dl>}
     <p className="gai-note gai-estimate-note">Unvalidated estimate · Not a guarantee of profit.</p>
     {record && record.result !== 'pending' && <p className="gai-note">Saved analysis, not a new live selection.</p>}
@@ -101,7 +103,7 @@ function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun;
   const legacy = candidates.some((pick) => pick.modelVersion !== modelVersion);
   return <section className="gai-publish" aria-label="Choose member picks"><h4>Choose up to four member picks</h4>
     <p className="gai-note">Tap for reasoning. Check up to four picks to publish.</p>
-    <div className="gai-picks">{candidates.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} technical
+    <div className="gai-picks">{candidates.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} technical stretch={report.payload.stretchKeys?.includes(pick.key)}
       selection={{ checked: selected.includes(pick.key), disabled: busy || (!selected.includes(pick.key) && selected.length >= 4),
         onChange: (checked) => setSelected((previous) => checked ? [...previous, pick.key] : previous.filter((key) => key !== pick.key)) }} />)}</div>
     {stale && <p className="gai-note">{Date.parse(report.event_start) <= Date.now() ? 'This game has started; this report cannot be published.'
@@ -200,6 +202,7 @@ export default function Gamewaire() {
   const [batches, setBatches] = useState<ScheduleBatch[]>([]), [jobs, setJobs] = useState<ScheduleJob[]>([]);
   const [completion, setCompletion] = useState<{ completed: string[]; completionWarning: string }>({ completed: [], completionWarning: '' });
   const [orders, setOrders] = useState<PickOrder[]>([]);
+  const [stretches, setStretches] = useState<StretchPick[]>([]);
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => subscribePickOrderRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => {
@@ -207,7 +210,7 @@ export default function Gamewaire() {
     const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 20_000);
     void engineRequest<EngineStatus>({ action: 'status' }, controller.signal)
       .then(async (nextStatus) => ({ nextStatus, history: await loadEngineHistory(controller.signal, nextStatus.canAnalyze) }))
-      .then(({ nextStatus, history }) => { if (!controller.signal.aborted) { setStatus(nextStatus); setRuns(history.runs); setPicks(history.picks); setPublished(history.published); setLeans(history.leans); setBatches(history.batches); setJobs(history.jobs); setOrders(history.orders); setLoaded(true); setError(''); } })
+      .then(({ nextStatus, history }) => { if (!controller.signal.aborted) { setStatus(nextStatus); setRuns(history.runs); setPicks(history.picks); setPublished(history.published); setLeans(history.leans); setBatches(history.batches); setJobs(history.jobs); setOrders(history.orders); setStretches(history.stretches); setLoaded(true); setError(''); } })
       .catch((cause: unknown) => { if (active) setError(controller.signal.aborted ? 'GamewAIre refresh timed out. Retry to update saved reports.' : errorMessage(cause)); })
       .finally(() => window.clearTimeout(timeout));
     const poll = window.setInterval(() => { if (document.visibilityState !== 'hidden' && navigator.onLine) setRefresh((value) => value + 1); }, 60_000);
@@ -285,7 +288,7 @@ export default function Gamewaire() {
       <div className="gai-hero-copy"><span className="eyebrow">NFL + NBA · MODEL-DRIVEN INSIGHTS</span>
         <h2>THE <em>ANALYSIS ENGINE</em></h2>
         <p>Data. Matchups. A clearer view.</p>
-        <small>Compare real prices and model estimates. No forced picks. No promise of profit.</small></div>
+        <small>Compare real prices and model estimates. Verified data. No promise of profit.</small></div>
       <div className="gai-hero-features" aria-label="Analysis features">
         <div><b>01</b><span>Sportsbook<br />lines &amp; prices</span></div>
         <div><b>02</b><span>Statistical<br />analysis</span></div>
@@ -408,6 +411,11 @@ export default function Gamewaire() {
         {loaded && !matchingRuns.length && <div className="gai-empty"><h4>Ready to analyze</h4><p>No model analyses yet for these filters. Choose a game, then run analysis to review up to eight candidates.</p></div>}
         {report && <><h4>{report.matchup}</h4><p className="gai-note">Saved report · 0 credits to view picks and explanations. Refreshing prices is optional and may use credits.</p><p role="status">{report.status === 'in_progress' && Date.now() - Date.parse(report.created_at) > 180_000 ? 'Analysis interrupted. Retry this matchup; no completed recommendation is being claimed.' : statusLabels[report.status]}</p>
           {report.status === 'no_qualifying' && <p>No qualifying value bets found for this matchup.</p>}
+          {report.payload.playerPropMinimum === 3 && <p className="gai-note">
+            {report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0} player props · {report.payload.stretchKeys?.length ?? 0} Stretch (private label).
+            {' '}Stretch options may be published but did not pass every normal value screen.
+            {(report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0) < 3 && ' Fewer than three players had sufficient verified data and fresh markets; no missing props were invented.'}
+          </p>}
           {report.payload.error && <p role="alert" className="feed-warning">{report.payload.error}</p>}
           <ReviewGameLean key={`lean:${report.id}`} report={report} refresh={refreshHistory} onFreshReport={openReport} />
           {report.status === 'completed' && !!report.payload.picks?.length && <details className="gai-top-pick-tools"><summary>Top Pick candidates · select &amp; publish</summary><PublishPicks key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} /></details>}
@@ -431,6 +439,7 @@ export default function Gamewaire() {
             picks={published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate).flatMap((game) => game.picks)}
             visibleKeys={(memberGame ? (memberReport ? [memberReport] : []) : memberGames).flatMap((game) => game.picks.map((pick) => pick.key))}
             renderPick={(pick, rank) => <PickCard pick={pick} rank={rank}
+              stretch={stretches.some((row) => row.pick_key === pick.key && published.some((game) => game.run_id === row.run_id && game.picks.some((candidate) => candidate.key === pick.key)))}
               record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />}
             order={orders.find((order) => order.game_date === memberDate)}
             onSave={(saved) => { setOrders((previous) => [saved, ...previous.filter((order) => order.game_date !== saved.game_date)]); refreshHistory(); }} />
@@ -491,7 +500,7 @@ export default function Gamewaire() {
       <ul className="gai-history-list" aria-label="Published pick history">
         {visible.map((pick) => <li key={pick.id} className="gai-history-row">
           <div className="gai-history-pick"><span className="eyebrow">{pick.sport} · {marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}</span>
-            <h4>{pickTitle(pick.data)}</h4><small>{pick.data.away} @ {pick.data.home} · {stamp(pick.event_start)}</small>
+            <h4>{pickTitle(pick.data)}</h4>{status?.canAnalyze && stretches.some((row) => row.run_id === pick.run_id && row.pick_key === pick.data.key) && <span className="gai-stretch">Stretch · only you</span>}<small>{pick.data.away} @ {pick.data.home} · {stamp(pick.event_start)}</small>
             {pick.withdrawn && <span className="gai-tag">Withdrawn</span>}
           </div>
           <div className="gai-history-price"><b>{odds(pick.american)}</b><small>{pick.data.book}</small></div>

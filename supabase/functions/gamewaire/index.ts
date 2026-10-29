@@ -197,6 +197,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (body.action !== 'analyze' || !/^[a-zA-Z0-9_-]{1,100}$/.test(text(body.eventId))) return json({ error: 'Choose an event to analyze.' }, 400);
     let settings;
     try { settings = readSettings(body.settings, sport); } catch (error) { return json({ error: message(error) }, 400); }
+    const minimumPlayerPicks = !scheduledJob && settings.markets.some((market) => market.startsWith('player_')) ? 3 : 0;
     const expired = await admin.from('gamewaire_runs').update({ status: 'provider_error', payload: { error: 'Prior analysis was interrupted. Retry with fresh provider data.' }, finished_at: new Date().toISOString() })
       .eq('sport', sport).eq('event_id', body.eventId).eq('status', 'in_progress').lt('created_at', new Date(Date.now() - 180_000).toISOString());
     if (expired.error) throw new Error('Could not clear an interrupted analysis.');
@@ -208,6 +209,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     }
     if (cached.data && ['completed', 'no_qualifying', 'insufficient_data'].includes(cached.data.status)
       && object(cached.data.payload).modelVersion === modelVersion
+      && (!minimumPlayerPicks || object(cached.data.payload).playerPropMinimum === minimumPlayerPicks)
       && Date.parse(cached.data.event_start) > Date.now() && Date.now() - Date.parse(cached.data.created_at) < 600_000
       && array(object(cached.data.payload).picks).every((value) => {
         const pick = object(value);
@@ -254,15 +256,18 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const anchor: Quote = quotes[0];
       const matchup = await resolveMatchup(anchor, fetcher);
       const data = await collectEvidence(allQuotes, matchup, Date.now(), fetcher);
-      report = { ...evaluate(quotes, data.evidence, settings, Date.now(), 8), warnings: data.warnings, coverage: data.coverage,
+      report = { ...evaluate(quotes, data.evidence, settings, Date.now(), 8, minimumPlayerPicks), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (aiKey && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }
+    if (minimumPlayerPicks && report.picks.filter((pick: Candidate) => pick.market.startsWith('player_')).length < minimumPlayerPicks) {
+      report.warnings.push('Fewer than three distinct players have verified, fresh, complete markets and sufficient eligible data. Missing or unsafe player props were not invented.');
+    }
     const availableMarkets = new Set(allQuotes.map((quote) => quote.market));
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));
     if (missingMarkets.length) report.warnings.push(`Requested markets not returned: ${missingMarkets.join(', ')}. These may not be posted yet or included in the subscription; no picks were invented for missing markets.`);
-    report = { ...report, modelVersion, providerUsage,
+    report = { ...report, modelVersion, providerUsage, playerPropMinimum: minimumPlayerPicks,
       ...(scheduledJob ? { scheduled: { jobId: scheduledJob.id, selectionNote: scheduledJob.selection_note } } : {}) };
     const finished = await admin.rpc('gamewaire_finish', { target_run: runId, final_status: report.status, report, candidates: report.picks });
     if (finished.error) throw new Error('Could not persist the complete analysis. No successful report is being claimed.');

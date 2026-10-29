@@ -594,7 +594,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
-  const { default: Page, fixture } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
+  const { default: Page, fixture, PickCard } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
   const status = { canAnalyze: true, oddsReady: false, aiReady: false, model: engine.modelVersion, experimental: true };
   fixture([status, [], [], true]);
   const empty = renderToStaticMarkup(createElement(Page));
@@ -610,6 +610,11 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(empty, /disabled=""[^>]*>Load upcoming games/);
   const candidate = { ...evaluate().picks[0], baseline: 'Early-season 50/50 blend', previousSeasonAverage: 20,
     rotation: { label: 'Core rotation', minutes: 32, involvement: 18 } };
+  const stretchCard = renderToStaticMarkup(createElement(PickCard, { pick: { ...candidate, edge: -0.02, ev: -0.04 }, rank: 1, stretch: true, technical: true }));
+  assert.match(stretchCard, /Stretch · only you/);
+  assert.match(stretchCard, /-2\.0 pp/);
+  assert.doesNotMatch(stretchCard, /\+-/);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(PickCard, { pick: candidate, rank: 1 })), /Stretch/);
   const run = { id: 'run', sport: 'NBA', event_id: 'event', event_start: new Date().toISOString(), matchup: 'Away at Home', settings, created_at: quote.updatedAt, status: 'completed', payload: { picks: [candidate], warnings: [] } };
   const pick = { ...candidate, id: 'pick', event_start: quote.start, created_at: quote.updatedAt, push_probability: candidate.pushProbability,
     result: 'loss', data: candidate, closing_american: null, withdrawn: true, revision: 1 };
@@ -920,6 +925,9 @@ test('Endpoint rate limits before paid API calls and persists deterministic comp
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.run.status, 'completed');
+  assert.equal(body.run.payload.playerPropMinimum, 3);
+  assert.ok(Array.isArray(body.run.payload.stretchKeys));
+  assert.ok(body.run.payload.warnings.some((warning) => warning.includes('Fewer than three distinct players')));
   assert.equal(api.rpc.at(-1).name, 'gamewaire_finish');
   assert.ok(api.rpc.at(-1).args.candidates.length > 0);
   const requested = new URL(api.fetches[0]);
@@ -966,6 +974,8 @@ test('Scheduled worker requires the private cron secret, bypasses only manual ca
     assert.equal(result.status, 200);
     const body = await result.json();
     assert.equal(body.run.payload.scheduled.jobId, 'job');
+    assert.equal(body.run.payload.playerPropMinimum, 0);
+    assert.equal(body.run.payload.stretchKeys, undefined);
     assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), ['h2h', 'spreads']);
     assert.deepEqual([...body.run.settings.markets], ['h2h', 'spreads']);
     assert.ok((body.run.payload.picks ?? []).every((pick) => ['h2h', 'spreads'].includes(pick.market)));
@@ -1057,13 +1067,17 @@ for (const sport of ['NBA', 'NFL']) test(`${sport} review buttons publish freely
   test('Fresh reports are reused for ten minutes only while actual quote and data timestamps remain valid', async () => {
     const candidate = evaluate().picks[0];
     const cachedRun = { id: 'cached', status: 'completed', event_start: quote.start, created_at: new Date(now - 9 * 60_000).toISOString(),
-      settings, payload: { modelVersion: engine.modelVersion, picks: [candidate] } };
+      settings, payload: { modelVersion: engine.modelVersion, playerPropMinimum: 3, picks: [candidate] } };
     const api = endpoint({ configured: true, failClaim: true, cachedRun });
     const response = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).cached, true);
     assert.equal(api.rpc.length, 0);
     assert.equal(api.fetches.length, 0);
+    const oldPolicy = endpoint({ configured: true, failClaim: true, cachedRun: { ...cachedRun,
+      payload: { ...cachedRun.payload, playerPropMinimum: undefined } } });
+    assert.equal((await oldPolicy.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 429,
+      'A pre-Stretch full report cannot satisfy a new full analysis request');
     const stale = endpoint({ configured: true, failClaim: true, cachedRun: { ...cachedRun,
       payload: { ...cachedRun.payload, picks: [{ ...candidate, updatedAt: new Date(now - 600_001).toISOString() }] } } });
     assert.equal((await stale.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 429);
