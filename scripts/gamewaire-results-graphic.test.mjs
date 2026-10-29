@@ -5,20 +5,25 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { performance } from '../supabase/functions/_shared/gamewaire.ts';
 
-function fixture({ noContext = false, noBlob = false, noFonts = false } = {}) {
-  const source = readFileSync(new URL('../src/services/gamewaireResultsGraphic.ts', import.meta.url), 'utf8');
+function fixture({ noContext = false, noBlob = false, noFonts = false, noLogo = false } = {}) {
+  const source = readFileSync(new URL('../src/services/gamewaireResultsGraphic.ts', import.meta.url), 'utf8').replace('import.meta.env.BASE_URL', "'/app/'");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const texts = [], fontLoads = [], boxes = [];
+  const texts = [], fontLoads = [], boxes = [], images = [];
   const ctx = new Proxy({ measureText: (text) => ({ width: text.length * 13 }), fillText: (text, x, y) => texts.push({ text, x, y, color: ctx.fillStyle, font: ctx.font }),
     roundRect: (...args) => boxes.push(args),
+    drawImage: (...args) => images.push(args),
     createLinearGradient: () => ({ addColorStop() {} }) }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = { width: 0, height: 0, getContext: () => noContext ? null : ctx,
     toBlob: (callback) => callback(noBlob ? null : new Blob(['png'], { type: 'image/png' })) };
-  const context = vm.createContext({ exports: {}, Intl, Date, Blob, Map, setTimeout, clearTimeout,
+  class Image {
+    naturalWidth = 1536; naturalHeight = 1024;
+    set src(value) { this.url = value; queueMicrotask(() => noLogo ? this.onerror?.() : this.onload?.()); }
+  }
+  const context = vm.createContext({ exports: {}, Intl, Date, Blob, Map, Image, setTimeout, clearTimeout,
     document: { createElement: () => canvas, fonts: { load: async (font) => { fontLoads.push(font); return noFonts ? [] : [{}]; }, check: () => !noFonts } },
     require: () => ({ performance }) });
   vm.runInContext(code, context);
-  return { ...context.exports, texts, canvas, fontLoads, boxes };
+  return { ...context.exports, texts, canvas, fontLoads, boxes, images };
 }
 const pick = (id, result, patch = {}) => ({ id, result, sport: 'NBA', event_start: `2026-10-${String(20 + id).padStart(2, '0')}T23:00:00Z`,
   is_top_pick: true, is_game_lean: false, probability: 0.6, push_probability: 0, american: -110, withdrawn: false,
@@ -59,6 +64,11 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
   assert.ok(r.texts.filter((row) => row.text === 'Record').every((row) => row.font === '400 22px "DM Sans"'));
   assert.equal(r.boxes.length, 6);
   assert.ok(r.boxes.every((box) => box[2] === (960 - 16) / 2 && box[3] === 162 && box[4] === 12));
+  assert.equal(r.images.length, 1);
+  const [logo, x, y, width, height] = r.images[0];
+  assert.equal(logo.url, '/app/gamewire-mark.png');
+  assert.equal(width / height, 1.5, 'Logo retains its original aspect ratio');
+  assert.ok(x >= 680 && x + width <= 1020 && y + height < 310, 'Logo stays inside header without overlapping cards');
 });
 test('Empty and pending-only sections do not invent a hit rate, and rendering failures are explicit', async () => {
   const r = fixture();
@@ -68,6 +78,7 @@ test('Empty and pending-only sections do not invent a hit rate, and rendering fa
   await assert.rejects(fixture({ noContext: true }).renderResultsGraphic(rows), /could not create/);
   await assert.rejects(fixture({ noBlob: true }).renderResultsGraphic(rows), /could not export/);
   await assert.rejects(fixture({ noFonts: true }).renderResultsGraphic(rows), /fonts could not load/);
+  await assert.rejects(fixture({ noLogo: true }).renderResultsGraphic(rows), /logo could not load/);
 });
 test('Only hit rates strictly above 50 percent are green; exactly 50, below and unavailable stay neutral', async () => {
   for (const [results, expected] of [[['win', 'loss'], '50.0%'], [['win', 'loss', 'loss'], '33.3%'], [['pending'], 'Unavailable']]) {

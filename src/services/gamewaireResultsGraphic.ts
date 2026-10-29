@@ -25,6 +25,13 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
   if (loadedFonts.some((faces) => !faces.length) || fonts.some((font) => !document.fonts.check(font))) {
     throw new Error('GameWire fonts could not load. Reconnect and retry the results graphic.');
   }
+  const logo = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    const timer = setTimeout(() => { image.src = ''; reject(new Error('The GameWire logo timed out. Retry the results graphic.')); }, 15_000);
+    image.onload = () => { clearTimeout(timer); resolve(image); };
+    image.onerror = () => { clearTimeout(timer); reject(new Error('The GameWire logo could not load. Retry the results graphic.')); };
+    image.src = `${import.meta.env.BASE_URL}gamewire-mark.png`;
+  });
   const ink = '#e5eaf3', muted = '#b6c6db', red = '#ff5965', green = '#86d9ad';
   const text = (value: string, x: number, y: number, size: number, color = ink, maxWidth = 960, weight = 700, family = '"DM Sans"') => {
     let fitted = size;
@@ -36,6 +43,8 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
   const gradient = ctx.createLinearGradient(0, 0, 1080, 1350);
   gradient.addColorStop(0, '#151f2e'); gradient.addColorStop(1, '#0c1523');
   ctx.fillStyle = gradient; ctx.fillRect(0, 0, 1080, 1350);
+  const logoWidth = 340, logoHeight = logoWidth * logo.naturalHeight / logo.naturalWidth;
+  ctx.drawImage(logo, 680, 65, logoWidth, logoHeight);
   ctx.fillStyle = red; ctx.fillRect(60, 55, 75, 7);
   text('GAMEWIRE', 60, 116, 36, ink, 960, 700, 'Oswald');
   text('Gamew', 60, 211, 76, ink, 960, 700, 'Oswald');

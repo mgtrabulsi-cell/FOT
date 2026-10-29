@@ -80,6 +80,12 @@ test('Opponent yardage weakness breaks probability-band ties without changing pr
   assert.equal(rankTopPicks([{ ...strong, side: 'Under' }, { ...weak, side: 'Under' }])[0].key, 'a');
   assert.equal(weak.probability, base.probability);
   assert.match(pickBlurb(weak), /280\.0 receiving yards per game/);
+  for (const side of ['Over', 'Under']) {
+    const text = pickBlurb({ ...weak, side, line: 40.5 });
+    assert.match(text, new RegExp(`selection is ${side.toLowerCase()} 40\\.5 receiving yards`));
+    assert.match(text, /sportsbook lines vary/);
+    assert.match(text, /displayed line and price, not unassessed alternatives/);
+  }
 });
 test('Team blurbs summarize form, retain defense and verified situational records without margin lists or hedging boilerplate', () => {
   const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];

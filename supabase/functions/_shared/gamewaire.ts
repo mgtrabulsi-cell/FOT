@@ -90,6 +90,7 @@ export function pickBlurb(pick: Candidate) {
     }
     const supports = line !== null && (over ? pick.seasonAverage > line : pick.seasonAverage < line);
     takeaway = `GamewAIre's selection is ${target}${supports || line === null ? '.' : `; the season average ${pick.seasonAverage === line ? 'sits on the line' : 'leans the other way'}.`}`;
+    if (player) takeaway = `${takeaway.slice(0, -1)}; sportsbook lines vary, and this analysis applies to the displayed line and price, not unassessed alternatives.`;
   } else {
     const wins = current.filter((row) => row.value > 0).length, losses = current.filter((row) => row.value < 0).length;
     const ties = current.length - wins - losses;
