@@ -13,6 +13,7 @@ const story = {
   subject: 'NFL', category: 'Other', title: 'Saved Angle headline', narrative: 'Saved analysis',
   evidence: '', counterpoint: '', pick: '', source_url: '', source_label: '', reviewed: true,
   status: 'published', revision: 1, section: 'angle', image_paths: [],
+  published_at: '2026-10-28T22:30:00Z',
 };
 const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
 test('Angle headlines inherit readable heading typography instead of the generic small button font', () => {
@@ -97,11 +98,14 @@ test('Angle renders saved published posts before effects, schedule, or network',
   const app = fixture({ season: 2026, week: 7, rows: [story] });
   app.props.active = true;
   app.props.season = null; app.props.week = null;
-  app.render(false);
+  const tree = app.render(false);
   assert.match(app.text(), /Saved Angle headline|Saved analysis/);
   assert.match(app.text(), /Showing saved posts from Week/);
   assert.doesNotMatch(app.text(), /Loading The Angle|Waiting for the selected/);
   assert.equal(app.requests.length, 0);
+  const posted = findNode(tree, (node) => node.type === 'time');
+  assert.equal(posted.props.dateTime, story.published_at);
+  assert.match(JSON.stringify(posted.props.children), /Posted/);
 });
 
 function findNode(node, predicate) {

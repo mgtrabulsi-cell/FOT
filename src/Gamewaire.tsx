@@ -23,7 +23,7 @@ const pickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject} 
   : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
   : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
 const resultLabels = { pending: 'Pending', win: 'Won', loss: 'Lost', push: 'Push', void: 'Void' };
-function PickCard({ pick, record, rank, selection, technical = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean;
+export function PickCard({ pick, record, rank, selection, technical = false }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
   const valueScore = gamewaireGrade(pick).score;
   const grade = probabilityGrade(pick.probability);

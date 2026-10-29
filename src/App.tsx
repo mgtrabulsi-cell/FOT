@@ -32,6 +32,7 @@ import PrimaryNavigation from './PrimaryNavigation';
 import { useAnalystUnread } from './useAnalystUnread';
 import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
+import WireWithPicks from './WireWithPicks';
 import NBAExperience from './NBAExperience';
 const Gamewaire = lazy(() => import('./Gamewaire'));
 import DraggableTabs from './DraggableTabs';
@@ -1299,9 +1300,11 @@ function App() {
         {view === 'Profile' ? (
           authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Guest saved browsing is available in The Wire and Stat Hub.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' && sportLeague === 'NBA' ? (
+          <WireWithPicks games={nbaGames} sport="NBA" userId={authUser?.id}>
           <NBAExperience mode="wire" games={nbaGames} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
+          </WireWithPicks>
         ) : view === 'Wire' ? (
-          <>
+          <WireWithPicks games={games} sport="NFL" userId={authUser?.id}>
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}
           {notificationEventId && !notificationGame && !notificationGameError && <p role="status">Loading your notification matchup...</p>}
           {(!notificationEventId || notificationGame?.eventId === notificationEventId) && <TheWire
@@ -1327,7 +1330,7 @@ function App() {
             onToggleFavorite={toggleFavorite}
             onClose={() => setWirePlayerCard(null)}
           />}
-          </>
+          </WireWithPicks>
         ) : view === 'Den' ? (
           <TheDen league={sportLeague} activityDate={selectedNBADate} favorites={favorites.filter((favorite) => favorite.feedPath === (sportLeague === 'NBA' ? 'basketball/nba' : 'football/nfl'))} games={sportLeague === 'NBA' ? nbaGames : lockerRoomReady ? games : []} items={denHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={denHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={denHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={denHistory.loading} historyError={denHistory.error} signedIn={!!authUser} onRetryHistory={denHistory.retry} livePlayerGames={sportLeague === 'NBA' ? nbaGames.filter((game) => game.status === 'LIVE').length : livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
         ) : view === 'Players' ? (

@@ -370,6 +370,10 @@ Run [`supabase/tests/livewire.sql`](supabase/tests/livewire.sql) through the SQL
 
 Readability: Angle post headlines use responsive 22–26px headings (including collapsed headline buttons), with 16px subject details. NBA/NFL player box-score numbers use regular-weight tabular numerals for clearer digit shapes without changing stat values or table navigation.
 
+Angle posts show their original publication date and time (including the reader's timezone) below the headline, even when collapsed; edits do not change this timestamp. Legacy posts without a publication timestamp do not display an invented time.
+
+On desktop viewports of at least 1100px, The Wire places a GamewAIre-themed Top Picks rectangle to the right of NFL/NBA scores. It ranks up to four existing published picks for unfinished games on the displayed scoreboard and links to GamewAIre. It never requests private analyses, game leans, or paid providers. The panel refreshes every minute and on foreground return, with explicit errors/retry. Signed-out viewers see a sign-in notice. Phones and narrower screens do not mount or fetch the panel.
+
 ## Mobile push notifications
 
 Profile shows a persistent **Notifications enabled** status when browser permission is granted and this device has a subscription saved for the signed-in account. It rechecks when returning to the tab/window; a failed status check is shown with Retry rather than claiming notifications are active.

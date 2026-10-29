@@ -1,4 +1,14 @@
 .gai-panel { display: grid; gap: 18px; min-width: 0; }
+.wire-top-picks { align-self: start; padding: 18px; border: 1px solid #293d57; border-radius: 8px; background: radial-gradient(ellipse at top right, #50202d55, transparent 65%), #0c1523; }
+.wire-top-picks > header { border-bottom: 1px solid #293d57; padding-bottom: 12px; }
+.wire-top-picks h2 { margin: 6px 0; font: 600 26px var(--display); }
+.wire-top-picks h3 { margin: 0; }
+.wire-top-picks .gai-picks { margin: 0; }
+.wire-top-picks .gai-pick-top { grid-template-columns: minmax(0, 1fr) 78px; gap: 8px; }
+.wire-top-picks .gai-pick-identity { grid-column: 1 / -1; }
+.wire-top-picks .gai-pick-identity h3 { margin: 5px 0; font-size: 17px; }
+.wire-top-picks .gai-pick-summary { padding: 12px; }
+.wire-picks-link { display: flex; align-items: center; min-height: 44px; color: #e5eaf3; font-weight: 600; }
 .gai-panel *, .gai-panel *::before, .gai-panel *::after { box-sizing: border-box; }
 .gai-panel p, .gai-panel li { font-size: 13px; line-height: 1.6; }
 .gai-panel section, .gai-panel aside, .gai-panel details { min-width: 0; }
