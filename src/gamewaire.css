@@ -283,3 +283,7 @@
 .gai-results-download details { width: 100%; min-width: 0; }
 .gai-results-download img { display: block; width: min(100%, 380px); height: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; }
 .gai-results-download a { display: inline-block; padding: 12px 0; color: var(--ink); }
+.gai-best-bets-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.gai-best-bets-slides { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.gai-best-bets-slides figure { margin: 0; min-width: 0; }
+.gai-best-bets-slides img { width: 100%; max-width: 380px; }

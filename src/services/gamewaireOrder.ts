@@ -23,6 +23,16 @@ export function bestBetLabels(picks: { key: string; isGameLean: boolean; isPubli
   if (lean) labels.set(lean.key, lean.key === top?.key ? 'Top Pick + Game Lean' : 'Game Lean');
   return labels;
 }
+export function instagramBestBets(picks: ReturnType<typeof publishedSelections>, orders: PickOrder[], sport: Candidate['sport'], date: string) {
+  const ranked = orderedTopPicks(picks.filter((pick) => pick.sport === sport && pickOrderDate(pick.start) === date), orders);
+  const top = ranked.filter((pick) => !pick.isGameLean).slice(0, 3);
+  const leans = ranked.filter((pick) => pick.isGameLean || pick.isPublishedLean).slice(0, 3);
+  const keys = new Set([...top, ...leans].map((pick) => pick.key));
+  return ranked.filter((pick) => keys.has(pick.key)).map((pick) => ({
+    ...pick, instagramTopRank: top.findIndex((row) => row.key === pick.key) + 1 || null,
+    instagramLeanRank: leans.findIndex((row) => row.key === pick.key) + 1 || null,
+  }));
+}
 export function pickOrderDate(start: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date(start));

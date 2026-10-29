@@ -593,6 +593,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
   const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
     .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
+    .replace(/import GamewaireBestBetsDownload from [^;]+;/, 'const GamewaireBestBetsDownload=()=>"Download Instagram Best Bets";')
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>{const visible=picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key));return visible.map((p,i)=>renderPick(p,i+1,visible.map(p=>p.key)));};')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
@@ -849,9 +850,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   fixture(postingState);
   const postControls = renderToStaticMarkup(createElement(Page, { onCreatePost() {} }));
   assert.match(postControls, /Create Angle post/);
+  assert.match(postControls, /Download Instagram Best Bets/);
   assert.match(postControls, /Review and publish in The Angle to send the notification/);
   fixture(memberState);
-  assert.doesNotMatch(renderToStaticMarkup(createElement(Page, { onCreatePost() {} })), /Create Angle post/,
+  assert.doesNotMatch(renderToStaticMarkup(createElement(Page, { onCreatePost() {} })), /Create Angle post|Download Instagram Best Bets/,
     'Only the designated account can create a post from published picks');
   const nbaRecord = { ...pick, sport: 'NBA', event_start: quote.start };
   const nflRecord = { ...pick, id: 'nfl-record', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds',

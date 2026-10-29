@@ -10,6 +10,7 @@ import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
 import { bestBetLabels, orderedTopPicks, publishedSelections } from './services/gamewaireOrder';
 import type { PickOrder } from './services/gamewaireOrder';
 import GamewaireResultsDownload from './GamewaireResultsDownload';
+import GamewaireBestBetsDownload from './GamewaireBestBetsDownload';
 import { gamewaireMarketLabels as marketLabels, gamewairePickTitle as pickTitle } from './services/gamewairePresentation';
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
@@ -491,6 +492,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         </>}
       </section> : <>
         {status?.canAnalyze && onCreatePost && <CreateAnglePost picks={publishedPicks} disabled={!loaded || !!error} onCreate={onCreatePost} />}
+        {status?.canAnalyze && <GamewaireBestBetsDownload picks={dateSelections} orders={orders} date={memberDate} disabled={!loaded || !!error} />}
         {status?.canAnalyze &&
           <GamewairePickOrder key={memberDate} date={memberDate} refresh={refreshHistory}
             picks={dateSelections}
