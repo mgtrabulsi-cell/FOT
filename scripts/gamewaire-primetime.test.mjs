@@ -96,8 +96,41 @@ test('Team blurbs summarize form, retain defense and verified situational record
   assert.match(blurb, /3-1 in Thursday\/Sunday\/Monday night games/);
   assert.match(blurb, /straight up, not ATS/);
   assert.match(blurb, /rank 24 of 32/);
-  assert.match(blurb, /GamewAIre's selection is Home \+3\.5/);
+  assert.match(blurb, /We're taking Home \+3\.5 to cover/);
   assert.doesNotMatch(blurb, /outscored|lost by|won by|shift the outlook|guaranteed|ATS record/i);
+});
+test('Detailed game leans use verified results from both teams and correct spread protection, not invented wins or ATS', () => {
+  const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];
+  const pick = { ...base, market: 'spreads', subject: 'Home', side: 'Home', line: 3.5,
+    matchupForm: [
+      { team: 'Home', season: 2026, record: { wins: 3, losses: 3, ties: 0 }, recent: [
+        { date: '2026-10-25', value: -20, opponent: 'Team A', pointsFor: 10, pointsAgainst: 30 },
+        { date: '2026-10-18', value: 6, opponent: 'Team B', pointsFor: 32, pointsAgainst: 26 },
+      ] },
+      { team: 'Away', season: 2026, record: { wins: 4, losses: 3, ties: 0 }, recent: [
+        { date: '2026-10-25', value: -3, opponent: 'Team C', pointsFor: 17, pointsAgainst: 20 },
+      ] },
+    ] };
+  const text = pickBlurb(pick);
+  assert.match(text, /Home are 3-3 this season/);
+  assert.match(text, /32-26 win over Team B/);
+  assert.match(text, /10-30 loss to Team A, looking to respond/);
+  assert.match(text, /Away are 4-3 and coming off a 17-20 loss to Team C/);
+  assert.match(text, /lose by no more than 3 points and still cover/);
+  assert.match(text, /We're taking Home \+3.5 to cover/);
+  assert.equal(text.split('\n\n').length, 2);
+  assert.doesNotMatch(text, /quality opposition|projects to be a close|ATS record|blown out/);
+  assert.match(pickBlurb({ ...pick, line: -3.5 }), /win by at least 4 points/);
+  assert.match(pickBlurb({ ...pick, line: 3 }), /a 3-point loss is a push/);
+  assert.match(pickBlurb({ ...pick, line: -3 }), /a 3-point win is a push/);
+  assert.match(pickBlurb({ ...pick, line: 0 }), /outright win covers/);
+  assert.match(pickBlurb({ ...pick, market: 'h2h' }), /We're taking Home to win outright/);
+  const older = pickBlurb({ ...pick, matchupForm: undefined });
+  assert.doesNotMatch(older, /32-26|Team A|Team B|Team C|4-3/);
+  const legacy = { ...pick, matchupForm: undefined, samples: [{ date: '2026-10-25', season: 2026, value: 6, total: 58, opponent: 'Saved opponent' }] };
+  assert.match(pickBlurb(legacy), /32-26 win over Saved opponent/, 'Older saved totals and margins reconstruct exact scores without inventing data');
+  assert.doesNotMatch(pickBlurb({ ...legacy, samples: [{ ...legacy.samples[0], total: 57 }] }), /Saved opponent/, 'Inconsistent score data is not narrated');
+  assert.match(pickBlurb({ ...pick, line: .5 }), /win outright or finish tied and still cover/);
 });
 test('Evidence computes defensive yardage ranks from all 32 verified opponents and omits ranks if any team fails', async () => {
   const teamQuote = { ...quotes[0], key: 'team', subject: 'Home', side: 'Home', market: 'h2h', line: null };
@@ -122,13 +155,24 @@ test('Evidence computes defensive yardage ranks from all 32 verified opponents a
       if (parsed.pathname.endsWith('/schedule')) return Response.json({ events: Array.from({ length: 8 }, (_, i) => ({
         id: `${year}-${i}`, date: new Date(now - (year === 2026 ? 4 + i * 7 : 300 + i * 7) * 86400000).toISOString(),
         seasonType: { type: 2 }, competitions: [{ status: { type: { completed: true } }, competitors: [
-          { team: { id: '1' }, score: 20 }, { team: { id: '2' }, score: 10 },
+          { team: { id: '1', displayName: 'Home' }, score: 20 }, { team: { id: '2', displayName: 'Away' }, score: 10 },
         ] }],
       })) });
       throw new Error('Unexpected public request');
     };
     const data = await collectEvidence([teamQuote], matchup, now, fetcher);
     const opponent = data.evidence.get('team').opponents[0];
+    const forms = data.evidence.get('team').matchupForm;
+    assert.deepEqual(forms.find((row) => row.team === 'Home').record, { wins: 8, losses: 0, ties: 0 });
+    assert.deepEqual(forms.find((row) => row.team === 'Away').record, { wins: 0, losses: 8, ties: 0 });
+    assert.equal(forms[0].season, 2026);
+    assert.equal(forms[0].recent.length, 3);
+    assert.equal(forms[0].recent[0].pointsFor, 10);
+    assert.equal(forms[0].recent[0].pointsAgainst, 20);
+    assert.equal(forms[0].recent[0].opponent, 'Home');
+    const evaluated = evaluate([teamQuote], data.evidence, { ...defaultSettings, markets: ['h2h'] }, now);
+    assert.ok(evaluated.teamLean);
+    assert.deepEqual(evaluated.teamLean.pick.matchupForm, forms, 'Both teams survive candidate construction and publication snapshots');
     if (fail) {
       assert.equal(opponent.yardage, undefined);
       assert.ok(data.warnings.some((warning) => warning.includes('all 32 verified')));

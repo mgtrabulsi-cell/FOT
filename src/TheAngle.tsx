@@ -21,6 +21,7 @@ import { pickCategories, pickCategory, pickCategoryLabels } from './services/ang
 import XPublishingStatus from './XPublishingStatus';
 import PostViewers from './PostViewers';
 import { loadAngleDraft, saveAngleDraft } from './services/angleDrafts';
+import type { AngleDraft } from './services/angleDrafts';
 import { postThemes } from './services/postThemes';
 import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
@@ -29,7 +30,7 @@ import ParlayGraphicBuilder from './ParlayGraphicBuilder';
 import { parlayGraphicError, withParlayPick } from './services/parlayGraphic';
 import { renderParlayGraphic } from './services/parlayGraphicImage';
 
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; unreadKeys?: readonly string[]; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean; importedDraft?: Angle | null; onDraftImported?: () => void };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; unreadKeys?: readonly string[]; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean; importedDraft?: AngleDraft | null; onDraftImported?: () => void };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The Angle request failed. Please retry.';
 
@@ -129,7 +130,13 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const scheduleKey = weeklyGames.map((game) => `${game.id}:${game.date}`).sort().join('|');
   useEffect(() => {
     if (!importedDraft || !visible || !admin || !draftReady || draftRestoreFailed || busy || form) return;
-    setForm(importedDraft); setDirty(true);
+    resetPhotos();
+    setPhotos(importedDraft.photos.map((photo) => {
+      const preview = photo.file ? URL.createObjectURL(photo.file) : postPhotoUrl(photo.path ?? '');
+      if (photo.file) previews.current.add(preview);
+      return { ...photo, preview };
+    }));
+    setForm(importedDraft.form); setDirty(true);
     setNotice('GamewAIre draft created. Review the picks and check the review box, then publish to send the notification.');
     onDraftImported?.();
     window.setTimeout(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
@@ -491,7 +498,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
               ? [...angleThemes(form), theme.value] : angleThemes(form).filter((value) => value !== theme.value))} />
             <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
           </label>)}</div>
-          <small>{form.title === 'GamewAIre best bets' && angleThemes(form)[0] === 'betting' ? 'Notification subject: GamewAIre best bets' : angleThemes(form)[0] ? `Notification prefix: ${postThemes.find((theme) => theme.value === angleThemes(form)[0])?.label}: (first selected theme)` : 'Select a theme first to set the notification prefix.'}</small>
+          <small>{/^GamewAIre best bets$/i.test(form.title) && angleThemes(form)[0] === 'betting' ? `Notification subject: ${form.title}` : angleThemes(form)[0] ? `Notification prefix: ${postThemes.find((theme) => theme.value === angleThemes(form)[0])?.label}: (first selected theme)` : 'Select a theme first to set the notification prefix.'}</small>
         </fieldset>
         {news && <fieldset className="livewire-themes angle-news-types"><legend>Type <span>(choose one or both)</span></legend>
           <div>{newsTypes.map((type) => <label key={type.value}>

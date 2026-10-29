@@ -10,6 +10,7 @@ import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
 import { bestBetLabels, orderedTopPicks, publishedSelections } from './services/gamewaireOrder';
 import type { PickOrder } from './services/gamewaireOrder';
 import GamewaireResultsDownload from './GamewaireResultsDownload';
+import { gamewaireMarketLabels as marketLabels, gamewairePickTitle as pickTitle } from './services/gamewairePresentation';
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
 const odds = (value: number) => value > 0 ? `+${value}` : String(value);
@@ -19,14 +20,6 @@ const statusLabels = {
   in_progress: 'Analysis in progress', completed: 'Analysis completed', no_qualifying: 'No qualifying value bets',
   insufficient_data: 'Insufficient data', stale_odds: 'Stale odds', provider_error: 'Provider error', setup_required: 'Provider setup required',
 };
-const marketLabels: Record<string, string> = {
-  h2h: 'Moneyline', spreads: 'Spread', totals: 'Total points',
-  player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
-  player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions',
-};
-const pickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject} ML`
-  : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
-  : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
 const resultLabels = { pending: 'Pending', win: 'Won', loss: 'Lost', push: 'Push', void: 'Void' };
 export function PickCard({ pick, record, rank, selection, technical = false, stretch = false, lean = false, bestBet }: { pick: Candidate; record?: StoredPick; rank: number; technical?: boolean; stretch?: boolean; lean?: boolean; bestBet?: string;
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
@@ -71,7 +64,7 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
     {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="gai-note">Saved price · refresh analysis before using a changed line.</p>}
     </div>
     <section className="gai-reason" aria-label={`Analysis behind ${title}`}>
-      <p>{pickBlurb(pick)}</p>
+      {pickBlurb(pick).split('\n\n').map((paragraph, index) => <p key={index}>{paragraph}</p>)}
     </section>
     {technical && <details className="gai-evidence"><summary>Admin stats &amp; source observations</summary>
     {pick.baseline && <p>{pick.baseline} Previous full-season average: {pick.previousSeasonAverage?.toFixed(1) ?? 'Unavailable'}.</p>}
@@ -205,7 +198,7 @@ function CreateAnglePost({ picks, disabled, onCreate }: { picks: ReturnType<type
     setBusy(true); setError('');
     void Promise.resolve().then(() => onCreate(picks)).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
   }}>{busy ? 'Creating draft...' : 'Create Angle post'}</button>
-    <p className="gai-note">Opens a draft with the first {picks.length} published selections in the current saved order and filters. Review and publish in The Angle to send the notification. No automatic post or alert.</p>
+    <p className="gai-note">Opens a draft with the first {picks.length} published selections in the current saved order and filters, plus pick-card PNGs with full reasoning. Review and publish in The Angle to send the notification. No automatic post or alert.</p>
     {error && <p role="alert" className="feed-warning">{error}</p>}
   </div>;
 }

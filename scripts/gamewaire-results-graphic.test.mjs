@@ -66,7 +66,11 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
   assert.ok(r.boxes.every((box) => box[2] === (960 - 16) / 2 && box[3] === 162 && box[4] === 12));
   assert.equal(r.images.length, 1);
   const [logo, x, y, width, height] = r.images[0];
-  assert.equal(logo.url, '/app/gamewire-mark.png');
+  assert.equal(logo.url, '/app/gamewire-mark-transparent.png');
+  const asset = readFileSync(new URL('../public/gamewire-mark-transparent.png', import.meta.url));
+  assert.equal(asset.readUInt32BE(16), 1536);
+  assert.equal(asset.readUInt32BE(20), 1024);
+  assert.equal(asset[25], 6, 'Logo is an RGBA PNG with transparency, not an opaque rectangular background');
   assert.equal(width / height, 1.5, 'Logo retains its original aspect ratio');
   assert.ok(x >= 680 && x + width <= 1020 && y + height < 310, 'Logo stays inside header without overlapping cards');
 });

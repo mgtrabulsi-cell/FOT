@@ -182,7 +182,7 @@ test('Conversational blurbs use only saved player or team evidence without inven
   assert.match(blurb, /under 7\.5 assists/);
   assert.doesNotMatch(blurb, /unbeaten|LeBron|home court|injur|lock to|guaranteed/i);
   const team = engine.pickBlurb({ ...pick, market: 'spreads', side: 'Boston Celtics', subject: 'Boston Celtics', line: 4.5 });
-  assert.match(team, /GamewAIre's selection is Boston Celtics \+4\.5/);
+  assert.match(team, /We're taking Boston Celtics \+4\.5 to cover/);
   assert.doesNotMatch(team, /minutes per game|averaging.*assists/);
 });
 
@@ -218,11 +218,11 @@ test('Conversational team blurbs use recorded form without revealing the formula
   assert.match(ml, /Los Angeles Lakers are 1-1 across 2 recorded games this season/);
   assert.doesNotMatch(ml, /outscored|won by|lost by/);
   assert.match(ml, /last 2 games: 1-1 \(W-L\)/);
-  assert.match(ml, /GamewAIre's selection is Los Angeles Lakers moneyline/);
+  assert.match(ml, /We're taking Los Angeles Lakers to win outright/);
   assert.doesNotMatch(ml, /Old opponent|scoring margin|weight|50\/50|model|projection|5\.2|69\.0|LowVig|guaranteed win/i);
   const negative = engine.pickBlurb({ ...base, seasonAverage: -3.2, projection: -2 });
   assert.doesNotMatch(negative, /outscored|shift the outlook/);
-  assert.match(negative, /GamewAIre's selection is/);
+  assert.match(negative, /We're taking Los Angeles Lakers to win outright/);
   for (const line of [4.5, -4, 0]) {
     const spread = engine.pickBlurb({ ...base, market: 'spreads', line });
     assert.ok(spread.includes(`Los Angeles Lakers ${line > 0 ? '+' : ''}${line}`));
@@ -296,7 +296,7 @@ test('Opponent context is persisted without changing the picks, probability, pro
   assert.doesNotMatch(blurb, /50\/50|weight|efficiency rating|defense boosts|algorithm/i);
   assert.doesNotMatch(engine.pickBlurb(original.picks[0]), /No\. \d|points allowed per game/);
 });
-test('Explanations stay within five sentences across all markets, prioritizing form, verified defense and matchup history', () => {
+test('Props stay concise while game leans expand into paragraphs, preserving verified defense and matchup history', () => {
   const base = evaluate().picks[0];
   const opponent = { team: quote.away, games: 3, pointsAllowed: 110, pointsScored: 115, rank: 12, tied: false, leagueSize: 30, season: 2027, fetchedAt: quote.updatedAt };
   for (const sport of ['NBA', 'NFL']) for (const market of engine.markets[sport]) {
@@ -304,7 +304,10 @@ test('Explanations stay within five sentences across all markets, prioritizing f
       rotation: { label: 'Core rotation', minutes: 32 }, opponents: [opponent],
       samples: Array.from({ length: 10 }, (_, index) => ({ date: `2026-10-${26 - index}`, season: 2027, value: 10 + index, opponent: quote.away })) };
     const text = engine.pickBlurb(pick);
-    assert.ok(text.split(/[.!?](?:\s|$)/).filter(Boolean).length <= 5, `${market}: ${text}`);
+    if (market === 'h2h' || market === 'spreads') {
+      assert.equal(text.split('\n\n').length, 2);
+      assert.match(text, /We're taking/);
+    } else assert.ok(text.split(/[.!?](?:\s|$)/).filter(Boolean).length <= 5, `${market}: ${text}`);
     assert.ok(text.split(/\s+/).length <= 220, `${market} should remain concise`);
     assert.match(text, /110\.0 points per game/);
     if (market !== 'totals') {
@@ -593,6 +596,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>{const visible=picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key));return visible.map((p,i)=>renderPick(p,i+1,visible.map(p=>p.key)));};')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
+    .replace(/from ['"]\.\/services\/gamewairePresentation['"]/g, `from '${new URL('../src/services/gamewairePresentation.ts', import.meta.url)}'`)
     .replace(/from ['"]\.\/services\/gamewaireGames['"]/g, `from '${new URL('../src/services/gamewaireGames.ts', import.meta.url)}'`)
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
@@ -775,7 +779,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(teamMarkets, /<h3>Boston Celtics \+4\.5<\/h3>/);
   assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
   assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
-  assert.match(teamMarkets, /GamewAIre&#x27;s selection is/);
+  assert.match(teamMarkets, /We&#x27;re taking/);
   assert.doesNotMatch(teamMarkets, /outscored opponents by|lost by|shift the outlook/);
   assert.doesNotMatch(teamMarkets, /Unvalidated estimates, not betting value\. Probability-first; close ties/);
   for (const [market, label] of Object.entries({

@@ -94,7 +94,10 @@ Deno.test('Angle dispatcher drops retired jobs, sends headline-only alerts and r
     primaryTheme = 'betting';
     subject = 'GamewAIre best bets';
     await invoke();
-    assert(payloads[payloads.length - 1].title === 'GamewAIre best bets', 'Manual GamewAIre posts use the exact notification subject without a theme prefix');
+    assert(payloads[payloads.length - 1].title === 'GamewAIre Best Bets', 'Manual GamewAIre posts use the capitalized notification subject without a theme prefix');
+    subject = 'GamewAIre Best Bets';
+    await invoke();
+    assert(payloads[payloads.length - 1].title === subject, 'New capitalized draft titles retain the exact push subject');
     subject = 'Player news';
     assert((await invoke()).status === 200, 'Storyline delivery succeeds');
     const story = payloads[payloads.length - 1];

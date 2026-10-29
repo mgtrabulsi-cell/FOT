@@ -30,7 +30,7 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
     const timer = setTimeout(() => { image.src = ''; reject(new Error('The GameWire logo timed out. Retry the results graphic.')); }, 15_000);
     image.onload = () => { clearTimeout(timer); resolve(image); };
     image.onerror = () => { clearTimeout(timer); reject(new Error('The GameWire logo could not load. Retry the results graphic.')); };
-    image.src = `${import.meta.env.BASE_URL}gamewire-mark.png`;
+    image.src = `${import.meta.env.BASE_URL}gamewire-mark-transparent.png`;
   });
   const ink = '#e5eaf3', muted = '#b6c6db', red = '#ff5965', green = '#86d9ad';
   const text = (value: string, x: number, y: number, size: number, color = ink, maxWidth = 960, weight = 700, family = '"DM Sans"') => {

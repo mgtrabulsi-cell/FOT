@@ -23,7 +23,7 @@ export function gamewaireAngleDraft(picks: (Candidate & { isGameLean: boolean })
   }).join('\n\n');
   if (narrative.length > 1500 || evidence.length > 1500) throw new Error('These picks exceed the Angle text limit. Filter to fewer published picks and retry.');
   return { id: '', season, week, game_id: 'COMBO:0', matchup: 'GamewAIre published picks', kind: 'team',
-    subject: 'GamewAIre best bets', category: 'Other', title: 'GamewAIre best bets', narrative, evidence,
+    subject: 'GamewAIre Best Bets', category: 'Other', title: 'GamewAIre Best Bets', narrative, evidence,
     counterpoint: '', pick: '', picks: [], source_url: '', source_label: '', reviewed: false, status: 'draft',
     revision: 0, section: 'angle', news_types: [], themes: ['betting'], post_to_x: false };
 }

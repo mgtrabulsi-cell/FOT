@@ -16,7 +16,7 @@ export type Quote = {
   market: string; subject: string; side: string; line: number | null; american: number;
   book: string; updatedAt: string; noVig: number | null;
 };
-export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string; season?: number; weight?: number; offensiveInvolvement?: number };
+export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string; season?: number; weight?: number; offensiveInvolvement?: number; pointsFor?: number; pointsAgainst?: number; total?: number };
 export type NBARotation = { label: 'Core rotation' | 'High-usage rotation'; minutes: number; involvement?: number };
 export type OpponentContext = {
   team: string; games: number; pointsAllowed: number; pointsScored: number;
@@ -26,6 +26,7 @@ export type OpponentContext = {
 };
 export type FormRecord = { wins: number; losses: number; ties: number };
 export type TeamForm = { afterLoss: FormRecord; afterWin: FormRecord; primetime: FormRecord; latestResult: 'win' | 'loss' | 'tie'; seasons: number[] };
+export type MatchupForm = { team: string; season: number; record: FormRecord; recent: Observation[] };
 export function isNFLPrimetime(start: string) {
   if (!Number.isFinite(Date.parse(start))) return false;
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(start));
@@ -39,6 +40,7 @@ export type Evidence = {
   rotation?: NBARotation;
   opponents?: OpponentContext[];
   teamForm?: TeamForm;
+  matchupForm?: MatchupForm[];
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
@@ -51,6 +53,7 @@ export type Candidate = Quote & {
   rotation?: NBARotation;
   opponents?: OpponentContext[];
   teamForm?: TeamForm;
+  matchupForm?: MatchupForm[];
 };
 export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
 export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; stretchKeys?: string[] };
@@ -65,7 +68,70 @@ export function probabilityGrade(probability: number) {
   return probability >= 0.75 ? 'A' : probability >= 0.70 ? 'A-' : probability >= 0.65 ? 'B+'
     : probability >= 0.55 ? 'B' : probability >= 0.50 ? 'B-' : 'C';
 }
+export function gameLeanBlurb(pick: Candidate) {
+  const recordText = (row: FormRecord) => `${row.wins}-${row.losses}${row.ties ? `-${row.ties} (W-L-T)` : ''}`;
+  const samples = [...pick.samples].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  const season = Math.max(...samples.flatMap((row) => row.season === undefined ? [] : [row.season]));
+  const current = samples.filter((row) => !Number.isFinite(season) || row.season === season);
+  const teamKey = (name: string) => normalize(name).replace(/^losangeles/, 'la');
+  const opponentName = teamKey(pick.subject) === teamKey(pick.home) ? pick.away : pick.home;
+  const own = pick.matchupForm?.find((row) => teamKey(row.team) === teamKey(pick.subject));
+  const opponent = pick.matchupForm?.find((row) => teamKey(row.team) === teamKey(opponentName));
+  const recent = own?.recent ?? current.slice(0, 3);
+  const line = pick.line;
+  const target = pick.market === 'h2h' ? `${pick.subject} moneyline`
+    : `${pick.subject}${line === null ? ' spread' : ` ${line > 0 ? '+' : ''}${line}`}`;
+  const first: string[] = [`${target} is GamewAIre's matchup lean, built around recent form${pick.market === 'spreads' ? ' and the points on offer' : ' and the outright result'}.`];
+  if (own) first.push(`${pick.subject} are ${recordText(own.record)} this season.`);
+  else if (current.length) first.push(`${pick.subject} are ${recordText({ wins: current.filter((row) => row.value > 0).length,
+    losses: current.filter((row) => row.value < 0).length, ties: current.filter((row) => row.value === 0).length })} across ${current.length} recorded games${Number.isFinite(season) ? ' this season' : ''}.`);
+  const scoredResult = (row: Observation) => {
+    const pointsFor = row.pointsFor ?? (row.total === undefined ? undefined : (row.total + row.value) / 2);
+    const pointsAgainst = row.pointsAgainst ?? (row.total === undefined ? undefined : (row.total - row.value) / 2);
+    if (!row.opponent || pointsFor === undefined || pointsAgainst === undefined || !Number.isInteger(pointsFor)
+      || !Number.isInteger(pointsAgainst) || pointsFor < 0 || pointsAgainst < 0 || pointsFor - pointsAgainst !== row.value) return '';
+    return `${pointsFor}-${pointsAgainst} ${row.value > 0 ? 'win over' : row.value < 0 ? 'loss to' : 'tie with'} ${row.opponent}`;
+  };
+  const wins = recent.filter((row) => row.value > 0).map(scoredResult).filter(Boolean).slice(0, 2);
+  if (wins.length) first.push(`Their recent results include a ${wins.join(' and a ')}.`);
+  const last = recent[0], lastResult = last && scoredResult(last);
+  if (lastResult && last.value <= 0) first.push(`They enter this matchup after a ${lastResult}${last.value < 0 ? ', looking to respond' : ''}.`);
+  else if (!wins.length && recent.length) first.push(`Their last ${recent.length} games: ${recent.filter((row) => row.value > 0).length}-${recent.filter((row) => row.value < 0).length}${recent.some((row) => row.value === 0) ? `-${recent.filter((row) => row.value === 0).length} (W-L-T)` : ' (W-L)'}.`);
+  const second: string[] = [];
+  if (pick.market === 'spreads' && line !== null && line !== 0) {
+    const favorite = line < 0 ? pick.subject : opponentName;
+    second.push(`${favorite} are the ${teamKey(favorite) === teamKey(pick.home) ? 'home' : 'road'} favorite${line > 0 ? `, with ${pick.subject} getting ${line} points` : ''}.`);
+  }
+  const meetings = current.filter((row) => row.opponent && normalize(row.opponent).replace(/^losangeles/, 'la') === normalize(opponentName).replace(/^losangeles/, 'la'));
+  if (meetings.length) second.push(`In ${meetings.length} recorded ${Number.isFinite(season) ? 'current-season ' : ''}meeting${meetings.length === 1 ? '' : 's'} with ${opponentName}, ${pick.subject} went ${recordText({
+    wins: meetings.filter((row) => row.value > 0).length, losses: meetings.filter((row) => row.value < 0).length, ties: meetings.filter((row) => row.value === 0).length,
+  })}.`);
+  if (opponent) {
+    const latest = opponent.recent[0], result = latest && scoredResult(latest);
+    second.push(`${opponent.team} are ${recordText(opponent.record)}${result ? ` and coming off a ${result}` : ' this season'}.`);
+  }
+  for (const defense of pick.opponents ?? []) second.push(`${defense.team} rank ${defense.rank} of ${defense.leagueSize}${defense.tied ? ' (tied)' : ''} in scoring defense, allowing ${defense.pointsAllowed.toFixed(1)} points per game.`);
+  const form = pick.teamForm;
+  if (form) {
+    const context: string[] = [];
+    if (form.latestResult !== 'tie') {
+      const record = form.latestResult === 'loss' ? form.afterLoss : form.afterWin;
+      if (record.wins + record.losses + record.ties) context.push(`${recordText(record)} following a ${form.latestResult}`);
+    }
+    if (pick.sport === 'NFL' && isNFLPrimetime(pick.start) && form.primetime.wins + form.primetime.losses + form.primetime.ties)
+      context.push(`${recordText(form.primetime)} in Thursday/Sunday/Monday night games`);
+    if (context.length) second.push(`Across the available ${form.seasons.join('/')} regular seasons, ${pick.subject} are ${context.join(' and ')} straight up, not ATS.`);
+  }
+  if (pick.market === 'spreads' && line !== null) {
+    if (line > 0) second.push(`At +${line}, ${pick.subject} can win outright${pick.sport === 'NFL' ? ' or finish tied' : ''}${line > 1 ? ` or lose by no more than ${Math.ceil(line) - 1} points` : ''} and still cover${Number.isInteger(line) ? `; a ${line}-point loss is a push` : ''}.`);
+    else if (line < 0) second.push(`At ${line}, ${pick.subject} need to win by at least ${Math.floor(-line) + 1} points to cover${Number.isInteger(line) ? `; a ${-line}-point win is a push` : ''}.`);
+    else second.push('At pick’em, an outright win covers; a tied result is a push.');
+  }
+  second.push(pick.market === 'spreads' ? `We're taking ${target} to cover.` : `We're taking ${pick.subject} to win outright.`);
+  return `${first.join(' ')}\n\n${second.join(' ')}`;
+}
 export function pickBlurb(pick: Candidate) {
+  if (pick.market === 'h2h' || pick.market === 'spreads') return gameLeanBlurb(pick);
   const units: Record<string, string> = { player_points: 'points', player_rebounds: 'rebounds', player_assists: 'assists',
     player_threes: 'made threes', player_pass_yds: 'passing yards', player_rush_yds: 'rushing yards',
     player_reception_yds: 'receiving yards', player_receptions: 'receptions', totals: 'combined points' };
@@ -312,7 +378,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
-      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents, teamForm: data.teamForm };
+      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents, teamForm: data.teamForm, matchupForm: data.matchupForm };
     if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
       reason: qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
     if (!qualifies) {

@@ -7,7 +7,8 @@ const pick = { key: 'one', sport: 'NFL', subject: 'Receiver', market: 'player_re
 test('Manual post contains ordered published selections and reasoning, with exact subject and no duplicate Angle tracking', () => {
   const second = { ...pick, key: 'two', market: 'spreads', subject: 'Home', side: 'Home', line: 3.5, american: 105, isGameLean: true };
   const draft = gamewaireAngleDraft([second, pick], 2026, 8);
-  assert.equal(draft.title, 'GamewAIre best bets');
+  assert.equal(draft.title, 'GamewAIre Best Bets');
+  assert.equal(draft.subject, 'GamewAIre Best Bets');
   assert.match(draft.narrative, /^#1 Game Lean: Home \+3.5 \(\+105\)/);
   assert.match(draft.narrative, /#2 Top Pick: Receiver - Over 55.5 Receiving yards \(-110\)/);
   assert.match(draft.narrative, /Away @ Home/);

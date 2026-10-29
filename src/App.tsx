@@ -42,7 +42,7 @@ import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, fetchStoredNBAScoreboard, fetchStoredNFLScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
 import FavorableMatchups from './FavorableMatchups';
 import TheAngle from './TheAngle';
-import type { Angle } from './services/theAngle';
+import type { AngleDraft } from './services/angleDrafts';
 import OurResults from './OurResults';
 import { useSwipeBack } from './useSwipeBack';
 import { useOnlineStatus } from './OfflineStatus';
@@ -642,7 +642,7 @@ function App() {
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
   const [analystMode, setAnalystMode] = useState<'Fantasy' | 'Angle' | 'Results'>('Angle');
-  const [gamewaireDraft, setGamewaireDraft] = useState<{ userId: string; form: Angle } | null>(null);
+  const [gamewaireDraft, setGamewaireDraft] = useState<{ userId: string; draft: AngleDraft } | null>(null);
   const [fantasyMode, setFantasyMode] = useState<'Matchups' | 'News' | 'Hate' | 'StartSit'>('StartSit');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
@@ -1267,8 +1267,10 @@ function App() {
         {view === 'Gamewaire' && <Suspense fallback={<p role="status">Opening GamewAIre…</p>}><Gamewaire key={sessionUser?.id ?? 'guest'} onCreatePost={async (picks) => {
           if (!sessionUser) throw new Error('Sign in before creating an Angle post.');
           const { gamewaireAngleDraft } = await import('./services/gamewaireAngle');
+          const { renderGamewairePickGraphics } = await import('./services/gamewairePickGraphic');
           const form = gamewaireAngleDraft(picks, lockerRoomSeason, lockerRoomWeek);
-          setGamewaireDraft({ userId: sessionUser.id, form }); setAnalystMode('Angle'); setView('Analyst');
+          const files = await renderGamewairePickGraphics(picks);
+          setGamewaireDraft({ userId: sessionUser.id, draft: { form, photos: files.map((file) => ({ file })) } }); setAnalystMode('Angle'); setView('Analyst');
         }} /></Suspense>}
         {view === 'Analyst' && <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
           <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
@@ -1292,7 +1294,7 @@ function App() {
           key={`${section}:${sessionUser?.id ?? 'guest'}`}
           active={view === 'Analyst' && (section === 'news' ? analystMode === 'Fantasy' && fantasyMode === 'News' : analystMode === 'Angle')}
           section={section}
-          importedDraft={section === 'angle' && gamewaireDraft && gamewaireDraft.userId === sessionUser?.id ? gamewaireDraft.form : null}
+          importedDraft={section === 'angle' && gamewaireDraft && gamewaireDraft.userId === sessionUser?.id ? gamewaireDraft.draft : null}
           onDraftImported={() => setGamewaireDraft(null)}
           onOpenSection={(next) => { setAnalystMode(next === 'news' ? 'Fantasy' : 'Angle'); if (next === 'news') setFantasyMode('News'); }}
           games={lockerRoomReady ? games : []}

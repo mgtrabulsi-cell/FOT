@@ -100,7 +100,7 @@ export function teamSamples(value: unknown, teamId: string, now: number): Array<
     const a = score(own?.score), b = score(other?.score);
     if (a === undefined || b === undefined || !Number.isFinite(Date.parse(text(event.date)))) continue;
     result.push({ eventId: text(event.id) || undefined, date: text(event.date), value: a - b, margin: a - b, total: a + b,
-      opponent: text(object(other?.team).displayName), location: text(own?.homeAway) });
+      opponent: text(object(other?.team).displayName), location: text(own?.homeAway), pointsFor: a, pointsAgainst: b });
   }
   return result.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 }
@@ -244,7 +244,7 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       form = teamSituationalForm([...current.map((row) => ({ ...row, season: matchup.season })),
         ...previous.map((row) => ({ ...row, season: matchup.season - 1 }))], matchup.season);
     }
-    return { team, games, athletes, form };
+    return { team, games, current, athletes, form };
   }));
   const logs = new Map<string, unknown>();
   const previousLogs = new Map<string, unknown>();
@@ -353,8 +353,13 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
     const opponents = teamData.filter((row) => quote.market === 'totals' || ownTeam && row.team.id !== ownTeam)
       .flatMap((row) => { const stats = defense.get(teamNameKey(row.team.name)); return stats ? [stats] : []; });
     const teamForm = !quote.market.startsWith('player_') && quote.market !== 'totals' ? teamData.find((row) => row.team.id === ownTeam)?.form : undefined;
+    const matchupForm = !quote.market.startsWith('player_') && quote.market !== 'totals' ? teamData.map((row) => ({
+      team: row.team.name, season: matchup.season, record: { wins: row.current.filter((game) => game.value > 0).length,
+        losses: row.current.filter((game) => game.value < 0).length, ties: row.current.filter((game) => game.value === 0).length },
+      recent: row.current.slice(0, 3),
+    })) : undefined;
     evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: matchup.season, rotation: sport === 'NBA' && quote.market.startsWith('player_') ? rotation.get(quote.subject) : undefined, teamForm,
-      opponents, identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
+      opponents, matchupForm, identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
   }
   return { evidence, warnings: [...new Set(warnings)], coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };
 }
