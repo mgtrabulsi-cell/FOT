@@ -42,6 +42,7 @@ import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, fetchStoredNBAScoreboard, fetchStoredNFLScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
 import FavorableMatchups from './FavorableMatchups';
 import TheAngle from './TheAngle';
+import type { Angle } from './services/theAngle';
 import OurResults from './OurResults';
 import { useSwipeBack } from './useSwipeBack';
 import { useOnlineStatus } from './OfflineStatus';
@@ -641,6 +642,7 @@ function App() {
   }, []);
   const [profileReturnView, setProfileReturnView] = useState<Exclude<AppView, 'Profile'>>('Wire');
   const [analystMode, setAnalystMode] = useState<'Fantasy' | 'Angle' | 'Results'>('Angle');
+  const [gamewaireDraft, setGamewaireDraft] = useState<{ userId: string; form: Angle } | null>(null);
   const [fantasyMode, setFantasyMode] = useState<'Matchups' | 'News' | 'Hate' | 'StartSit'>('StartSit');
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
@@ -1262,7 +1264,12 @@ function App() {
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
         <AccountRequired hasAccount={!!sessionUser} section={view === 'Gamewaire' ? 'GamewAIre' : view === 'Analyst' ? 'Analyst Desk' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>
-        {view === 'Gamewaire' && <Suspense fallback={<p role="status">Opening GamewAIre…</p>}><Gamewaire key={sessionUser?.id ?? 'guest'} /></Suspense>}
+        {view === 'Gamewaire' && <Suspense fallback={<p role="status">Opening GamewAIre…</p>}><Gamewaire key={sessionUser?.id ?? 'guest'} onCreatePost={async (picks) => {
+          if (!sessionUser) throw new Error('Sign in before creating an Angle post.');
+          const { gamewaireAngleDraft } = await import('./services/gamewaireAngle');
+          const form = gamewaireAngleDraft(picks, lockerRoomSeason, lockerRoomWeek);
+          setGamewaireDraft({ userId: sessionUser.id, form }); setAnalystMode('Angle'); setView('Analyst');
+        }} /></Suspense>}
         {view === 'Analyst' && <div className="player-mode-tabs" role="tablist" aria-label="Analyst Desk view">
           <button role="tab" aria-selected={analystMode === 'Angle'} aria-label={analystUnread.angle ? 'The Angle, unread posts' : 'The Angle'} className={analystMode === 'Angle' ? 'active' : ''} onClick={() => setAnalystMode('Angle')}>The Angle{analystUnread.angle && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
           <button role="tab" aria-selected={analystMode === 'Fantasy'} aria-label={analystUnread.news || analystUnread.picks || analystUnread.hate ? 'Fantasy, unread updates' : 'Fantasy'} className={analystMode === 'Fantasy' ? 'active' : ''} onClick={() => setAnalystMode('Fantasy')}>Fantasy{(analystUnread.news || analystUnread.picks || analystUnread.hate) && <i className="analyst-tab-dot" aria-hidden="true" />}</button>
@@ -1285,6 +1292,8 @@ function App() {
           key={`${section}:${sessionUser?.id ?? 'guest'}`}
           active={view === 'Analyst' && (section === 'news' ? analystMode === 'Fantasy' && fantasyMode === 'News' : analystMode === 'Angle')}
           section={section}
+          importedDraft={section === 'angle' && gamewaireDraft && gamewaireDraft.userId === sessionUser?.id ? gamewaireDraft.form : null}
+          onDraftImported={() => setGamewaireDraft(null)}
           onOpenSection={(next) => { setAnalystMode(next === 'news' ? 'Fantasy' : 'Angle'); if (next === 'news') setFantasyMode('News'); }}
           games={lockerRoomReady ? games : []}
           season={lockerRoomSeason}

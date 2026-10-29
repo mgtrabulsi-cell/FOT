@@ -50,10 +50,9 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
     text(section.title, 60, y + 28, 26, muted);
     const stats = [
       { label: 'Record', value: String(section.wins) },
-      { label: 'Pending', value: String(section.pending) },
       { label: 'Win rate', value: section.hitRate === null ? 'Unavailable' : `${(section.hitRate * 100).toFixed(1)}%` },
     ];
-    const width = (960 - 32) / 3;
+    const width = (960 - 16) / 2;
     let x = 60;
     stats.forEach((stat) => {
       ctx.beginPath(); ctx.roundRect(x, y + 50, width, 162, 12); ctx.fillStyle = '#101b2c'; ctx.fill();

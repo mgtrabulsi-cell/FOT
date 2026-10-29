@@ -48,7 +48,8 @@ Deno.serve(async (request: Request) => {
           const graphicSubject = graphic && delivery.primary_theme === 'fantasy'
             ? /^(Week \d+ Must (?:Start|Sit)) Fantasy (QB|RB|WR|TE)$/.exec(delivery.subject)
             : null;
-          const title = graphicSubject
+          const title = delivery.primary_theme === 'betting' && delivery.subject === 'GamewAIre best bets'
+            ? delivery.subject : graphicSubject
             ? `${graphicSubject[1]} ${graphicSubject[2]}s`
             : `${delivery.primary_theme ? delivery.primary_theme[0].toUpperCase() + delivery.primary_theme.slice(1) : 'News'}: ${delivery.subject}`;
           await sendWebPush(pushServer, target.subscription, {

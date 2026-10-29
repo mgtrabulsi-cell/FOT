@@ -29,7 +29,7 @@ import ParlayGraphicBuilder from './ParlayGraphicBuilder';
 import { parlayGraphicError, withParlayPick } from './services/parlayGraphic';
 import { renderParlayGraphic } from './services/parlayGraphicImage';
 
-type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; unreadKeys?: readonly string[]; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean };
+type Props = { games: Game[]; season: number | null; week: number | null; user: User | null; storyId?: string | null; storyOpenKey?: number; onSeen?: AnalystSeen; unreadKeys?: readonly string[]; section?: AngleSection; onOpenSection?: (section: AngleSection) => void; active?: boolean; importedDraft?: Angle | null; onDraftImported?: () => void };
 const errorMessage = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'The Angle request failed. Please retry.';
 
@@ -71,7 +71,7 @@ function newAngle(game: Game | undefined, season: number, week: number, section:
   };
 }
 
-export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, unreadKeys = [], section = 'angle', onOpenSection, active: visible = true }: Props) {
+export default function TheAngle({ games, season, week, user, storyId = null, storyOpenKey = 0, onSeen, unreadKeys = [], section = 'angle', onOpenSection, active: visible = true, importedDraft, onDraftImported }: Props) {
   const news = section === 'news';
   const [admin, setAdmin] = useState(false);
   const [savedFeed] = useState(() => readRenderSnapshot('angleFeed', section));
@@ -127,6 +127,13 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const editor = useRef<HTMLFormElement>(null);
   const weeklyGames = games.filter((game) => game.league === 'NFL' && game.seasonYear === season);
   const scheduleKey = weeklyGames.map((game) => `${game.id}:${game.date}`).sort().join('|');
+  useEffect(() => {
+    if (!importedDraft || !visible || !admin || !draftReady || draftRestoreFailed || busy || form) return;
+    setForm(importedDraft); setDirty(true);
+    setNotice('GamewAIre draft created. Review the picks and check the review box, then publish to send the notification.');
+    onDraftImported?.();
+    window.setTimeout(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
+  }, [importedDraft, visible, admin, draftReady, draftRestoreFailed, busy, form, onDraftImported]);
 
   useEffect(() => {
     if (!user) return;
@@ -446,6 +453,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     </div>}
     {form && <form className="angle-editor" aria-label={news ? 'Fantasy News editor' : 'Angle editor'} ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
       <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
+      {importedDraft && <p role="status">Your existing draft was not replaced. Publish or discard it to open the waiting GamewAIre draft.</p>}
       <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : draftSaving ? 'Saving draft on this device...' : 'Draft saved on this device. It stays open until you publish or discard it.'}</p>
       {!admin && <p role="status">Checking editing access. Your draft remains open.</p>}
       <fieldset className="angle-editor-fields" disabled={busy || !admin}>
@@ -483,7 +491,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
               ? [...angleThemes(form), theme.value] : angleThemes(form).filter((value) => value !== theme.value))} />
             <span className={`wire-primetime-tag tag-${theme.color}`}>{theme.label}</span>
           </label>)}</div>
-          <small>{angleThemes(form)[0] ? `Notification prefix: ${postThemes.find((theme) => theme.value === angleThemes(form)[0])?.label}: (first selected theme)` : 'Select a theme first to set the notification prefix.'}</small>
+          <small>{form.title === 'GamewAIre best bets' && angleThemes(form)[0] === 'betting' ? 'Notification subject: GamewAIre best bets' : angleThemes(form)[0] ? `Notification prefix: ${postThemes.find((theme) => theme.value === angleThemes(form)[0])?.label}: (first selected theme)` : 'Select a theme first to set the notification prefix.'}</small>
         </fieldset>
         {news && <fieldset className="livewire-themes angle-news-types"><legend>Type <span>(choose one or both)</span></legend>
           <div>{newsTypes.map((type) => <label key={type.value}>

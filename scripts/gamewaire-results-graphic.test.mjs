@@ -48,7 +48,8 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
   assert.equal(blob.type, 'image/png');
   assert.equal(r.canvas.width, 1080); assert.equal(r.canvas.height, 1350);
   const text = r.texts.map((row) => row.text).join('\n');
-  for (const expected of ['GAME LEANS', 'TOP PICKS', 'ALL PICKS', '66.7%', '100.0%', 'Win rate', 'Pending', 'Record', ' W · ', ' L']) assert.ok(text.includes(expected), expected);
+  for (const expected of ['GAME LEANS', 'TOP PICKS', 'ALL PICKS', '66.7%', '100.0%', 'Win rate', 'Record', ' W · ', ' L']) assert.ok(text.includes(expected), expected);
+  assert.ok(!r.texts.some((row) => row.text === 'Pending'), 'No pending box is drawn');
   assert.doesNotMatch(text, /ROI|profit|units|Stretch|settlement_note|closing|Player \d|recent|Withdrawn/i);
   assert.ok(r.texts.every((row) => row.y > 0 && row.y < 1350 && row.x >= 60 && row.x < 1020));
   assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.color === '#86d9ad'));
@@ -56,8 +57,8 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
   assert.ok(r.fontLoads.includes('400 22px "DM Sans"'));
   assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.font === '700 48px Oswald'));
   assert.ok(r.texts.filter((row) => row.text === 'Record').every((row) => row.font === '400 22px "DM Sans"'));
-  assert.equal(r.boxes.length, 9);
-  assert.ok(r.boxes.every((box) => box[2] === (960 - 32) / 3 && box[3] === 162 && box[4] === 12));
+  assert.equal(r.boxes.length, 6);
+  assert.ok(r.boxes.every((box) => box[2] === (960 - 16) / 2 && box[3] === 162 && box[4] === 12));
 });
 test('Empty and pending-only sections do not invent a hit rate, and rendering failures are explicit', async () => {
   const r = fixture();

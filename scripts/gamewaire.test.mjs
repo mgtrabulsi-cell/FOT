@@ -840,6 +840,15 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     assert.doesNotMatch(publishedArea, /gai-result-win/, 'A different selection, price, book, model or removed lean cannot supply the outcome');
   }
   const nflCandidate = { ...candidate, key: 'nfl-pick', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds', line: 250.5 };
+  const postingState = memberState.slice();
+  postingState[0] = { ...status, canAnalyze: true, oddsReady: true }; postingState[26] = 'published';
+  fixture(postingState);
+  const postControls = renderToStaticMarkup(createElement(Page, { onCreatePost() {} }));
+  assert.match(postControls, /Create Angle post/);
+  assert.match(postControls, /Review and publish in The Angle to send the notification/);
+  fixture(memberState);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(Page, { onCreatePost() {} })), /Create Angle post/,
+    'Only the designated account can create a post from published picks');
   const nbaRecord = { ...pick, sport: 'NBA', event_start: quote.start };
   const nflRecord = { ...pick, id: 'nfl-record', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds',
     event_start: quote.start, result: 'win', withdrawn: false, data: nflCandidate };

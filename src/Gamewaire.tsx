@@ -198,7 +198,18 @@ function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }
     {error && <p role="alert" className="feed-warning">{error}</p>}
   </form></details>;
 }
-export default function Gamewaire() {
+function CreateAnglePost({ picks, disabled, onCreate }: { picks: ReturnType<typeof publishedSelections>; disabled: boolean;
+  onCreate: (picks: ReturnType<typeof publishedSelections>) => void | Promise<void> }) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  return <div><button type="button" disabled={disabled || busy || !picks.length} onClick={() => {
+    setBusy(true); setError('');
+    void Promise.resolve().then(() => onCreate(picks)).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
+  }}>{busy ? 'Creating draft...' : 'Create Angle post'}</button>
+    <p className="gai-note">Opens a draft with the first {picks.length} published selections in the current saved order and filters. Review and publish in The Angle to send the notification. No automatic post or alert.</p>
+    {error && <p role="alert" className="feed-warning">{error}</p>}
+  </div>;
+}
+export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: ReturnType<typeof publishedSelections>) => void | Promise<void> } = {}) {
   const [status, setStatus] = useState<EngineStatus | null>(null);
   const [runs, setRuns] = useState<AnalysisRun[]>([]), [picks, setPicks] = useState<StoredPick[]>([]);
   const [loaded, setLoaded] = useState(false), [error, setError] = useState(''), [refresh, setRefresh] = useState(0);
@@ -486,6 +497,7 @@ export default function Gamewaire() {
           </details>
         </>}
       </section> : <>
+        {status?.canAnalyze && onCreatePost && <CreateAnglePost picks={publishedPicks} disabled={!loaded || !!error} onCreate={onCreatePost} />}
         {status?.canAnalyze &&
           <GamewairePickOrder key={memberDate} date={memberDate} refresh={refreshHistory}
             picks={dateSelections}
