@@ -639,7 +639,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.doesNotMatch(report, /Saved analysis reports|Choose up to four member picks/);
   assert.match(report, /Probability grade/);
   assert.doesNotMatch(report, /class="gai-evidence"|Value\/quality score \(not probability\)|class="gai-metrics gai-row-metrics"/, 'Members receive prose, not technical detail boxes');
-  assert.match(report, /Brier score/);
+  assert.doesNotMatch(report, /Brier score|Profit \/ loss|<dt>ROI|<th>ROI|1 unit per recorded pick|Model diagnostics/);
   assert.match(report, /gai-grade-positive/);
   assert.match(report, /32\.0 minutes per game/);
   assert.match(report, /minutes per game recently/);
@@ -647,9 +647,18 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /class="gai-pick-summary" aria-label="Why this pick:/);
   assert.ok(report.includes(`${candidate.subject} averages ${candidate.seasonAverage.toFixed(1)} points`));
   assert.match(report, /a change in role or minutes/);
-  assert.match(report, /<details class="gai-history">/);
+  assert.match(report, /<details id="gai-results" class="gai-history">/);
+  assert.match(report, /aria-label="GamewAIre record overview"/);
+  assert.match(report, /aria-label="View Top Picks results"/);
+  assert.match(report, /aria-label="View Game Leans results"/);
+  assert.match(report, /aria-label="View All Picks results"/);
+  assert.ok(report.indexOf('GamewAIre record overview') < report.indexOf('class="gai-dashboard"'));
+  assert.match(empty, /Loading recorded results|GamewAIre results/);
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
+  assert.match(admin, /Profit \/ loss/);
+  assert.match(admin, /<dt>ROI/);
+  assert.match(admin, /Model diagnostics/);
   assert.match(admin, /Choose up to four member picks/);
   assert.match(admin, /Run analysis · up to 7 credits/);
   assert.match(admin, /reusing a fresh cached report costs 0 credits/);
@@ -806,6 +815,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     assert.ok(output.includes(label));
     assert.ok(output.includes(`<dt>Win rate</dt><dd>${rate}`), 'Each record calculates its own summary, without duplicate shared rows');
     assert.match(output, /Top Pick \+ Game Lean/);
+    assert.match(output, /class="gai-record-card"/);
   }
   sourceState[33] = 'leans'; sourceState[20] = 'NFL';
   fixture(sourceState);

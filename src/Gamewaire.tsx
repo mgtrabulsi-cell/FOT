@@ -283,6 +283,16 @@ export default function Gamewaire() {
     finally { setBusy(false); }
   };
   const changeSport = (value: Sport) => { setSport(value); setEvents([]); setEventId(''); setSettings((previous) => ({ ...previous, markets: [...markets[value]] })); };
+  const openResults = (view: typeof resultsView) => {
+    setResultsView(view); setHistorySport('all'); setHistoryDate(''); setPickStatus('all');
+    setMarket('all'); setMinEV(''); setMinOdds(''); setMaxOdds('');
+    const history = document.querySelector<HTMLDetailsElement>('#gai-results');
+    if (history) {
+      history.open = true;
+      history.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      history.querySelector('summary')?.focus({ preventScroll: true });
+    }
+  };
   return <section className="gai-panel" aria-label="GamewAIre">
     <header className="gai-hero">
       <div className="gai-hero-copy"><span className="eyebrow">NFL + NBA · MODEL-DRIVEN INSIGHTS</span>
@@ -296,6 +306,25 @@ export default function Gamewaire() {
         <div><b>04</b><span>Transparent<br />model ratings</span></div>
       </div>
     </header>
+    <section className="gai-record-overview" aria-label="GamewAIre record overview">
+      <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD · ALL TIME · NBA + NFL</span><h3>GamewAIre results</h3></div>
+        <button onClick={() => openResults('top')}>View full results</button></div>
+      {!loaded ? <p className="gai-note">{error ? 'Record unavailable until saved results reload.' : 'Loading recorded results…'}</p> :
+        <div className="gai-record-cards">
+          {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['all', 'All Picks']] as const).map(([view, label]) => {
+            const rows = picks.filter((pick) => view === 'all' || (view === 'top' ? pick.is_top_pick : pick.is_game_lean));
+            const summary = performance(rows.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
+              american: pick.american, result: pick.result, withdrawn: pick.withdrawn })));
+            return <button key={view} className="gai-record-card" onClick={() => openResults(view)} aria-label={`View ${label} results`}>
+              <span className="gai-record-label">{label}</span>
+              <strong>{summary.wins}<small> Hit · </small>{rows.filter((pick) => pick.result === 'loss').length}<small> Missed</small></strong>
+              <span>{percent(summary.winRate)} hit rate · {summary.pending} pending</span>
+              <span className="gai-record-link">View results <span aria-hidden="true">→</span></span>
+            </button>;
+          })}
+        </div>}
+      <p className="gai-note">Published picks only · Manually recorded outcomes · Pushes and voids excluded from hit rate. All Picks counts shared selections once.</p>
+    </section>
     {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
     {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
     {status?.canAnalyze && <section id="gai-saved-games" className="gai-scheduled" aria-label="Saved analyses">
@@ -468,7 +497,7 @@ export default function Gamewaire() {
         <p>Moneylines must pass the same edge, EV, uncertainty and freshness checks as props. No market is forced into the list. NBA rotation rankings are not confirmed starters.</p></details>
     </aside>
     </div>
-    <details className="gai-history"><summary>Results &amp; pick history</summary>
+    <details id="gai-results" className="gai-history"><summary>Results &amp; pick history</summary>
     <section aria-label="Model performance">
       <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD</span><h3>Published pick results</h3></div>
         <label>Results sport<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option><option>NBA</option><option>NFL</option></select></label>
@@ -480,14 +509,14 @@ export default function Gamewaire() {
       </div>
       <p className="gai-note">{resultsView === 'top' ? 'Top Picks record only.' : resultsView === 'leans' ? 'Published Game Leans record only, including lean-only selections.' : 'All published Top Picks and Game Leans. Identical selections at the same price and model version count once.'}
         {' '}A selection published in both areas shares one Hit/Missed result. Private analyses do not enter either record.</p>
-      {loaded && <dl className="gai-results-stats">
+      {loaded && <dl className={`gai-results-stats${status?.canAnalyze ? '' : ' gai-results-public'}`}>
         <div><dt>Record</dt><dd>{historyPicks.filter((pick) => pick.result === 'win').length}<span> W · </span>{historyPicks.filter((pick) => pick.result === 'loss').length}<span> L</span></dd></div>
         <div><dt>Pending</dt><dd>{record.pending}</dd></div>
         <div><dt>Win rate</dt><dd>{percent(record.winRate)}</dd></div>
-        <div className={record.profit > 0 ? 'gai-profit-positive' : record.profit < 0 ? 'gai-profit-negative' : ''}><dt>Profit / loss</dt><dd>{record.profit > 0 ? '+' : ''}{record.profit.toFixed(2)}<span> units</span></dd></div>
-        <div><dt>ROI</dt><dd>{percent(record.roi)}</dd></div>
+        {status?.canAnalyze && <><div className={record.profit > 0 ? 'gai-profit-positive' : record.profit < 0 ? 'gai-profit-negative' : ''}><dt>Profit / loss</dt><dd>{record.profit > 0 ? '+' : ''}{record.profit.toFixed(2)}<span> units</span></dd></div>
+        <div><dt>ROI</dt><dd>{percent(record.roi)}</dd></div></>}
       </dl>}
-      <p className="gai-note">Summary: all {historySport === 'all' ? 'sports' : historySport} history · 1 unit per recorded pick. Win rate excludes pushes and voids. Withdrawn settled picks remain included.</p>
+      <p className="gai-note">Summary: all {historySport === 'all' ? 'sports' : historySport} history{status?.canAnalyze && ' · 1 unit per recorded pick'}. Win rate excludes pushes and voids. Withdrawn settled picks remain included.</p>
       <div className="gai-history-toolbar">
         <label>Game date (Eastern)<input type="date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} /></label>
         <label>Result<select value={pickStatus} onChange={(event) => setPickStatus(event.target.value)}><option value="all">All results</option>
@@ -518,7 +547,7 @@ export default function Gamewaire() {
           </div>}
         </li>)}
       </ul>
-      {loaded && <details className="gai-history-advanced"><summary>Model diagnostics &amp; breakdowns</summary>
+      {loaded && status?.canAnalyze && <details className="gai-history-advanced"><summary>Model diagnostics &amp; breakdowns</summary>
         <p className="gai-note">{record.total} tracked · {record.settled} settled. Repeated identical selections are counted once. Admin-reported outcomes only; no simulated results.</p>
         <dl className="gai-metrics"><div><dt>Brier score</dt><dd>{record.brier?.toFixed(3) ?? 'Unavailable'}</dd></div>
           <div><dt>Log loss</dt><dd>{record.logLoss?.toFixed(3) ?? 'Unavailable'}</dd></div><div><dt>Closing price value</dt><dd>{percent(record.closingPriceValue)}</dd></div></dl>
