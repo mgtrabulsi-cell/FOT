@@ -70,8 +70,24 @@ function renderer() {
     document: { createElement: () => canvas }, Image: class { constructor() { throw new Error('Offline mode cannot fetch images'); } },
     require: () => ({ parlayGraphicError, parlayLegLabel }) });
   vm.runInContext(code, context);
-  return { render: context.exports.renderParlayGraphic, canvas, texts };
+  return { render: context.exports.renderParlayGraphic, crop: context.exports.parlayPortraitCrop, canvas, texts };
 }
+test('Portrait framing trims transparent padding and fills the circle with a square head-and-shoulders crop', () => {
+  const { crop } = renderer();
+  for (const [width, height, bounds] of [[350, 254, [70, 30, 280, 250]], [600, 436, [100, 60, 500, 430]]]) {
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    const [left, top, right, bottom] = bounds;
+    for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) pixels[(y * width + x) * 4 + 3] = 255;
+    pixels[3] = 10;
+    const result = crop(pixels, width, height);
+    assert.equal(result.y, top, 'Hairline stays at the top rather than being center-cropped away');
+    assert.equal(result.x + result.size / 2, (left + right + 1) / 2);
+    assert.ok(result.size < Math.min(right - left + 1, bottom - top + 1), 'Portrait zooms inside the visible image, not its transparent canvas');
+    assert.ok(result.x >= left && result.x + result.size <= right + 1);
+    assert.ok(result.y + result.size <= bottom + 1);
+  }
+  assert.throws(() => crop(new Uint8ClampedArray(16), 2, 2), /portrait is empty/);
+});
 test('Name-only renderer works offline, expands for eight legs and prints every leg without fabricating odds', async () => {
   for (const count of [2, 3, 8]) {
     const r = renderer(), g = { ...graphic(), images: false };
