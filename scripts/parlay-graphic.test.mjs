@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { newParlayGraphic, readParlayGraphic, parlayGraphicError, parlayLegLabel, parlayPickText, withParlayPick, parlayMarkets } from '../src/services/parlayGraphic.ts';
+import { newManualParlayLeg, newParlayGraphic, readParlayGraphic, parlayGraphicError, parlayLegLabel, parlayPickText, withParlayPick, parlayMarkets } from '../src/services/parlayGraphic.ts';
 import { angleWriteFields, readAngles } from '../src/services/theAngle.ts';
 
 const subject = { id: '1', name: 'Test Player', image: '', teamId: '2', teamName: 'Test Team', teamLogo: '', color: '167bcb' };
@@ -50,8 +50,42 @@ test('Saving creates exactly one parlay, retains other picks, preserves unchange
   assert.equal(withParlayPick(settled, { ...g, odds: '+400' }).at(-1).result, 'pending');
   assert.equal(withParlayPick(picks, g).length, 2);
 });
+test('Manual legs support any sport, free-text selections, draft restoration and duplicate validation', () => {
+  const manual = newManualParlayLeg();
+  assert.deepEqual(readParlayGraphic({ ...newParlayGraphic(), legs: [manual] }).legs[0], manual);
+  const g = graphic();
+  for (const [sport, name, market] of [
+    ['NHL', 'Oilers', 'Moneyline'], ['Soccer', 'Arsenal', 'Over 1.5 goals'],
+    ['UFC', 'Test Fighter', 'Win by KO'], ['College Football', 'Ohio State', 'Spread -6.5'],
+    ['Tennis', 'Test Player', 'Win first set'],
+  ]) {
+    g.legs.push({ ...newManualParlayLeg(), sport, subject: { ...manual.subject, name }, market });
+  }
+  assert.equal(parlayGraphicError(g), '');
+  assert.deepEqual(readParlayGraphic(JSON.parse(JSON.stringify(g))), g);
+  assert.equal(parlayLegLabel(g.legs[4]), 'Win by KO');
+  assert.match(parlayPickText(g), /Ohio State Spread -6.5/);
+  assert.equal(withParlayPick([], g).length, 1);
+  const custom = g.legs[2];
+  assert.match(parlayGraphicError({ ...g, legs: [...g.legs, { ...custom, id: crypto.randomUUID(), subject: { ...custom.subject, id: crypto.randomUUID(), name: ' OILERS ' } }] }), /duplicates/);
+  assert.match(parlayGraphicError({ ...g, legs: [g.legs[0], { ...custom, sport: ' ' }] }), /sport or league/);
+  assert.match(parlayGraphicError({ ...g, legs: [g.legs[0], { ...custom, market: '' }] }), /selection for manual leg/);
+  assert.throws(() => readParlayGraphic({ ...g, legs: [{ ...custom, sport: 'x'.repeat(33) }] }), /invalid/);
+  assert.throws(() => readParlayGraphic({ ...g, legs: [{ ...custom, type: 'player' }] }), /invalid/);
+});
+test('Manual selections render offline with readable initials and exact selection text', async () => {
+  const r = renderer(), manual = newManualParlayLeg();
+  const g = { ...newParlayGraphic(), legs: [
+    { ...manual, sport: 'College Football', subject: { ...manual.subject, name: 'Ohio State', teamName: 'vs Michigan' }, market: 'Spread -6.5' },
+    { ...newManualParlayLeg(), sport: 'UFC', subject: { ...manual.subject, name: 'Test Fighter' }, market: 'Win by submission' },
+  ] };
+  await r.render(g);
+  for (const text of ['OS', 'TF', 'Ohio State', 'SPREAD -6.5', 'WIN BY SUBMISSION', 'College Football  /  vs Michigan', 'UFC  /  MANUAL SELECTION']) assert.ok(r.texts.includes(text), text);
+});
 test('Angle serialization retains the editable template and generated attachment pointer', () => {
   const g = { ...graphic(), image_path: 'author/parlay.png' };
+  const manual = newManualParlayLeg();
+  g.legs.push({ ...manual, sport: 'Soccer', subject: { ...manual.subject, name: 'Arsenal' }, market: 'Moneyline' });
   const story = { id: crypto.randomUUID(), season: 2026, week: 7, revision: 1, game_id: 'COMBO:0', matchup: 'NBA + NFL',
     kind: 'team', subject: '', category: 'Other', title: 'Parlay', narrative: 'My analysis', evidence: '', counterpoint: '', pick: '',
     source_url: '', source_label: '', reviewed: true, status: 'draft', picks: withParlayPick([], g), parlay_graphic: g, image_paths: [g.image_path] };

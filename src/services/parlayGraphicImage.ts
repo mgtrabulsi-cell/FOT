@@ -101,7 +101,7 @@ export async function renderParlayGraphic(graphic: ParlayGraphic): Promise<Blob>
       if (leg.type === 'player') portrait(ctx, photos[index].photo, 147, cy - 78, 156);
       else contain(photos[index].photo, 157, cy - 68, 136);
     }
-    else { ctx.textAlign = 'center'; text(leg.type === 'player' ? leg.subject.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('') : leg.sport, 225, cy + 14, 43); ctx.textAlign = 'left'; }
+    else { ctx.textAlign = 'center'; text(leg.type === 'player' || leg.type === 'custom' ? leg.subject.name.trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('') : leg.sport, 225, cy + 14, 43); ctx.textAlign = 'left'; }
     ctx.restore(); ctx.strokeStyle = '#8198bd'; ctx.lineWidth = 3; ctx.stroke();
     if (photos[index].logo) {
       ctx.beginPath(); ctx.arc(285, cy + 51, 26, 0, Math.PI * 2); ctx.fillStyle = '#151f2e'; ctx.fill(); ctx.stroke();
@@ -109,7 +109,7 @@ export async function renderParlayGraphic(graphic: ParlayGraphic): Promise<Blob>
     }
     text(leg.subject.name, 342, cy - 14, 48, white, 800, 665);
     text(parlayLegLabel(leg).toUpperCase(), 342, cy + 35, 29, muted, 600, 665);
-    text(`${leg.sport}  /  ${leg.type === 'player' ? leg.subject.teamName : 'TEAM PICK'}`, 342, cy + 67, 17, muted, 500, 665);
+    text(`${leg.sport}  /  ${leg.type === 'custom' ? leg.subject.teamName.trim() || 'MANUAL SELECTION' : leg.type === 'player' ? leg.subject.teamName : 'TEAM PICK'}`, 342, cy + 67, 17, muted, 500, 665);
     if (index < graphic.legs.length - 1) {
       ctx.strokeStyle = '#303d52'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(145, y + rowHeight); ctx.lineTo(1014, y + rowHeight); ctx.stroke();
     }

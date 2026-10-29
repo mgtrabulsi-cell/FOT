@@ -126,7 +126,9 @@ const angleDraft = { form: angle, photos: draft.photos };
 test('Parlay templates, including incomplete lines, survive draft restoration and clear only with the Angle draft', async () => {
   const parlay = { version: 1, pickId: crypto.randomUUID(), title: 'PARLAY', subtitle: 'NBA + NFL', odds: '', images: false,
     legs: [{ id: crypto.randomUUID(), sport: 'NBA', type: 'player', market: '', side: 'Over', line: '',
-      subject: { id: '1', name: 'Selected player', image: '', teamId: '2', teamName: 'Selected team', teamLogo: '', color: '167bcb' } }] };
+      subject: { id: '1', name: 'Selected player', image: '', teamId: '2', teamName: 'Selected team', teamLogo: '', color: '167bcb' } },
+      { id: crypto.randomUUID(), sport: 'College Football', type: 'custom', market: '', side: 'At least', line: '',
+        subject: { id: crypto.randomUUID(), name: 'Ohio State', image: '', teamId: '', teamName: '', teamLogo: '', color: '151f2e' } }] };
   await saveAngleDraft('parlay-author', 'angle', { ...angleDraft, form: { ...angle, parlay_graphic: parlay } });
   assert.deepEqual((await loadAngleDraft('parlay-author', 'angle')).form.parlay_graphic, parlay);
   assert.equal(await loadAngleDraft('other-parlay-author', 'angle'), undefined);
