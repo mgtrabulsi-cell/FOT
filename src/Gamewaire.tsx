@@ -11,6 +11,7 @@ import { bestBetLabels, orderedTopPicks, publishedSelections } from './services/
 import type { PickOrder } from './services/gamewaireOrder';
 import GamewaireResultsDownload from './GamewaireResultsDownload';
 import GamewaireBestBetsDownload from './GamewaireBestBetsDownload';
+import GamewireBot from './GamewireBot';
 import { gamewaireMarketLabels as marketLabels, gamewairePickTitle as pickTitle } from './services/gamewairePresentation';
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
@@ -332,6 +333,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <div><b>04</b><span>Transparent<br />model ratings</span></div>
       </div>
     </header>
+    {status?.canAnalyze && <GamewireBot />}
     <section className="gai-record-overview" aria-label="GamewAIre record overview">
       <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD · ALL TIME · NBA + NFL</span><h3>GamewAIre results</h3></div>
         <button onClick={() => openResults('top')}>View full results</button></div>
