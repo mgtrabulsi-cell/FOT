@@ -494,6 +494,12 @@ test('Performance includes losses, pushes, withdrawals, real prices, calibration
   assert.equal(result.roi, 0.5 / 3); assert.equal(result.winRate, 0.5); assert.equal(result.withdrawn, 1);
   assert.ok(Math.abs(result.brier - 0.26) < 1e-10); assert.equal(result.closingPriceValue, 0.25);
   assert.equal(engine.performance([]).roi, null);
+  const reset = engine.performance(rows.map((row) => row.result === 'win' ? { ...row, result: 'pending' } : row));
+  assert.equal(reset.wins, 0);
+  assert.equal(reset.pending, 2);
+  assert.equal(reset.settled, 2);
+  assert.equal(reset.winRate, 0);
+  assert.equal(reset.profit, -1);
   const groups = engine.performanceGroups(rows.map((row) => ({ ...row, sport: 'NBA', market: 'player_points', edge: 0.05, createdAt: quote.updatedAt })));
   assert.equal(groups.sport[0].total, 4);
   assert.equal(groups.price.length, 2);
@@ -599,9 +605,17 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const settlement = renderToStaticMarkup(createElement(Settlement, { pick: { id: 'pick', result: 'pending', subject: 'Player' }, refresh() {} }));
   assert.match(settlement, />Hit<\/label>/);
   assert.match(settlement, />Missed<\/label>/);
+  assert.match(settlement, />Pending<\/label>/);
+  assert.match(settlement, /checked="" value="pending"/);
   assert.match(settlement, /Save result/);
-  assert.equal((settlement.match(/type="radio"/g) ?? []).length, 2);
+  assert.equal((settlement.match(/type="radio"/g) ?? []).length, 3);
   assert.doesNotMatch(settlement, /Source|reason|Closing|Withdrawn|<select/);
+  for (const result of ['win', 'loss']) {
+    fixture([]);
+    const settled = renderToStaticMarkup(createElement(Settlement, { pick: { id: 'pick', result, subject: 'Player' }, refresh() {} }));
+    assert.match(settled, new RegExp(`checked="" value="${result}"`));
+    assert.match(settled, /value="pending"/, 'Settled picks can be reset to Pending');
+  }
   const status = { canAnalyze: true, oddsReady: false, aiReady: false, model: engine.modelVersion, experimental: true };
   fixture([status, [], [], true]);
   const empty = renderToStaticMarkup(createElement(Page));
@@ -905,14 +919,16 @@ test('Endpoint requires authentication/admin access and honestly reports unconfi
   assert.equal(member.fetches.length, 0);
   assert.equal((await member.run({ action: 'publish', runId: '00000000-0000-0000-0000-000000000001', keys: [quote.key] })).status, 403);
 });
-test('Hit/Missed result logging needs no note or closing fields and preserves existing metadata and conflict guards', async () => {
+test('Hit/Missed/Pending result logging preserves metadata, clears pending settlement time and keeps conflict guards', async () => {
   const body = { action: 'settle', id: '00000000-0000-0000-0000-000000000001', revision: 1 };
-  for (const result of ['win', 'loss']) {
+  for (const result of ['win', 'loss', 'pending']) {
     const api = endpoint();
     assert.equal((await api.run({ ...body, result })).status, 200);
     const update = api.writes.find(({ table }) => table === 'gamewaire_picks').value;
     assert.equal(update.result, result);
     assert.equal(update.revision, 2);
+    if (result === 'pending') assert.equal(update.settled_at, null);
+    else assert.ok(Number.isFinite(Date.parse(update.settled_at)));
     for (const field of ['settlement_note', 'withdrawn', 'closing_american', 'closing_line', 'closing_at']) {
       assert.equal(field in update, false, `Simple logging preserves historical ${field}`);
     }
@@ -920,8 +936,10 @@ test('Hit/Missed result logging needs no note or closing fields and preserves ex
   }
   assert.equal((await endpoint().run({ ...body, result: 'invented' })).status, 400);
   assert.equal((await endpoint({ settlementConflict: true }).run({ ...body, result: 'win' })).status, 409);
+  assert.equal((await endpoint({ settlementConflict: true }).run({ ...body, result: 'pending' })).status, 409);
   assert.equal((await endpoint({ settlementPick: { event_start: quote.start } }).run({ ...body, result: 'win' })).status, 400);
   assert.equal((await endpoint({ allowed: false }).run({ ...body, result: 'win' })).status, 403);
+  assert.equal((await endpoint({ allowed: false }).run({ ...body, result: 'pending' })).status, 403);
 });
 test('Other admins and owners have member-only GamewAIre access with no paid requests or writes', async () => {
   for (const role of ['admin', 'owner', 'member']) {

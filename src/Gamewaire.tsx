@@ -164,7 +164,8 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
   </section>;
 }
 function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }) {
-  const [result, setResult] = useState<'win' | 'loss' | ''>(pick.result === 'win' || pick.result === 'loss' ? pick.result : '');
+  const [result, setResult] = useState<'win' | 'loss' | 'pending' | ''>(
+    pick.result === 'win' || pick.result === 'loss' || pick.result === 'pending' ? pick.result : '');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   return <details><summary>Log result · {pick.subject}</summary><form className="gai-form" onSubmit={(event) => {
@@ -174,8 +175,8 @@ function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }
       .then(() => { setSaved(true); refresh(); }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
   }}>
     <fieldset disabled={busy}><legend>Result</legend>
-      {(['win', 'loss'] as const).map((value) => <label key={value}><input type="radio" name={`result-${pick.id}`} value={value}
-        checked={result === value} onChange={() => { setResult(value); setSaved(false); }} required />{value === 'win' ? 'Hit' : 'Missed'}</label>)}
+      {(['win', 'loss', 'pending'] as const).map((value) => <label key={value}><input type="radio" name={`result-${pick.id}`} value={value}
+        checked={result === value} onChange={() => { setResult(value); setSaved(false); }} required />{value === 'win' ? 'Hit' : value === 'loss' ? 'Missed' : 'Pending'}</label>)}
     </fieldset>
     <button disabled={busy || !result}>{busy ? 'Saving…' : 'Save result'}</button>
     {saved && <p role="status">Result saved.</p>}
