@@ -118,7 +118,7 @@ test('Missing weekly games, kickoff lock, postseason and transferred player iden
 
 const endpointCode = ts.transpileModule(readFileSync(new URL('../supabase/functions/gamewire-bot/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ allowed = true, user = true, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], upstreamFail = false, primaryWeekFail = false } = {}) {
+function endpoint({ allowed = true, user = true, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
   const calls = [], writes = [], rpcs = [], queries = [], cache = new Map(), expires = new Date(now + 3600000).toISOString();
   if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expires });
   const client = {
@@ -144,6 +144,7 @@ function endpoint({ allowed = true, user = true, claim = true, cacheFailure = fa
     assert.ok(new URL(href).hostname.endsWith('.espn.com'));
     if (upstreamFail) return new Response('', { status: 503 });
     if (primaryWeekFail && href.includes('site.api.espn.com') && href.includes('/scoreboard')) return new Response('', { status: 403 });
+    if (primaryRosterFail && href.includes('site.api.espn.com') && href.includes('/roster')) return new Response('', { status: 403 });
     if (href.includes('/scoreboard')) return Response.json(board);
     if (href.includes('/gamelog')) return badLogs ? new Response('', { status: 503 }) : Response.json(logs);
     if (href.includes('/standings')) return Response.json({ season: { year: 2026 }, children: [{
@@ -255,6 +256,14 @@ test('A primary week-feed failure can use ESPN’s equivalent public host, with 
   assert.equal(response.status, 200);
   assert.match(data.warnings.join(' '), /equivalent public feed/);
   assert.ok(api.calls.some((url) => url.startsWith('https://site.web.api.espn.com/')));
+});
+test('Player rosters can use the equivalent ESPN public host without losing all searchable players or flooding warnings', async () => {
+  const api = endpoint({ cold: true, primaryRosterFail: true });
+  const response = await api.run({ action: 'directory' }), data = await response.json();
+  assert.equal(response.status, 200); assert.equal(data.players.length, 1);
+  assert.equal(data.warnings.length, 1);
+  assert.match(data.warnings[0], /equivalent public feed/);
+  assert.equal(api.calls.filter((url) => url.includes('/roster') && url.includes('site.web.api.espn.com')).length, 32);
 });
 test('Bot client topics are constrained and UI remains owner-gated with accessible controls', () => {
   const service = readFileSync(new URL('../src/services/gamewireBot.ts', import.meta.url), 'utf8');

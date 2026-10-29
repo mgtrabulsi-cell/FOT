@@ -6,7 +6,7 @@ const now = Date.parse('2026-10-29T18:00:00Z');
 const player = { id: '123', name: 'Test Runner', position: 'RB', teamId: '23', team: 'Pittsburgh Steelers', teamAbbr: 'PIT' };
 const matchup = { eventId: '999', start: '2026-11-01T18:00:00Z', opponentId: '5', opponent: 'Cleveland Browns', home: true, state: 'pre' };
 const date = (index) => new Date(Date.UTC(2026, 9, 25 - index * 7)).toISOString();
-function fixture({ allowed = 150, history = false, contenders = false, badPositions = false, fewerDefenseGames = false, fail = false } = {}) {
+function fixture({ allowed = 150, receiving = 20, receivingAllowed = 40, history = false, contenders = false, badPositions = false, fewerDefenseGames = false, fail = false } = {}) {
   const positions = { '123': 'RB', '124': 'RB', '200': 'RB', '201': 'RB' }, calls = [];
   const game = (id, index, teamId, opponentId) => ({ id: String(id), date: date(index), competitions: [{
     status: { type: { completed: true } }, competitors: [
@@ -17,15 +17,15 @@ function fixture({ allowed = 150, history = false, contenders = false, badPositi
   const otherEvents = Array.from({ length: fewerDefenseGames ? 2 : 5 }, (_, index) => game(201 + index, index, '5', String(20 + index)));
   const schedule = (id, events, standing = '3rd in AFC North') => ({ team: { id, standingSummary: standing }, season: { year: 2026, type: 2 }, events });
   const logs = { names: ['rushingYards', 'receivingYards'], events: Object.fromEntries(ownEvents.slice(0, 3).map((event) => [event.id, { gameDate: event.date, opponent: { id: '44' } }])),
-    seasonTypes: [{ displayName: '2026 Regular Season', categories: [{ events: ownEvents.slice(0, 3).map((event) => ({ eventId: event.id, stats: ['65', '20'] })) }] }] };
+    seasonTypes: [{ displayName: '2026 Regular Season', categories: [{ events: ownEvents.slice(0, 3).map((event) => ({ eventId: event.id, stats: ['65', String(receiving)] })) }] }] };
   const box = (id, offenseId, own) => ({ header: { id, season: { year: 2026, type: 2 }, competitions: [{ status: { type: { completed: true } } }] },
     boxscore: { players: [{ team: { id: offenseId }, statistics: [
       { name: 'rushing', keys: ['rushingYards'], athletes: own
         ? [{ athlete: { id: '123' }, stats: ['65'] }, { athlete: { id: '124' }, stats: ['35'] }]
         : [{ athlete: { id: '200' }, stats: [String(allowed * .7)] }, { athlete: { id: badPositions ? 'unknown' : '201' }, stats: [String(allowed * .3)] }] },
       { name: 'receiving', keys: ['receivingYards'], athletes: own
-        ? [{ athlete: { id: '123' }, stats: ['20'] }, { athlete: { id: '124' }, stats: ['20'] }]
-        : [{ athlete: { id: '200' }, stats: ['30'] }, { athlete: { id: '201' }, stats: ['10'] }] },
+        ? [{ athlete: { id: '123' }, stats: [String(receiving)] }, { athlete: { id: '124' }, stats: ['20'] }]
+        : [{ athlete: { id: '200' }, stats: [String(receivingAllowed * .7)] }, { athlete: { id: '201' }, stats: [String(receivingAllowed * .3)] }] },
     ] }] } });
   const get = async (url) => {
     calls.push(url); assert.ok(new URL(url).hostname.endsWith('.espn.com'));
@@ -48,7 +48,8 @@ function fixture({ allowed = 150, history = false, contenders = false, badPositi
     return schedule(id, Array.from({ length: 8 }, (_, index) => game(600 + index, index + 4, id, '33')));
   };
   const run = (options = {}) => collectBotProjections(options.player ?? player, options.matchup === undefined ? matchup : options.matchup, 2026,
-    options.logs === undefined ? logs : options.logs, { players: [player], positions, season: 2026, week: 8, seasonType: 2, checkedAt: new Date(now).toISOString(), warnings: [] }, get, options.now ?? now);
+    options.logs === undefined ? logs : options.logs, { players: [player], positions: options.player ? Object.fromEntries(Object.keys(positions).map((id) => [id, options.player.position])) : positions,
+      season: 2026, week: 8, seasonType: 2, checkedAt: new Date(now).toISOString(), warnings: [] }, get, options.now ?? now);
   return { run, box, calls, positions, logs, schedule, ownEvents };
 }
 test('Opponent position allowance moves independent yardage estimates above weak-defense lines and below tough-defense baselines', async () => {
@@ -61,6 +62,15 @@ test('Opponent position allowance moves independent yardage estimates above weak
   assert.equal(weak.historyAverage, null); assert.equal(weak.contenderAverage, null);
   assert.equal(weak.sourceGames.length, 10);
   assert.equal(weak.sourceGames.filter((game) => game.role === 'opponent').length, 5);
+});
+test('A receiver’s great recent production is reduced by a tough WR yardage matchup rather than unrelated scoring-defense ranks', async () => {
+  const receiver = { ...player, name: 'Test Receiver', position: 'WR' };
+  const strong = (await fixture({ receiving: 100, receivingAllowed: 40 }).run({ player: receiver }))[0];
+  const weak = (await fixture({ receiving: 100, receivingAllowed: 200 }).run({ player: receiver }))[0];
+  assert.equal(strong.market, 'player_reception_yds'); assert.equal(strong.baseline, 100);
+  assert.equal(strong.yards, 80); assert.equal(weak.yards, 120);
+  assert.match(strong.explanation, /WR yardage allowance/);
+  assert.doesNotMatch(strong.explanation, /scoring defense/);
 });
 test('Direct opponent history adds a small measured component, not a single-game narrative boost', async () => {
   const base = (await fixture().run())[0], history = (await fixture({ history: true }).run())[0];

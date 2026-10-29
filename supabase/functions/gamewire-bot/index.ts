@@ -58,7 +58,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         console.error('Bot primary public ESPN feed unavailable', label, primary);
         try {
           const value = await publicJSON(`${site.replace('site.api.', 'site.web.api.')}/${path}`, fetcher);
-          feedWarnings.push(`${label}: the primary ESPN feed could not refresh; verified data was loaded from ESPN's equivalent public feed.`);
+          if (!feedWarnings.length) feedWarnings.push('Some NFL sources could not refresh from the primary ESPN host; verified data was loaded from ESPN’s equivalent public feed.');
           return value;
         } catch (secondary) {
           console.error('Bot alternate public ESPN feed unavailable', label, secondary);
@@ -78,7 +78,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       const players: BotDirectory['players'] = [], positions: Record<string, string> = {}, warnings: string[] = [];
       for (let start = 0; start < teams.length; start += 8) await Promise.all(teams.slice(start, start + 8).map(async (team) => {
         try {
-          const roster = await publicJSON(`${site}/teams/${team.id}/roster?season=${week.season}`, fetcher);
+          const roster = await criticalFeed(`teams/${team.id}/roster?season=${week.season}`, `${team.abbr} roster`);
           players.push(...readBotRoster(roster, team)); Object.assign(positions, readBotPositions(roster));
         }
         catch (cause) {
@@ -97,7 +97,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     const cacheKey = `nfl:breakdown:v4:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
     const result = await cached<BotReport>(cacheKey, (report) => report.dataIssues.length ? 30_000 : 5 * 60_000, async () => {
       const [roster, logs] = await Promise.allSettled([
-        publicJSON(`${site}/teams/${player.teamId}/roster?season=${week.season}`, fetcher),
+        criticalFeed(`teams/${player.teamId}/roster?season=${week.season}`, 'Current player roster'),
         publicJSON(`https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${player.id}/gamelog?season=${week.season}`, fetcher),
       ]);
       const report = buildBotReport(player, roster.status === 'fulfilled' ? roster.value : null, logs.status === 'fulfilled' ? logs.value : null, board, format, Date.now());
@@ -108,7 +108,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         }
       }
       const get = async (url: string) => (await cached(`nfl:projection-source:v1:${url}`, url.includes('/summary?') ? 24 * 3600000 : 15 * 60_000,
-        () => publicJSON(url, fetcher))).data;
+        () => url.startsWith(`${site}/`) ? criticalFeed(url.slice(site.length + 1), 'NFL matchup sample') : publicJSON(url, fetcher))).data;
       const loadProjections = async () => {
         if (!report.eligibleForGuidance) return;
         report.projections = await collectBotProjections(player, matchup, week.season, logs.status === 'fulfilled' ? logs.value : null, directory.data, get, Date.now());
