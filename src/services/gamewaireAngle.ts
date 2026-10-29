@@ -18,7 +18,8 @@ export function gamewaireAngleDraft(picks: (Candidate & { isGameLean: boolean })
   }).join('\n\n');
   const evidence = picks.map((pick, index) => {
     const sentences = pickBlurb(pick).split(/(?<=[.!?])\s+(?=[A-Z])/);
-    const context = sentences.find((sentence) => sentence.includes('scoring defense')) ?? sentences[0];
+    const context = sentences.find((sentence) => /\bcase (?:for|is)\b/.test(sentence))
+      ?? sentences.find((sentence) => sentence.includes('basis for')) ?? sentences[0];
     return `#${index + 1}: ${context}`;
   }).join('\n\n');
   if (narrative.length > 1500 || evidence.length > 1500) throw new Error('These picks exceed the Angle text limit. Filter to fewer published picks and retry.');

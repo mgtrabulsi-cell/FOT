@@ -292,7 +292,6 @@ test('Opponent context is persisted without changing the picks, probability, pro
   }
   const blurb = engine.pickBlurb(enriched.picks[0]);
   assert.match(blurb, /Atlanta Hawks rank 1 of 30 \(tied\) in scoring defense, allowing 100\.0 points per game/);
-  assert.match(blurb, /not a position-specific ranking/);
   assert.doesNotMatch(blurb, /50\/50|weight|efficiency rating|defense boosts|algorithm/i);
   assert.doesNotMatch(engine.pickBlurb(original.picks[0]), /No\. \d|points allowed per game/);
 });
@@ -309,7 +308,8 @@ test('Props stay concise while game leans expand into paragraphs, preserving ver
       assert.match(text, /We're taking/);
     } else assert.ok(text.split(/[.!?](?:\s|$)/).filter(Boolean).length <= 5, `${market}: ${text}`);
     assert.ok(text.split(/\s+/).length <= 220, `${market} should remain concise`);
-    assert.match(text, /110\.0 points per game/);
+    if (['player_points', 'totals', 'h2h', 'spreads'].includes(market)) assert.match(text, /110\.0 points per game/);
+    else assert.doesNotMatch(text, /scoring defense|110\.0 points per game/, 'Unrelated scoring rankings do not explain this prop market');
     if (market !== 'totals') {
       assert.match(text, /recorded current-season meeting/);
       assert.doesNotMatch(text, /prior-season games/, 'Verified direct matchup is prioritized over extra historical context');

@@ -83,8 +83,8 @@ test('Opponent yardage weakness breaks probability-band ties without changing pr
   for (const side of ['Over', 'Under']) {
     const text = pickBlurb({ ...weak, side, line: 40.5 });
     assert.match(text, new RegExp(`selection is ${side.toLowerCase()} 40\\.5 receiving yards`));
-    assert.match(text, /sportsbook lines vary/);
-    assert.match(text, /displayed line and price, not unassessed alternatives/);
+    assert.match(text, /; sportsbook lines may vary\.$/);
+    assert.doesNotMatch(text, /displayed line and price|unassessed alternatives/);
   }
 });
 test('Team blurbs summarize form, retain defense and verified situational records without margin lists or hedging boilerplate', () => {
@@ -97,9 +97,38 @@ test('Team blurbs summarize form, retain defense and verified situational record
   assert.match(blurb, /straight up, not ATS/);
   assert.match(blurb, /rank 24 of 32/);
   assert.match(blurb, /We're taking Home \+3\.5 to cover/);
+  assert.match(blurb, /The case for Home \+3\.5 is Away's lower-third scoring defense and Home's recent winning form/);
   assert.doesNotMatch(blurb, /outscored|lost by|won by|shift the outlook|guaranteed|ATS record/i);
 });
-test('Detailed game leans use verified results from both teams and correct spread protection, not invented wins or ATS', () => {
+test('Prop reasoning connects the selected line to relevant production and matchup evidence, with honest counterpoints', () => {
+  const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];
+  const opponent = { team: 'Away', games: 7, pointsAllowed: 25, rank: 24, leagueSize: 32,
+    yardage: { receiving: { perGame: 280, rank: 30 } } };
+  const pick = { ...base, market: 'player_reception_yds', side: 'Over', line: 40.5, seasonAverage: 60,
+    samples: [60, 55, 65].map((value, i) => ({ date: `2026-10-${25 - i}`, season: 2026, value })), opponents: [opponent] };
+  const over = pickBlurb(pick);
+  assert.match(over, /the case is Away's lower-third receiving-yardage defense and season production above this line/);
+  assert.match(over, /280.0 receiving yards per game/);
+  assert.doesNotMatch(over, /scoring defense|unassessed|displayed line and price/);
+  assert.match(over, /; sportsbook lines may vary\.$/);
+  const under = pickBlurb({ ...pick, side: 'Under', line: 70.5,
+    opponents: [{ ...opponent, yardage: { receiving: { perGame: 170, rank: 3 } } }] });
+  assert.match(under, /the case is Away's top-third receiving-yardage defense and season production below this line/);
+  assert.doesNotMatch(under, /lower-third|above this line/);
+  const opposingForm = pickBlurb({ ...pick, seasonAverage: 30, samples: pick.samples.map((row) => ({ ...row, value: 25 })) });
+  assert.match(opposingForm, /season average leans the other way/);
+  assert.match(opposingForm, /recent production is a counterpoint, not supporting evidence/);
+  assert.doesNotMatch(opposingForm, /case is .*production above|recent output above/);
+  const catchCount = pickBlurb({ ...pick, market: 'player_receptions', line: 4.5 });
+  assert.doesNotMatch(catchCount, /case is Away's lower-third receiving-yardage/);
+  assert.match(catchCount, /yards allowed do not establish how many catches/);
+  const rebound = pickBlurb({ ...pick, sport: 'NBA', market: 'player_rebounds', line: 7.5 });
+  assert.doesNotMatch(rebound, /scoring defense|receiving-yardage defense|receiving yards per game/);
+  assert.match(rebound, /case is season production above this line and recent output above it/);
+  const unsupported = pickBlurb({ ...pick, opponents: [], seasonAverage: 30, samples: pick.samples.map((row) => ({ ...row, value: 25 })) });
+  assert.match(unsupported, /available averages and matchup stats do not provide a clear supporting case/);
+});
+test('Detailed game leans use verified results from both teams without spread tutorials, invented wins or ATS', () => {
   const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];
   const pick = { ...base, market: 'spreads', subject: 'Home', side: 'Home', line: 3.5,
     matchupForm: [
@@ -116,21 +145,24 @@ test('Detailed game leans use verified results from both teams and correct sprea
   assert.match(text, /32-26 win over Team B/);
   assert.match(text, /10-30 loss to Team A, looking to respond/);
   assert.match(text, /Away are 4-3 and coming off a 17-20 loss to Team C/);
-  assert.match(text, /lose by no more than 3 points and still cover/);
   assert.match(text, /We're taking Home \+3.5 to cover/);
+  const bounceBack = pickBlurb({ ...pick, teamForm: { latestResult: 'loss', seasons: [2025, 2026],
+    afterLoss: { wins: 8, losses: 2, ties: 0 }, afterWin: { wins: 2, losses: 8, ties: 0 },
+    primetime: { wins: 0, losses: 0, ties: 0 } } });
+  assert.match(bounceBack, /The case for Home \+3.5 is their winning record in games following a loss/);
   assert.equal(text.split('\n\n').length, 2);
   assert.doesNotMatch(text, /quality opposition|projects to be a close|ATS record|blown out/);
-  assert.match(pickBlurb({ ...pick, line: -3.5 }), /win by at least 4 points/);
-  assert.match(pickBlurb({ ...pick, line: 3 }), /a 3-point loss is a push/);
-  assert.match(pickBlurb({ ...pick, line: -3 }), /a 3-point win is a push/);
-  assert.match(pickBlurb({ ...pick, line: 0 }), /outright win covers/);
+  for (const line of [3.5, -3.5, 3, -3, 0, .5]) {
+    const blurb = pickBlurb({ ...pick, line });
+    assert.match(blurb, /We're taking Home .* to cover\.$/);
+    assert.doesNotMatch(blurb, /lose by|win by|finish tied|still cover|is a push|outright win covers|At pick’em/);
+  }
   assert.match(pickBlurb({ ...pick, market: 'h2h' }), /We're taking Home to win outright/);
   const older = pickBlurb({ ...pick, matchupForm: undefined });
   assert.doesNotMatch(older, /32-26|Team A|Team B|Team C|4-3/);
   const legacy = { ...pick, matchupForm: undefined, samples: [{ date: '2026-10-25', season: 2026, value: 6, total: 58, opponent: 'Saved opponent' }] };
   assert.match(pickBlurb(legacy), /32-26 win over Saved opponent/, 'Older saved totals and margins reconstruct exact scores without inventing data');
   assert.doesNotMatch(pickBlurb({ ...legacy, samples: [{ ...legacy.samples[0], total: 57 }] }), /Saved opponent/, 'Inconsistent score data is not narrated');
-  assert.match(pickBlurb({ ...pick, line: .5 }), /win outright or finish tied and still cover/);
 });
 test('Evidence computes defensive yardage ranks from all 32 verified opponents and omits ranks if any team fails', async () => {
   const teamQuote = { ...quotes[0], key: 'team', subject: 'Home', side: 'Home', market: 'h2h', line: null };
