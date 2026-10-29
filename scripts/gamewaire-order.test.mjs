@@ -27,9 +27,9 @@ const source = readFileSync(new URL('../src/GamewairePickOrder.tsx', import.meta
 const code = ts.transpileModule(source, { compilerOptions: {
   target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
 } }).outputText;
-function editor(response = { data: { revision: 1 }, error: null }) {
+function editor(response = { data: { revision: 1 }, error: null }, props = {}) {
   const states = [], refs = [], calls = [];
-  let slot = 0, refSlot = 0, refreshed = 0, hovered = null;
+  let slot = 0, refSlot = 0, refreshed = 0, notified = 0, hovered = null;
   const rows = new Map(picks.map((pick) => [pick.key, { closest() { return this; } }]));
   const jsx = (type, props) => ({ type, props });
   const context = vm.createContext({ exports: {}, console, Map,
@@ -41,6 +41,7 @@ function editor(response = { data: { revision: 1 }, error: null }) {
         return [states[i], (value) => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; } };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === './services/gamewaireOrder') return orderHelpers;
+    if (name === './services/gamewaireOrderRefresh') return { notifyPickOrderSaved() { notified++; } };
     if (name === './services/supabaseClient') return { supabase: { rpc: async (...args) => { calls.push(args); return response; } } };
     return {};
   } });
@@ -49,8 +50,9 @@ function editor(response = { data: { revision: 1 }, error: null }) {
     ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
   const render = () => { slot = 0; refSlot = 0; return nodes(context.exports.default({
     picks, date: '2026-10-27', refresh: () => { refreshed++; }, onSave: () => { refreshed++; },
+    ...props,
   })); };
-  return { render, states, refs, calls, refreshed: () => refreshed,
+  return { render, states, refs, calls, refreshed: () => refreshed, notified: () => notified,
     hover(key) {
       refs[0].current = { querySelectorAll: () => states[0].map((key) => rows.get(key)), setPointerCapture() {} };
       hovered = rows.get(key);
@@ -75,6 +77,7 @@ test('Three-line handles support keyboard ordering and save one free revision-ch
   assert.deepEqual([...fixture.calls[0][1].ordered_keys], ['5', '4', '3', '2', '1', '0', '6']);
   assert.equal(fixture.calls[0][1].expected_revision, 0);
   assert.equal(fixture.refreshed(), 1);
+  assert.equal(fixture.notified(), 1);
   assert.ok(fixture.render().some((node) => node.props?.role === 'status' && node.props.children === 'Order saved for everyone.'));
   assert.doesNotMatch(source, /engineRequest|analyze|gamewaire_publish|fetch\(/);
 });
@@ -94,8 +97,46 @@ test('Save failures retain draft and surface backend error, pointer cancellation
   nodes.find((node) => node.type === 'button' && node.props.children === 'Save order · 0 credits').props.onClick();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(fixture.refreshed(), 0);
+  assert.equal(fixture.notified(), 0);
   assert.deepEqual([...fixture.states[0]], ['5', '6', '4', '3', '2', '1', '0']);
   assert.ok(fixture.render().some((node) => node.props?.role === 'alert' && node.props.children[0] === 'Order changed elsewhere'));
+});
+test('Published pick cards reorder inline through filters while saving the complete site-wide order', async () => {
+  const fixture = editor(undefined, { visibleKeys: ['0', '2', '4', '6'], renderPick: (pick, rank) => ({ type: 'PickCard', props: { pick, rank } }) });
+  let nodes = fixture.render();
+  assert.equal(nodes.filter((node) => node.type === 'PickCard').length, 4);
+  nodes.find((node) => node.props?.className === 'gai-order-handle').props.onKeyDown({ key: 'End', preventDefault() {} });
+  nodes = fixture.render();
+  assert.deepEqual(nodes.filter((node) => node.type === 'PickCard').map((node) => node.props.pick.key), ['4', '2', '0', '6']);
+  nodes.find((node) => node.type === 'button' && node.props.children === 'Save order · 0 credits').props.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual([...fixture.calls[0][1].ordered_keys], ['5', '4', '3', '2', '1', '0', '6']);
+  const page = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /<details className="gai-order-tools"/);
+  assert.match(page, /renderPick=\{/);
+});
+
+test('Successful saves notify mounted panels and other tabs; cleanup removes listeners', () => {
+  const raw = readFileSync(new URL('../src/services/gamewaireOrderRefresh.ts', import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(raw, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const listeners = new Map(), writes = [];
+  const context = vm.createContext({ exports: {}, Event, console,
+    localStorage: { setItem: (...args) => writes.push(args) },
+    window: { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: (name) => listeners.delete(name),
+      dispatchEvent: (event) => listeners.get(event.type)?.(event) },
+  });
+  vm.runInContext(compiled, context);
+  let refreshed = 0;
+  const cleanup = context.exports.subscribePickOrderRefresh(() => refreshed++);
+  context.exports.notifyPickOrderSaved();
+  assert.equal(refreshed, 1);
+  assert.equal(writes[0][0], 'gamewire-pick-order-updated');
+  listeners.get('storage')({ key: writes[0][0] });
+  assert.equal(refreshed, 2);
+  listeners.get('storage')({ key: 'unrelated' });
+  assert.equal(refreshed, 2);
+  cleanup();
+  assert.equal(listeners.size, 0);
 });
 test('Touch pointer sorting uses a stable list capture and moves across multiple rows before release', () => {
   const fixture = editor();

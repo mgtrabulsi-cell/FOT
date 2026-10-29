@@ -6,6 +6,7 @@ import { nbaCalendarDate } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import './gamewaire.css';
 import GamewairePickOrder from './GamewairePickOrder';
+import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
 import { orderedTopPicks } from './services/gamewaireOrder';
 import type { PickOrder } from './services/gamewaireOrder';
 
@@ -200,6 +201,7 @@ export default function Gamewaire() {
   const [completion, setCompletion] = useState<{ completed: string[]; completionWarning: string }>({ completed: [], completionWarning: '' });
   const [orders, setOrders] = useState<PickOrder[]>([]);
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
+  useEffect(() => subscribePickOrderRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => {
     let active = true;
     const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 20_000);
@@ -424,16 +426,20 @@ export default function Gamewaire() {
           </details>
         </>}
       </section> : <>
-        {status?.canAnalyze && <details className="gai-order-tools"><summary>Arrange published Top Picks</summary>
+        {status?.canAnalyze &&
           <GamewairePickOrder key={memberDate} date={memberDate} refresh={refreshHistory}
             picks={published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate).flatMap((game) => game.picks)}
+            visibleKeys={(memberGame ? (memberReport ? [memberReport] : []) : memberGames).flatMap((game) => game.picks.map((pick) => pick.key))}
+            renderPick={(pick, rank) => <PickCard pick={pick} rank={rank}
+              record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />}
             order={orders.find((order) => order.game_date === memberDate)}
             onSave={(saved) => { setOrders((previous) => [saved, ...previous.filter((order) => order.game_date !== saved.game_date)]); refreshHistory(); }} />
-        </details>}
+        }
         {memberReport && <p>{memberReport.matchup} · Published {stamp(memberReport.published_at)}</p>}
         {loaded && !publishedPicks.length && <div className="gai-empty"><h4>No published picks yet</h4><p>No published picks for this league and date yet. An admin must analyze and publish a game first.</p></div>}
-        <div className="gai-picks gai-published-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
+        {!status?.canAnalyze && <div className="gai-picks gai-published-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
           record={picks.find((row) => row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />)}</div>
+        }
         <section aria-label="Game team leans"><h4>Game team leans</h4>
           <p className="gai-note">One data-supported moneyline or spread per game. NBA and NFL leans appear only after owner review and publication. Leans are separate from Top Picks and are not betting recommendations.</p>
           {!visibleLeans.length && <p className="gai-note">No team analyses saved for these filters yet. An admin must analyze each game first.</p>}

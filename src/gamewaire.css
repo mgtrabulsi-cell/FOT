@@ -1,17 +1,23 @@
 .gai-panel { display: grid; gap: 18px; min-width: 0; }
-.gai-order-tools { margin: 12px 0; border: 1px solid #293d57; border-radius: 6px; padding: 0 12px; }
+.gai-order-editor { margin: 12px 0; }
+.gai-order-pick { min-width: 0; }
 .gai-order-list { display: grid; gap: 8px; padding: 0; list-style: none; }
-.gai-order-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 44px; align-items: center; gap: 10px; min-height: 64px; padding: 8px; border: 1px solid #293d57; border-radius: 6px; background: #101b2c; }
-.gai-order-list li.is-dragging { border-color: #ff5965; background: #30202e; box-shadow: 0 5px 16px #0005; }
-.gai-order-list.is-sorting li > * { pointer-events: none; }
-.gai-order-list b { display: block; font-size: 13px; overflow-wrap: anywhere; }
-.gai-order-list small { display: block; margin-top: 4px; color: #b6c6db; font-size: 11px; }
+.gai-order-list > li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 44px; align-items: center; gap: 10px; min-height: 64px; padding: 8px; border: 1px solid #293d57; border-radius: 6px; background: #101b2c; }
+.gai-order-list > li.is-dragging { border-color: #ff5965; background: #30202e; box-shadow: 0 5px 16px #0005; }
+.gai-order-list.is-sorting > li > * { pointer-events: none; }
+.gai-order-pick > b { display: block; font-size: 13px; overflow-wrap: anywhere; }
+.gai-order-pick > small { display: block; margin-top: 4px; color: #b6c6db; font-size: 11px; }
 .gai-order-number { color: #a7b9d1; font: 12px var(--mono); }
 .gai-panel .gai-order-handle { padding: 10px; cursor: grab; touch-action: none; user-select: none; }
 .gai-panel .gai-order-handle:active { cursor: grabbing; }
 .gai-order-handle > span { display: grid; gap: 4px; }
 .gai-order-handle i { display: block; height: 2px; width: 20px; background: currentColor; border-radius: 2px; }
-.gai-order-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gai-order-actions { display: flex; flex-wrap: wrap; gap: 8px; position: sticky; bottom: 76px; z-index: 2; padding: 10px 0; background: #0c1523; }
+@media (max-width: 600px) {
+  .gai-order-list > li { grid-template-columns: minmax(0, 1fr) 44px; gap: 6px; padding: 6px; }
+  .gai-order-number { display: none; }
+  .gai-order-pick .gai-pick-summary { padding: 8px; }
+}
 @media (max-width: 1099px) {
   .gai-published-picks > :nth-child(n + 4) { display: none; }
 }

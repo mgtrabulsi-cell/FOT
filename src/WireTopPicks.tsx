@@ -6,6 +6,7 @@ import type { PublishedGame, Sport } from './services/gamewaire';
 import type { Game } from './services/sportsData';
 import { supabase } from './services/supabaseClient';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
+import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
 
 export default function WireTopPicks({ games, sport, userId, desktop }: { games: Game[]; sport: Sport; userId?: string; desktop: boolean }) {
   const [reports, setReports] = useState<PublishedGame[]>([]);
@@ -13,6 +14,7 @@ export default function WireTopPicks({ games, sport, userId, desktop }: { games:
   const [orders, setOrders] = useState<PickOrder[]>([]);
   const eventIds = [...new Set(games.filter((game) => game.status !== 'FINAL').map((game) => game.eventId))].sort().join(',');
   useEffect(() => subscribeForegroundRefresh(() => setRetry((value) => value + 1)), []);
+  useEffect(() => subscribePickOrderRefresh(() => setRetry((value) => value + 1)), []);
   useEffect(() => {
     if (!userId || !eventIds) { setReports([]); setLoaded(true); return; }
     let active = true;

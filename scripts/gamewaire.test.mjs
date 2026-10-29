@@ -585,6 +585,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
   const component = ts.transpileModule(raw, { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=()=>null;')
+    .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
     .replace(/from ['"]\.\/services\/gamewaireGames['"]/g, `from '${new URL('../src/services/gamewaireGames.ts', import.meta.url)}'`)
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
