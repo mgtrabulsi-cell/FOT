@@ -9,6 +9,7 @@ import GamewairePickOrder from './GamewairePickOrder';
 import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
 import { orderedTopPicks, publishedSelections } from './services/gamewaireOrder';
 import type { PickOrder } from './services/gamewaireOrder';
+import GamewaireResultsDownload from './GamewaireResultsDownload';
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
 const odds = (value: number) => value > 0 ? `+${value}` : String(value);
@@ -515,6 +516,7 @@ export default function Gamewaire() {
       <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD</span><h3>Published pick results</h3></div>
         <label>Results sport<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option><option>NBA</option><option>NFL</option></select></label>
       </div>
+      {status?.canAnalyze && <GamewaireResultsDownload picks={picks} disabled={!loaded || !!error} />}
       <p className="gai-note">Results are recorded by an admin, not automatically settled. Pending picks stay pending until reviewed.</p>
       <div className="gai-sport-tabs" role="group" aria-label="Results type">
         {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['all', 'All Picks']] as const).map(([value, label]) =>

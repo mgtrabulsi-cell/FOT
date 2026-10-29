@@ -272,3 +272,8 @@
   .gai-evidence { margin: 0 10px 10px; }
   .gai-empty { min-height: 120px; padding: 10px; }
 }
+.gai-results-download { display: grid; gap: 8px; margin: 12px 0 20px; justify-items: start; min-width: 0; }
+.gai-results-download small { color: var(--muted); line-height: 1.5; }
+.gai-results-download details { width: 100%; min-width: 0; }
+.gai-results-download img { display: block; width: min(100%, 380px); height: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; }
+.gai-results-download a { display: inline-block; padding: 12px 0; color: var(--ink); }

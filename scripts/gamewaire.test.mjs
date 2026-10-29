@@ -590,6 +590,7 @@ test('GamewAIre navigation is ordered correctly and AI styling is bold red witho
 test('GamewAIre renders provider setup, real reports and complete metrics without fabricated empty-state picks', async () => {
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
   const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
+    .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key)).map((p,i)=>renderPick(p,i+1));')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
@@ -623,6 +624,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const status = { canAnalyze: true, oddsReady: false, aiReady: false, model: engine.modelVersion, experimental: true };
   fixture([status, [], [], true]);
   const empty = renderToStaticMarkup(createElement(Page));
+  assert.match(empty, /Download results graphic/);
   assert.doesNotMatch(empty, /Gamew<strong>AI<\/strong>re/, 'The App heading owns the single GamewAIre title');
   assert.match(empty, /ANALYSIS ENGINE/);
   assert.match(empty, /class="gai-dashboard"/);
@@ -655,6 +657,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.doesNotMatch(report, /Admin analysis controls/);
   assert.doesNotMatch(report, /Arrange published Top Picks/);
   assert.doesNotMatch(report, /Saved analysis reports|Choose up to four member picks/);
+  assert.doesNotMatch(report, /Download results graphic/);
   assert.match(report, /Probability grade/);
   assert.doesNotMatch(report, /class="gai-evidence"|Value\/quality score \(not probability\)|class="gai-metrics gai-row-metrics"/, 'Members receive prose, not technical detail boxes');
   assert.doesNotMatch(report, /Brier score|Profit \/ loss|<dt>ROI|<th>ROI|1 unit per recorded pick|Model diagnostics/);
