@@ -11,6 +11,9 @@ export type Settings = {
 export const defaultSettings: Settings = {
   markets: [], direction: 'both', player: '', minEV: 0.05, minEdge: 0.03, minQuality: 0.75, recentWeight: 0.4,
 };
+export function fullAnalysisSettings(settings: Settings, sport: Sport): Settings {
+  return sport === 'NFL' ? { ...settings, markets: [...new Set([...settings.markets, ...markets.NFL.filter((market) => market.startsWith('player_'))])] } : settings;
+}
 export type Quote = {
   key: string; eventId: string; sport: Sport; start: string; home: string; away: string;
   market: string; subject: string; side: string; line: number | null; american: number;
@@ -39,6 +42,7 @@ export type Evidence = {
   currentSeason?: number;
   rotation?: NBARotation;
   opponents?: OpponentContext[];
+  teamContext?: OpponentContext;
   teamForm?: TeamForm;
   matchupForm?: MatchupForm[];
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
@@ -52,6 +56,7 @@ export type Candidate = Quote & {
   baseline?: string; previousSeasonAverage?: number;
   rotation?: NBARotation;
   opponents?: OpponentContext[];
+  teamContext?: OpponentContext;
   teamForm?: TeamForm;
   matchupForm?: MatchupForm[];
 };
@@ -115,6 +120,17 @@ export function gameLeanBlurb(pick: Candidate) {
   if (opponent) {
     const latest = opponent.recent[0], result = latest && scoredResult(latest);
     second.push(`${opponent.team} are ${recordText(opponent.record)}${result ? ` and coming off a ${result}` : ' this season'}.`);
+  }
+  const team = pick.teamContext;
+  const defense = pick.opponents?.find((row) => teamKey(row.team) === teamKey(opponentName));
+  if (team && defense && team.games >= 3 && defense.games >= 3 && team.season === defense.season) {
+    const scoringEdge = team.pointsScored > defense.pointsScored;
+    const defensiveEdge = team.pointsAllowed < defense.pointsAllowed;
+    second.push(`${pick.subject} average ${team.pointsScored.toFixed(1)} points, compared with ${defense.pointsScored.toFixed(1)} for ${defense.team}${scoringEdge
+      ? `; their stronger scoring output gives them an offensive advantage entering this matchup` : team.pointsScored < defense.pointsScored ? `; ${defense.team} have been the more productive offense` : '; neither offense has a scoring-average advantage'}.`);
+    second.push(`${pick.subject} rank ${team.rank} of ${team.leagueSize}${team.tied ? ' (tied)' : ''} in scoring defense and allow ${team.pointsAllowed.toFixed(1)} points per game, against ${defense.pointsAllowed.toFixed(1)} allowed by ${defense.team}${defensiveEdge
+      ? `; that stronger defensive record gives ${pick.subject} another way to control the matchup` : team.pointsAllowed > defense.pointsAllowed ? `; ${defense.team}'s stronger defensive record is a challenge here` : '; the defenses have allowed the same points per game'}.`);
+    if (scoringEdge || defensiveEdge) hasSupport = true;
   }
   for (const defense of pick.opponents ?? []) {
     const weak = defense.rank > defense.leagueSize * 2 / 3, strong = defense.rank <= defense.leagueSize / 3;
@@ -405,7 +421,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
-      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents, teamForm: data.teamForm, matchupForm: data.matchupForm };
+      previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents, teamContext: data.teamContext, teamForm: data.teamForm, matchupForm: data.matchupForm };
     if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
       reason: qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
     if (!qualifies) {

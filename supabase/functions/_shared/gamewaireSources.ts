@@ -359,7 +359,9 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
       recent: row.current.slice(0, 3),
     })) : undefined;
     evidence.set(quote.key, { eligible: true, samples, fetchedAt, quality: sport === 'NFL' && quote.market.startsWith('player_') ? 0.75 : 0.8, risks, adjustment, currentSeason: matchup.season, rotation: sport === 'NBA' && quote.market.startsWith('player_') ? rotation.get(quote.subject) : undefined, teamForm,
-      opponents, matchupForm, identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
+      opponents, matchupForm, teamContext: !quote.market.startsWith('player_') && quote.market !== 'totals'
+        ? defense.get(teamNameKey(quote.side)) : undefined,
+      identifiers: { espnEventId: matchup.eventId, ...identities.get(quote.subject) } });
   }
   return { evidence, warnings: [...new Set(warnings)], coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };
 }

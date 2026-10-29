@@ -212,6 +212,8 @@ test('Evidence computes defensive yardage ranks from all 32 verified opponents a
     const evaluated = evaluate([teamQuote], data.evidence, { ...defaultSettings, markets: ['h2h'] }, now);
     assert.ok(evaluated.teamLean);
     assert.deepEqual(evaluated.teamLean.pick.matchupForm, forms, 'Both teams survive candidate construction and publication snapshots');
+    assert.equal(evaluated.teamLean.pick.teamContext.team, 'Home');
+    assert.equal(evaluated.teamLean.pick.teamContext.pointsScored, 150 / 7);
     if (fail) {
       assert.equal(opponent.yardage, undefined);
       assert.ok(data.warnings.some((warning) => warning.includes('all 32 verified')));
@@ -221,4 +223,23 @@ test('Evidence computes defensive yardage ranks from all 32 verified opponents a
     }
     assert.ok(data.warnings.some((warning) => warning.includes('ATS')));
   }
+});
+test('Game lean matchup advantages compare both verified scoring profiles without inventing an edge for an inferior team', () => {
+  const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];
+  const context = { team: 'Home', games: 6, season: 2026, pointsScored: 28, pointsAllowed: 18, rank: 4, leagueSize: 32 };
+  const opponent = { ...context, team: 'Away', games: 7, pointsScored: 21, pointsAllowed: 26, rank: 25 };
+  const pick = { ...base, market: 'spreads', side: 'Home', subject: 'Home', line: 3.5,
+    teamContext: context, opponents: [opponent] };
+  const text = pickBlurb(pick);
+  assert.match(text, /Home average 28.0 points, compared with 21.0 for Away/);
+  assert.match(text, /stronger scoring output gives them an offensive advantage/);
+  assert.match(text, /Home rank 4 of 32.*18.0 points per game, against 26.0 allowed by Away/);
+  assert.match(text, /stronger defensive record gives Home another way to control the matchup/);
+  assert.doesNotMatch(text, /the case for|win by|lose by|guaranteed/i);
+  const inferior = pickBlurb({ ...pick, teamContext: { ...context, pointsScored: 17, pointsAllowed: 30, rank: 30 } });
+  assert.match(inferior, /Away have been the more productive offense/);
+  assert.match(inferior, /Away's stronger defensive record is a challenge/);
+  assert.doesNotMatch(inferior, /offensive advantage|stronger defensive record gives Home/);
+  for (const teamContext of [undefined, { ...context, games: 1 }, { ...context, season: 2025 }])
+    assert.doesNotMatch(pickBlurb({ ...pick, teamContext }), /Home average 28.0 points/, 'Missing, tiny or mismatched samples do not become matchup claims');
 });

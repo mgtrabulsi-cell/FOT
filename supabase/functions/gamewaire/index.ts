@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { array, decimalOdds, defaultSettings, evaluate, isNFLPrimetime, markets, modelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
+import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isNFLPrimetime, markets, modelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses } from '../_shared/gamewaireSchedule.ts';
@@ -207,6 +207,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (body.action !== 'analyze' || !/^[a-zA-Z0-9_-]{1,100}$/.test(text(body.eventId))) return json({ error: 'Choose an event to analyze.' }, 400);
     let settings;
     try { settings = readSettings(body.settings, sport); } catch (error) { return json({ error: message(error) }, 400); }
+    if (!scheduledJob && body.fullAnalysis === true) settings = fullAnalysisSettings(settings, sport);
     const playerAnalysis = !scheduledJob && settings.markets.some((market) => market.startsWith('player_'));
     const expired = await admin.from('gamewaire_runs').update({ status: 'provider_error', payload: { error: 'Prior analysis was interrupted. Retry with fresh provider data.' }, finished_at: new Date().toISOString() })
       .eq('sport', sport).eq('event_id', body.eventId).eq('status', 'in_progress').lt('created_at', new Date(Date.now() - 180_000).toISOString());

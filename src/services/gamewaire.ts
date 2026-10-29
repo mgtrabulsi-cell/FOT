@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 import type { PickOrder } from './gamewaireOrder';
 import type { Candidate, Settings, Sport } from '../../supabase/functions/_shared/gamewaire';
-export { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '../../supabase/functions/_shared/gamewaire';
+export { defaultSettings, fullAnalysisSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '../../supabase/functions/_shared/gamewaire';
 export type { Candidate, Settings, Sport, TeamLean } from '../../supabase/functions/_shared/gamewaire';
 export type AnalysisStatus = 'in_progress' | 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds' | 'provider_error' | 'setup_required';
 export type AnalysisRun = {

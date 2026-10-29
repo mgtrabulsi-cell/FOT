@@ -18,7 +18,7 @@ export function gamewaireAngleDraft(picks: (Candidate & { isGameLean: boolean })
   }).join('\n\n');
   const evidence = picks.map((pick, index) => {
     const sentences = pickBlurb(pick).split(/(?<=[.!?])\s+(?=[A-Z])/);
-    const context = sentences.find((sentence) => /favorable scoring matchup|main challenge|responded well|built on wins|favorable matchup|favors the under|typical production|aligned with recent production|some momentum/.test(sentence))
+    const context = sentences.find((sentence) => /offensive advantage|control the matchup|favorable scoring matchup|main challenge|responded well|built on wins|favorable matchup|favors the under|typical production|aligned with recent production|some momentum/.test(sentence))
       ?? sentences.find((sentence) => sentence.includes('limited backing')) ?? sentences[0];
     return `#${index + 1}: ${context}`;
   }).join('\n\n');

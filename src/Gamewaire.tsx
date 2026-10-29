@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
-import { defaultSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
+import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
 import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
@@ -108,10 +108,10 @@ function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun;
     {legacy && <p className="gai-note">Saved under an older model. Generate fresh candidates to apply the current model and ranking before publishing.</p>}
     {(stale || legacy) && Date.parse(report.event_start) > Date.now() && <button disabled={busy} onClick={() => {
       setBusy(true); setError(''); setNotice('');
-      void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: report.settings })
+      void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: fullAnalysisSettings(report.settings, report.sport), fullAnalysis: true })
         .then(({ run, cached }) => { setSelected([]); setNotice(cached ? 'Reused a fresh report; no additional Odds API credits used.' : 'Prices refreshed. Review the candidates before publishing.'); onFreshReport(run); refresh(); })
         .catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
-    }}>{busy ? 'Refreshing…' : `Refresh prices & review picks · up to ${new Set([...report.settings.markets, 'h2h', 'spreads']).size} credits`}</button>}
+    }}>{busy ? 'Refreshing…' : `Refresh prices & review picks · up to ${new Set([...fullAnalysisSettings(report.settings, report.sport).markets, 'h2h', 'spreads']).size} credits`}</button>}
     <button disabled={busy || stale || legacy || !selected.length} onClick={() => {
       setBusy(true); setError(''); setNotice('');
       void engineRequest({ action: 'publish', runId: report.id, keys: selected })
@@ -271,7 +271,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     && nbaCalendarDate(new Date(game.event_start)) === memberDate && !memberGames.some((publishedGame) => publishedGame.event_id === game.event_id))];
   const refreshHistory = () => setRefresh((value) => value + 1);
   const openReport = (run: AnalysisRun) => {
-    setSport(run.sport); setDate(nbaCalendarDate(new Date(run.event_start))); setEventId(run.event_id); setSettings(run.settings);
+    setSport(run.sport); setDate(nbaCalendarDate(new Date(run.event_start))); setEventId(run.event_id); setSettings(fullAnalysisSettings(run.settings, run.sport));
     setSelectedRun(run.id); setRuns((previous) => [run, ...previous.filter((saved) => saved.id !== run.id)]); setPickView('candidates');
     setNotice('Opened saved analysis · 0 additional credits. Prices are the saved snapshot; refreshing prices is optional and may use credits.');
     window.requestAnimationFrame(() => document.getElementById('gai-top-picks')?.scrollIntoView({
@@ -299,7 +299,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         setEvents(result.events); setEventId(result.events[0]?.id ?? '');
         if (!result.events.length) setNotice('No upcoming provider-listed games on this Eastern date.');
       } else {
-        const result = await engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action, sport, eventId, settings });
+        const result = await engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action, sport, eventId, settings: fullAnalysisSettings(settings, sport), fullAnalysis: true });
         setSelectedRun(result.run.id); setRuns((previous) => [result.run, ...previous.filter((run) => run.id !== result.run.id)]);
         setNotice(result.cached ? 'Reused a fresh report; no additional Odds API credits used.' : statusLabels[result.run.status]); refreshHistory();
         if (window.matchMedia('(max-width: 760px)').matches) window.requestAnimationFrame(() =>
@@ -423,18 +423,19 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
             { label: 'Moneyline (game winner)', group: ['h2h'] },
             { label: 'Player props', group: markets[sport].filter((item) => item.startsWith('player_')) },
             { label: 'Totals / spreads', group: ['totals', 'spreads'] },
-          ].map(({ label, group }) => <label key={label}><input type="checkbox" checked={group.some((item) => settings.markets.includes(item))}
+          ].map(({ label, group }) => <label key={label}><input type="checkbox" disabled={sport === 'NFL' && label === 'Player props'} checked={group.some((item) => fullAnalysisSettings(settings, sport).markets.includes(item))}
             onChange={(event) => setSettings((previous) => ({ ...previous, markets: event.target.checked
               ? [...new Set([...previous.markets, ...group])] : previous.markets.filter((item) => !group.includes(item)) }))} />{label}</label>)}
         </fieldset>
-        <fieldset><legend>Individual markets</legend>{markets[sport].map((item) => <label key={item}><input type="checkbox" checked={settings.markets.includes(item)} onChange={(event) => setSettings((previous) => ({ ...previous, markets: event.target.checked ? [...previous.markets, item] : previous.markets.filter((market) => market !== item) }))} />{item.replace(/_/g, ' ')}</label>)}</fieldset>
+        <fieldset><legend>Individual markets</legend>{markets[sport].map((item) => <label key={item}><input type="checkbox" disabled={sport === 'NFL' && item.startsWith('player_')} checked={fullAnalysisSettings(settings, sport).markets.includes(item)} onChange={(event) => setSettings((previous) => ({ ...previous, markets: event.target.checked ? [...previous.markets, item] : previous.markets.filter((market) => market !== item) }))} />{item.replace(/_/g, ' ')}</label>)}</fieldset>
         <label>Directions<select value={settings.direction} onChange={(event) => setSettings((previous) => ({ ...previous, direction: event.target.value as Settings['direction'] }))}><option value="both">Overs and unders</option><option value="over">Overs only</option><option value="under">Unders only</option></select></label>
         <label>Player name filter<input value={settings.player} maxLength={100} onChange={(event) => setSettings((previous) => ({ ...previous, player: event.target.value }))} /></label>
         {([{ key: 'minEV', label: 'Minimum estimated EV %', max: 100 }, { key: 'minEdge', label: 'Minimum probability edge (pp)', max: 50 },
           { key: 'minQuality', label: 'Minimum completeness %', min: 75, max: 100 }, { key: 'recentWeight', label: 'Last-10 weighting %', max: 60 }] as const).map((field) => <label key={field.key}>{field.label}<input type="number" min={'min' in field ? field.min : 0} max={field.max} step="1" value={Math.round(settings[field.key] * 100)} required onChange={(event) => setSettings((previous) => ({ ...previous, [field.key]: Number(event.target.value) / 100 }))} /></label>)}
         <p className="gai-note">NBA focuses on core rotation and high-usage reserves, not confirmed lineups. Full NFL primetime analysis targets eight distinct player props plus a game lean; other games target three props. Data and availability checks may leave fewer eligible options.</p>
         </details>
-        <button className="gai-run" disabled={busy || !eventId || !settings.markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : `Run analysis · up to ${new Set([...settings.markets, 'h2h', 'spreads']).size} credits`}</button>
+        <button className="gai-run" disabled={busy || !eventId || !fullAnalysisSettings(settings, sport).markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : `Run analysis · up to ${new Set([...fullAnalysisSettings(settings, sport).markets, 'h2h', 'spreads']).size} credits`}</button>
+        {sport === 'NFL' && <p className="gai-note">Run analysis always includes NFL player props, even after opening an overnight lean-only report. Use Refresh game lean only for the separate 2-credit team-market refresh.</p>}
         <p className="gai-note">Odds API estimate for one game. Only returned markets are charged; reusing a fresh cached report costs 0 credits. Player filters do not reduce market costs.</p>
       </form>
     </section>
@@ -474,14 +475,16 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
             {(report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0) < report.payload.playerPropMinimum && ' Fewer eligible players had sufficient verified data and fresh markets; no missing props were invented.'}
           </p>}
           {report.payload.error && <p role="alert" className="feed-warning">{report.payload.error}</p>}
+          {report.sport === 'NFL' && !report.settings.markets.some((market) => market.startsWith('player_')) && <p className="gai-note">This saved report checked team markets only; no player props were requested. Run the full NFL analysis below to request player candidates.</p>}
+          {report.payload.playerPropMinimum && !(report.payload.picks ?? []).some((pick) => pick.market.startsWith('player_')) ? <p role="status" className="feed-warning">No eligible player props were returned. Markets may not be posted yet, or prices/data failed the checks. See Data notes &amp; excluded markets for the exact reasons; refreshing cannot create unavailable lines.</p> : null}
           <ReviewGameLean key={`lean:${report.id}`} report={report} refresh={refreshHistory} onFreshReport={openReport} />
           {report.status === 'completed' && !!report.payload.picks?.length && <details className="gai-top-pick-tools"><summary>Top Pick candidates · select &amp; publish</summary><PublishPicks key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} /></details>}
-          {report.status !== 'in_progress' && !report.payload.picks?.length && Date.parse(report.event_start) > Date.now() && <button disabled={busy} onClick={() => {
+          {report.status !== 'in_progress' && (!report.payload.picks?.length || report.sport === 'NFL' && !(report.payload.picks ?? []).some((pick) => pick.market.startsWith('player_'))) && Date.parse(report.event_start) > Date.now() && <button disabled={busy} onClick={() => {
             setBusy(true); setActionError('');
-            void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: report.settings })
+            void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: fullAnalysisSettings(report.settings, report.sport), fullAnalysis: true })
               .then(({ run, cached }) => { openReport(run); setNotice(cached ? 'Reused a fresh report; no additional Odds API credits used.' : statusLabels[run.status]); refreshHistory(); })
               .catch((cause: unknown) => setActionError(errorMessage(cause))).finally(() => setBusy(false));
-          }}>Refresh this game · up to {new Set([...report.settings.markets, 'h2h', 'spreads']).size} credits</button>}
+          }}>{report.sport === 'NFL' ? 'Run full NFL analysis' : 'Refresh this game'} · up to {new Set([...fullAnalysisSettings(report.settings, report.sport).markets, 'h2h', 'spreads']).size} credits</button>}
           <details className="gai-diagnostics"><summary>Data notes &amp; excluded markets</summary>
             {report.payload.scheduled && <p className="gai-note">Overnight shortlist · {report.payload.scheduled.selectionNote} Saved {stamp(report.created_at)}.</p>}
             {report.payload.providerUsage && <p className="gai-note">Odds API: {report.payload.providerUsage.requestCost ?? 'Unknown'} credits for this saved request · {report.payload.providerUsage.creditsRemaining ?? 'Unknown'} remaining as of {stamp(report.payload.providerUsage.checkedAt)}. Opening this report uses no credits.</p>}

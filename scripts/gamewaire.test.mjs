@@ -602,7 +602,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, fullAnalysisSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture, PickCard, Settlement } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
@@ -964,6 +964,38 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer fixture' } : {}) }, body: JSON.stringify(body),
   }), env, customFetcher), exports: context.exports };
 }
+test('Full NFL analysis upgrades inherited lean-only settings before cache and provider requests while explicit lean refresh stays cheap', async () => {
+  const leanSettings = { ...engine.defaultSettings, markets: ['h2h', 'spreads'] };
+  const full = engine.fullAnalysisSettings(leanSettings, 'NFL');
+  assert.deepEqual(full.markets, ['h2h', 'spreads', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions']);
+  assert.deepEqual(leanSettings.markets, ['h2h', 'spreads']);
+  assert.equal(engine.fullAnalysisSettings(leanSettings, 'NBA'), leanSettings);
+  const sunday = '2026-11-01T18:00:00Z';
+  const cachedRun = { id: 'lean-cache', sport: 'NFL', event_id: 'event', event_start: sunday, created_at: new Date(now - 1000).toISOString(),
+    settings: leanSettings, status: 'no_qualifying', payload: { modelVersion: engine.modelVersion, playerPropMinimum: 0, picks: [] } };
+  const api = endpoint({ configured: true, cachedRun });
+  let requested;
+  const fetcher = async (url) => {
+    requested = new URL(url).searchParams.get('markets');
+    return Response.json({ id: 'event', home_team: quote.home, away_team: quote.away, commence_time: sunday,
+      bookmakers: [{ key: 'book', title: 'Book', markets: ['One', 'Two', 'Three'].map((name) => ({
+        key: 'player_pass_yds', last_update: quote.updatedAt, outcomes: [
+          { name: 'Over', description: name, point: 20.5, price: -110 },
+          { name: 'Under', description: name, point: 20.5, price: -110 },
+        ],
+      })) }] });
+  };
+  const response = await api.run({ action: 'analyze', sport: 'NFL', eventId: 'event', settings: leanSettings, fullAnalysis: true }, true, fetcher);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.notEqual(body.cached, true, 'Fresh lean-only cache must not swallow a full-player request');
+  assert.equal(body.run.payload.playerPropMinimum, 3, 'Sunday daytime game targets three distinct props');
+  assert.equal(body.run.payload.picks.filter((pick) => pick.market.startsWith('player_')).length, 3);
+  for (const market of full.markets) assert.ok(requested.split(',').includes(market));
+  const leanOnly = endpoint({ configured: true });
+  await leanOnly.run({ action: 'analyze', sport: 'NFL', eventId: 'event', settings: leanSettings }, true, fetcher);
+  assert.equal(requested, 'h2h,spreads', 'Explicit lean-only requests do not spend credits on props');
+});
 test('Endpoint requires authentication/admin access and honestly reports unconfigured providers', async () => {
   const api = endpoint();
   assert.equal((await api.run({ action: 'status' }, false)).status, 401);
