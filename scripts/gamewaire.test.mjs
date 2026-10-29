@@ -802,6 +802,34 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(leanView, /Failed value checks/);
   assert.match(leanView, /No published picks yet/);
   assert.equal((leanView.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selecting an unpublished lean game never shows another game\'s published picks');
+  const publishedLean = leanState[27][0].team_lean.pick;
+  for (const canAnalyze of [false, true]) {
+    for (const result of ['win', 'loss', 'pending', 'push', 'void']) {
+      const state = leanState.slice();
+      state[0] = { ...status, canAnalyze };
+      state[26] = 'published';
+      state[2] = [{ ...pick, is_top_pick: false, is_game_lean: true, result, data: publishedLean, american: publishedLean.american }];
+      fixture(state);
+      const html = renderToStaticMarkup(createElement(Page));
+      const publishedArea = html.slice(html.indexOf('<section aria-label="Game team leans">'), html.indexOf('<aside class="gai-why'));
+      const label = { win: 'Won', loss: 'Lost', pending: 'Pending', push: 'Push', void: 'Void' }[result];
+      assert.ok(publishedArea.includes(`gai-result-${result}">${label}`), 'Published lean shows saved outcome for members and owner');
+    }
+  }
+  for (const mismatch of [
+    { american: publishedLean.american + 5 },
+    { data: { ...publishedLean, book: 'Other book' } },
+    { data: { ...publishedLean, modelVersion: 'older-model' } },
+    { data: { ...publishedLean, key: 'other-pick' } },
+    { is_game_lean: false },
+  ]) {
+    const state = leanState.slice();
+    state[2] = [{ ...pick, is_top_pick: false, is_game_lean: true, result: 'win', data: publishedLean, american: publishedLean.american, ...mismatch }];
+    fixture(state);
+    const html = renderToStaticMarkup(createElement(Page));
+    const publishedArea = html.slice(html.indexOf('<section aria-label="Game team leans">'), html.indexOf('<aside class="gai-why'));
+    assert.doesNotMatch(publishedArea, /gai-result-win/, 'A different selection, price, book, model or removed lean cannot supply the outcome');
+  }
   const nflCandidate = { ...candidate, key: 'nfl-pick', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds', line: 250.5 };
   const nbaRecord = { ...pick, sport: 'NBA', event_start: quote.start };
   const nflRecord = { ...pick, id: 'nfl-record', sport: 'NFL', subject: 'NFL Player', market: 'player_pass_yds',

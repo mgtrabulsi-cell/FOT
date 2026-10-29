@@ -497,7 +497,10 @@ export default function Gamewaire() {
           {visibleLeans.map((game) => <section key={game.event_id} className="gai-team-lean"><h4>{game.matchup}</h4>
             <p className="gai-note">{game.team_lean ? game.team_lean.qualifies ? 'Passed model screens when analyzed; not an admin-published Top Pick.'
               : <><strong>Lean only · Not a Top Pick.</strong> {game.team_lean.reason}</> : 'Unavailable: verified team data or a complete fresh market was insufficient.'}</p>
-            {game.team_lean && <PickCard pick={game.team_lean.pick} rank={1} />}
+            {game.team_lean && <PickCard pick={game.team_lean.pick} rank={1}
+              record={picks.find((row) => row.is_game_lean && row.data.key === game.team_lean?.pick.key
+                && row.data.book === game.team_lean?.pick.book && row.american === game.team_lean?.pick.american
+                && row.data.modelVersion === game.team_lean?.pick.modelVersion)} />}
           </section>)}
         </section>
       </>}
