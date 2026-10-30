@@ -203,3 +203,4 @@
   .gwb-verdict-grid strong { font-size: 14px; overflow-wrap: anywhere; }
 }
 @media (prefers-reduced-motion: reduce) { .gwb * { scroll-behavior: auto; } }
+.gwb-projection > small { display: block; margin-top: 6px; }
