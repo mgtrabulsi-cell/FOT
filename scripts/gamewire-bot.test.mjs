@@ -424,6 +424,16 @@ test('Saved player props carry GamewAIre published-pick branding inside the red 
   assert.equal(ui.find(brand, (node) => node.type === 'strong').props.children, 'AI');
   assert.equal(ui.find(brand, (node) => node.type === 'small').props.children, 'PUBLISHED TOP PICK');
 });
+test('Matching players sit directly below search, before scoring and comparison controls', async () => {
+  const ui = botWelcomeHarness({ players: [player, { ...player, id: '456', name: 'Test Receiver' }] });
+  const tree = await ui.search('Test');
+  const footer = ui.byClass(tree, 'gwb-hero-footer');
+  const children = footer.props.children;
+  const formIndex = children.findIndex((node) => node?.props?.className === 'gwb-hero-search');
+  assert.equal(children[formIndex + 1].props.id, 'gwb-player-results');
+  assert.equal(ui.find(ui.byClass(tree, 'gwb-panel'), (node) => node.props?.id === 'gwb-player-results'), undefined);
+  assert.equal(ui.find(children[formIndex + 1], (node) => node.type === 'button').props.children[0].props.children, player.name);
+});
 test('Player search opens the lab, analyzes a unique match and keeps the report when closed', async () => {
   const ui = botWelcomeHarness();
   let tree = ui.render();
@@ -434,7 +444,7 @@ test('Player search opens the lab, analyzes a unique match and keeps the report 
   assert.equal(ui.byClass(tree, 'gwb-toggle').props['aria-expanded'], true);
   ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.onChange({ target: { value: 'Test Runner' } });
   tree = ui.render();
-  assert.equal(ui.byClass(tree, 'gwb-search-results').props.children[0].length, 1);
+  assert.equal(ui.byClass(tree, 'gwb-search-results').props.children[1].length, 1);
   ui.byClass(tree, 'gwb-hero-search').props.onSubmit({ preventDefault() {} });
   await new Promise(setImmediate);
   tree = ui.render();
@@ -570,7 +580,7 @@ test('Compare supports two distinct players, slot replacement, shared scoring an
   assert.equal(ui.byClass(tree, 'gwb-compare-button').props['aria-pressed'], true);
   assert.equal(ui.byClass(tree, 'gwb-compare-slots').props.children[1].props['aria-pressed'], true);
   tree = await ui.search(player.name);
-  assert.equal(ui.byClass(tree, 'gwb-search-results').props.children[0].length, 0, 'Primary cannot also be selected as player 2');
+  assert.equal(ui.byClass(tree, 'gwb-search-results').props.children[1].length, 0, 'Primary cannot also be selected as player 2');
   tree = await ui.search(secondPlayer.name);
   const outlines = () => ui.byClass(tree, 'gwb-comparison').props.children.map((column) => column.props.children);
   assert.equal(outlines()[0].props.report.player.id, player.id);
@@ -615,7 +625,7 @@ test('A replacement clears stale cards immediately and an older request cannot o
   let tree = await ui.search(player.name);
   assert.equal(ui.byClass(tree, 'gwb-result'), undefined);
   tree = await ui.search(secondPlayer.name);
-  ui.byClass(tree, 'gwb-search-results').props.children[0][0].props.onClick();
+  ui.byClass(tree, 'gwb-search-results').props.children[1][0].props.onClick();
   pending.get(secondPlayer.id)({ ...report(), player: secondPlayer });
   await new Promise(setImmediate); tree = ui.render();
   pending.get(player.id)(report());

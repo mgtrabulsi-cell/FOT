@@ -63,7 +63,7 @@
 .gwb.gwb input { width: 100%; min-width: 0; border: 0; background: transparent; color: white; padding: 13px 0; border-radius: 0; }
 .gwb input::placeholder { color: #9badbf; }
 .gwb .gwb-icon-button { display: grid; place-items: center; height: 46px; width: 46px; flex-shrink: 0; border: 1px solid #3c4d5e; border-radius: 10px; background: #101f2d; color: white; }
-.gwb-search-results { margin-top: 12px; padding: 6px; border: 1px solid #405363; border-radius: 12px; background: #142331; max-height: 300px; overflow: auto; }
+.gwb-search-results { margin-top: 0; padding: 6px; border: 1px solid #075da5; border-radius: 12px; background: #081c2e; max-height: 300px; overflow: auto; }
 .gwb .gwb-search-results button { display: flex; align-items: center; gap: 12px; color: white; background: transparent; border: 0; border-radius: 6px; padding: 13px; width: 100%; text-align: left; }
 .gwb-search-results button:hover { background: #253747; }
 .gwb-search-results button span { flex: 1; font-weight: 700; }

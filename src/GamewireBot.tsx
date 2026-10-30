@@ -320,6 +320,11 @@ export default function GamewireBot() {
           }}><X size={18} aria-hidden="true" /></button>}
           <button type="submit" disabled={!!busy} aria-label="Search NFL players"><Send size={23} aria-hidden="true" /></button>
         </form>
+        {open && query.length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL players">
+          {busy === 'directory' && <p role="status">Loading verified NFL players...</p>}
+          {matches.map((player) => <button key={player.id} disabled={!!busy} onClick={() => { void analyze(player); }}><span>{player.name}</span><small>{player.teamAbbr} · {player.position}</small><ArrowUp size={15} aria-hidden="true" /></button>)}
+          {!matches.length && directory && <p>No matching player in the loaded rosters. Try a surname or refresh search.</p>}
+        </div>}
       </div>
     </header>
     {open && <div id="gamewire-bot-panel" className="gwb-panel" ref={analysisPanel}>
@@ -356,9 +361,6 @@ export default function GamewireBot() {
       </div>}
       {comparing && <p className="gwb-muted" role="status">Search above for Player {activeSlot + 1} · {formats.find((row) => row.value === format)?.label} scoring.</p>}
       {directory?.warnings.map((warning) => <p className="gwb-warning" key={warning}>{warning}</p>)}
-      {query.length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL players">
-        {matches.map((player) => <button key={player.id} disabled={!!busy} onClick={() => { void analyze(player); }}><span>{player.name}</span><small>{player.teamAbbr} · {player.position}</small><ArrowUp size={15} aria-hidden="true" /></button>)}
-        {!matches.length && directory && <p>No matching player in the loaded rosters. Try a surname or refresh search.</p>}</div>}
       {busy && <p className="gwb-loading" role="status"><Sparkles size={16} aria-hidden="true" />{busy === 'directory' ? 'Loading verified NFL rosters. The first search can take a moment...' : 'Checking weekly player outlooks...'}</p>}
       {error && <div className="gwb-error" role="alert"><p>{error}</p><button disabled={!!busy} onClick={() => {
         if (lastAttempt.current === 'report' && lastReports.current.length) void loadOutlooks(lastReports.current.filter(({ slot }) => comparing || slot === 0));
