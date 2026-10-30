@@ -224,6 +224,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
   const [orders, setOrders] = useState<PickOrder[]>([]);
   const [stretches, setStretches] = useState<StretchPick[]>([]);
   const [resultsView, setResultsView] = useState<'top' | 'leans' | 'all'>('top');
+  const [section, setSection] = useState<'bot' | 'bets'>('bot');
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => subscribePickOrderRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => {
@@ -321,6 +322,28 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     }
   };
   return <section className="gai-panel" aria-label="GamewAIre">
+    <div className="gai-section-tabs" role="tablist" aria-label="GamewAIre sections"
+      onKeyDown={(event) => {
+        const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const current = tabs.findIndex((tab) => tab === event.target);
+        if (current < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next].focus();
+        tabs[next].click();
+      }}>
+      {([['bot', 'GamewAIre Bot'], ['bets', 'GamewAIre Best Bets and Leans']] as const).map(([key, label]) =>
+        <button key={key} type="button" id={`gai-${key}-tab`} role="tab" aria-selected={section === key}
+          aria-controls={`gai-${key}-panel`} tabIndex={section === key ? 0 : -1}
+          onClick={() => setSection(key)}>{label}</button>)}
+    </div>
+    <div id="gai-bot-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bot-tab"
+      hidden={section !== 'bot'} tabIndex={0}>
+      <GamewireBot />
+    </div>
+    <div id="gai-bets-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bets-tab"
+      hidden={section !== 'bets'} tabIndex={0}>
     <header className="gai-hero">
       <div className="gai-hero-copy"><span className="eyebrow">NFL + NBA · MODEL-DRIVEN INSIGHTS</span>
         <h2>THE <em>ANALYSIS ENGINE</em></h2>
@@ -333,7 +356,6 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <div><b>04</b><span>Transparent<br />model ratings</span></div>
       </div>
     </header>
-    <GamewireBot />
     <section className="gai-record-overview" aria-label="GamewAIre record overview">
       <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD · ALL TIME · NBA + NFL</span><h3>GamewAIre results</h3></div>
         <button onClick={() => openResults('top')}>View full results</button></div>
@@ -598,5 +620,6 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       <p>Ranking uses estimated win probability in one-percentage-point bands, then moneyline preference, verified NFL matchup context, offensive involvement and minutes, exact probability, and value/quality score. NFL matchup context is a tie preference, not a probability boost. Full manual analyses target three player props, or eight for Thursday/Sunday/Monday NFL kickoffs at 7 PM Eastern or later, plus a supported game lean. Value-screen failures are private Stretch options; safety checks still apply. You can publish up to four candidates per game. At most one selection per player and one team market; other game-level correlations remain possible. Missing historical sportsbook lines mean no ATS trend is claimed. Odds older than 10 minutes are rejected; supported data must be fetched within an hour. Model version: {modelVersion}.</p>
       <p>Historical replay tooling rejects future observations and requires pre-event odds/data snapshots. No licensed historical dataset or validated backtest is configured yet. No reliability or profitability claim is made.</p>
     </details>
+    </div>
   </section>;
 }
