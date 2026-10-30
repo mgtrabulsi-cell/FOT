@@ -594,7 +594,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
     .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
     .replace(/import GamewaireBestBetsDownload from [^;]+;/, 'const GamewaireBestBetsDownload=()=>"Download Instagram Best Bets";')
-    .replace(/import GamewireBot from [^;]+;/, 'const GamewireBot=()=>"GameWire Bot owner preview";')
+    .replace(/import GamewireBot from [^;]+;/, 'const GamewireBot=()=>"GameWire player analysis";')
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>{const visible=picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key));return visible.map((p,i)=>renderPick(p,i+1,visible.map(p=>p.key)));};')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
@@ -629,7 +629,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const status = { canAnalyze: true, oddsReady: false, aiReady: false, model: engine.modelVersion, experimental: true };
   fixture([status, [], [], true]);
   const empty = renderToStaticMarkup(createElement(Page));
-  assert.match(empty, /GameWire Bot owner preview/);
+  assert.match(empty, /GameWire player analysis/);
   assert.match(empty, /Download results graphic/);
   assert.doesNotMatch(empty, /Gamew<strong>AI<\/strong>re/, 'The App heading owns the single GamewAIre title');
   assert.match(empty, /ANALYSIS ENGINE/);
@@ -662,7 +662,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   memberState[23] = 'event'; memberState[25] = quote.start.slice(0, 10);
   fixture(memberState);
   const report = renderToStaticMarkup(createElement(Page));
-  assert.doesNotMatch(report, /GameWire Bot owner preview/);
+  assert.match(report, /GameWire player analysis/);
   assert.match(report, /class="gai-pick angle-card gai-best-bet"/);
   assert.match(report, /Book A/);
   assert.match(report, /loss/);

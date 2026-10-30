@@ -15,17 +15,14 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (request.method !== 'POST') return json({ error: 'Use POST for the GameWire Bot.' }, 405);
   const authorization = request.headers.get('authorization');
-  if (!authorization?.startsWith('Bearer ')) return json({ error: 'Sign in to use the GameWire Bot preview.' }, 401);
+  if (!authorization?.startsWith('Bearer ')) return json({ error: 'Sign in to use GamewAIre player analysis.' }, 401);
   const url = env.get('SUPABASE_URL'), anon = env.get('SUPABASE_ANON_KEY'), service = env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !anon || !service) return json({ error: 'Bot account services are not configured.' }, 503);
   const client = createClient(url, anon, { auth: { persistSession: false }, global: { headers: { Authorization: authorization } } });
   const admin = createClient(url, service, { auth: { persistSession: false } });
   try {
     const user = await client.auth.getUser();
-    if (user.error || !user.data.user) return json({ error: 'Your session expired. Sign in again.' }, 401);
-    const permission = await client.rpc('gamewaire_can_admin');
-    if (permission.error) throw new Error('Could not verify bot preview access.');
-    if (permission.data !== true) return json({ error: 'GameWire Bot is currently an owner-only preview.' }, 403);
+    if (user.error || !user.data.user || user.data.user.is_anonymous) return json({ error: 'Sign in with an account to use player analysis.' }, 401);
     let raw: unknown;
     try { raw = await request.json(); } catch { return json({ error: 'Invalid bot request.' }, 400); }
     const input = object(raw);
@@ -36,7 +33,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     const claim = async () => {
       if (claimed) return true;
       const result = await admin.rpc('gamewire_bot_claim', { target_user: user.data.user!.id });
-      if (result.error) throw new Error('Could not check the bot preview request limit.');
+      if (result.error) throw new Error('Could not check the player analysis request limit.');
       claimed = result.data === true; return claimed;
     };
     const cached = async <T>(key: string, milliseconds: number | ((data: T) => number), load: () => Promise<T>): Promise<{ data: T; cached: boolean }> => {
@@ -44,7 +41,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       const saved = await admin.from('gamewire_bot_cache').select('payload').eq('cache_key', key).gt('expires_at', now.toISOString()).maybeSingle();
       if (saved.error) throw new Error('Could not read the verified bot cache.');
       if (saved.data) return { data: saved.data.payload as T, cached: true };
-      if (!await claim()) throw new Error('Bot preview refresh limit reached (60 per hour). Cached breakdowns remain available; retry after the hour changes.');
+      if (!await claim()) throw new Error('Player analysis refresh limit reached (60 per account per hour). Cached breakdowns remain available; retry after the hour changes.');
       const data = await load();
       const ttl = typeof milliseconds === 'function' ? milliseconds(data) : milliseconds;
       const written = await admin.from('gamewire_bot_cache').upsert({ cache_key: key, payload: data, expires_at: new Date(Date.now() + ttl).toISOString() });

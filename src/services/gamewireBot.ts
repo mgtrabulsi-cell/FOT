@@ -6,7 +6,7 @@ async function request<T>(body: Record<string, unknown>, signal: AbortSignal): P
   if (!supabase) throw new Error('Account services are not configured.');
   const { data: session, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw sessionError;
-  if (!session.session) throw new Error('Sign in to use the owner-only Bot preview.');
+  if (!session.session) throw new Error('Sign in to use GamewAIre player analysis.');
   const { data, error } = await supabase.functions.invoke<T>('gamewire-bot', { body, signal,
     headers: { Authorization: `Bearer ${session.session.access_token}` } });
   if (error) {
@@ -69,12 +69,4 @@ export async function loadBotDirectory(signal: AbortSignal) {
 export async function loadBotReport(playerId: string, format: BotFormat, signal: AbortSignal) {
  const data = await request<unknown>({ action: 'breakdown', playerId, format }, signal);
  return readBotReport(object(data).report);
-}
-export type BotTopic = 'overview' | 'start-sit' | 'props' | 'matchup';
-export function botTopic(question: string): BotTopic | null {
-  if (/\b(prop|props|bet|bets|odds|line|lines|over|under)\b/i.test(question)) return 'props';
-  if (/\b(matchup|matchups|opponent|opponents|defense|defence)\b/i.test(question)) return 'matchup';
-  if (/\b(start|sit|flex|injury|injuries|status|active|availability)\b/i.test(question)) return 'start-sit';
-  if (/\b(overview|outlook|why|usage|workload|targets|carries|catches|yards|breakdown|explain)\b/i.test(question)) return 'overview';
-  return null;
 }

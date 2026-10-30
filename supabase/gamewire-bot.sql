@@ -42,9 +42,9 @@ as $$
 declare claimed integer;
 begin
   if not exists (
-    select 1 from public.gamewaire_admin_account a
-    join public.livewire_roles r on r.user_id=a.user_id
-    where a.user_id=target_user and r.role in ('owner','admin')
+    select 1 from auth.users u
+    where u.id=target_user and not coalesce(u.is_anonymous,false)
+      and u.deleted_at is null and (u.banned_until is null or u.banned_until <= now())
   ) then return false; end if;
   delete from public.gamewire_bot_usage where hour < now()-interval '2 days';
   delete from public.gamewire_bot_cache where expires_at < now()-interval '1 day';

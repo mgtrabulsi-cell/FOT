@@ -119,11 +119,11 @@ test('Missing weekly games, kickoff lock, postseason and transferred player iden
 
 const endpointCode = ts.transpileModule(readFileSync(new URL('../supabase/functions/gamewire-bot/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ allowed = true, user = true, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
+function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
   const calls = [], writes = [], rpcs = [], queries = [], cache = new Map(), expires = new Date(now + 3600000).toISOString();
   if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expires });
   const client = {
-    auth: { getUser: async () => ({ data: { user: user ? { id: 'owner' } : null }, error: null }) },
+    auth: { getUser: async () => ({ data: { user: user ? { id: allowed ? 'owner' : 'member', is_anonymous: anonymous } : null }, error: null }) },
     rpc: async (name) => { rpcs.push(name); return { data: name === 'gamewaire_can_admin' ? allowed : claim, error: null }; },
     from(table) {
       const filters = {}; queries.push({ table, filters });
@@ -172,12 +172,21 @@ function endpoint({ allowed = true, user = true, claim = true, cacheFailure = fa
       method: 'POST', headers: auth ? { Authorization: 'Bearer fixture' } : {}, body: JSON.stringify(body),
     }), env, fetcher) };
 }
-test('Bot rejects guests, expired sessions and non-designated members/admins before cache/upstream access', async () => {
-  for (const [options, auth, status] of [[{}, false, 401], [{ user: false }, true, 401], [{ allowed: false }, true, 403]]) {
+test('Player analysis rejects guests, expired sessions and anonymous users before cache/upstream access', async () => {
+  for (const [options, auth, status] of [[{}, false, 401], [{ user: false }, true, 401], [{ anonymous: true }, true, 401]]) {
     const api = endpoint(options), result = await api.run(undefined, auth);
     assert.equal(result.status, status); assert.equal(api.calls.length, 0); assert.equal(api.writes.length, 0);
     assert.equal(result.headers.get('Cache-Control'), 'no-store');
   }
+});
+test('Members can search and load verified reports without admin permissions or privileged output', async () => {
+  const api = endpoint({ allowed: false });
+  assert.equal((await api.run({ action: 'directory' })).status, 200);
+  const response = await api.run(), data = await response.json();
+  assert.equal(response.status, 200); assert.equal(data.report.player.id, player.id);
+  assert.ok(!api.rpcs.includes('gamewaire_can_admin'));
+  assert.ok(api.rpcs.includes('gamewire_bot_claim'));
+  assert.ok(!JSON.stringify(data).includes('service_role'));
 });
 test('Input validation happens before fetches and usage claims', async () => {
   for (const body of [{ action: 'chat' }, { action: 'breakdown', playerId: '../private', format: 'ppr' }, { action: 'breakdown', playerId: '123', format: 'superflex' }]) {
@@ -266,20 +275,20 @@ test('Player rosters can use the equivalent ESPN public host without losing all 
   assert.match(data.warnings[0], /equivalent public feed/);
   assert.equal(api.calls.filter((url) => url.includes('/roster') && url.includes('site.web.api.espn.com')).length, 32);
 });
-test('Bot client topics are constrained and UI remains owner-gated with accessible controls', () => {
+test('Player analysis validates reports, is available to members and has no chat controls', () => {
   const service = readFileSync(new URL('../src/services/gamewireBot.ts', import.meta.url), 'utf8');
   const topicCode = ts.transpileModule(service, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const context = vm.createContext({ exports: {}, require: () => ({ supabase: null }) }); vm.runInContext(topicCode, context);
-  for (const [question, expected] of [['Show props', 'props'], ['His targets and usage?', 'overview'], ['Start him?', 'start-sit'], ['The defense matchup?', 'matchup'], ['Tell me a joke', null]]) assert.equal(context.exports.botTopic(question), expected);
   assert.equal(context.exports.readBotReport(report()).player.id, player.id);
   for (const invalid of [{}, { ...report(), editorial: undefined }, { ...report(), props: [{}] }, { ...report(), workload: [{}] }])
     assert.throws(() => context.exports.readBotReport(invalid), /incomplete player breakdown/);
   const page = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
-  assert.match(page, /status\?\.canAnalyze && <GamewireBot/);
+  assert.match(page, /<GamewireBot \/>/);
+  assert.doesNotMatch(page, /status\?\.canAnalyze && <GamewireBot/);
   const ui = readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8');
-  assert.match(ui, /aria-expanded=/); assert.match(ui, /Conversational AI not enabled/); assert.match(ui, /role="alert"/);
+  assert.match(ui, /aria-expanded=/); assert.match(ui, /Search-only player analysis/); assert.match(ui, /role="alert"/);
   assert.match(ui, /controller\.current\?\.abort/);
-  assert.match(ui, /Questions stay in this tab/);
+  assert.doesNotMatch(ui, /gwb-compose|gwb-question|gwb-followups|botTopic|setMessages|setQuestion/);
 });
 
 function botWelcomeHarness({ directoryError = false, players = [player], loadReport = (id, format) => ({ ...report({ format }), player: players.find((row) => row.id === id) }) } = {}) {
@@ -331,7 +340,7 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
   const expire = () => { for (const [timer, callback] of timers) { clearTimeout(timer); timers.delete(timer); callback(); } };
   return { render, find, byClass, search, reportRequests, expire, counts: () => ({ directoryCalls, reportCalls }) };
 }
-test('Welcome search opens the preview, analyzes a unique match and keeps the conversation when closed', async () => {
+test('Player search opens the lab, analyzes a unique match and keeps the report when closed', async () => {
   const ui = botWelcomeHarness();
   let tree = ui.render();
   assert.equal(ui.byClass(tree, 'gwb-toggle').props['aria-expanded'], false);
@@ -345,15 +354,14 @@ test('Welcome search opens the preview, analyzes a unique match and keeps the co
   ui.byClass(tree, 'gwb-hero-search').props.onSubmit({ preventDefault() {} });
   await new Promise(setImmediate);
   tree = ui.render();
-  const conversation = ui.byClass(tree, 'gwb-conversation').props.children;
-  assert.equal(conversation.length, 1);
-  assert.match(conversation[0].props.children[0].props.children, /Test Runner/);
+  const analysis = ui.byClass(tree, 'gwb-result').props.children.props.report;
+  assert.equal(analysis.player.name, 'Test Runner');
   ui.byClass(tree, 'gwb-toggle').props.onClick();
   tree = ui.render();
   assert.equal(ui.byClass(tree, 'gwb-panel'), undefined);
   ui.byClass(tree, 'gwb-toggle').props.onClick();
   tree = ui.render();
-  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children[0].key, conversation[0].key);
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report, analysis);
   assert.deepEqual(ui.counts(), { directoryCalls: 1, reportCalls: 1 });
 });
 test('Welcome search survives close/reopen and displays roster feed errors with a retry', async () => {
@@ -388,6 +396,9 @@ test('GamewAIre density is scoped to desktop and the blue preview keeps accessib
   assert.match(phoneCss, /\.gwb\.gwb \.gwb-hero-search input \{ font-size: 16px;/);
   assert.doesNotMatch(phoneCss, /zoom:/);
   assert.match(phoneCss, /\.gwb-comparison \{ grid-template-columns: 1fr;/);
+  assert.match(phoneCss, /\.gwb-hero-title h3 \{ font-size: 23px;/);
+  assert.match(phoneCss, /\.gwb-answer section \{ margin-top: 14px; padding-top: 12px;/);
+  assert.match(botCss, /@media \(min-width: 1100px\) \{\s*\.gwb \{ zoom: \.94;/);
 });
 const secondPlayer = { ...player, id: '456', name: 'Other Receiver', position: 'WR' };
 const thirdPlayer = { ...player, id: '789', name: 'Third Tight End', position: 'TE' };
@@ -401,21 +412,19 @@ test('Clear search removes typed text but preserves the selected player outlook'
   clear.props.onClick(); tree = ui.render();
   assert.equal(ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.value, '');
   assert.equal(ui.byClass(tree, 'gwb-search-results'), undefined);
-  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 1);
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report.player.id, player.id);
 });
-test('Clear player removes their outlook, question and follow-up history without fetching again', async () => {
+test('Clear player removes their outlook without fetching again', async () => {
   const ui = botWelcomeHarness();
   let tree = await ui.search(player.name);
-  ui.byClass(tree, 'gwb-followups').props.children[0][0].props.onClick(); tree = ui.render();
-  ui.find(tree, (node) => node.props?.id === 'gwb-question').props.onChange({ target: { value: 'His props?' } }); tree = ui.render();
   ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${player.name}`).props.onClick(); tree = ui.render();
-  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 0);
+  assert.equal(ui.byClass(tree, 'gwb-result'), undefined);
   assert.equal(ui.byClass(tree, 'gwb-selected-players'), undefined);
   assert.equal(ui.byClass(tree, 'gwb-followups'), undefined);
   ui.find(tree, (node) => node.type === 'select').props.onChange({ target: { value: 'half' } });
   assert.equal(ui.counts().reportCalls, 1, 'Cleared players cannot be refreshed by a scoring change');
   tree = await ui.search(player.name);
-  assert.equal(ui.find(tree, (node) => node.props?.id === 'gwb-question').props.value, '');
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report.player.id, player.id);
 });
 test('Clearing either comparison player preserves the other and allows refilling the cleared slot', async () => {
   const ui = botWelcomeHarness({ players: [player, secondPlayer] });
@@ -437,17 +446,14 @@ test('Clearing either comparison player preserves the other and allows refilling
   assert.equal(ui.reportRequests.at(-1).id, player.id);
   assert.equal(ui.byClass(tree, 'gwb-comparison').props.children[1].props.children.props.className, 'gwb-compare-empty');
 });
-test('Searching a new player replaces the first player and clears their follow-up history', async () => {
+test('Searching a new player replaces the first player with one analysis and no chat area', async () => {
   const ui = botWelcomeHarness({ players: [player, secondPlayer] });
   let tree = await ui.search(player.name);
-  ui.byClass(tree, 'gwb-followups').props.children[0][0].props.onClick();
-  tree = ui.render();
-  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 2);
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report.player.id, player.id);
   tree = await ui.search(secondPlayer.name);
-  const messages = ui.byClass(tree, 'gwb-conversation').props.children;
-  assert.equal(messages.length, 1);
-  assert.match(messages[0].props.children[0].props.children, /Other Receiver/);
-  assert.doesNotMatch(messages[0].props.children[0].props.children, /Test Runner/);
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report.player.id, secondPlayer.id);
+  assert.equal(ui.byClass(tree, 'gwb-compose'), undefined);
+  assert.equal(ui.byClass(tree, 'gwb-followups'), undefined);
 });
 test('Compare supports two distinct players, slot replacement, shared scoring and returning to single-player mode', async () => {
   const ui = botWelcomeHarness({ players: [player, secondPlayer, thirdPlayer] });
@@ -461,7 +467,7 @@ test('Compare supports two distinct players, slot replacement, shared scoring an
   const outlines = () => ui.byClass(tree, 'gwb-comparison').props.children.map((column) => column.props.children);
   assert.equal(outlines()[0].props.report.player.id, player.id);
   assert.equal(outlines()[1].props.report.player.id, secondPlayer.id);
-  assert.equal(ui.byClass(tree, 'gwb-conversation'), undefined);
+  assert.equal(ui.byClass(tree, 'gwb-result'), undefined);
   tree = await ui.search(thirdPlayer.name);
   assert.equal(outlines()[0].props.report.player.id, player.id);
   assert.equal(outlines()[1].props.report.player.id, thirdPlayer.id);
@@ -472,9 +478,9 @@ test('Compare supports two distinct players, slot replacement, shared scoring an
   assert.deepEqual(ui.reportRequests.slice(-2), [{ id: player.id, format: 'half' }, { id: thirdPlayer.id, format: 'half' }]);
   ui.byClass(tree, 'gwb-compare-button').props.onClick(); tree = ui.render();
   assert.equal(ui.byClass(tree, 'gwb-comparison'), undefined);
-  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 1);
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report.player.id, player.id);
   tree = await ui.search(secondPlayer.name);
-  assert.match(ui.byClass(tree, 'gwb-conversation').props.children[0].props.children[0].props.children, /Other Receiver/);
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report.player.id, secondPlayer.id);
 });
 test('Comparison preserves a successful first player when the second fails and retries the failed request', async () => {
   let failing = true;
@@ -499,14 +505,14 @@ test('A replacement clears stale cards immediately and an older request cannot o
     return new Promise((resolve) => pending.set(id, resolve));
   } });
   let tree = await ui.search(player.name);
-  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 0);
+  assert.equal(ui.byClass(tree, 'gwb-result'), undefined);
   tree = await ui.search(secondPlayer.name);
   ui.byClass(tree, 'gwb-search-results').props.children[0][0].props.onClick();
   pending.get(secondPlayer.id)({ ...report(), player: secondPlayer });
   await new Promise(setImmediate); tree = ui.render();
   pending.get(player.id)(report());
   await new Promise(setImmediate); tree = ui.render();
-  assert.match(ui.byClass(tree, 'gwb-conversation').props.children[0].props.children[0].props.children, /Other Receiver/);
+  assert.equal(ui.byClass(tree, 'gwb-result').props.children.props.report.player.id, secondPlayer.id);
 });
 test('A comparison timeout keeps a verified completed outlook and exposes the other player error', async () => {
   let timeOutSecond = false;
@@ -533,7 +539,7 @@ test('Estimate cards show receptions with catch units and concise blurbs without
     context: 'Internal model context', explanation: 'A favorable reception matchup lifts the outlook.', warnings: [], sourceGames: [] };
   const ui = botWelcomeHarness({ loadReport: () => ({ ...report(), projections: [projection] }) });
   const tree = await ui.search(player.name);
-  const breakdown = ui.byClass(tree, 'gwb-conversation').props.children[0].props.children[1];
+  const breakdown = ui.byClass(tree, 'gwb-result').props.children;
   const rendered = breakdown.type(breakdown.props);
   assert.equal(ui.byClass(rendered, 'gwb-projection-evidence'), undefined);
   const card = ui.byClass(rendered, 'gwb-projection');
