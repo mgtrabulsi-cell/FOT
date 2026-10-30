@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient';
 import type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supabase/functions/_shared/gamewireBot';
+import { readRankingList } from '../../supabase/functions/_shared/gamewireRankings';
+import type { RankingList } from '../../supabase/functions/_shared/gamewireRankings';
 export type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supabase/functions/_shared/gamewireBot';
 
 async function request<T>(body: Record<string, unknown>, signal: AbortSignal): Promise<T> {
@@ -40,7 +42,11 @@ function validReport(value: unknown): value is BotReport {
    && list(row.dataIssues, (item) => typeof item === 'string')
    && list(row.projections, (item) => {
      const projection = object(item);
+     const role = object(projection.role);
      return strings(projection, ['market', 'label', 'context', 'explanation']) && ['yards', 'receptions'].includes(String(projection.unit))
+       && (projection.role == null || ['depth-chart', 'recent-usage'].includes(String(role.source)) && Number.isInteger(role.rank) && Number(role.rank) >= 1)
+       && (projection.defenseRank == null || Number.isInteger(projection.defenseRank) && Number(projection.defenseRank) >= 1 && Number(projection.defenseRank) <= 32)
+       && (projection.limitedData === undefined || typeof projection.limitedData === 'boolean')
        && (projection.estimate === null || finite(projection.estimate))
        && ['baseline', 'defenseAverage', 'share', 'historyAverage', 'contenderAverage'].every((key) => projection[key] === null || finite(projection[key]))
        && ['playerGames', 'defenseGames', 'historyGames', 'contenderGames'].every((key) => Number.isInteger(projection[key]))
@@ -69,4 +75,10 @@ export async function loadBotDirectory(signal: AbortSignal) {
 export async function loadBotReport(playerId: string, format: BotFormat, signal: AbortSignal) {
  const data = await request<unknown>({ action: 'breakdown', playerId, format }, signal);
  return readBotReport(object(data).report);
+}
+export async function loadBotRankings(scope: Omit<RankingList, 'playerIds' | 'publishedAt'>, signal: AbortSignal) {
+ return readRankingList(await request({ action: 'rankings', ...scope }, signal));
+}
+export async function saveBotRankings(list: Omit<RankingList, 'publishedAt'>, signal: AbortSignal) {
+ return readRankingList(await request({ action: 'save-rankings', ...list }, signal));
 }

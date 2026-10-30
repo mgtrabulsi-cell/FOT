@@ -59,5 +59,38 @@ $$;
 revoke all on function public.gamewire_bot_claim(uuid) from public, anon, authenticated;
 grant execute on function public.gamewire_bot_claim(uuid) to service_role;
 
+create or replace function public.gamewire_bot_save_rankings(
+  target_season integer, target_week integer, target_format text, target_position text, players jsonb
+) returns timestamptz
+language plpgsql security definer set search_path=''
+as $$
+declare published timestamptz := clock_timestamp();
+begin
+  if target_season not between 2000 and 2200 or target_week not between 1 and 18
+    or target_format not in ('ppr','half','standard') or target_position not in ('QB','RB','WR','TE')
+    or target_season is null or target_week is null or target_format is null or target_position is null
+    or jsonb_typeof(players) is distinct from 'array' then
+    raise exception 'Invalid weekly ranking scope';
+  end if;
+  if jsonb_array_length(players) not between 1 and 30
+    or exists (select 1 from jsonb_array_elements(players) p
+      where coalesce(p->>'id','') !~ '^[0-9]{1,12}$' or coalesce(p->>'teamId','') !~ '^[0-9]{1,2}$'
+        or char_length(btrim(coalesce(p->>'name',''))) not between 1 and 120)
+    or (select count(distinct p->>'id') from jsonb_array_elements(players) p) <> jsonb_array_length(players) then
+    raise exception 'Invalid or duplicate ranked players';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(
+    target_season::text || ':' || target_week::text || ':' || target_format || ':' || target_position, 0));
+  delete from public.gamewire_fantasy_rankings
+    where season=target_season and week=target_week and scoring_format=target_format and position=target_position;
+  insert into public.gamewire_fantasy_rankings(season,week,scoring_format,position,player_id,team_id,player_name,rank,published_at)
+    select target_season,target_week,target_format,target_position,p->>'id',p->>'teamId',p->>'name',ordinality,published
+    from jsonb_array_elements(players) with ordinality as entries(p,ordinality);
+  return published;
+end;
+$$;
+revoke all on function public.gamewire_bot_save_rankings(integer,integer,text,text,jsonb) from public, anon, authenticated;
+grant execute on function public.gamewire_bot_save_rankings(integer,integer,text,text,jsonb) to service_role;
+
 notify pgrst,'reload schema';
 commit;

@@ -2,8 +2,9 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { array, normalize, numeric, object, pickBlurb, text } from '../_shared/gamewaire.ts';
 import type { Candidate } from '../_shared/gamewaire.ts';
 import { defensiveStandings, publicJSON } from '../_shared/gamewaireSources.ts';
-import { applyBotEditorial, botMatchup, buildBotReport, readBotPositions, readBotRoster, readBotWeek } from '../_shared/gamewireBot.ts';
-import { collectBotProjections } from '../_shared/gamewireBotProjections.ts';
+import { applyBotEditorial, botLogRows, botMatchup, buildBotReport, readBotPositions, readBotRoster, readBotWeek } from '../_shared/gamewireBot.ts';
+import { collectBotProjections, collectReceivingDefenses } from '../_shared/gamewireBotProjections.ts';
+import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -26,7 +27,14 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     let raw: unknown;
     try { raw = await request.json(); } catch { return json({ error: 'Invalid bot request.' }, 400); }
     const input = object(raw);
-    if (input.action !== 'directory' && input.action !== 'breakdown') return json({ error: 'Choose player search or a player breakdown.' }, 400);
+    if (!['directory', 'breakdown', 'rankings', 'save-rankings'].includes(text(input.action))) return json({ error: 'Choose player search or a player breakdown.' }, 400);
+    const editingRankings = input.action === 'rankings' || input.action === 'save-rankings';
+    if (editingRankings) {
+      const permission = await client.rpc('gamewaire_can_admin');
+      if (permission.error) throw new Error('Could not verify ranking editor permissions.');
+      if (permission.data !== true) return json({ error: 'Only GamewAIre admins can edit weekly rankings.' }, 403);
+      try { rankingScope(input); } catch (cause) { return json({ error: cause instanceof Error ? cause.message : 'Invalid ranking scope.' }, 400); }
+    }
     if (input.action === 'breakdown' && (!/^\d{1,12}$/.test(text(input.playerId)) || !['ppr', 'half', 'standard'].includes(text(input.format))))
       return json({ error: 'Choose an NFL player and a supported scoring format.' }, 400);
     let claimed = false;
@@ -88,16 +96,38 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         positions, warnings: [...warnings, ...feedWarnings], checkedAt: new Date().toISOString() };
     });
     if (input.action === 'directory') return json({ ...directory.data, ...week, warnings: [...new Set([...directory.data.warnings, ...feedWarnings])], cached: directory.cached, mode: 'verified-preview', aiEnabled: false });
+    if (editingRankings) {
+      const scope = rankingScope(input);
+      if (scope.season !== week.season) return json({ error: 'Ranking entry must use the current verified NFL season.' }, 400);
+      if (input.action === 'save-rankings') {
+        let players;
+        try { players = rankingPlayers(input.playerIds, directory.data, scope.position); }
+        catch (cause) { return json({ error: cause instanceof Error ? cause.message : 'Invalid ranking list.' }, 400); }
+        const saved = await admin.rpc('gamewire_bot_save_rankings', { target_season: scope.season, target_week: scope.week,
+          target_format: scope.format, target_position: scope.position, players });
+        if (saved.error || typeof saved.data !== 'string') throw new Error('The weekly rankings could not be published. Your draft has not been cleared; retry.');
+        return json({ ...scope, playerIds: players.map((player) => player.id), publishedAt: saved.data });
+      }
+      const saved = await admin.from('gamewire_fantasy_rankings').select('player_id,rank,published_at')
+        .eq('season', scope.season).eq('week', scope.week).eq('scoring_format', scope.format).eq('position', scope.position).order('rank');
+      if (saved.error) throw new Error('Could not load the saved weekly rankings. Retry before editing.');
+      return json({ ...scope, playerIds: (saved.data ?? []).map((row) => row.player_id), publishedAt: saved.data?.[0]?.published_at ?? null });
+    }
     const player = directory.data.players.find((row) => row.id === input.playerId);
     if (!player) return json({ error: 'This player is not in the current verified NFL directory. Retry player search.' }, 404);
     const format = input.format as BotFormat, matchup = botMatchup(board, player);
-    const cacheKey = `nfl:breakdown:v5:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
+    const cacheKey = `nfl:breakdown:v6:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
     const result = await cached<BotReport>(cacheKey, (report) => report.dataIssues.length ? 30_000 : 5 * 60_000, async () => {
       const [roster, logs] = await Promise.allSettled([
         criticalFeed(`teams/${player.teamId}/roster?season=${week.season}`, 'Current player roster'),
         publicJSON(`https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${player.id}/gamelog?season=${week.season}`, fetcher),
       ]);
-      const report = buildBotReport(player, roster.status === 'fulfilled' ? roster.value : null, logs.status === 'fulfilled' ? logs.value : null, board, format, Date.now());
+      let verifiedLogs = logs.status === 'fulfilled' ? logs.value : null;
+      let logIssue = '';
+      try { if (verifiedLogs !== null) botLogRows(verifiedLogs, Date.now(), week.season); }
+      catch (cause) { console.error('Bot log validation failed', player.id, cause); verifiedLogs = null; logIssue = 'Player game logs could not be validated. Completed box scores are checked for estimates.'; }
+      const report = buildBotReport(player, roster.status === 'fulfilled' ? roster.value : null, verifiedLogs, board, format, Date.now());
+      if (logIssue) report.dataIssues.push(logIssue);
       for (const [label, result] of [['Current roster', roster], ['Player game logs', logs]] as const) {
         if (result.status === 'rejected') {
           console.error('Bot source unavailable', label, player.id, result.reason);
@@ -108,7 +138,16 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         () => url.startsWith(`${site}/`) ? criticalFeed(url.slice(site.length + 1), 'NFL matchup sample') : publicJSON(url, fetcher))).data;
       const loadProjections = async () => {
         if (!report.eligibleForGuidance) return;
-        report.projections = await collectBotProjections(player, matchup, week.season, logs.status === 'fulfilled' ? logs.value : null, directory.data, get, Date.now());
+        let defenses: Awaited<ReturnType<typeof collectReceivingDefenses>> = [];
+        if (player.position === 'WR' || player.position === 'TE') {
+          try { defenses = (await cached(`nfl:receiving-defenses:v1:${week.season}:${week.week}`, 15 * 60_000,
+            () => collectReceivingDefenses(directory.data, week.season, get, Date.now()))).data; }
+          catch (cause) {
+            console.error('Bot league positional ranking unavailable', cause);
+            report.warnings.push(`Bottom-four positional boost unavailable: ${cause instanceof Error ? cause.message : 'League samples failed.'}`);
+          }
+        }
+        report.projections = await collectBotProjections(player, matchup, week.season, verifiedLogs, directory.data, get, Date.now(), defenses);
         if (report.projections.some((projection) => projection.estimate === null)) report.dataIssues.push('Some estimates are unavailable because recent verified data is incomplete.');
       };
       const loadOpponent = async () => {

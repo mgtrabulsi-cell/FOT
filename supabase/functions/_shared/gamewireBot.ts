@@ -171,6 +171,17 @@ export function applyBotEditorial(report: BotReport, graphicRows: unknown, ranki
   const ranking: BotEditorial['ranking'] = row ? { rank: rank!, position: report.player.position, format: report.format, publishedAt: text(row.published_at) } : null;
   const next = { ...report, editorial: { graphics, ranking }, warnings: [...report.warnings] };
   if (!report.eligibleForGuidance) return next;
+  if (ranking) {
+    const factor = 1.05 - (ranking.rank - 1) * .1 / 29;
+    next.projections = report.projections.map((projection) => {
+      if (projection.estimate === null) return projection;
+      const scale = projection.unit === 'receptions' ? 10 : 1;
+      const estimate = Math.round(projection.estimate * factor * scale) / scale;
+      return { ...projection, estimate, yards: projection.unit === 'yards' ? estimate : null,
+        explanation: `${projection.explanation} Weekly GameWire ranking also factors in.` };
+    });
+    next.warnings.push('Published weekly rankings add an editorial adjustment of up to +/-5% to available estimates; rankings do not supply missing production or establish a depth-chart role.');
+  }
   const rankText = ranking ? `GameWire's Week ${report.week} ${report.format === 'ppr' ? 'PPR' : report.format === 'half' ? 'half-PPR' : 'standard'} list ranks ${report.player.name} ${ranking.position}${ranking.rank}.` : '';
   if (new Set(graphics.map((row) => row.kind)).size > 1) {
     next.indication = 'Monitor';

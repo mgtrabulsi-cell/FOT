@@ -7,6 +7,7 @@ import * as jsxRuntime from 'react/jsx-runtime';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as bot from '../supabase/functions/_shared/gamewireBot.ts';
+import * as rankingTools from '../supabase/functions/_shared/gamewireRankings.ts';
 
 const now = Date.parse('2026-10-29T18:00:00Z');
 const player = { id: '123', name: 'Test Runner', position: 'RB', teamId: '23', team: 'Pittsburgh Steelers', teamAbbr: 'PIT' };
@@ -124,12 +125,13 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
   if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expires });
   const client = {
     auth: { getUser: async () => ({ data: { user: user ? { id: allowed ? 'owner' : 'member', is_anonymous: anonymous } : null }, error: null }) },
-    rpc: async (name) => { rpcs.push(name); return { data: name === 'gamewaire_can_admin' ? allowed : claim, error: null }; },
+    rpc: async (name, args) => { rpcs.push(name); if (name === 'gamewire_bot_save_rankings') { writes.push(name); return { data: new Date(now).toISOString(), error: null }; }
+      return { data: name === 'gamewaire_can_admin' ? allowed : claim, error: null }; },
     from(table) {
       const filters = {}; queries.push({ table, filters });
       const builder = {
         select: () => builder, eq: (key, value) => { filters[key] = value; return builder; },
-        gt: () => builder, gte: () => builder, lte: () => builder, limit: () => builder, not: () => builder,
+        gt: () => builder, gte: () => builder, lte: () => builder, limit: () => builder, not: () => builder, order: () => builder,
         maybeSingle: async () => ({ data: cache.get(filters.cache_key) ?? null, error: cacheFailure ? { message: 'DB failed' } : null }),
         upsert: async (value) => { writes.push(table); cache.set(value.cache_key, value); return { error: null }; },
         then: (resolve) => Promise.resolve({ data: table === 'fantasy_graphics' ? graphics : table === 'gamewire_fantasy_rankings' ? rankings : pubs, error: pubFailure ? { message: 'DB failed' } : null }).then(resolve),
@@ -160,6 +162,7 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     Date: class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } },
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
+      if (name.includes('gamewireRankings')) return rankingTools;
       if (name.includes('gamewireBotProjections')) return { collectBotProjections: async () => [] };
       if (name.includes('gamewireBot')) return bot;
       if (name.includes('gamewaireSources')) return sources;
@@ -543,8 +546,46 @@ test('Estimate cards show receptions with catch units and concise blurbs without
   const rendered = breakdown.type(breakdown.props);
   assert.equal(ui.byClass(rendered, 'gwb-projection-evidence'), undefined);
   const card = ui.byClass(rendered, 'gwb-projection');
-  assert.equal(card.props.children.length, 2);
-  assert.equal(card.props.children[1].props.children, projection.explanation);
+  assert.equal(card.props.children.filter(Boolean).length, 2);
+  assert.equal(card.props.children.at(-1).props.children, projection.explanation);
   assert.deepEqual(card.props.children[0].props.children[1].props.children.props.children[0], 4.8);
   assert.match(JSON.stringify(card.props.children[0].props.children[1].props.children.props.children[1].props.children), /catches/);
+});
+test('Ranking editor endpoints deny members and validate scope, position and duplicate players before publishing', async () => {
+  const body = { action: 'save-rankings', season: 2026, week: 8, format: 'ppr', position: 'RB', playerIds: ['123'] };
+  for (const action of ['rankings', 'save-rankings']) {
+    const api = endpoint({ allowed: false }), response = await api.run({ ...body, action });
+    assert.equal(response.status, 403); assert.equal(api.calls.length, 0); assert.equal(api.writes.length, 0);
+  }
+  for (const change of [{ week: 0 }, { week: 19 }, { format: 'superflex' }, { playerIds: [] }, { playerIds: ['123', '123'] }, { playerIds: ['999'] }, { position: 'WR' }, { season: 2025 }]) {
+    const api = endpoint(), response = await api.run({ ...body, ...change });
+    assert.equal(response.status, 400, JSON.stringify(change));
+    assert.ok(!api.rpcs.includes('gamewire_bot_save_rankings'));
+  }
+  const api = endpoint();
+  const savedResponse = await api.run(body), published = await savedResponse.json();
+  assert.equal(savedResponse.status, 200, JSON.stringify(published));
+  assert.deepEqual(published.playerIds, ['123']); assert.ok(published.publishedAt);
+  assert.ok(api.rpcs.includes('gamewire_bot_save_rankings'));
+  const read = await (await endpoint({ rankings: [ranking] }).run({ ...body, action: 'rankings' })).json();
+  assert.deepEqual(read.playerIds, ['123']);
+});
+test('Pasted ranks require exact identity, flag ambiguity and preserve line order for review', () => {
+  const receiver = { ...player, id: '456', name: 'Another Runner' };
+  const matched = rankingTools.matchRankingPaste('1. Test Runner PIT\n2) Another Runner', [player, receiver], 'RB');
+  assert.deepEqual(matched.map((row) => row.playerId), ['123', '456']);
+  assert.equal(rankingTools.matchRankingPaste('Test Runner', [player, { ...player, id: '789' }], 'RB')[0].playerId, '');
+  assert.equal(rankingTools.matchRankingPaste('Unknown Person', [player], 'RB')[0].playerId, '');
+  assert.equal(rankingTools.matchRankingPaste('Test Runner', [player], 'WR')[0].playerId, '');
+  assert.throws(() => rankingTools.matchRankingPaste(Array(31).fill('Test Runner').join('\n'), [player], 'RB'), /1 to 30/);
+});
+test('Fresh matching rankings adjust estimates within five percent without mutating cached data or filling missing metrics', () => {
+  const base = { ...report(), projections: [{ estimate: 100, yards: 100, unit: 'yards', explanation: 'Matchup context.' }, { estimate: 4, yards: null, unit: 'receptions', explanation: 'Catches.' }, { estimate: null, yards: null }] };
+  const top = bot.applyBotEditorial(base, [], [{ ...ranking, rank: 1 }]);
+  const low = bot.applyBotEditorial(base, [], [{ ...ranking, rank: 30 }]);
+  assert.equal(top.projections[0].estimate, 105); assert.equal(low.projections[0].estimate, 95);
+  assert.equal(top.projections[1].estimate, 4.2); assert.equal(top.projections[1].yards, null);
+  assert.equal(top.projections[2].estimate, null); assert.equal(base.projections[0].estimate, 100);
+  assert.equal(bot.applyBotEditorial({ ...base, eligibleForGuidance: false }, [], [{ ...ranking, rank: 1 }]).projections[0].estimate, 100);
+  assert.equal(bot.applyBotEditorial(base, [], [{ ...ranking, scoring_format: 'standard' }]).projections[0].estimate, 100);
 });

@@ -12,6 +12,7 @@ import type { PickOrder } from './services/gamewaireOrder';
 import GamewaireResultsDownload from './GamewaireResultsDownload';
 import GamewaireBestBetsDownload from './GamewaireBestBetsDownload';
 import GamewireBot from './GamewireBot';
+import GamewireRankings from './GamewireRankings';
 import { gamewaireMarketLabels as marketLabels, gamewairePickTitle as pickTitle } from './services/gamewairePresentation';
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
@@ -341,6 +342,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     <div id="gai-bot-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bot-tab"
       hidden={section !== 'bot'} tabIndex={0}>
       <GamewireBot />
+      {status?.canAnalyze && <GamewireRankings />}
     </div>
     <div id="gai-bets-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bets-tab"
       hidden={section !== 'bets'} tabIndex={0}>

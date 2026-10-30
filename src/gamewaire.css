@@ -1,6 +1,14 @@
 .gai-panel { display: grid; gap: 18px; min-width: 0; }
 .gai-section-panel { display: grid; gap: 18px; min-width: 0; }
 .gai-section-panel[hidden] { display: none; }
+.gai-ranking-editor { padding: 0 14px; border: 1px solid #293d57; border-radius: 8px; background: #0c1523; }
+.gai-ranking-editor fieldset { margin-bottom: 12px; }
+.gai-ranking-paste, .gai-ranking-list { width: 100%; }
+.gai-ranking-paste textarea { width: 100%; padding: 10px; background: #0a1321; border: 1px solid #344963; border-radius: 5px; color: #edf2f8; font: inherit; font-size: 16px; }
+.gai-ranking-list { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.gai-ranking-list li { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.gai-ranking-list label { flex: 1 1 220px; }
+.gai-ranking-list li > div { display: flex; gap: 6px; }
 .gai-section-tabs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 6px; border: 1px solid #293d57; border-radius: 10px; background: #0c1523; }
 .gai-panel .gai-section-tabs button { min-width: 0; padding: 12px; font: 600 15px var(--display); }
 .gai-panel .gai-section-tabs button[aria-selected="true"] { border-color: #57b7ff; color: #eef8ff; background: linear-gradient(120deg, #153d63, #142a43); box-shadow: inset 0 -2px #57b7ff; }

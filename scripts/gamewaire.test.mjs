@@ -595,6 +595,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
     .replace(/import GamewaireBestBetsDownload from [^;]+;/, 'const GamewaireBestBetsDownload=()=>"Download Instagram Best Bets";')
     .replace(/import GamewireBot from [^;]+;/, 'const GamewireBot=()=>"GameWire player analysis";')
+    .replace(/import GamewireRankings from [^;]+;/, 'const GamewireRankings=()=>"Admin weekly ranking editor";')
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>{const visible=picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key));return visible.map((p,i)=>renderPick(p,i+1,visible.map(p=>p.key)));};')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
@@ -645,6 +646,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.doesNotMatch(betsTab, /id="gai-bets-panel"[^>]*hidden/);
   assert.match(betsTab, /GameWire player analysis/, 'Switching tabs keeps the player component mounted');
   assert.match(empty, /GameWire player analysis/);
+  assert.match(empty, /Admin weekly ranking editor/);
   assert.match(empty, /Download results graphic/);
   assert.doesNotMatch(empty, /Gamew<strong>AI<\/strong>re/, 'The App heading owns the single GamewAIre title');
   assert.match(empty, /ANALYSIS ENGINE/);
@@ -678,6 +680,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   fixture(memberState);
   const report = renderToStaticMarkup(createElement(Page));
   assert.match(report, /GameWire player analysis/);
+  assert.doesNotMatch(report, /Admin weekly ranking editor/);
   assert.match(report, /class="gai-pick angle-card gai-best-bet"/);
   assert.match(report, /Book A/);
   assert.match(report, /loss/);
