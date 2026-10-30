@@ -282,12 +282,16 @@ test('Bot client topics are constrained and UI remains owner-gated with accessib
   assert.match(ui, /Questions stay in this tab/);
 });
 
-function botWelcomeHarness({ directoryError = false } = {}) {
+function botWelcomeHarness({ directoryError = false, players = [player], loadReport = (id, format) => ({ ...report({ format }), player: players.find((row) => row.id === id) }) } = {}) {
   const state = [], refs = [];
+  const reportRequests = [], timers = new Map();
   let stateIndex = 0, refIndex = 0, directoryCalls = 0, reportCalls = 0;
   const code = ts.transpileModule(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const context = vm.createContext({ exports: {}, AbortController, Date, Error, window: { setTimeout, clearTimeout }, require: (name) => {
+  const context = vm.createContext({ exports: {}, AbortController, Date, Error, window: {
+    setTimeout(callback, delay) { const timer = setTimeout(callback, delay); timers.set(timer, callback); return timer; },
+    clearTimeout(timer) { clearTimeout(timer); timers.delete(timer); },
+  }, require: (name) => {
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name === 'react') return {
       useState(initial) {
@@ -299,8 +303,8 @@ function botWelcomeHarness({ directoryError = false } = {}) {
       useEffect() {},
     };
     if (name === './services/gamewireBot') return {
-      async loadBotDirectory() { directoryCalls++; if (directoryError) throw new Error('Roster feed unavailable'); return { players: [player], warnings: [] }; },
-      async loadBotReport() { reportCalls++; return report(); },
+      async loadBotDirectory() { directoryCalls++; if (directoryError) throw new Error('Roster feed unavailable'); return { players, warnings: [] }; },
+      async loadBotReport(id, format, signal) { reportCalls++; reportRequests.push({ id, format }); return loadReport(id, format, signal); },
     };
     if (name === 'lucide-react') return new Proxy({}, { get: (_, icon) => icon });
     return {};
@@ -316,7 +320,16 @@ function botWelcomeHarness({ directoryError = false } = {}) {
     }
   };
   const byClass = (tree, name) => find(tree, (node) => node.props?.className === name);
-  return { render, find, byClass, counts: () => ({ directoryCalls, reportCalls }) };
+  const search = async (value) => {
+    let tree = render();
+    find(tree, (node) => node.props?.id === 'gwb-player-search').props.onChange({ target: { value } });
+    await new Promise(setImmediate); tree = render();
+    byClass(tree, 'gwb-hero-search').props.onSubmit({ preventDefault() {} });
+    await new Promise(setImmediate);
+    return render();
+  };
+  const expire = () => { for (const [timer, callback] of timers) { clearTimeout(timer); timers.delete(timer); callback(); } };
+  return { render, find, byClass, search, reportRequests, expire, counts: () => ({ directoryCalls, reportCalls }) };
 }
 test('Welcome search opens the preview, analyzes a unique match and keeps the conversation when closed', async () => {
   const ui = botWelcomeHarness();
@@ -372,4 +385,112 @@ test('GamewAIre density is scoped to desktop and the blue preview keeps accessib
   const phoneCss = botCss.slice(botCss.indexOf('@media (max-width: 600px)'));
   assert.match(phoneCss, /\.gwb\.gwb \.gwb-hero-search input \{ font-size: 16px;/);
   assert.doesNotMatch(phoneCss, /zoom:/);
+  assert.match(phoneCss, /\.gwb-comparison \{ grid-template-columns: 1fr;/);
+});
+const secondPlayer = { ...player, id: '456', name: 'Other Receiver', position: 'WR' };
+const thirdPlayer = { ...player, id: '789', name: 'Third Tight End', position: 'TE' };
+test('Searching a new player replaces the first player and clears their follow-up history', async () => {
+  const ui = botWelcomeHarness({ players: [player, secondPlayer] });
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-followups').props.children[0][0].props.onClick();
+  tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 2);
+  tree = await ui.search(secondPlayer.name);
+  const messages = ui.byClass(tree, 'gwb-conversation').props.children;
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].props.children[0].props.children, /Other Receiver/);
+  assert.doesNotMatch(messages[0].props.children[0].props.children, /Test Runner/);
+});
+test('Compare supports two distinct players, slot replacement, shared scoring and returning to single-player mode', async () => {
+  const ui = botWelcomeHarness({ players: [player, secondPlayer, thirdPlayer] });
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-compare-button').props.onClick(); tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-compare-button').props['aria-pressed'], true);
+  assert.equal(ui.byClass(tree, 'gwb-compare-slots').props.children[1].props['aria-pressed'], true);
+  tree = await ui.search(player.name);
+  assert.equal(ui.byClass(tree, 'gwb-search-results').props.children[0].length, 0, 'Primary cannot also be selected as player 2');
+  tree = await ui.search(secondPlayer.name);
+  const outlines = () => ui.byClass(tree, 'gwb-comparison').props.children.map((column) => column.props.children);
+  assert.equal(outlines()[0].props.report.player.id, player.id);
+  assert.equal(outlines()[1].props.report.player.id, secondPlayer.id);
+  assert.equal(ui.byClass(tree, 'gwb-conversation'), undefined);
+  tree = await ui.search(thirdPlayer.name);
+  assert.equal(outlines()[0].props.report.player.id, player.id);
+  assert.equal(outlines()[1].props.report.player.id, thirdPlayer.id);
+  ui.find(tree, (node) => node.type === 'select').props.onChange({ target: { value: 'half' } });
+  await new Promise(setImmediate); tree = ui.render();
+  assert.equal(outlines()[0].props.report.format, 'half');
+  assert.equal(outlines()[1].props.report.format, 'half');
+  assert.deepEqual(ui.reportRequests.slice(-2), [{ id: player.id, format: 'half' }, { id: thirdPlayer.id, format: 'half' }]);
+  ui.byClass(tree, 'gwb-compare-button').props.onClick(); tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-comparison'), undefined);
+  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 1);
+  tree = await ui.search(secondPlayer.name);
+  assert.match(ui.byClass(tree, 'gwb-conversation').props.children[0].props.children[0].props.children, /Other Receiver/);
+});
+test('Comparison preserves a successful first player when the second fails and retries the failed request', async () => {
+  let failing = true;
+  const ui = botWelcomeHarness({ players: [player, secondPlayer], loadReport(id, format) {
+    if (id === secondPlayer.id && failing) throw new Error('Player logs unavailable');
+    return { ...report({ format }), player: id === player.id ? player : secondPlayer };
+  } });
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-compare-button').props.onClick();
+  tree = await ui.search(secondPlayer.name);
+  assert.match(ui.byClass(tree, 'gwb-error').props.children[0].props.children, /Other Receiver: Player logs unavailable/);
+  assert.equal(ui.byClass(tree, 'gwb-comparison').props.children[0].props.children.props.report.player.id, player.id);
+  failing = false;
+  ui.byClass(tree, 'gwb-error').props.children[1].props.onClick();
+  await new Promise(setImmediate); tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-error'), undefined);
+  assert.equal(ui.byClass(tree, 'gwb-comparison').props.children[1].props.children.props.report.player.id, secondPlayer.id);
+});
+test('A replacement clears stale cards immediately and an older request cannot overwrite a newer player', async () => {
+  const pending = new Map();
+  const ui = botWelcomeHarness({ players: [player, secondPlayer], loadReport(id) {
+    return new Promise((resolve) => pending.set(id, resolve));
+  } });
+  let tree = await ui.search(player.name);
+  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 0);
+  tree = await ui.search(secondPlayer.name);
+  ui.byClass(tree, 'gwb-search-results').props.children[0][0].props.onClick();
+  pending.get(secondPlayer.id)({ ...report(), player: secondPlayer });
+  await new Promise(setImmediate); tree = ui.render();
+  pending.get(player.id)(report());
+  await new Promise(setImmediate); tree = ui.render();
+  assert.match(ui.byClass(tree, 'gwb-conversation').props.children[0].props.children[0].props.children, /Other Receiver/);
+});
+test('A comparison timeout keeps a verified completed outlook and exposes the other player error', async () => {
+  let timeOutSecond = false;
+  const ui = botWelcomeHarness({ players: [player, secondPlayer], loadReport(id, format, signal) {
+    if (timeOutSecond && id === secondPlayer.id) return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('Aborted')), { once: true }));
+    return { ...report({ format }), player: id === player.id ? player : secondPlayer };
+  } });
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-compare-button').props.onClick();
+  tree = await ui.search(secondPlayer.name);
+  timeOutSecond = true;
+  ui.find(tree, (node) => node.type === 'select').props.onChange({ target: { value: 'half' } });
+  await new Promise(setImmediate); ui.expire();
+  await new Promise(setImmediate); tree = ui.render();
+  const columns = ui.byClass(tree, 'gwb-comparison').props.children;
+  assert.equal(columns[0].props.children.props.report.player.id, player.id);
+  assert.equal(columns[0].props.children.props.report.format, 'half');
+  assert.match(ui.byClass(tree, 'gwb-error').props.children[0].props.children, /Other Receiver: Player breakdown timed out/);
+  assert.doesNotMatch(ui.byClass(tree, 'gwb-error').props.children[0].props.children, /Test Runner:/);
+});
+test('Estimate cards show receptions with catch units and concise blurbs without the underlying model inputs', async () => {
+  const projection = { market: 'player_receptions', label: 'Receptions', unit: 'receptions', estimate: 4.8, yards: null, baseline: 4, playerGames: 3,
+    defenseAverage: 10, defenseGames: 5, share: 66.7, historyAverage: null, historyGames: 0, contenderAverage: null, contenderGames: 0,
+    context: 'Internal model context', explanation: 'A favorable reception matchup lifts the outlook.', warnings: [], sourceGames: [] };
+  const ui = botWelcomeHarness({ loadReport: () => ({ ...report(), projections: [projection] }) });
+  const tree = await ui.search(player.name);
+  const breakdown = ui.byClass(tree, 'gwb-conversation').props.children[0].props.children[1];
+  const rendered = breakdown.type(breakdown.props);
+  assert.equal(ui.byClass(rendered, 'gwb-projection-evidence'), undefined);
+  const card = ui.byClass(rendered, 'gwb-projection');
+  assert.equal(card.props.children.length, 2);
+  assert.equal(card.props.children[1].props.children, projection.explanation);
+  assert.deepEqual(card.props.children[0].props.children[1].props.children.props.children[0], 4.8);
+  assert.match(JSON.stringify(card.props.children[0].props.children[1].props.children.props.children[1].props.children), /catches/);
 });

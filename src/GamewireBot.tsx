@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, ArrowUp, BarChart3, Bot, BrainCircuit, ChevronDown, RefreshCw, Search, Send, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
+import { Activity, ArrowLeftRight, ArrowUp, BarChart3, Bot, BrainCircuit, ChevronDown, RefreshCw, Search, Send, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
 import { botTopic, loadBotDirectory, loadBotReport } from './services/gamewireBot';
 import type { BotDirectory, BotFormat, BotPlayer, BotReport, BotTopic } from './services/gamewireBot';
 import './gamewire-bot.css';
 import OfflineImage from './OfflineImage';
 
 type Message = { id: number; question: string; report?: BotReport; topic: BotTopic; unsupported?: boolean };
+type PlayerSlot = 0 | 1;
+type OutlookRequest = { player: BotPlayer; slot: PlayerSlot };
 const formats: Array<{ value: BotFormat; label: string }> = [{ value: 'ppr', label: 'PPR' }, { value: 'half', label: 'Half PPR' }, { value: 'standard', label: 'Standard' }];
 const topics: Array<{ value: BotTopic; label: string }> = [{ value: 'overview', label: 'Weekly outlook' }, { value: 'start-sit', label: 'Start or sit?' }, { value: 'props', label: 'Prop outlook' }, { value: 'matchup', label: 'The matchup' }];
 const stamp = (value: string) => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -36,19 +38,10 @@ function Breakdown({ report, topic }: { report: BotReport; topic: BotTopic }) {
       {matchup ? <p>{report.player.teamAbbr} {matchup.home ? 'vs.' : '@'} {matchup.opponent} · {stamp(matchup.start)} · {matchup.state === 'pre' ? 'Scheduled' : matchup.state === 'in' ? 'In progress' : 'Final'}</p> : <p>No game on the current week scoreboard.</p>}
       {matchup && <p>{report.matchupText}</p>}</section>}
     {(topic === 'overview' || topic === 'props') && <section className="gwb-prop-lab"><h5>Prop Lab</h5>
-      {report.projections.length > 0 && <><p className="gwb-muted">Experimental matchup-adjusted yardage estimates · Not sportsbook lines or the published-pick model.</p>
+      {report.projections.length > 0 && <><p className="gwb-muted">Matchup-adjusted estimates · Not sportsbook lines.</p>
         {report.projections.map((projection) => <div className="gwb-projection" key={projection.market}><div className="gwb-projection-heading"><b>{projection.label}</b>
-          <strong>{projection.yards === null ? 'Unavailable' : <>{projection.yards}<small> yd estimate</small></>}</strong></div>
-          <p>{projection.explanation}</p><div className="gwb-projection-evidence">
-            <span>Player baseline: {projection.baseline ?? 'Unavailable'} yd · {projection.playerGames} games</span>
-            <span>{report.player.position} position-group allowance: {projection.defenseAverage ?? 'Unavailable'} yd/game · {projection.defenseGames} games</span>
-            <span>Measured position-yard share: {projection.share === null ? 'Unavailable' : `${projection.share}%`}</span>
-            <span>Vs. this opponent: {projection.historyAverage === null ? 'Insufficient sample' : `${projection.historyAverage} yd/game`} · {projection.historyGames} meetings</span>
-            <span>Verified contender-game split: {projection.contenderAverage === null ? 'Insufficient sample' : `${projection.contenderAverage} yd/game`} · {projection.contenderGames} games</span>
-          </div><p className="gwb-muted">{projection.context}</p>
-          <details className="gwb-method"><summary>Verified sample games · {projection.sourceGames.length}{projection.warnings.length ? ` · Limited coverage: ${projection.warnings.length} notes` : ''}</summary>
-            <nav aria-label={`${projection.label} sample box scores`}>{projection.sourceGames.map((game) => <a key={`${game.role}:${game.id}`} href={`https://www.espn.com/nfl/boxscore/_/gameId/${game.id}`} target="_blank" rel="noreferrer">{game.role === 'team' ? report.player.teamAbbr : 'Opponent allowed'} · {stamp(game.date)}</a>)}</nav>
-            {projection.warnings.map((warning) => <p key={warning}>{warning}</p>)}</details></div>)}</>}
+          <strong>{projection.estimate === null ? 'Unavailable' : <>{projection.estimate}<small>{projection.unit === 'receptions' ? ' catches' : ' yd'} estimate</small></>}</strong></div>
+          <p>{projection.explanation}</p></div>)}</>}
       {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><p>{prop.breakdown}</p></div>)}
       {!report.props.length && !report.projections.length && report.production.map((stat) => <div className="gwb-prop-empty" key={stat.label}><div><b>{stat.label}</b><span>Recent recorded average, not a projection</span></div><div><strong>{stat.average.toFixed(1)}<small> avg</small></strong><span>No published line</span></div></div>)}
       <p className="gwb-muted">{report.propNote}</p></section>}
@@ -59,7 +52,7 @@ function Breakdown({ report, topic }: { report: BotReport; topic: BotTopic }) {
     <details className="gwb-method"><summary>Sources &amp; how this preview works</summary>
       <p>Data checked {stamp(report.checkedAt)}. Workload snapshots may be cached for five minutes; player search for fifteen minutes. Regular-season appearances only.</p>
       <p>Without published editorial guidance: Start requires QB 25+ pass attempts; RB 15+ touches; WR 7+ targets (8 in standard); TE 5+ targets (6 in standard). Flex: RB 8+ touches, WR 4+ targets, TE 3+ targets. Lower usage indicates Sit; fewer than three appearances, a 21-day data gap or uncertain availability indicates Monitor. Published weekly graphics use their Must Start/Must Sit verdict. A matching top-12 QB/TE or top-24 RB/WR ranking plus Start-level workload also supports Must Start.</p>
-      <p>Experimental yardage model: player baseline is 65% recent-three average / 35% season average; blend 70% baseline with 30% opponent position-group allowance times measured team-position-yard share. Two or more direct meetings add a 10% historical component; three or more verified contender games add 5% when both current teams are top-two in their divisions. Adjustments cap at ±25% of baseline. These weights are transparent heuristics, not fitted or backtested probabilities. Current rosters classify positions when a box score omits them; unclassified nonzero yards exclude that sample. No line-anchoring or automatic big-game boost.</p>
+      <p>Yardage and reception estimates use recent production, positional matchups and available opponent history. These are experimental estimates, not calibrated predictions or sportsbook lines. Missing data is never invented.</p>
       <p>Scoring, when complete: 0.04/pass yard, 4/pass TD, -2/interception, 0.1/rush or receiving yard, 6/rush or receiving TD, -2/fumble lost, plus 1/0.5/0 per reception for PPR/half/standard. No bonuses or two-point conversions included.</p>
       {report.warnings.map((warning) => <p key={warning}>{warning}</p>)}
       <nav aria-label={`${report.player.name} data sources`}><a href={`https://www.espn.com/nfl/player/gamelog/_/id/${report.player.id}`} target="_blank" rel="noreferrer">ESPN game logs</a>
@@ -73,9 +66,12 @@ export default function GamewireBot() {
   const [search, setSearch] = useState(''), [format, setFormat] = useState<BotFormat>('ppr'), [selected, setSelected] = useState<BotPlayer | null>(null);
   const [report, setReport] = useState<BotReport | null>(null), [messages, setMessages] = useState<Message[]>([]), [question, setQuestion] = useState('');
   const [busy, setBusy] = useState<'directory' | 'report' | null>(null), [error, setError] = useState('');
+  const [comparing, setComparing] = useState(false), [activeSlot, setActiveSlot] = useState<PlayerSlot>(0);
+  const [secondPlayer, setSecondPlayer] = useState<BotPlayer | null>(null), [secondReport, setSecondReport] = useState<BotReport | null>(null);
   const controller = useRef<AbortController | null>(null), messageId = useRef(0), lastMessage = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const lastAttempt = useRef<'directory' | 'report'>('directory');
+  const lastReports = useRef<OutlookRequest[]>([]);
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
   useEffect(() => { if (messages.length) lastMessage.current?.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }, [messages.length]);
   async function loadPlayers() {
@@ -85,14 +81,40 @@ export default function GamewireBot() {
     catch (cause) { if (controller.current === next) setError(next.signal.aborted ? 'Player search timed out. Retry loading the NFL directory.' : cause instanceof Error ? cause.message : 'Player search failed. Retry.'); }
     finally { window.clearTimeout(timer); if (controller.current === next) setBusy(null); }
   }
-  async function analyze(player: BotPlayer, nextFormat = format) {
+  async function loadOutlooks(requests: OutlookRequest[], nextFormat = format) {
     controller.current?.abort(); const next = new AbortController(); controller.current = next;
-    const timer = window.setTimeout(() => next.abort(), 70_000); lastAttempt.current = 'report'; setBusy('report'); setError(''); setSelected(player); setReport(null);
+    const timer = window.setTimeout(() => next.abort(), 70_000); lastAttempt.current = 'report'; lastReports.current = requests;
+    setBusy('report'); setError(''); setQuestion(''); setSearch('');
+    for (const { player, slot } of requests) {
+      if (slot === 0) { setSelected(player); setReport(null); setMessages([]); }
+      else { setSecondPlayer(player); setSecondReport(null); }
+    }
     try {
-      const data = await loadBotReport(player.id, nextFormat, next.signal);
-      if (!next.signal.aborted) { setReport(data); setSearch(''); setMessages((rows) => [...rows.slice(-7), { id: ++messageId.current, question: `${player.name} · Weekly outlook · ${formats.find((row) => row.value === nextFormat)?.label}`, report: data, topic: 'overview' }]); }
-    } catch (cause) { if (controller.current === next) setError(next.signal.aborted ? 'Player breakdown timed out. Retry.' : cause instanceof Error ? cause.message : 'The breakdown could not load. Retry.'); }
+      const results = await Promise.allSettled(requests.map(async ({ player }) => {
+        const data = await loadBotReport(player.id, nextFormat, next.signal);
+        if (next.signal.aborted) throw new Error('Player breakdown timed out. Retry.');
+        return data;
+      }));
+      if (controller.current !== next) return;
+      const failures: string[] = [];
+      results.forEach((result, index) => {
+        const { player, slot } = requests[index];
+        if (result.status === 'rejected') {
+          failures.push(`${player.name}: ${next.signal.aborted ? 'Player breakdown timed out. Retry.' : result.reason instanceof Error ? result.reason.message : 'The breakdown could not load. Retry.'}`);
+        } else if (slot === 0) {
+          setReport(result.value);
+          setMessages([{ id: ++messageId.current, question: `${player.name} · Weekly outlook · ${formats.find((row) => row.value === nextFormat)?.label}`, report: result.value, topic: 'overview' }]);
+        } else setSecondReport(result.value);
+      });
+      setError(failures.join(' '));
+    }
     finally { window.clearTimeout(timer); if (controller.current === next) setBusy(null); }
+  }
+  function analyze(player: BotPlayer, nextFormat = format, slot = activeSlot) {
+    if (comparing && player.id === (slot === 0 ? secondPlayer : selected)?.id) {
+      setError('Choose two different players to compare.'); return;
+    }
+    return loadOutlooks([{ player, slot }], nextFormat);
   }
   function followUp(topic: BotTopic | null, prompt: string) {
     if (!report || busy) return;
@@ -102,7 +124,8 @@ export default function GamewireBot() {
     setMessages((rows) => [...rows.slice(-7), { id: ++messageId.current, question: prompt, topic: topic ?? 'overview', report, unsupported: topic === null }]); setQuestion('');
   }
   const query = search.trim().toLocaleLowerCase();
-  const matches = query.length >= 2 ? directory?.players.filter((player) => `${player.name} ${player.teamAbbr}`.toLocaleLowerCase().includes(query)).slice(0, 10) ?? [] : [];
+  const matches = query.length >= 2 ? directory?.players.filter((player) => `${player.name} ${player.teamAbbr}`.toLocaleLowerCase().includes(query)
+    && (!comparing || player.id !== (activeSlot === 0 ? secondPlayer : selected)?.id)).slice(0, 10) ?? [] : [];
   function openBot() {
     setOpen(true);
     if (!directory && !busy) void loadPlayers();
@@ -145,20 +168,51 @@ export default function GamewireBot() {
       <div className="gwb-mode"><ShieldCheck size={16} aria-hidden="true" /><span>Owner-only · Verified NFL data · Conversational AI not enabled</span></div>
       <div className="gwb-controls"><label>League scoring<select value={format} disabled={!!busy} onChange={(event) => {
         const nextFormat = formats.find((row) => row.value === event.target.value)?.value;
-        if (nextFormat) { setFormat(nextFormat); if (selected) void analyze(selected, nextFormat); }
+        if (nextFormat) {
+          setFormat(nextFormat);
+          const requests: OutlookRequest[] = [];
+          if (selected) requests.push({ player: selected, slot: 0 });
+          if (comparing && secondPlayer) requests.push({ player: secondPlayer, slot: 1 });
+          if (requests.length) void loadOutlooks(requests, nextFormat);
+        }
       }}>{formats.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        <button className="gwb-icon-button" disabled={!!busy} onClick={() => { void loadPlayers(); }} aria-label="Refresh NFL player search"><RefreshCw size={17} aria-hidden="true" /></button></div>
+        <button className="gwb-icon-button" disabled={!!busy} onClick={() => { void loadPlayers(); }} aria-label="Refresh NFL player search"><RefreshCw size={17} aria-hidden="true" /></button>
+        <button className="gwb-compare-button" disabled={!!busy} aria-pressed={comparing} onClick={() => {
+          setComparing(!comparing); setSearch(''); setError(''); setQuestion('');
+          if (comparing) { setActiveSlot(0); setSecondPlayer(null); setSecondReport(null); }
+          else { setActiveSlot(selected ? 1 : 0); searchInput.current?.focus(); }
+        }}><ArrowLeftRight size={17} aria-hidden="true" />{comparing ? 'Exit Compare' : 'Compare'}</button></div>
+      {comparing && <div className="gwb-compare-slots" aria-label="Choose comparison player">
+        {([0, 1] as const).map((slot) => <button key={slot} disabled={!!busy} aria-pressed={activeSlot === slot} onClick={() => {
+          setActiveSlot(slot); setSearch(''); setError(''); searchInput.current?.focus();
+        }}><small>Player {slot + 1}</small><b>{(slot === 0 ? selected : secondPlayer)?.name ?? 'Choose a player'}</b><span>{activeSlot === slot ? 'Searching this slot' : 'Change player'}</span></button>)}
+      </div>}
+      {comparing && <p className="gwb-muted" role="status">Search above to choose Player {activeSlot + 1}. Both outlooks use {formats.find((row) => row.value === format)?.label} scoring.</p>}
       {directory?.warnings.map((warning) => <p className="gwb-warning" key={warning}>{warning}</p>)}
       {query.length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL players">
         {matches.map((player) => <button key={player.id} disabled={!!busy} onClick={() => { void analyze(player); }}><span>{player.name}</span><small>{player.teamAbbr} · {player.position}</small><ArrowUp size={15} aria-hidden="true" /></button>)}
         {!matches.length && directory && <p>No matching player in the loaded rosters. Try a surname or refresh search.</p>}</div>}
-      {busy && <p className="gwb-loading" role="status"><Sparkles size={16} aria-hidden="true" />{busy === 'directory' ? 'Loading verified NFL rosters. The first search can take a moment...' : `Checking ${selected?.name}’s weekly workload and published prop coverage...`}</p>}
-      {error && <div className="gwb-error" role="alert"><p>{error}</p><button disabled={!!busy} onClick={() => { if (lastAttempt.current === 'report' && selected) void analyze(selected); else void loadPlayers(); }}>Retry</button></div>}
-      {!messages.length && !busy && <div className="gwb-welcome"><Bot size={34} aria-hidden="true" /><h4>Your weekly player check-in.</h4><p>Search a QB, RB, WR or TE for a Start/Sit workload guide, recent production and any matching published GamewAIre props. No new odds requests.</p></div>}
-      <div className="gwb-conversation" aria-label="Player breakdown conversation">{messages.map((message, index) => <div key={message.id} ref={index === messages.length - 1 ? lastMessage : undefined}>
+      {busy && <p className="gwb-loading" role="status"><Sparkles size={16} aria-hidden="true" />{busy === 'directory' ? 'Loading verified NFL rosters. The first search can take a moment...' : 'Checking weekly player outlooks...'}</p>}
+      {error && <div className="gwb-error" role="alert"><p>{error}</p><button disabled={!!busy} onClick={() => {
+        if (lastAttempt.current === 'report' && lastReports.current.length) void loadOutlooks(lastReports.current.filter(({ slot }) => comparing || slot === 0));
+        else void loadPlayers();
+      }}>Retry</button></div>}
+      {!comparing && !messages.length && !busy && <div className="gwb-welcome"><Bot size={34} aria-hidden="true" /><h4>Your weekly player check-in.</h4><p>Search a QB, RB, WR or TE for a Start/Sit workload guide, recent production and any matching published GamewAIre props. No new odds requests.</p></div>}
+      {comparing ? <div className="gwb-comparison" aria-label="Side-by-side player comparison">
+        {[report, secondReport].map((outlook, slot) => <section key={slot} aria-label={`Player ${slot + 1} outlook`}>
+          {outlook ? <Breakdown report={outlook} topic="overview" /> : <div className="gwb-compare-empty"><Bot size={28} aria-hidden="true" /><h4>Player {slot + 1}</h4>
+            <p>{(slot === 0 ? selected : secondPlayer)?.name ?? 'Choose a player using search above.'}</p>{!busy && <button onClick={() => { setActiveSlot(slot === 0 ? 0 : 1); searchInput.current?.focus(); }}>Choose player</button>}</div>}
+        </section>)}
+      </div> : <div className="gwb-conversation" aria-label="Player breakdown conversation">{messages.map((message, index) => <div key={message.id} ref={index === messages.length - 1 ? lastMessage : undefined}>
         <p className="gwb-question">{message.question}</p>{message.unsupported ? <p className="gwb-answer">Conversational AI is not enabled yet. I can show the selected player’s verified weekly outlook, Start/Sit guide, published props or matchup. Use player search to change players.</p>
-          : message.report && <Breakdown report={message.report} topic={message.topic} />}</div>)}</div>
-      {report && <><div className="gwb-followups" aria-label={`Follow-up topics for ${report.player.name}`}>{topics.map((topic) => <button key={topic.value} disabled={!!busy} onClick={() => followUp(topic.value, `${report.player.name}: ${topic.label}`)}>{topic.label}</button>)}
+          : message.report && <Breakdown report={message.report} topic={message.topic} />}</div>)}</div>}
+      {comparing && (selected || secondPlayer) && <button className="gwb-compare-refresh" disabled={!!busy} onClick={() => {
+        const requests: OutlookRequest[] = [];
+        if (selected) requests.push({ player: selected, slot: 0 });
+        if (secondPlayer) requests.push({ player: secondPlayer, slot: 1 });
+        void loadOutlooks(requests);
+      }}>Refresh comparison</button>}
+      {!comparing && report && <><div className="gwb-followups" aria-label={`Follow-up topics for ${report.player.name}`}>{topics.map((topic) => <button key={topic.value} disabled={!!busy} onClick={() => followUp(topic.value, `${report.player.name}: ${topic.label}`)}>{topic.label}</button>)}
         <button disabled={!!busy} onClick={() => { void analyze(report.player); }}>Refresh outlook</button></div>
         <form className="gwb-compose" onSubmit={(event) => { event.preventDefault(); if (question.trim()) followUp(botTopic(question), question.trim()); }}><label className="gwb-sr-only" htmlFor="gwb-question">Question about {report.player.name}</label>
           <input id="gwb-question" value={question} maxLength={300} disabled={!!busy} onChange={(event) => setQuestion(event.target.value)} placeholder={`Ask about ${report.player.name}’s usage, props or matchup...`} />

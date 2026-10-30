@@ -94,7 +94,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     const player = directory.data.players.find((row) => row.id === input.playerId);
     if (!player) return json({ error: 'This player is not in the current verified NFL directory. Retry player search.' }, 404);
     const format = input.format as BotFormat, matchup = botMatchup(board, player);
-    const cacheKey = `nfl:breakdown:v4:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
+    const cacheKey = `nfl:breakdown:v5:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
     const result = await cached<BotReport>(cacheKey, (report) => report.dataIssues.length ? 30_000 : 5 * 60_000, async () => {
       const [roster, logs] = await Promise.allSettled([
         criticalFeed(`teams/${player.teamId}/roster?season=${week.season}`, 'Current player roster'),
@@ -112,7 +112,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       const loadProjections = async () => {
         if (!report.eligibleForGuidance) return;
         report.projections = await collectBotProjections(player, matchup, week.season, logs.status === 'fulfilled' ? logs.value : null, directory.data, get, Date.now());
-        if (report.projections.some((projection) => projection.yards === null)) report.dataIssues.push('Some matchup-adjusted yardage estimates are unavailable. Prop Lab shows the missing sample coverage; no projection is invented.');
+        if (report.projections.some((projection) => projection.estimate === null)) report.dataIssues.push('Some estimates are unavailable because recent verified data is incomplete.');
       };
       const loadOpponent = async () => {
         if (!report.matchup) return;

@@ -40,7 +40,8 @@ function validReport(value: unknown): value is BotReport {
    && list(row.dataIssues, (item) => typeof item === 'string')
    && list(row.projections, (item) => {
      const projection = object(item);
-     return strings(projection, ['market', 'label', 'context', 'explanation']) && (projection.yards === null || finite(projection.yards))
+     return strings(projection, ['market', 'label', 'context', 'explanation']) && ['yards', 'receptions'].includes(String(projection.unit))
+       && (projection.estimate === null || finite(projection.estimate))
        && ['baseline', 'defenseAverage', 'share', 'historyAverage', 'contenderAverage'].every((key) => projection[key] === null || finite(projection[key]))
        && ['playerGames', 'defenseGames', 'historyGames', 'contenderGames'].every((key) => Number.isInteger(projection[key]))
        && list(projection.sourceGames, (item) => { const game = object(item); return strings(game, ['id', 'date']) && /^\d+$/.test(String(game.id)) && ['team', 'opponent'].includes(String(game.role)); })

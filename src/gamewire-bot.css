@@ -97,7 +97,6 @@
 .gwb-projection-heading b { font-size: 14px; }
 .gwb-projection-heading strong { color: #a7c0ff; font-family: Oswald, sans-serif; font-size: 24px; }
 .gwb-projection-heading small { font: 11px 'DM Sans', sans-serif; }
-.gwb-projection-evidence { display: grid; gap: 8px; padding: 12px; border-radius: 9px; background: #0c1522; color: #c4d2e3; font-size: 11px; }
 .gwb-prop-empty { display: flex; justify-content: space-between; gap: 12px; padding: 18px 0; border-bottom: 1px solid #304253; }
 .gwb-prop-empty > div { display: grid; gap: 7px; }
 .gwb-prop-empty > div:last-child { text-align: right; flex-shrink: 0; }
@@ -122,6 +121,25 @@
 .gwb-compose-note { margin: 10px 0 0; }
 .gwb-loading { display: flex; align-items: center; gap: 10px; color: #d0dce7; }
 .gwb-warning, .gwb-error { color: #ffb6b9; }
+.gwb .gwb-compare-button, .gwb .gwb-compare-refresh { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; border: 1px solid #087bc4; border-radius: 10px; padding: 10px 15px; background: #082540; color: #e8f4ff; font-size: 13px; font-weight: 700; }
+.gwb .gwb-compare-button[aria-pressed="true"] { background: #075593; border-color: #35bbff; }
+.gwb-compare-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.gwb .gwb-compare-slots button { display: grid; gap: 7px; min-width: 0; padding: 14px; text-align: left; background: #0b1c2f; border: 1px solid #34516e; border-radius: 12px; }
+.gwb .gwb-compare-slots button[aria-pressed="true"] { border-color: #00a5ff; background: #072b4c; }
+.gwb-compare-slots small { color: #92b8dc; font-size: 11px; }
+.gwb-compare-slots b { font-size: 14px; overflow-wrap: anywhere; }
+.gwb-compare-slots span { color: #a7c7e7; font-size: 11px; }
+.gwb-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; align-items: start; }
+.gwb-comparison > section { min-width: 0; }
+.gwb-comparison .gwb-answer { border-radius: 15px; }
+.gwb-comparison .gwb-player-line h4 { font-size: 25px; }
+.gwb-comparison .gwb-verdict-grid { grid-template-columns: 1fr; }
+.gwb-comparison .gwb-prop-lab { grid-template-columns: 1fr; }
+.gwb-compare-empty { min-height: 240px; padding: 28px 16px; border: 1px dashed #345c80; border-radius: 15px; background: #071725; text-align: center; color: #b6d2ed; }
+.gwb-compare-empty > svg { color: #00a5ff; }
+.gwb-compare-empty h4 { margin: 12px 0; color: white; }
+.gwb .gwb-compare-empty button { border: 1px solid #087bc4; border-radius: 10px; background: #082540; }
+.gwb .gwb-compare-refresh { margin-top: 16px; }
 @media (min-width: 1100px) {
   .gwb-hero-main { min-height: 205px; padding: 28px; }
   .gwb-panel { padding: 18px; }
@@ -138,7 +156,6 @@
   .gwb-prop-lab > h5, .gwb-prop-lab > p { grid-column: 1 / -1; margin: 0; }
   .gwb-prop-lab > .gwb-projection { margin: 0; min-width: 0; padding: 13px; }
   .gwb-prop-lab > .gwb-prop, .gwb-prop-lab > .gwb-prop-empty { min-width: 0; }
-  .gwb-projection-evidence { gap: 6px; padding: 10px; }
 }
 @media (min-width: 601px) and (max-width: 1099px) {
   .gwb-hero-main { gap: 20px; padding: 30px 24px; }
@@ -172,6 +189,7 @@
   .gwb.gwb .gwb-hero-search input { font-size: 16px; }
   .gwb-panel { padding: 17px 12px; }
   .gwb-controls { flex-wrap: wrap; gap: 10px; }
+  .gwb-comparison { grid-template-columns: 1fr; }
   .gwb-controls > label:first-child { flex: 1; min-width: 0; }
   .gwb-controls select { width: 100%; }
   .gwb.gwb .gwb-controls select, .gwb.gwb .gwb-compose input { font-size: 16px; }

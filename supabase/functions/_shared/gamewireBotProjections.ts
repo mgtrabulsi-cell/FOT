@@ -3,7 +3,8 @@ import { botLogRows } from './gamewireBot.ts';
 import type { BotDirectory, BotMatchup, BotPlayer } from './gamewireBot.ts';
 
 export type BotProjection = {
-  market: string; label: string; yards: number | null; baseline: number | null; playerGames: number;
+  market: string; label: string; estimate: number | null; unit: 'yards' | 'receptions'; baseline: number | null; playerGames: number;
+  yards: number | null; // Kept for older clients during the frontend rollout.
   defenseAverage: number | null; defenseGames: number; share: number | null;
   historyAverage: number | null; historyGames: number; contenderAverage: number | null; contenderGames: number;
   context: string; explanation: string; warnings: string[];
@@ -14,11 +15,12 @@ type Schedule = { games: ScheduledGame[]; standing: string };
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 const round = (value: number) => Math.round(value * 10) / 10;
+const receptions = { market: 'player_receptions', label: 'Receptions', category: 'receiving', column: 'receptions' };
 const metrics: Record<string, Array<{ market: string; label: string; category: string; column: string }>> = {
   QB: [{ market: 'player_pass_yds', label: 'Passing yards', category: 'passing', column: 'passingYards' }, { market: 'player_rush_yds', label: 'Rushing yards', category: 'rushing', column: 'rushingYards' }],
-  RB: [{ market: 'player_rush_yds', label: 'Rushing yards', category: 'rushing', column: 'rushingYards' }, { market: 'player_reception_yds', label: 'Receiving yards', category: 'receiving', column: 'receivingYards' }],
-  WR: [{ market: 'player_reception_yds', label: 'Receiving yards', category: 'receiving', column: 'receivingYards' }],
-  TE: [{ market: 'player_reception_yds', label: 'Receiving yards', category: 'receiving', column: 'receivingYards' }],
+  RB: [{ market: 'player_rush_yds', label: 'Rushing yards', category: 'rushing', column: 'rushingYards' }, { market: 'player_reception_yds', label: 'Receiving yards', category: 'receiving', column: 'receivingYards' }, receptions],
+  WR: [{ market: 'player_reception_yds', label: 'Receiving yards', category: 'receiving', column: 'receivingYards' }, receptions],
+  TE: [{ market: 'player_reception_yds', label: 'Receiving yards', category: 'receiving', column: 'receivingYards' }, receptions],
 };
 export function projectionSchedule(value: unknown, teamId: string, season: number, cutoff: number): Schedule {
   const data = object(value), team = object(data.team);
@@ -43,11 +45,12 @@ export function positionGameYards(value: unknown, eventId: string, offenseId: st
     || object(object(competition.status).type).completed !== true) throw new Error('A box score did not confirm the requested completed regular-season game.');
   const offense = array(object(data.boxscore).players).map(object).find((row) => text(object(row.team).id) === offenseId);
   const stats = array(offense?.statistics).map(object).find((row) => row.name === category), index = array(stats?.keys).indexOf(column);
-  if (!stats || index < 0 || !array(stats.athletes).length) throw new Error(`The box score does not report ${category} yardage.`);
+  if (!stats || index < 0 || !array(stats.athletes).length) throw new Error(`The box score does not report ${column}.`);
   let total = 0, player: number | null = null, classified = false;
   for (const raw of array(stats.athletes)) {
     const row = object(raw), athlete = object(row.athlete), id = text(athlete.id), yards = numeric(array(row.stats)[index]);
-    if (yards === undefined) throw new Error('A listed player has missing yardage in the box score.');
+    if (yards === undefined) throw new Error(`A listed player has missing ${column} in the box score.`);
+    if (column === 'receptions' && (yards < 0 || !Number.isInteger(yards))) throw new Error('A listed player has invalid receptions in the box score.');
     const rawPosition = text(object(athlete.position).abbreviation) || positions[id], role = rawPosition === 'FB' || rawPosition === 'HB' ? 'RB' : rawPosition;
     if (!role && yards !== 0) throw new Error('A player position could not be verified for the defensive sample.');
     if (role === position) { total += yards; classified = true; if (id === playerId) player = yards; }
@@ -55,14 +58,15 @@ export function positionGameYards(value: unknown, eventId: string, offenseId: st
   if (!classified) throw new Error(`No verified ${position} position group was reported for this sample.`);
   return { total, player };
 }
-export function yardageEstimate(baseline: number, defenseAverage: number, share: number, history?: number, contenders?: number) {
+export function matchupEstimate(baseline: number, defenseAverage: number, share: number, history?: number, contenders?: number, decimals = 0) {
   if (![baseline, defenseAverage, share].every(Number.isFinite) || baseline <= 0 || defenseAverage < 0 || share < 0 || share > 1)
-    throw new Error('Yardage estimates require positive verified production and a valid position share.');
-  if ([history, contenders].some((value) => value !== undefined && !Number.isFinite(value))) throw new Error('Historical yardage components must be finite.');
+    throw new Error('Matchup estimates require positive verified production and a valid position share.');
+  if ([history, contenders].some((value) => value !== undefined && !Number.isFinite(value))) throw new Error('Historical production components must be finite.');
   let estimate = .7 * baseline + .3 * defenseAverage * share;
   if (history !== undefined) estimate = .9 * estimate + .1 * history;
   if (contenders !== undefined) estimate = .95 * estimate + .05 * contenders;
-  return Math.round(Math.max(baseline * .75, Math.min(baseline * 1.25, estimate)));
+  const scale = 10 ** decimals;
+  return Math.round(Math.max(baseline * .75, Math.min(baseline * 1.25, estimate)) * scale) / scale;
 }
 async function settled<T>(work: Array<() => Promise<T>>, concurrency = 6) {
   const values: Array<PromiseSettledResult<T>> = [];
@@ -118,7 +122,10 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
     }
   }
   return metrics[player.position].map((metric) => {
-    const metricRows = current.filter((row) => row.stats[metric.column] !== undefined);
+    const unit = metric.column === 'receptions' ? 'receptions' : 'yards';
+    const validMetric = (value: number | undefined): value is number => value !== undefined
+      && (unit !== 'receptions' || Number.isInteger(value) && value >= 0);
+    const metricRows = current.filter((row) => validMetric(row.stats[metric.column]));
     const values = metricRows.map((row) => row.stats[metric.column]);
     const baseline = values.length >= 3 ? .65 * average(values.slice(0, 3)) + .35 * average(values) : null;
     const problems = [...warnings], ownSamples: Array<{ total: number; player: number }> = [], allowed: number[] = [], sourceGames: BotProjection['sourceGames'] = [];
@@ -134,24 +141,26 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
     const rawShare = total > 0 ? ownSamples.reduce((sum, row) => sum + row.player, 0) / total : null;
     const share = rawShare !== null && rawShare >= 0 && rawShare <= 1 ? rawShare : null;
     const defenseAverage = allowed.length >= 3 ? average(allowed) : null;
-    const h2h = historical.filter((row) => row.opponentId === matchup.opponentId && row.stats[metric.column] !== undefined).slice(0, 4).map((row) => row.stats[metric.column]);
+    const h2h = historical.filter((row) => row.opponentId === matchup.opponentId && validMetric(row.stats[metric.column])).slice(0, 4).map((row) => row.stats[metric.column]);
     const historyAverage = h2h.length >= 2 ? average(h2h) : null;
-    const competitive = current.filter((row) => contenderIds.has(row.eventId) && row.stats[metric.column] !== undefined).map((row) => row.stats[metric.column]);
+    const competitive = current.filter((row) => contenderIds.has(row.eventId) && validMetric(row.stats[metric.column])).map((row) => row.stats[metric.column]);
     const contenderAverage = competitive.length >= 3 ? average(competitive) : null;
     const fresh = metricRows.length > 0 && cutoff - Date.parse(metricRows[0].date) <= 21 * 86400000;
     const ready = fresh && baseline !== null && baseline > 0 && defenseAverage !== null && share !== null && ownSamples.length >= 3;
-    const yards = ready ? yardageEstimate(baseline!, defenseAverage!, share!, historyAverage ?? undefined, contenderAverage ?? undefined) : null;
+    const estimate = ready ? matchupEstimate(baseline!, defenseAverage!, share!, historyAverage ?? undefined, contenderAverage ?? undefined, unit === 'receptions' ? 1 : 0) : null;
     if (!ready) problems.push('A matchup-adjusted estimate needs three recent verified player/position-share games, three opponent position-game samples, and positive player production. No missing samples are filled in.');
-    const direction = yards !== null && baseline !== null ? yards > baseline ? 'higher' : yards < baseline ? 'lower' : 'close to the baseline' : '';
-    return { market: metric.market, label: metric.label, yards, baseline: baseline === null ? null : round(baseline), playerGames: values.length,
+    const matchupEffect = defenseAverage !== null && share !== null && baseline !== null ? defenseAverage * share - baseline : 0;
+    const direction = matchupEffect > 0 ? 'lifts' : matchupEffect < 0 ? 'tempers' : 'supports';
+    return { market: metric.market, label: metric.label, estimate, unit, yards: unit === 'yards' ? estimate : null,
+      baseline: baseline === null ? null : round(baseline), playerGames: values.length,
       defenseAverage: defenseAverage === null ? null : round(defenseAverage), defenseGames: allowed.length, share: share === null ? null : round(share * 100),
       historyAverage: historyAverage === null ? null : round(historyAverage), historyGames: h2h.length,
       contenderAverage: contenderAverage === null ? null : round(contenderAverage), contenderGames: competitive.length,
       context: `${standingsContext} ${bothContenders ? 'Both teams are currently top-two in their divisions. ' : ''}Stakes alone do not create an automatic yardage boost.`,
-      explanation: yards === null ? 'No defensible matchup-adjusted estimate is available from the verified samples.'
-        : `${matchup.opponent}'s recent ${player.position} yardage allowance and ${player.name}'s measured share of their team's ${player.position} production move this estimate ${direction}. The defensive figure is a position-group total per team-game, not yards expected for one player.`
-          + (historyAverage !== null ? ` Direct opponent history adds a small adjustment from ${h2h.length} verified meetings.` : ' Fewer than two verified direct meetings: no head-to-head adjustment.')
-          + (contenderAverage !== null ? ` A small contender-game adjustment uses ${competitive.length} games where both teams were at least .600 before kickoff, with four prior games each.` : ' No sufficiently large verified contender-game split: no big-game adjustment.'),
+      explanation: estimate === null ? 'Not enough verified recent data for an estimate.'
+        : `The ${player.position} ${unit === 'receptions' ? 'reception' : 'yardage'} matchup against ${matchup.opponent} ${direction} the outlook.`
+          + (historyAverage !== null ? ' Past meetings also factor in.' : '')
+          + (contenderAverage !== null ? ' Results against contenders add context.' : ''),
       sourceGames, warnings: [...new Set(problems)] };
   });
 }
