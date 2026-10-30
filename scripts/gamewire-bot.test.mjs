@@ -619,6 +619,83 @@ test('Mobile comparison keeps the completed player when another slot is empty or
   assert.ok(ui.find(mobile, (node) => node.type === 'p' && String(node.props.children).includes('use Retry')));
   assert.match(ui.byClass(tree, 'gwb-error').props.children[0].props.children, /Second report unavailable/);
 });
+test('Player analysis uses the same blue robot and pulse mark as the welcome banner', async () => {
+  const ui = botWelcomeHarness();
+  const tree = await ui.search(player.name);
+  const hero = ui.find(tree, (node) => node.type?.name === 'BotMark');
+  const breakdown = ui.byClass(tree, 'gwb-result').props.children;
+  const header = ui.renderChild(breakdown);
+  const compact = ui.find(header, (node) => node.type?.name === 'BotMark');
+  assert.equal(compact.type, hero.type);
+  assert.equal(compact.props.compact, true);
+  const mark = ui.renderChild(compact);
+  assert.equal(mark.props.className, 'gwb-hero-robot gwb-avatar');
+  assert.equal(mark.props.children[1].props.className, 'gwb-robot-pulse');
+  const css = readFileSync(new URL('../src/gamewire-bot.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /\.gwb-avatar \{[^}]*#e83c4a/);
+});
+test('Ranking quick-add filters position and existing ranks, supports keyboard/reorder, bulk review and publish retry', async () => {
+  const state = [], refs = [], saves = [];
+  let stateIndex = 0, refIndex = 0, rejectSave = false, confirmDiscard = false, confirms = 0;
+  const other = { ...player, id: '456', name: 'Another Runner' }, receiver = { ...player, id: '789', name: 'Test Receiver', position: 'WR' };
+  const code = ts.transpileModule(readFileSync(new URL('../src/GamewireRankings.tsx', import.meta.url), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+  const context = vm.createContext({ exports: {}, AbortController, Error, setTimeout, clearTimeout, window: { setTimeout, clearTimeout,
+    confirm() { confirms++; return confirmDiscard; } }, require(name) {
+    if (name === 'react/jsx-runtime') return jsxRuntime;
+    if (name === 'react') return { useEffect() {}, useRef(initial) { return refs[refIndex++] ??= { current: initial }; },
+      useState(initial) { const i = stateIndex++; if (!(i in state)) state[i] = initial; return [state[i], (next) => { state[i] = next; }]; } };
+    if (name.includes('_shared/gamewireRankings')) return rankingTools;
+    if (name === './services/gamewireBot') return {
+      async loadBotDirectory() { return { players: [player, other, receiver], season: 2026, week: 8, warnings: [] }; },
+      async loadBotRankings(scope) { return { ...scope, playerIds: [], publishedAt: null }; },
+      async saveBotRankings(list) { saves.push(list); if (rejectSave) throw new Error('Publishing unavailable'); return list; },
+    };
+    return {};
+  } });
+  vm.runInContext(code, context);
+  const render = () => { stateIndex = 0; refIndex = 0; return context.exports.default(); };
+  const find = (root, predicate) => {
+    if (!root || typeof root !== 'object') return;
+    if (predicate(root)) return root;
+    for (const child of [Array.isArray(root) ? root : root.props?.children].flat(Infinity)) {
+      const found = find(child, predicate); if (found) return found;
+    }
+  };
+  const byClass = (name) => find(render(), (n) => n.props?.className === name);
+  const search = (value) => find(render(), (n) => n.props?.id === 'gai-ranking-search').props.onChange({ target: { value } });
+  const button = (text) => find(render(), (n) => n.type === 'button' && n.props.children === text);
+  const ranks = () => byClass('gai-ranking-list').props.children;
+  render().props.onToggle({ currentTarget: { open: true } }); await new Promise(setImmediate);
+  const position = find(render(), (n) => n.type === 'select' && n.props.value === 'QB');
+  position.props.onChange({ target: { value: 'RB' } }); await new Promise(setImmediate);
+  search('Test');
+  let matches = byClass('gai-ranking-matches').props.children[0];
+  assert.equal(matches.length, 1, 'Wrong-position names excluded');
+  matches[0].props.onClick();
+  assert.equal(ranks().length, 1);
+  search('Test'); assert.equal(byClass('gai-ranking-matches').props.children[0].length, 0, 'Existing rank excluded');
+  search('Another');
+  find(render(), (n) => n.props?.id === 'gai-ranking-search').props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  assert.equal(ranks().length, 2);
+  find(render(), (n) => n.props?.['aria-label'] === 'Move rank 2 up').props.onClick();
+  let publish = find(render(), (n) => n.type === 'button' && n.props.children?.[0] === 'Publish Week ');
+  assert.equal(publish.props.disabled, false);
+  rejectSave = true; publish.props.onClick(); await new Promise(setImmediate);
+  assert.equal(ranks().length, 2); assert.equal(find(render(), (n) => n.props?.role === 'alert').props.children, 'Publishing unavailable');
+  rejectSave = false; publish.props.onClick(); await new Promise(setImmediate);
+  assert.deepEqual(Array.from(saves.at(-1).playerIds), [other.id, player.id]);
+  const paste = find(render(), (n) => n.type === 'textarea');
+  paste.props.onChange({ target: { value: '1. Test Runner\n2. Unknown' } });
+  publish = find(render(), (n) => n.type === 'button' && n.props.children?.[0] === 'Publish Week ');
+  assert.equal(publish.props.disabled, true);
+  await button('Reload saved list').props.onClick(); assert.equal(confirms, 1); assert.equal(ranks().length, 2);
+  button('Match pasted list').props.onClick();
+  assert.equal(find(render(), (n) => n.type === 'textarea').props.value, '');
+  assert.ok(find(render(), (n) => n.props?.['aria-label'] === 'Rank 2 player'), 'Unmatched pasted name remains reviewable');
+  confirmDiscard = true; button('Reload saved list').props.onClick(); await new Promise(setImmediate);
+  assert.equal(ranks().length, 0);
+});
 test('Ranking editor endpoints deny members and validate scope, position and duplicate players before publishing', async () => {
   const body = { action: 'save-rankings', season: 2026, week: 8, format: 'ppr', position: 'RB', playerIds: ['123'] };
   for (const action of ['rankings', 'save-rankings']) {

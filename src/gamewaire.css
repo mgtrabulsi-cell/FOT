@@ -9,6 +9,16 @@
 .gai-ranking-list li { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .gai-ranking-list label { flex: 1 1 220px; }
 .gai-ranking-list li > div { display: flex; gap: 6px; }
+.gai-ranking-quick-add { width: 100%; min-width: 0; padding: 14px; border: 1px solid #087bc4; border-radius: 10px; background: #061b30; }
+.gai-ranking-quick-add label { display: grid; gap: 8px; }
+.gai-ranking-editor .gai-ranking-quick-add input { width: 100%; min-width: 0; min-height: 44px; padding: 12px; border: 1px solid #2079ad; border-radius: 8px; background: #081322; color: #edf2f8; font: inherit; font-size: 16px; }
+.gai-ranking-matches { display: grid; gap: 6px; max-height: 300px; overflow-y: auto; }
+.gai-ranking-editor .gai-ranking-matches button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; text-align: left; padding: 10px; border: 1px solid #244c70; background: #0a233a; }
+.gai-ranking-matches span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.gai-ranking-matches small, .gai-ranking-player small { color: #a7bfd9; font-size: 12px; }
+.gai-ranking-matches b { color: #64caff; white-space: nowrap; font-size: 12px; }
+.gai-ranking-player { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; overflow-wrap: anywhere; }
+.gai-ranking-editor input:focus-visible, .gai-ranking-editor button:focus-visible { outline: 2px solid #64caff; outline-offset: 3px; }
 .gai-section-tabs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 6px; border: 1px solid #293d57; border-radius: 10px; background: #0c1523; }
 .gai-panel .gai-section-tabs button { min-width: 0; padding: 12px; font: 600 15px var(--display); }
 .gai-panel .gai-section-tabs button[aria-selected="true"] { border-color: #57b7ff; color: #eef8ff; background: linear-gradient(120deg, #153d63, #142a43); box-shadow: inset 0 -2px #57b7ff; }

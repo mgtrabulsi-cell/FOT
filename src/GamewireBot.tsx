@@ -9,6 +9,9 @@ type PlayerSlot = 0 | 1;
 type OutlookRequest = { player: BotPlayer; slot: PlayerSlot };
 const formats: Array<{ value: BotFormat; label: string }> = [{ value: 'ppr', label: 'PPR' }, { value: 'half', label: 'Half PPR' }, { value: 'standard', label: 'Standard' }];
 const stamp = (value: string) => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+function BotMark({ compact = false }: { compact?: boolean }) {
+  return <div className={`gwb-hero-robot${compact ? ' gwb-avatar' : ''}`} aria-hidden="true"><Bot strokeWidth={1.6} /><Activity className="gwb-robot-pulse" /></div>;
+}
 function PlayerPortrait({ player }: { player: BotPlayer }) {
   const [failed, setFailed] = useState(false);
   return <div className="gwb-portrait">{failed ? <span>{player.position}<small>Photo unavailable</small></span>
@@ -55,7 +58,7 @@ function Verdict({ report }: { report: BotReport }) {
 }
 function Breakdown({ report }: { report: BotReport }) {
   return <article className="gwb-answer">
-    <header><span className="gwb-avatar"><Bot size={18} aria-hidden="true" /></span><div><b>Gamew<span className="gwb-ai">AI</span>re</b><span>PLAYER ANALYSIS · Week {report.week} · {report.season} · {formats.find((row) => row.value === report.format)?.label}</span></div></header>
+    <header><BotMark compact /><div><b>Gamew<span className="gwb-ai">AI</span>re</b><span>PLAYER ANALYSIS · Week {report.week} · {report.season} · {formats.find((row) => row.value === report.format)?.label}</span></div></header>
     <div className="gwb-player-line"><PlayerPortrait key={report.player.id} player={report.player} /><div><h4>{report.player.name}</h4><span>{report.player.position} · {report.player.team}</span>
       <div className="gwb-tags"><span>PLAYER ANALYSIS</span><span>FANTASY</span></div></div></div>
     <Guidance report={report} />
@@ -238,7 +241,7 @@ export default function GamewireBot() {
   return <section className="gwb" aria-label="GamewAIre player analysis">
     <header className="gwb-hero">
       <div className="gwb-hero-main">
-        <div className="gwb-hero-robot" aria-hidden="true"><Bot strokeWidth={1.6} /><Activity className="gwb-robot-pulse" /></div>
+        <BotMark />
         <div className="gwb-hero-copy">
           <div className="gwb-wordmark">Gamew<strong>AI</strong>re<Activity aria-hidden="true" /></div>
           <span className="gwb-hero-kicker">NFL PLAYER ANALYSIS</span>
