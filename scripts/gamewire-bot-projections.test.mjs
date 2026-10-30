@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { collectBotProjections, collectReceivingDefenses, completedPlayerMetric, readBotDepth, positionGameYards, projectionSchedule, matchupEstimate as yardageEstimate } from '../supabase/functions/_shared/gamewireBotProjections.ts';
+import { projectionIntelligence, quantile, observedLineComparison } from '../supabase/functions/_shared/gamewireBotIntelligence.ts';
 
 const now = Date.parse('2026-10-29T18:00:00Z');
 const player = { id: '123', name: 'Test Runner', position: 'RB', teamId: '23', team: 'Pittsburgh Steelers', teamAbbr: 'PIT' };
@@ -43,7 +44,8 @@ function fixture({ allowed = 150, receiving = 20, receivingAllowed = 40, catches
       const own = ownEvents.find((event) => event.id === id);
       if (own) return box(id, '23', true);
       const other = otherEvents.find((event) => event.id === id);
-      assert.ok(other); return box(id, other.competitions[0].competitors[1].team.id, false);
+      if (other) return box(id, other.competitions[0].competitors[1].team.id, false);
+      assert.ok(Number(id) >= 600 && Number(id) < 608); return box(id, '33', false);
     }
     const id = new URL(url).pathname.match(/teams\/(\d+)\/schedule/)[1];
     if (failDefense && id === '5' || failOwn && id === '23') throw new Error('Schedule provider failed');
@@ -53,8 +55,8 @@ function fixture({ allowed = 150, receiving = 20, receivingAllowed = 40, catches
   };
   const run = (options = {}) => collectBotProjections(options.player ?? player, options.matchup === undefined ? matchup : options.matchup, 2026,
     options.logs === undefined ? logs : options.logs, { players: [player], positions: options.player ? Object.fromEntries(Object.keys(positions).map((id) => [id, options.player.position])) : positions,
-      season: 2026, week: 8, seasonType: 2, checkedAt: new Date(now).toISOString(), warnings: [] }, get, options.now ?? now, options.defenses ?? []);
-  return { run, box, calls, positions, logs, schedule, ownEvents };
+      season: 2026, week: 8, seasonType: 2, checkedAt: new Date(now).toISOString(), warnings: [] }, options.get ?? get, options.now ?? now, options.defenses ?? []);
+  return { run, box, calls, positions, logs, schedule, ownEvents, get };
 }
 test('Opponent position allowance moves independent yardage estimates above weak-defense lines and below tough-defense baselines', async () => {
   const weak = (await fixture().run())[0], strong = (await fixture({ allowed: 40 }).run())[0];
@@ -66,8 +68,8 @@ test('Opponent position allowance moves independent yardage estimates above weak
   assert.ok(weak.explanation.split(/\s+/).length <= 35);
   assert.equal(weak.estimate, weak.yards); assert.equal(weak.unit, 'yards');
   assert.equal(weak.historyAverage, null); assert.equal(weak.contenderAverage, null);
-  assert.equal(weak.sourceGames.length, 10);
-  assert.equal(weak.sourceGames.filter((game) => game.role === 'opponent').length, 5);
+  assert.equal(weak.sourceGames.length, 18);
+  assert.equal(weak.sourceGames.filter((game) => game.role === 'opponent').length, 10);
 });
 test('A receiver’s great recent production is reduced by a tough WR yardage matchup rather than unrelated scoring-defense ranks', async () => {
   const receiver = { ...player, name: 'Test Receiver', position: 'WR' };
@@ -154,7 +156,9 @@ test('RB, WR and TE reception estimates use measured catches and positional allo
     assert.equal(weak.baseline, 4); assert.equal(weak.share, 66.7);
     assert.equal(weak.estimate, 4.8); assert.equal(strong.estimate, 3.2);
     assert.equal(weak.defenseAverage, 10); assert.equal(weak.defenseGames, 5);
-    assert.equal(weakApi.calls.filter((url) => url.includes('/summary?')).length, 10, 'Reuse yardage boxes; no extra providers needed');
+    const summaries = weakApi.calls.filter((url) => url.includes('/summary?'));
+    assert.equal(summaries.length, 18, 'Reuse boxes across yardage, receptions and historical defense profiles');
+    assert.equal(new Set(summaries).size, summaries.length, 'Never fetch a completed box twice');
     assert.match(weak.explanation, /reception matchup/);
   }
   const historical = (await fixture({ history: true }).run()).find((row) => row.market === 'player_receptions');
@@ -238,19 +242,34 @@ test('Verified backup depth lowers opportunity while missing depth uses explicit
   assert.equal(readBotDepth(depth, wr).rank, 1, 'Multiple starting WR slots are not backups');
   assert.equal(readBotDepth({ depthchart: [{ positions: { rb: { athletes: [{ id: player.id, displayName: 'Wrong name' }] } } }] }, player), null);
 });
-test('Only verified bottom-four WR/TE positional rankings add extra upside; Cowboys name alone does not', async () => {
+test('Bottom-four yardage ranks widen upside caps only with sustained verified volume, without multiplying the same weakness twice', async () => {
   for (const position of ['WR', 'TE']) {
     const receiver = { ...player, position, name: 'Test Receiver' };
-    const base = (await fixture({ receiving: 100, receivingAllowed: 200 }).run({ player: receiver }))[0];
-    const weak = (await fixture({ receiving: 100, receivingAllowed: 200 }).run({ player: receiver,
-      defenses: [{ teamId: '5', position, rank: 29, games: 5, average: 200 }] }))[0];
+    const api = fixture({ receiving: 100, receivingAllowed: 400 });
+    const get = async (url) => {
+      const data = await api.get(url);
+      if (url.includes('/summary?') && new URL(url).searchParams.get('event').startsWith('1')) {
+        const stats = data.boxscore.players[0].statistics[1];
+        stats.keys.push('receivingTargets'); stats.athletes[0].stats.push('10'); stats.athletes[1].stats.push('4');
+      }
+      return data;
+    };
+    const base = (await api.run({ player: receiver, get }))[0];
+    const weak = (await api.run({ player: receiver, get,
+      defenses: [{ teamId: '5', position, rank: 29, games: 5, average: 400 }] }))[0];
     assert.ok(weak.estimate > base.estimate); assert.ok(weak.estimate <= 135);
     assert.match(weak.explanation, /Bottom-four/);
-    const noBoost = (await fixture({ receiving: 100, receivingAllowed: 200 }).run({ player: receiver,
-      defenses: [{ teamId: '5', position, rank: 28, games: 5, average: 200 }] }))[0];
+    const noBoost = (await api.run({ player: receiver, get,
+      defenses: [{ teamId: '5', position, rank: 28, games: 5, average: 400 }] }))[0];
     assert.equal(noBoost.estimate, base.estimate);
-    const named = (await fixture({ receiving: 100, receivingAllowed: 200 }).run({ player: receiver, matchup: { ...matchup, opponent: 'Dallas Cowboys' } }))[0];
+    const named = (await api.run({ player: receiver, get, matchup: { ...matchup, opponent: 'Dallas Cowboys' } }))[0];
     assert.equal(named.estimate, base.estimate);
+    const unsupportedVolume = (await fixture({ receiving: 100, receivingAllowed: 400 }).run({ player: receiver,
+      defenses: [{ teamId: '5', position, rank: 29, games: 5, average: 400 }] }))[0];
+    assert.equal(unsupportedVolume.estimate, 125);
+    const moderate = (await fixture({ receiving: 100, receivingAllowed: 200 }).run({ player: receiver,
+      defenses: [{ teamId: '5', position, rank: 29, games: 5, average: 200 }] }))[0];
+    assert.equal(moderate.estimate, 120, 'A ranking never creates an extra multiplier on an already-measured allowance');
   }
 });
 test('League positional ranks require all 32 teams and completed position-specific samples, with ties not forced into bottom four', async () => {
@@ -277,4 +296,144 @@ test('League positional ranks require all 32 teams and completed position-specif
   assert.equal(result.find((row) => row.teamId === '32' && row.position === 'WR').rank, 32);
   assert.equal(result.find((row) => row.teamId === '32' && row.position === 'TE').rank, 1);
   assert.equal(result.filter((row) => row.position === 'WR' && row.rank >= 29).length, 4);
+});
+const evidenceInput = (options = {}) => ({
+  foundation: 75, baseline: 65, share: .65, matchupReady: true, limited: false, opportunityLabel: 'Carries',
+  observations: Array.from({ length: 8 }, (_, index) => ({ eventId: String(100 + index), date: date(index), value: 65, opportunity: 15 })),
+  recentAllowance: 150, seasonAllowance: 150, defenseGames: 8, comparable: [], ...options,
+});
+test('Evidence layer preserves the existing foundation, treats opportunity separately and never forces an illustrative target', () => {
+  const normal = projectionIntelligence(evidenceInput());
+  assert.equal(normal.estimate, 75); assert.equal(normal.evidence.foundation, 75);
+  assert.equal(normal.evidence.matchup, 'Favorable');
+  assert.equal(normal.evidence.usage.trend, 'Stable'); assert.equal(normal.evidence.usage.efficiency, 4.33);
+  assert.equal(normal.evidence.confidence, 'Uncalibrated');
+  const strong = projectionIntelligence(evidenceInput({ foundation: 53, recentAllowance: 40, seasonAllowance: 40 }));
+  assert.equal(strong.estimate, 53); assert.equal(strong.evidence.matchup, 'Unfavorable');
+  assert.equal(normal.evidence.comparable.adjustment, 0);
+  assert.match(normal.evidence.risks.join(' '), /No calibrated forecast/);
+  assert.match(normal.evidence.risks.join(' '), /weather/);
+});
+test('Season/recent positional blend replaces the existing allowance term instead of adding it twice', () => {
+  const result = projectionIntelligence(evidenceInput({ seasonAllowance: 100 }));
+  assert.equal(result.estimate, 69.15, '75 + .3*.65*(.4*150+.6*100 - 150)');
+  const absent = projectionIntelligence(evidenceInput({ foundation: 65, matchupReady: false, limited: true, recentAllowance: null, seasonAllowance: null }));
+  assert.equal(absent.estimate, 65); assert.equal(absent.evidence.matchup, 'Unverified');
+  assert.match(absent.evidence.edge, /no verified matchup edge/i);
+  const limited = projectionIntelligence(evidenceInput({ foundation: 70, limited: true, seasonAllowance: 100 }));
+  assert.equal(limited.estimate, 67.075);
+  assert.equal(projectionIntelligence(evidenceInput({ seasonAllowance: 100, allowanceWeight: .27 })).estimate, 69.735, 'Retain the original opponent weight after direct-history blending');
+});
+test('Comparable-defense residuals require three similar pregame allowance and volume samples; shrinkage and outlier caps apply', () => {
+  const comparable = Array.from({ length: 3 }, (_, index) => ({ eventId: String(100 + index), date: date(index), value: 90, opportunity: 15, allowance: 150, defenseGames: 3 }));
+  const result = projectionIntelligence(evidenceInput({ comparable }));
+  assert.ok(result.estimate > 75 && result.estimate < 77);
+  assert.equal(result.evidence.comparable.games, 3); assert.equal(result.evidence.comparable.mean, 90);
+  assert.ok(result.evidence.comparable.adjustment > 0 && result.evidence.comparable.adjustment <= 5);
+  for (const samples of [comparable.slice(0, 2), comparable.map((row) => ({ ...row, defenseGames: 2 })),
+    comparable.map((row) => ({ ...row, opportunity: 4 })), comparable.map((row) => ({ ...row, allowance: 50 }))]) {
+    assert.equal(projectionIntelligence(evidenceInput({ comparable: samples })).estimate, 75);
+  }
+  const outlier = projectionIntelligence(evidenceInput({ comparable: comparable.map((row, i) => ({ ...row, value: i ? 65 : 1000 })) }));
+  assert.ok(Math.abs(outlier.evidence.comparable.adjustment) <= 5);
+  assert.equal(projectionIntelligence(evidenceInput({ comparable: Array(3).fill(comparable[0]) })).evidence.comparable.adjustment, 0, 'One duplicated appearance cannot become three samples');
+  assert.equal(projectionIntelligence(evidenceInput({ comparable, limited: true })).evidence.comparable.adjustment, 0);
+});
+test('Usage trends and empirical middle-50% ranges are descriptive, not a second opportunity multiplier or calibrated interval', () => {
+  const observations = Array.from({ length: 6 }, (_, index) => ({ eventId: String(index), date: date(index), value: 10 + index * 10, opportunity: index < 3 ? 20 : 10 }));
+  const rising = projectionIntelligence(evidenceInput({ observations }));
+  assert.equal(rising.estimate, 75);
+  assert.equal(rising.evidence.usage.trend, 'Rising');
+  assert.deepEqual(rising.evidence.observed, { games: 6, mean: 35, median: 35, low: 22.5, high: 47.5 });
+  assert.match(rising.evidence.risks.join(' '), /not multiplied/);
+  assert.equal(projectionIntelligence(evidenceInput({ observations: observations.slice(0, 2) })).evidence.observed, null);
+  assert.equal(projectionIntelligence(evidenceInput({ observations: observations.map((row) => ({ ...row, opportunity: null })) })).evidence.usage, null);
+  assert.throws(() => quantile([], .5), /finite samples/);
+  assert.throws(() => quantile([1, 2], NaN), /valid fraction/);
+  assert.throws(() => projectionIntelligence(evidenceInput({ observations: [{ ...observations[0], opportunity: 1.5 }] })), /invalid player observation/);
+});
+test('Saved sportsbook lines are independent comparisons with observed counts, pushes and no invented probabilities', () => {
+  const observations = [60, 70, 80, 90].map((value, i) => ({ eventId: String(i), date: date(i), value, opportunity: 15 }));
+  const above = observedLineComparison(84, 70, observations);
+  assert.deepEqual(above, { line: 70, difference: 14, assessment: 'Above saved line', games: 4, over: 2, under: 1, pushes: 1, observedOverRate: 50, observedUnderRate: 25 });
+  assert.equal(observedLineComparison(84, 90, observations).assessment, 'Below saved line');
+  assert.equal(observedLineComparison(84, 84, observations).difference, 0);
+  assert.equal(observedLineComparison(84, 70, []).observedOverRate, null);
+  assert.throws(() => observedLineComparison(84, -1, observations), /valid projection/);
+  assert.throws(() => observedLineComparison(Infinity, 70, observations), /valid projection/);
+});
+test('Collector recovers volume evidence, uses only pre-kickoff comparable profiles and excludes duplicate history factors', async () => {
+  const api = fixture();
+  const get = async (url) => {
+    const data = await api.get(url);
+    if (url.includes('/summary?') && new URL(url).searchParams.get('event').startsWith('1')) {
+      const stats = data.boxscore.players[0].statistics[0];
+      stats.keys.push('rushingAttempts'); stats.athletes[0].stats.push('15'); stats.athletes[1].stats.push('10');
+    }
+    return data;
+  };
+  const rows = await api.run({ get });
+  assert.equal(rows[0].evidence.usage.games, 8);
+  assert.equal(rows[0].evidence.comparable.games, 3);
+  assert.ok(rows[0].evidence.comparable.adjustment < 0);
+  assert.ok(rows[0].estimate < rows[0].evidence.foundation);
+  assert.equal(rows[0].evidence.observed.games, 8);
+  assert.ok(api.calls.every((url) => !url.includes('season=2025')));
+  for (const event of Object.values(api.logs.events)) event.opponent.id = '5';
+  const history = (await api.run({ get }))[0];
+  assert.equal(history.historyGames, 3); assert.equal(history.evidence.comparable.games, 0);
+  const before = date(3);
+  assert.ok(api.calls.filter((url) => url.includes('/summary?event=6')).every((url) => {
+    const id = Number(new URL(url).searchParams.get('event'));
+    return Date.parse(date(id - 600 + 4)) < Date.parse(before);
+  }));
+});
+test('Receiving-yardage rank cannot inflate receptions, even against a bottom-four yardage defense', async () => {
+  const receiver = { ...player, position: 'TE' };
+  const normal = (await fixture().run({ player: receiver })).find((row) => row.unit === 'receptions');
+  const ranked = (await fixture().run({ player: receiver, defenses: [{ teamId: '5', position: 'TE', rank: 32, games: 5, average: 200 }] })).find((row) => row.unit === 'receptions');
+  assert.equal(normal.estimate, ranked.estimate);
+  assert.doesNotMatch(ranked.explanation, /Bottom-four/);
+});
+test('Collector combines full-season and recent positional allowances and exposes matching efficiency samples', async () => {
+  const api = fixture();
+  const get = async (url) => {
+    if (/summary\?event=20[678]/.test(url)) {
+      const box = api.box(new URL(url).searchParams.get('event'), '33', false);
+      box.boxscore.players[0].statistics[0].athletes[0].stats[0] = '28';
+      box.boxscore.players[0].statistics[0].athletes[1].stats[0] = '12';
+      return box;
+    }
+    const data = await api.get(url);
+    if (url.includes('/teams/5/schedule')) {
+      data.events.push(...[6, 7, 8].map((id) => ({ id: String(200 + id), date: date(id - 1),
+        competitions: [{ status: { type: { completed: true } }, competitors: [{ team: { id: '5' }, score: { value: 20 } }, { team: { id: '33' }, score: { value: 10 } }] }] })));
+    }
+    if (url.includes('/summary?event=20')) {
+      const stats = data.boxscore.players[0].statistics[0];
+      stats.keys.push('rushingAttempts'); stats.athletes[0].stats.push('20'); stats.athletes[1].stats.push('10');
+    }
+    return data;
+  };
+  const row = (await api.run({ get }))[0];
+  assert.equal(row.evidence.foundation, 75);
+  assert.deepEqual(row.evidence.defense, { recent: 150, season: 108.75, games: 8, opportunityAverage: 30, opportunityGames: 5, efficiency: 5 });
+  assert.equal(row.estimate, 70);
+  assert.ok(row.sourceGames.some((game) => game.id === '208'));
+});
+test('Optional evidence collection stops starting requests after its budget and retains the verified foundation', async () => {
+  const api = fixture(), realNow = Date.now;
+  let clock = realNow(), summaries = 0;
+  Date.now = () => clock;
+  try {
+    const get = async (url) => {
+      const data = await api.get(url);
+      if (url.includes('/summary?') && ++summaries === 10) clock += 41_000;
+      return data;
+    };
+    const row = (await api.run({ get }))[0];
+    assert.equal(summaries, 10);
+    assert.equal(row.estimate, 75);
+    assert.match(row.warnings.join(' '), /time budget reached/);
+  } finally { Date.now = realNow; }
 });

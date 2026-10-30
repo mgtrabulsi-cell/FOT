@@ -4,6 +4,7 @@ import type { Candidate } from '../_shared/gamewaire.ts';
 import { defensiveStandings, publicJSON } from '../_shared/gamewaireSources.ts';
 import { applyBotEditorial, botLogRows, botMatchup, buildBotReport, readBotPositions, readBotRoster, readBotWeek } from '../_shared/gamewireBot.ts';
 import { collectBotProjections, collectReceivingDefenses } from '../_shared/gamewireBotProjections.ts';
+import { observedLineComparison } from '../_shared/gamewireBotIntelligence.ts';
 import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
 
@@ -116,7 +117,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     const player = directory.data.players.find((row) => row.id === input.playerId);
     if (!player) return json({ error: 'This player is not in the current verified NFL directory. Retry player search.' }, 404);
     const format = input.format as BotFormat, matchup = botMatchup(board, player);
-    const cacheKey = `nfl:breakdown:v7:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
+    const cacheKey = `nfl:breakdown:v8:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
     const result = await cached<BotReport>(cacheKey, (report) => report.dataIssues.length ? 30_000 : 5 * 60_000, async () => {
       const [roster, logs] = await Promise.allSettled([
         criticalFeed(`teams/${player.teamId}/roster?season=${week.season}`, 'Current player roster'),
@@ -151,6 +152,8 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         if (report.projections.some((projection) => projection.estimate === null)) report.dataIssues.push('Some stats have no verified current-season player production. Refresh outlook to retry; no values are invented.');
         if (report.projections.some((projection) => projection.basis === 'current-season'))
           report.dataIssues.push('Some estimates use a labeled current-season completed-game fallback because recent positional matchup data could not be verified.');
+        if (report.projections.some((projection) => projection.warnings.some((warning) => /unavailable:|time budget reached/i.test(warning))))
+          report.dataIssues.push('Some projection sources could not load within the available time or could not be verified. Available samples are retained; source exclusions are listed under Sources.');
       };
       const loadOpponent = async () => {
         if (!report.matchup) return;
@@ -190,8 +193,11 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
           || normalize(text(pick.subject)) !== normalize(player.name) || price === undefined || !Number.isInteger(price) || price < -200 || Math.abs(price) < 100) continue;
         if (!['Over', 'Under'].includes(text(pick.side)) || numeric(pick.line) === undefined || !Array.isArray(pick.samples)
           || !text(pick.book) || !Number.isFinite(Date.parse(text(pick.updatedAt)))) throw new Error('Published player prop data is incomplete.');
+        const projection = report.projections.find((projection) => projection.market === text(pick.market));
         props.push({ selection: `${pick.subject} ${pick.side} ${pick.line} ${propLabels[text(pick.market)]}`,
-          american: Number(pick.american), book: text(pick.book), savedAt: text(pick.updatedAt), breakdown: pickBlurb(raw as Candidate) });
+          american: Number(pick.american), book: text(pick.book), savedAt: text(pick.updatedAt), breakdown: pickBlurb(raw as Candidate),
+          ...(projection?.estimate != null && projection.evidence ? { comparison: { market: projection.market,
+            ...observedLineComparison(projection.estimate, Number(pick.line), projection.evidence.observations) } } : {}) });
       }
       report.props = [...new Map(props.map((prop) => [prop.selection, prop])).values()].slice(0, 4);
       if (report.props.length) report.propNote = 'Published GamewAIre snapshots only, not current sportsbook prices. Sportsbook lines may vary. No live odds were requested.';

@@ -8,6 +8,7 @@ import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as bot from '../supabase/functions/_shared/gamewireBot.ts';
 import * as rankingTools from '../supabase/functions/_shared/gamewireRankings.ts';
+import * as intelligenceTools from '../supabase/functions/_shared/gamewireBotIntelligence.ts';
 
 const now = Date.parse('2026-10-29T18:00:00Z');
 const player = { id: '123', name: 'Test Runner', position: 'RB', teamId: '23', team: 'Pittsburgh Steelers', teamAbbr: 'PIT' };
@@ -120,7 +121,7 @@ test('Missing weekly games, kickoff lock, postseason and transferred player iden
 
 const endpointCode = ts.transpileModule(readFileSync(new URL('../supabase/functions/gamewire-bot/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
+function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
   const calls = [], writes = [], rpcs = [], queries = [], cache = new Map(), expires = new Date(now + 3600000).toISOString();
   if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expires });
   const client = {
@@ -163,7 +164,8 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
       if (name.includes('gamewireRankings')) return rankingTools;
-      if (name.includes('gamewireBotProjections')) return { collectBotProjections: async () => [] };
+      if (name.includes('gamewireBotProjections')) return { collectBotProjections: async () => projections };
+      if (name.includes('gamewireBotIntelligence')) return intelligenceTools;
       if (name.includes('gamewireBot')) return bot;
       if (name.includes('gamewaireSources')) return sources;
       return engine;
@@ -245,6 +247,31 @@ test('Published props require exact current ESPN identities and enforce the -200
   assert.match(data.report.propNote, /not current sportsbook prices/);
   assert.deepEqual(Object.keys(data.report.props[0]).sort(), ['american', 'book', 'breakdown', 'savedAt', 'selection']);
 });
+test('Saved-line differences use final projections without anchoring the independent model or implying live prices', async () => {
+  const observations = [60, 75, 90].map((value, i) => ({ eventId: String(i + 1), date: `2026-10-${10 + i}`, value, opportunity: 15 }));
+  const evidence = intelligenceTools.projectionIntelligence({ foundation: 75, baseline: 75, share: .5, matchupReady: true, limited: false,
+    observations, opportunityLabel: 'Carries', recentAllowance: 150, seasonAllowance: 150, defenseGames: 5, comparable: [] }).evidence;
+  const projection = { market: 'player_rush_yds', label: 'Rushing yards', estimate: 75, unit: 'yards', yards: 75,
+    baseline: 75, defenseAverage: 150, playerGames: 3, defenseGames: 5, share: 50, historyAverage: null, historyGames: 0,
+    contenderAverage: null, contenderGames: 0, context: '', explanation: 'Measured matchup', sourceGames: [], warnings: [], evidence };
+  const pick = { sport: 'NFL', market: 'player_rush_yds', subject: player.name, side: 'Over', line: 60, american: -114,
+    book: 'Saved Book', updatedAt: new Date(now - 3600000).toISOString(), samples: [{ date: '2026-10-19', value: 75, season: 2026 }],
+    seasonAverage: 75, home: player.team, away: 'Cleveland Browns', identifiers: { playerId: player.id, espnEventId: '401234567' } };
+  const api = endpoint({ projections: [projection], rankings: [{ ...ranking, rank: 1 }], pubs: [{ picks: [pick, { ...pick, line: 90 }] }] });
+  const response = await api.run(), data = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(data.report.projections[0].estimate, 79);
+  assert.equal(data.report.projections[0].evidence.foundation, 75);
+  assert.equal(data.report.projections[0].evidence.independent, 75);
+  assert.equal(data.report.projections[0].evidence.editorialAdjustment, 4);
+  assert.equal(data.report.props[0].comparison.difference, 19);
+  assert.equal(data.report.props[1].comparison.difference, -11);
+  assert.equal(data.report.props[0].comparison.pushes, 1);
+  assert.equal(data.report.props[0].comparison.observedOverRate, 66.67);
+  assert.match(data.report.propNote, /not current sportsbook prices/);
+  assert.equal(projection.estimate, 75, 'Editorial and market comparisons never mutate cached independent estimates');
+  assert.equal(projection.evidence.editorialAdjustment, 0);
+});
 test('Editorial reads are scoped to this season/week, player and selected scoring, even with cached workloads', async () => {
   const api = endpoint({ graphics: [graphic], rankings: [ranking] });
   const response = await api.run(), data = await response.json();
@@ -288,6 +315,13 @@ test('Player analysis validates reports, is available to members and has no chat
     playerGames: 2, defenseGames: 0, historyGames: 0, contenderGames: 0, context: '', explanation: 'Current-season fallback', sourceGames: [], warnings: [] };
   assert.equal(context.exports.readBotReport({ ...report(), projections: [projection] }).projections[0].basis, 'current-season');
   assert.throws(() => context.exports.readBotReport({ ...report(), projections: [{ ...projection, basis: 'prior-season' }] }), /incomplete player breakdown/);
+  const evidence = intelligenceTools.projectionIntelligence({ foundation: 4, baseline: 4, share: .5, matchupReady: true, limited: false,
+    observations: [{ eventId: '1', date: '2026-10-01', value: 4, opportunity: 8 }], opportunityLabel: 'Targets',
+    recentAllowance: 8, seasonAllowance: 8, defenseGames: 3, comparable: [] }).evidence;
+  assert.equal(context.exports.readBotReport({ ...report(), projections: [{ ...projection, evidence }] }).projections[0].evidence.confidence, 'Uncalibrated');
+  for (const bad of [{ ...evidence, confidence: 'High' }, { ...evidence, observed: { games: 1 } },
+    { ...evidence, comparable: { ...evidence.comparable, adjustment: 10 } }, { ...evidence, observations: [{ value: NaN }] }])
+    assert.throws(() => context.exports.readBotReport({ ...report(), projections: [{ ...projection, evidence: bad }] }), /incomplete player breakdown/);
   for (const invalid of [{}, { ...report(), editorial: undefined }, { ...report(), props: [{}] }, { ...report(), workload: [{}] }])
     assert.throws(() => context.exports.readBotReport(invalid), /incomplete player breakdown/);
   const page = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');

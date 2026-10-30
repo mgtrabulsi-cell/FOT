@@ -1,5 +1,6 @@
 import { array, normalize, numeric, object, text } from './gamewaire.ts';
 import type { BotProjection } from './gamewireBotProjections.ts';
+import type { observedLineComparison } from './gamewireBotIntelligence.ts';
 
 export type BotFormat = 'ppr' | 'half' | 'standard';
 export type BotPlayer = { id: string; name: string; position: 'QB' | 'RB' | 'WR' | 'TE'; teamId: string; team: string; teamAbbr: string };
@@ -7,7 +8,8 @@ export type BotWeek = { season: number; week: number; seasonType: number };
 export type BotDirectory = BotWeek & { players: BotPlayer[]; positions: Record<string, string>; warnings: string[]; checkedAt: string };
 export type BotMatchup = { eventId: string; start: string; opponentId: string; opponent: string; home: boolean; state: 'pre' | 'in' | 'post' };
 export type BotStat = { label: string; average: number; games: number };
-export type BotProp = { selection: string; american: number; book: string; savedAt: string; breakdown: string };
+export type BotProp = { selection: string; american: number; book: string; savedAt: string; breakdown: string;
+  comparison?: ReturnType<typeof observedLineComparison> & { market: string } };
 export type BotEditorial = {
   graphics: Array<{ id: string; kind: 'start' | 'sit'; reason: string; updatedAt: string }>;
   ranking: { rank: number; position: string; format: BotFormat; publishedAt: string } | null;
@@ -178,6 +180,7 @@ export function applyBotEditorial(report: BotReport, graphicRows: unknown, ranki
       const scale = projection.unit === 'receptions' ? 10 : 1;
       const estimate = Math.round(projection.estimate * factor * scale) / scale;
       return { ...projection, estimate, yards: projection.unit === 'yards' ? estimate : null,
+        ...(projection.evidence ? { evidence: { ...projection.evidence, editorialAdjustment: Math.round((estimate - projection.estimate) * scale) / scale } } : {}),
         explanation: `${projection.explanation} Weekly GameWire ranking also factors in.` };
     });
     next.warnings.push('Published weekly rankings add an editorial adjustment of up to +/-5% to available estimates; rankings do not supply missing production or establish a depth-chart role.');

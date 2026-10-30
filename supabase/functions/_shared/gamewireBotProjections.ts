@@ -1,6 +1,8 @@
 import { array, numeric, object, text } from './gamewaire.ts';
 import { botLogRows } from './gamewireBot.ts';
 import type { BotDirectory, BotMatchup, BotPlayer } from './gamewireBot.ts';
+import { projectionIntelligence } from './gamewireBotIntelligence.ts';
+import type { ProjectionEvidence, ProjectionObservation, ComparableObservation } from './gamewireBotIntelligence.ts';
 
 export type BotProjection = {
   market: string; label: string; estimate: number | null; unit: 'yards' | 'receptions'; baseline: number | null; playerGames: number;
@@ -11,6 +13,7 @@ export type BotProjection = {
   role?: { rank: number; source: 'depth-chart' | 'recent-usage' } | null;
   defenseRank?: number | null; limitedData?: boolean;
   basis?: 'matchup' | 'current-season';
+  evidence?: ProjectionEvidence;
   sourceGames: Array<{ id: string; date: string; role: 'team' | 'opponent' }>;
 };
 type ScheduledGame = { id: string; date: string; opponentId: string; pointsFor: number; pointsAgainst: number };
@@ -39,7 +42,7 @@ export function projectionSchedule(value: unknown, teamId: string, season: numbe
       || !/^\d{1,2}$/.test(text(object(other.team).id)) || !Number.isFinite(Date.parse(text(event.date)))) continue;
     games.push({ id: text(event.id), date: text(event.date), opponentId: text(object(other.team).id), pointsFor: a, pointsAgainst: b });
   }
-  return { games: games.sort((a, b) => Date.parse(b.date) - Date.parse(a.date)), standing: text(team.standingSummary) };
+  return { games: [...new Map(games.map((game) => [game.id, game])).values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)), standing: text(team.standingSummary) };
 }
 function completedMetricRows(value: unknown, eventId: string, offenseId: string, season: number, category: string, column: string) {
   const data = object(value), header = object(data.header), competition = object(array(header.competitions)[0]);
@@ -55,7 +58,7 @@ export function completedPlayerMetric(value: unknown, eventId: string, offenseId
   const row = rows.find((row) => text(object(row.athlete).id) === playerId);
   if (!row) return null;
   const amount = numeric(array(row.stats)[index]);
-  if (amount === undefined || column === 'receptions' && (amount < 0 || !Number.isInteger(amount)))
+  if (amount === undefined || ['receptions', 'receivingTargets', 'rushingAttempts', 'passingAttempts'].includes(column) && (amount < 0 || !Number.isInteger(amount)))
     throw new Error(`The player's completed box score has missing or invalid ${column}.`);
   return amount;
 }
@@ -66,7 +69,8 @@ export function positionGameYards(value: unknown, eventId: string, offenseId: st
   for (const row of rows) {
     const athlete = object(row.athlete), id = text(athlete.id), yards = numeric(array(row.stats)[index]);
     if (yards === undefined) throw new Error(`A listed player has missing ${column} in the box score.`);
-    if (column === 'receptions' && (yards < 0 || !Number.isInteger(yards))) throw new Error('A listed player has invalid receptions in the box score.');
+    if (['receptions', 'receivingTargets', 'rushingAttempts', 'passingAttempts'].includes(column) && (yards < 0 || !Number.isInteger(yards)))
+      throw new Error(`A listed player has invalid ${column} in the box score.`);
     const rawPosition = text(object(athlete.position).abbreviation) || positions[id], role = rawPosition === 'FB' || rawPosition === 'HB' ? 'RB' : rawPosition;
     if (!role && yards !== 0) throw new Error('A player position could not be verified for the defensive sample.');
     if (role === position) { total += yards; classified = true; if (id === playerId) player = yards; }
@@ -125,9 +129,12 @@ export async function collectReceivingDefenses(directory: BotDirectory, season: 
   if (!result.length) throw new Error('Insufficient verified league-wide WR/TE allowance samples; no bottom-four boost was applied.');
   return result;
 }
-async function settled<T>(work: Array<() => Promise<T>>, concurrency = 6) {
+async function settled<T>(work: Array<() => Promise<T>>, concurrency = 6, deadline = Infinity) {
   const values: Array<PromiseSettledResult<T>> = [];
-  for (let start = 0; start < work.length; start += concurrency) values.push(...await Promise.allSettled(work.slice(start, start + concurrency).map((load) => load())));
+  for (let start = 0; start < work.length; start += concurrency) values.push(...await Promise.allSettled(work.slice(start, start + concurrency).map(async (load) => {
+    if (Date.now() >= deadline) throw new Error('Evidence collection time budget reached; available verified samples are retained.');
+    return await load();
+  })));
   return values;
 }
 const message = (value: unknown) => value instanceof Error ? value.message : 'Verified source unavailable.';
@@ -135,8 +142,14 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
   directory: BotDirectory, get: (url: string) => Promise<unknown>, now: number,
   receivingDefenses: ReceivingDefense[] = []): Promise<BotProjection[]> {
   if (!matchup || matchup.state !== 'pre' || Date.parse(matchup.start) <= now) return [];
+  const evidenceDeadline = Date.now() + 40_000;
   const cutoff = Math.min(now, Date.parse(matchup.start)), warnings: string[] = [];
-  const loadSchedule = async (id: string) => projectionSchedule(await get(`${site}/teams/${id}/schedule?season=${season}&seasontype=2`), id, season, cutoff);
+  const schedules = new Map<string, Promise<Schedule>>();
+  const loadSchedule = (id: string) => {
+    let result = schedules.get(id);
+    if (!result) { result = get(`${site}/teams/${id}/schedule?season=${season}&seasontype=2`).then((data) => projectionSchedule(data, id, season, cutoff)); schedules.set(id, result); }
+    return result;
+  };
   const [scheduleResults, depthResult] = await Promise.all([
     Promise.allSettled([loadSchedule(player.teamId), loadSchedule(matchup.opponentId)]),
     Promise.allSettled([get(`${site}/teams/${player.teamId}/depthcharts`)]),
@@ -147,7 +160,16 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
   if (!own) warnings.push(`Team schedule unavailable: ${ownResult.status === 'rejected' ? message(ownResult.reason) : 'Unverified schedule.'}`);
   if (!defense) warnings.push(`Opponent schedule unavailable: ${defenseResult.status === 'rejected' ? message(defenseResult.reason) : 'Unverified schedule.'}`);
   let current: ReturnType<typeof botLogRows> = [];
-  try { if (currentLogs !== null) current = botLogRows(currentLogs, cutoff, season); }
+  try {
+    if (currentLogs !== null) {
+      current = botLogRows(currentLogs, cutoff, season);
+      if (own) {
+        const sameTeam = current.filter((row) => own.games.some((game) => game.id === row.eventId));
+        if (sameTeam.length !== current.length) warnings.push('Player appearances outside the verified current-team schedule are excluded; prior-team roles are not assumed comparable.');
+        current = sameTeam;
+      } else warnings.push('The current-team schedule is unavailable; player-log team/role continuity could not be independently checked.');
+    }
+  }
   catch (cause) { console.error('Bot current logs unavailable; checking completed boxes', player.id, cause); warnings.push(`Player logs unavailable: ${message(cause)} Completed box scores are checked instead.`); }
   let depth: BotProjection['role'] = null;
   try {
@@ -163,22 +185,30 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
     if (result.status === 'fulfilled') boxes.set(result.value.id, result.value.data);
     else { console.error('Bot position box score unavailable', result.reason); warnings.push(`A recent position-game sample is unavailable: ${message(result.reason)}`); }
   });
+  const seasonGames = [...new Map([...(own?.games.slice(5, 18) ?? []), ...(defense?.games.slice(5, 18) ?? [])].map((game) => [game.id, game])).values()]
+    .filter((game) => !boxes.has(game.id));
+  const seasonResults = await settled(seasonGames.map((game) => async () => ({ id: game.id, data: await get(`${site}/summary?event=${game.id}`) })), 6, evidenceDeadline);
+  seasonResults.forEach((result) => {
+    if (result.status === 'fulfilled') boxes.set(result.value.id, result.value.data);
+    else { console.error('Bot season-context box unavailable', result.reason); warnings.push(`Season-context sample unavailable: ${message(result.reason)}`); }
+  });
   const validMetric = (value: number | undefined | null, column: string): value is number =>
     typeof value === 'number' && Number.isFinite(value) && (column !== 'receptions' || Number.isInteger(value) && value >= 0);
-  const missingMetrics = metrics[player.position].filter((metric) => {
-    if (current.some((row) => validMetric(row.stats[metric.column], metric.column))) return false;
-    return !ownGames.some((game) => {
-      const box = boxes.get(game.id); if (!box) return false;
-      try { return completedPlayerMetric(box, game.id, player.teamId, season, metric.category, metric.column, player.id) !== null; }
-      catch (cause) { console.error('Bot recent individual box sample excluded', game.id, metric.column, cause); return false; }
+  const comparableSchedules = new Map<string, Schedule>();
+  const comparableCandidates = ownGames.filter((game) => current.some((row) => row.eventId === game.id));
+  if (current.length >= 3 && defenseGames.length >= 3) {
+    const results = await settled([...new Set(comparableCandidates.map((game) => game.opponentId))].map((id) => async () => ({ id, schedule: await loadSchedule(id) })), 6, evidenceDeadline);
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') comparableSchedules.set(result.value.id, result.value.schedule);
+      else { console.error('Bot comparable-defense schedule unavailable', result.reason); warnings.push(`Comparable-defense coverage incomplete: ${message(result.reason)}`); }
     });
-  });
-  if (missingMetrics.length) {
-    const olderGames = own?.games.slice(5, 18) ?? [];
-    const olderResults = await settled(olderGames.map((game) => async () => ({ id: game.id, data: await get(`${site}/summary?event=${game.id}`) })));
-    olderResults.forEach((result) => {
+    const priorGames = comparableCandidates.flatMap((game) => comparableSchedules.get(game.opponentId)?.games
+      .filter((prior) => Date.parse(prior.date) < Date.parse(game.date) && prior.id !== game.id).slice(0, 5) ?? []);
+    const missing = [...new Map(priorGames.map((game) => [game.id, game])).values()].filter((game) => !boxes.has(game.id));
+    const resultsBoxes = await settled(missing.map((game) => async () => ({ id: game.id, data: await get(`${site}/summary?event=${game.id}`) })), 6, evidenceDeadline);
+    resultsBoxes.forEach((result) => {
       if (result.status === 'fulfilled') boxes.set(result.value.id, result.value.data);
-      else { console.error('Bot earlier current-season box unavailable', result.reason); warnings.push(`An earlier current-season player sample is unavailable: ${message(result.reason)}`); }
+      else { console.error('Bot comparable-defense box unavailable', result.reason); warnings.push(`Comparable-defense sample unavailable: ${message(result.reason)}`); }
     });
   }
   const standingsContext = own && defense ? `${player.teamAbbr}: ${own.standing || 'division standing unavailable'}. ${matchup.opponent}: ${defense.standing || 'division standing unavailable'}.` : 'Current division standings are unavailable.';
@@ -187,7 +217,7 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
   if (bothContenders && own) {
     const candidates = own.games.filter((game) => current.some((row) => row.eventId === game.id)).slice(0, 5);
     const opponents = [...new Set(candidates.map((game) => game.opponentId))];
-    const schedules = await settled(opponents.map((id) => async () => ({ id, schedule: await loadSchedule(id) })));
+    const schedules = await settled(opponents.map((id) => async () => ({ id, schedule: await loadSchedule(id) })), 6, evidenceDeadline);
     const byId = new Map(schedules.flatMap((result) => result.status === 'fulfilled' ? [[result.value.id, result.value.schedule] as const] : []));
     if (schedules.some((result) => result.status === 'rejected')) warnings.push('Some historical opponent records were unavailable; those contender-game splits are excluded.');
     const winningAtKickoff = (schedule: Schedule, date: string) => {
@@ -201,14 +231,23 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
   }
   return metrics[player.position].map((metric) => {
     const unit = metric.column === 'receptions' ? 'receptions' : 'yards';
-    const verifiedValues = new Map(current.filter((row) => validMetric(row.stats[metric.column], metric.column)).map((row) => [row.eventId, { date: row.date, value: row.stats[metric.column] }]));
+    const usageKey = metric.category === 'passing' ? 'passingAttempts' : metric.category === 'rushing' ? 'rushingAttempts' : 'receivingTargets';
+    const opportunityLabel = metric.category === 'passing' ? 'Pass attempts' : metric.category === 'rushing' ? 'Carries' : 'Targets';
+    const validOpportunity = (value: number | null | undefined): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0;
+    const verifiedValues = new Map<string, ProjectionObservation>(current.filter((row) => validMetric(row.stats[metric.column], metric.column))
+      .map((row) => [row.eventId, { eventId: row.eventId, date: row.date, value: row.stats[metric.column], opportunity: validOpportunity(row.stats[usageKey]) ? row.stats[usageKey] : null }]));
     const problems = [...warnings], ownSamples: Array<{ total: number; player: number }> = [], allowed: number[] = [], sourceGames: BotProjection['sourceGames'] = [];
     for (const game of own?.games ?? []) {
       const box = boxes.get(game.id); if (!box) continue;
       try {
         const amount = completedPlayerMetric(box, game.id, player.teamId, season, metric.category, metric.column, player.id);
         if (amount !== null) {
-          verifiedValues.set(game.id, { date: game.date, value: amount });
+          let opportunity = verifiedValues.get(game.id)?.opportunity ?? null;
+          try {
+            const value = completedPlayerMetric(box, game.id, player.teamId, season, metric.category, usageKey, player.id);
+            if (validOpportunity(value)) opportunity = value;
+          } catch (cause) { problems.push(`${game.id} ${opportunityLabel} unavailable: ${message(cause)}`); }
+          verifiedValues.set(game.id, { eventId: game.id, date: game.date, value: amount, opportunity });
           sourceGames.push({ id: game.id, date: game.date, role: 'team' });
         }
       } catch (cause) { problems.push(`${game.id} ${metric.label} individual sample excluded: ${message(cause)}`); }
@@ -224,7 +263,6 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
           const offense = array(object(object(box).boxscore).players).map(object).find((row) => text(object(row.team).id) === player.teamId);
           const stats = array(offense?.statistics).map(object).find((row) => row.name === metric.category);
           const keys = array(stats?.keys);
-          const usageKey = metric.category === 'passing' ? 'passingAttempts' : metric.category === 'rushing' ? 'rushingAttempts' : 'receivingTargets';
           const index = keys.includes(usageKey) ? keys.indexOf(usageKey) : keys.indexOf(metric.column);
           for (const raw of array(stats?.athletes)) {
             const row = object(raw), athlete = object(row.athlete), id = text(athlete.id);
@@ -257,8 +295,13 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
     const fresh = metricRows.length > 0 && cutoff - Date.parse(metricRows[0].date) <= 21 * 86400000;
     const limitedData = !fresh || values.length < 3 || ownSamples.length < 3 || allowed.length < 3;
     const ready = fresh && baseline !== null && baseline >= 0 && defenseAverage !== null && effectiveShare !== null && ownSamples.length > 0;
-    const defenseRank = receivingDefenses.find((row) => row.teamId === matchup.opponentId && row.position === player.position)?.rank ?? null;
-    const weakReceiving = (player.position === 'WR' || player.position === 'TE') && defenseRank !== null && defenseRank >= 29;
+    const defenseRank = unit === 'yards' ? receivingDefenses.find((row) => row.teamId === matchup.opponentId && row.position === player.position)?.rank ?? null : null;
+    const weakReceiving = unit === 'yards' && (player.position === 'WR' || player.position === 'TE') && defenseRank !== null && defenseRank >= 29;
+    const recentVolume = metricRows.slice(0, 3).map((row) => row.opportunity);
+    const priorVolume = metricRows.slice(3).flatMap((row) => row.opportunity === null ? [] : [row.opportunity]);
+    const stableVolume = recentVolume.length === 3 && recentVolume.every((value) => value !== null && value > 0) && priorVolume.length >= 3
+      && average(recentVolume.map((value) => value!)) >= .8 * average(priorVolume);
+    const expandedUpside = weakReceiving && stableVolume && !limitedData;
     let estimate: number | null = null;
     let basis: NonNullable<BotProjection['basis']> = 'matchup';
     const scale = unit === 'receptions' ? 10 : 1;
@@ -267,9 +310,8 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
       let value = (1 - weight) * baseline! + weight * defenseAverage! * effectiveShare!;
       if (historyAverage !== null && !limitedData) value = .9 * value + .1 * historyAverage;
       if (contenderAverage !== null && !limitedData) value = .95 * value + .05 * contenderAverage;
-      if (weakReceiving) value *= limitedData ? 1.03 : 1.08;
       estimate = Math.round(Math.max(baseline! * (limitedData ? .85 : .75),
-        Math.min(baseline! * (limitedData ? 1.15 : weakReceiving ? 1.35 : 1.25), value)) * scale) / scale;
+        Math.min(baseline! * (limitedData ? 1.15 : expandedUpside ? 1.35 : 1.25), value)) * scale) / scale;
     }
     if (!ready && values.length) {
       basis = 'current-season';
@@ -281,10 +323,52 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
     }
     if (estimate === null) problems.push('No verified current-season player production exists for this metric. No numeric estimate can be supported; refresh sources to retry.');
     if (limitedData && ready) problems.push('Limited-data estimate: fewer than three player or opponent samples. Matchup adjustments are reduced.');
-    const matchupEffect = defenseAverage !== null && effectiveShare !== null && baseline !== null ? defenseAverage * effectiveShare - baseline : 0;
+    const fullAllowance: number[] = [], defenseOpportunities: Array<{ value: number; opportunity: number }> = [];
+    for (const game of defense?.games.slice(0, 18) ?? []) {
+      const box = boxes.get(game.id); if (!box) continue;
+      try {
+        const value = positionGameYards(box, game.id, game.opponentId, season, player.position, metric.category, metric.column, directory.positions).total;
+        fullAllowance.push(value);
+        if (!sourceGames.some((row) => row.id === game.id && row.role === 'opponent')) sourceGames.push({ id: game.id, date: game.date, role: 'opponent' });
+        try {
+          const opportunity = positionGameYards(box, game.id, game.opponentId, season, player.position, metric.category, usageKey, directory.positions).total;
+          defenseOpportunities.push({ value, opportunity });
+        } catch (cause) { problems.push(`${game.id} defensive efficiency excluded: ${message(cause)}`); }
+      }
+      catch (cause) { problems.push(`${game.id} season allowance excluded: ${message(cause)}`); }
+    }
+    const comparable: ComparableObservation[] = [];
+    for (const game of comparableCandidates) {
+      if (game.opponentId === matchup.opponentId || contenderIds.has(game.id) || historyAverage !== null && current.some((row) => row.eventId === game.id && row.opponentId === matchup.opponentId)) continue;
+      const sample = verifiedValues.get(game.id); if (!sample) continue;
+      const priorAllowed: number[] = [];
+      for (const prior of comparableSchedules.get(game.opponentId)?.games
+        .filter((prior) => prior.id !== game.id && Date.parse(prior.date) < Date.parse(game.date)).slice(0, 5) ?? []) {
+        const box = boxes.get(prior.id); if (!box) continue;
+        try {
+          priorAllowed.push(positionGameYards(box, prior.id, prior.opponentId, season, player.position, metric.category, metric.column, directory.positions).total);
+          if (!sourceGames.some((row) => row.id === prior.id && row.role === 'opponent')) sourceGames.push({ id: prior.id, date: prior.date, role: 'opponent' });
+        }
+        catch (cause) { problems.push(`${prior.id} comparable-defense allowance excluded: ${message(cause)}`); }
+      }
+      if (priorAllowed.length >= 3) comparable.push({ ...sample, allowance: average(priorAllowed), defenseGames: priorAllowed.length });
+    }
+    const intelligence = projectionIntelligence({ foundation: estimate, baseline, share: effectiveShare, matchupReady: ready, limited: limitedData,
+      observations: metricRows, opportunityLabel, recentAllowance: defenseAverage, seasonAllowance: fullAllowance.length ? average(fullAllowance) : null,
+      defenseGames: fullAllowance.length, comparable, upsideCap: expandedUpside ? 1.35 : 1.25,
+      allowanceWeight: (limitedData ? .15 : .3) * (!limitedData && historyAverage !== null ? .9 : 1) * (!limitedData && contenderAverage !== null ? .95 : 1),
+      defenseOpportunityAverage: defenseOpportunities.length ? average(defenseOpportunities.map((row) => row.opportunity)) : null,
+      defenseOpportunityGames: defenseOpportunities.length,
+      defenseEfficiency: defenseOpportunities.reduce((sum, row) => sum + row.opportunity, 0) > 0
+        ? defenseOpportunities.reduce((sum, row) => sum + row.value, 0) / defenseOpportunities.reduce((sum, row) => sum + row.opportunity, 0) : null });
+    estimate = intelligence.estimate === null ? null : Math.round(intelligence.estimate * scale) / scale;
+    intelligence.evidence.independent = estimate;
+    if (intelligence.evidence.usage?.trend === 'Falling') problems.push('Recent opportunity is falling; the trend does not establish a permanent role change.');
+    const blendedAllowance = intelligence.evidence.defense ? .4 * intelligence.evidence.defense.recent + .6 * intelligence.evidence.defense.season : defenseAverage;
+    const matchupEffect = blendedAllowance !== null && effectiveShare !== null && baseline !== null ? blendedAllowance * effectiveShare - baseline : 0;
     const direction = matchupEffect > 0 ? 'lifts' : matchupEffect < 0 ? 'tempers' : 'supports';
     return { market: metric.market, label: metric.label, estimate, unit, yards: unit === 'yards' ? estimate : null,
-      baseline: baseline === null ? null : round(baseline), playerGames: values.length, role, defenseRank, limitedData, basis,
+      baseline: baseline === null ? null : round(baseline), playerGames: values.length, role, defenseRank, limitedData, basis, evidence: intelligence.evidence,
       defenseAverage: defenseAverage === null ? null : round(defenseAverage), defenseGames: allowed.length, share: share === null ? null : round(share * 100),
       historyAverage: historyAverage === null ? null : round(historyAverage), historyGames: h2h.length,
       contenderAverage: contenderAverage === null ? null : round(contenderAverage), contenderGames: competitive.length,
@@ -292,9 +376,10 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
       explanation: estimate === null ? 'No verified current-season production for this stat. Refresh outlook to retry the sources.'
         : basis === 'current-season' ? `Current-season completed games provide this fallback estimate, with available role limits. Positional matchup adjustments could not be verified.${!fresh ? ' Latest recorded workload is over 21 days old.' : ''}`
         : `The ${player.position} ${unit === 'receptions' ? 'reception' : 'yardage'} matchup against ${matchup.opponent} ${direction} the outlook.`
-          + (historyAverage !== null ? ' Past meetings also factor in.' : '')
-          + (contenderAverage !== null ? ' Results against contenders add context.' : '')
-          + (weakReceiving ? ' Bottom-four positional yardage allowance adds upside.' : ''),
+          + (historyAverage !== null && !limitedData ? ' Past meetings also factor in.' : '')
+          + (contenderAverage !== null && !limitedData ? ' Results against contenders add context.' : '')
+          + (expandedUpside ? ' Bottom-four positional allowance and sustained volume support a wider upside cap.' : '')
+          + (intelligence.evidence.comparable.adjustment ? ' Role-matched comparable-defense results also factor in.' : ''),
       sourceGames, warnings: [...new Set(problems)] };
   });
 }

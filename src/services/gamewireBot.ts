@@ -25,6 +25,23 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 const strings = (value: Record<string, unknown>, keys: string[]) => keys.every((key) => typeof value[key] === 'string');
 const list = (value: unknown, check: (item: unknown) => boolean) => Array.isArray(value) && value.every(check);
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const count = (value: unknown) => Number.isInteger(value) && Number(value) >= 0;
+const nullableNumber = (value: unknown) => value === null || finite(value);
+function validProjectionEvidence(value: unknown) {
+ const row = object(value), defense = object(row.defense), usage = object(row.usage), comparable = object(row.comparable), observed = object(row.observed);
+ return nullableNumber(row.foundation) && nullableNumber(row.independent) && finite(row.editorialAdjustment)
+   && ['Favorable', 'Neutral', 'Unfavorable', 'Unverified'].includes(String(row.matchup)) && row.confidence === 'Uncalibrated'
+   && typeof row.edge === 'string' && list(row.risks, (risk) => typeof risk === 'string')
+   && (row.defense === null || finite(defense.recent) && finite(defense.season) && count(defense.games)
+     && nullableNumber(defense.opportunityAverage) && count(defense.opportunityGames) && nullableNumber(defense.efficiency))
+   && (row.usage === null || typeof usage.label === 'string' && finite(usage.recent) && finite(usage.season) && count(usage.games) && count(usage.recentGames) && Number(usage.recentGames) > 0 && Number(usage.recentGames) <= 3
+     && nullableNumber(usage.efficiency) && ['Rising', 'Stable', 'Falling', 'Limited sample'].includes(String(usage.trend)))
+   && count(comparable.games) && ['mean', 'median', 'weighted'].every((key) => nullableNumber(comparable[key]))
+   && finite(comparable.adjustment) && Math.abs(comparable.adjustment) <= 5 && typeof comparable.note === 'string'
+   && (row.observed === null || count(observed.games) && Number(observed.games) >= 3 && ['mean', 'median', 'low', 'high'].every((key) => finite(observed[key])))
+   && list(row.observations, (item) => { const sample = object(item); return strings(sample, ['eventId', 'date'])
+     && Number.isFinite(Date.parse(String(sample.date))) && finite(sample.value) && (sample.opportunity === null || count(sample.opportunity)); });
+}
 function validPlayer(value: unknown): value is BotPlayer {
  const row = object(value);
  return strings(row, ['id', 'name', 'position', 'teamId', 'team', 'teamAbbr']) && /^\d{1,12}$/.test(String(row.id))
@@ -48,6 +65,7 @@ function validReport(value: unknown): value is BotReport {
        && (projection.defenseRank == null || Number.isInteger(projection.defenseRank) && Number(projection.defenseRank) >= 1 && Number(projection.defenseRank) <= 32)
        && (projection.limitedData === undefined || typeof projection.limitedData === 'boolean')
        && (projection.basis === undefined || ['matchup', 'current-season'].includes(String(projection.basis)))
+       && (projection.evidence === undefined || validProjectionEvidence(projection.evidence))
        && (projection.estimate === null || finite(projection.estimate))
        && ['baseline', 'defenseAverage', 'share', 'historyAverage', 'contenderAverage'].every((key) => projection[key] === null || finite(projection[key]))
        && ['playerGames', 'defenseGames', 'historyGames', 'contenderGames'].every((key) => Number.isInteger(projection[key]))
@@ -55,7 +73,11 @@ function validReport(value: unknown): value is BotReport {
        && list(projection.warnings, (warning) => typeof warning === 'string');
    })
    && (row.matchup === null || strings(matchup, ['eventId', 'start', 'opponentId', 'opponent']) && typeof matchup.home === 'boolean' && ['pre', 'in', 'post'].includes(String(matchup.state)))
-   && list(row.props, (item) => { const prop = object(item); return strings(prop, ['selection', 'book', 'savedAt', 'breakdown']) && finite(prop.american); })
+   && list(row.props, (item) => { const prop = object(item), comparison = object(prop.comparison); return strings(prop, ['selection', 'book', 'savedAt', 'breakdown']) && finite(prop.american)
+     && (prop.comparison === undefined || typeof comparison.market === 'string' && finite(comparison.line) && Number(comparison.line) >= 0 && finite(comparison.difference)
+       && ['Above saved line', 'Below saved line', 'At saved line'].includes(String(comparison.assessment))
+       && ['observedOverRate', 'observedUnderRate'].every((key) => comparison[key] === null || finite(comparison[key]) && Number(comparison[key]) >= 0 && Number(comparison[key]) <= 100)
+       && ['games', 'over', 'under', 'pushes'].every((key) => count(comparison[key])) && Number(comparison.over) + Number(comparison.under) + Number(comparison.pushes) === comparison.games); })
    && list(editorial.graphics, (item) => { const graphic = object(item); return strings(graphic, ['id', 'reason', 'updatedAt']) && ['start', 'sit'].includes(String(graphic.kind)); })
    && (editorial.ranking === null || strings(ranking, ['position', 'format', 'publishedAt']) && Number.isInteger(ranking.rank) && Number(ranking.rank) >= 1 && Number(ranking.rank) <= 30);
 }
