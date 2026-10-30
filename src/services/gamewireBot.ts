@@ -47,6 +47,7 @@ function validReport(value: unknown): value is BotReport {
        && (projection.role == null || ['depth-chart', 'recent-usage'].includes(String(role.source)) && Number.isInteger(role.rank) && Number(role.rank) >= 1)
        && (projection.defenseRank == null || Number.isInteger(projection.defenseRank) && Number(projection.defenseRank) >= 1 && Number(projection.defenseRank) <= 32)
        && (projection.limitedData === undefined || typeof projection.limitedData === 'boolean')
+       && (projection.basis === undefined || ['matchup', 'current-season'].includes(String(projection.basis)))
        && (projection.estimate === null || finite(projection.estimate))
        && ['baseline', 'defenseAverage', 'share', 'historyAverage', 'contenderAverage'].every((key) => projection[key] === null || finite(projection[key]))
        && ['playerGames', 'defenseGames', 'historyGames', 'contenderGames'].every((key) => Number.isInteger(projection[key]))

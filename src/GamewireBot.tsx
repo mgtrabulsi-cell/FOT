@@ -34,9 +34,10 @@ function Matchup({ report }: { report: BotReport }) {
 }
 function PropLab({ report }: { report: BotReport }) {
   return <section className="gwb-prop-lab"><h5>Prop Lab</h5>
-    {report.projections.length > 0 && <><p className="gwb-muted">Matchup-adjusted estimates · Not sportsbook lines.</p>
+    {report.projections.length > 0 && <><p className="gwb-muted">Experimental estimates · Current-season data · Not sportsbook lines.</p>
       {report.projections.map((projection) => <div className="gwb-projection" key={projection.market}><div className="gwb-projection-heading"><b>{projection.label}</b>
-        <strong>{projection.estimate === null ? 'Unavailable' : <>{projection.estimate}<small>{projection.unit === 'receptions' ? ' catches' : ' yd'} estimate</small></>}</strong></div>
+        <strong>{projection.estimate === null ? 'No verified stats' : <>{projection.estimate}<small>{projection.unit === 'receptions' ? ' catches' : ' yd'} estimate</small></>}</strong></div>
+        {projection.basis === 'current-season' && projection.estimate !== null && <small className="gwb-muted">Current-season fallback · {projection.playerGames} recorded games · Available role limits applied</small>}
         {projection.limitedData && projection.estimate !== null && <small className="gwb-muted">Limited-data estimate · {projection.playerGames} player / {projection.defenseGames} opponent games</small>}
         {projection.role && <small className="gwb-muted">{projection.role.source === 'depth-chart' ? `ESPN depth chart · ${report.player.position} depth ${projection.role.rank}` : `Recent usage rank ${projection.role.rank} at ${report.player.position} · Not a confirmed depth chart`}</small>}
         {projection.defenseRank != null && <small className="gwb-muted">Opponent {report.player.position} yardage allowance · #{projection.defenseRank} of 32 (1 = fewest)</small>}
@@ -74,7 +75,7 @@ function Method({ report }: { report: BotReport }) {
   return <details className="gwb-method"><summary>Sources &amp; how this analysis works</summary>
       <p>Data checked {stamp(report.checkedAt)}. Workload snapshots may be cached for five minutes; player search for fifteen minutes. Regular-season appearances only.</p>
       <p>Without published editorial guidance: Start requires QB 25+ pass attempts; RB 15+ touches; WR 7+ targets (8 in standard); TE 5+ targets (6 in standard). Flex: RB 8+ touches, WR 4+ targets, TE 3+ targets. Lower usage indicates Sit; fewer than three appearances, a 21-day data gap or uncertain availability indicates Monitor. Published weekly graphics use their Must Start/Must Sit verdict. A matching top-12 QB/TE or top-24 RB/WR ranking plus Start-level workload also supports Must Start.</p>
-      <p>Yardage and reception estimates use verified completed games, including box scores when player logs are incomplete. One or two samples are labeled limited-data with smaller adjustments. ESPN depth-chart order, or clearly labeled recent usage when unavailable, caps backup opportunity without treating usage as a confirmed starting role. Verified bottom-four WR/TE yardage defenses receive an additional bounded matchup boost; scoring-defense rank alone never triggers it. Matching weekly rankings contribute up to +/-5% as editorial context. These are experimental estimates, not calibrated predictions or sportsbook lines. Missing data is never invented.</p>
+      <p>Yardage and reception estimates use current-season completed games only, including individual box-score stats when player logs or position-group samples are incomplete. If recent matchup data cannot be verified, a labeled current-season completed-game average with available role limits supplies the estimate. Earlier completed games in the same season are checked when recent boxes lack a metric. Prior seasons are not used. One or two samples and older workload are labeled limited-data. ESPN depth-chart order, or clearly labeled recent usage when unavailable, caps backup opportunity without treating usage as a confirmed starting role. Verified bottom-four WR/TE yardage defenses receive an additional bounded matchup boost when a full matchup estimate is supported; scoring-defense rank alone never triggers it. Matching weekly rankings contribute up to +/-5% as editorial context. No verified current-season production means no supportable numeric estimate. These are experimental estimates, not calibrated predictions or sportsbook lines. Missing data is never invented.</p>
       <p>Scoring, when complete: 0.04/pass yard, 4/pass TD, -2/interception, 0.1/rush or receiving yard, 6/rush or receiving TD, -2/fumble lost, plus 1/0.5/0 per reception for PPR/half/standard. No bonuses or two-point conversions included.</p>
       {report.warnings.map((warning) => <p key={warning}>{warning}</p>)}
       <nav aria-label={`${report.player.name} data sources`}><a href={`https://www.espn.com/nfl/player/gamelog/_/id/${report.player.id}`} target="_blank" rel="noreferrer">ESPN game logs</a>
@@ -120,7 +121,7 @@ function MobileComparison({ reports, players }: { reports: [BotReport | null, Bo
   const estimateRows: ComparisonRow[] = markets.map((metric) => {
     const value = (slot: PlayerSlot): ComparisonValue => {
       const projection = reports[slot]?.projections.find((row) => row.market === metric.market);
-      return { value: projection?.estimate ?? null, note: projection?.estimate != null ? projection.limitedData ? 'Limited-data estimate' : 'Estimate' : projection ? 'Unavailable' : reports[slot] ? 'Not available for player' : 'No report' };
+      return { value: projection?.estimate ?? null, note: projection?.estimate != null ? projection.basis === 'current-season' ? 'Current-season fallback' : projection.limitedData ? 'Limited-data estimate' : 'Estimate' : projection ? 'No verified stats' : reports[slot] ? 'Not applicable to player' : 'No report' };
     };
     return { key: metric.market, label: `${metric.label} (${metric.unit === 'yards' ? 'yd' : 'catches'})`, values: [value(0), value(1)], decimals: metric.unit === 'yards' ? 0 : 1 };
   });
@@ -159,8 +160,8 @@ function MobileComparison({ reports, players }: { reports: [BotReport | null, Bo
         <ComparisonTable rows={statRows} players={players} caption="Recorded averages by player" /></>}
       {tab === 'props' && <><h4><Target size={17} aria-hidden="true" />Prop Lab estimates</h4>
         <p className="gwb-muted">Experimental estimates · Not sportsbook lines. Different positions may have different available metrics.</p>
-        {estimateRows.length ? <ComparisonTable rows={estimateRows} players={players} caption="Matchup-adjusted estimates by player" /> : <p>No verified estimates available. Published prop coverage is shown below.</p>}
-        {playerContent((report) => <details className="gwb-compare-prop-details"><summary>Estimate details &amp; published props</summary><PropLab report={report} /></details>)}
+        {estimateRows.length ? <ComparisonTable rows={estimateRows} players={players} caption="Current-season estimates by player" /> : <p>No verified estimates available. Published prop coverage is shown below.</p>}
+        {playerContent((report) => <PropLab report={report} />)}
       </>}
       {tab === 'matchup' && <><h4><ArrowLeftRight size={17} aria-hidden="true" />This week’s matchups</h4>{playerContent((report) => <Matchup report={report} />)}</>}
       {tab === 'sources' && <><h4><ShieldCheck size={17} aria-hidden="true" />Sources &amp; availability</h4>{playerContent((report) => <><Snapshot report={report} /><Method report={report} /></>)}</>}

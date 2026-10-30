@@ -283,6 +283,11 @@ test('Player analysis validates reports, is available to members and has no chat
   const topicCode = ts.transpileModule(service, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const context = vm.createContext({ exports: {}, require: () => ({ supabase: null }) }); vm.runInContext(topicCode, context);
   assert.equal(context.exports.readBotReport(report()).player.id, player.id);
+  const projection = { market: 'player_receptions', label: 'Receptions', unit: 'receptions', estimate: 4, basis: 'current-season',
+    baseline: 4, defenseAverage: null, share: null, historyAverage: null, contenderAverage: null,
+    playerGames: 2, defenseGames: 0, historyGames: 0, contenderGames: 0, context: '', explanation: 'Current-season fallback', sourceGames: [], warnings: [] };
+  assert.equal(context.exports.readBotReport({ ...report(), projections: [projection] }).projections[0].basis, 'current-season');
+  assert.throws(() => context.exports.readBotReport({ ...report(), projections: [{ ...projection, basis: 'prior-season' }] }), /incomplete player breakdown/);
   for (const invalid of [{}, { ...report(), editorial: undefined }, { ...report(), props: [{}] }, { ...report(), workload: [{}] }])
     assert.throws(() => context.exports.readBotReport(invalid), /incomplete player breakdown/);
   const page = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
@@ -557,7 +562,7 @@ test('Estimate cards show receptions with catch units and concise blurbs without
 });
 test('Mobile comparison aligns real stats and estimates while keeping full analysis in accessible sections', async () => {
   const first = { ...report(), workload: [{ label: 'Carries', average: 15.7, games: 3 }], production: [{ label: 'Rushing yards', average: 84, games: 3 }],
-    projections: [{ market: 'rush', label: 'Rushing yards', unit: 'yards', estimate: 82, limitedData: false }] };
+    projections: [{ market: 'rush', label: 'Rushing yards', unit: 'yards', estimate: 82, limitedData: false, basis: 'current-season' }] };
   const second = { ...report(), player: secondPlayer, workload: [{ label: 'Targets', average: 8.3, games: 2 }],
     production: [{ label: 'Receiving yards', average: 53.7, games: 2 }], fantasyAverage: null,
     projections: [{ market: 'receiving', label: 'Receiving yards', unit: 'yards', estimate: null, limitedData: true }] };
@@ -588,9 +593,11 @@ test('Mobile comparison aligns real stats and estimates while keeping full analy
   select('props');
   const estimates = ui.find(mobile, (node) => node.type?.name === 'ComparisonTable').props.rows;
   assert.deepEqual(Array.from(estimates[0].values, (cell) => cell.value), [82, null]);
+  assert.equal(estimates[0].values[0].note, 'Current-season fallback');
   assert.deepEqual(Array.from(estimates[1].values, (cell) => cell.value), [null, null]);
-  assert.equal(estimates[1].values[1].note, 'Unavailable');
+  assert.equal(estimates[1].values[1].note, 'No verified stats');
   assert.equal(ui.find(mobile, (node) => node.type?.name === 'PropLab').props.report, first);
+  assert.equal(ui.find(mobile, (node) => node.type === 'details'), undefined, 'Both full prop sections render immediately with no dropdown');
   select('matchup');
   assert.equal(ui.find(mobile, (node) => node.type?.name === 'Matchup').props.report, first);
   select('sources');

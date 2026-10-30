@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectBotProjections, collectReceivingDefenses, readBotDepth, positionGameYards, projectionSchedule, matchupEstimate as yardageEstimate } from '../supabase/functions/_shared/gamewireBotProjections.ts';
+import { collectBotProjections, collectReceivingDefenses, completedPlayerMetric, readBotDepth, positionGameYards, projectionSchedule, matchupEstimate as yardageEstimate } from '../supabase/functions/_shared/gamewireBotProjections.ts';
 
 const now = Date.parse('2026-10-29T18:00:00Z');
 const player = { id: '123', name: 'Test Runner', position: 'RB', teamId: '23', team: 'Pittsburgh Steelers', teamAbbr: 'PIT' };
 const matchup = { eventId: '999', start: '2026-11-01T18:00:00Z', opponentId: '5', opponent: 'Cleveland Browns', home: true, state: 'pre' };
 const date = (index) => new Date(Date.UTC(2026, 9, 25 - index * 7)).toISOString();
-function fixture({ allowed = 150, receiving = 20, receivingAllowed = 40, catches = 4, catchesAllowed = 10, omitCatches = false, history = false, contenders = false, badPositions = false, fewerDefenseGames = false, ownCount = 8, depthRank = 1, fail = false } = {}) {
+function fixture({ allowed = 150, receiving = 20, receivingAllowed = 40, catches = 4, catchesAllowed = 10, omitCatches = false, history = false, contenders = false, badPositions = false, fewerDefenseGames = false, ownCount = 8, depthRank = 1, fail = false,
+  failDefense = false, failOwn = false, badOwnGroup = false, recentPlayerAbsent = false } = {}) {
   const positions = { '123': 'RB', '124': 'RB', '200': 'RB', '201': 'RB' }, calls = [];
   const game = (id, index, teamId, opponentId) => ({ id: String(id), date: date(index), competitions: [{
     status: { type: { completed: true } }, competitors: [
@@ -21,10 +22,10 @@ function fixture({ allowed = 150, receiving = 20, receivingAllowed = 40, catches
   const box = (id, offenseId, own) => ({ header: { id, season: { year: 2026, type: 2 }, competitions: [{ status: { type: { completed: true } } }] },
     boxscore: { players: [{ team: { id: offenseId }, statistics: [
       { name: 'rushing', keys: ['rushingYards'], athletes: own
-        ? [{ athlete: { id: '123' }, stats: ['65'] }, { athlete: { id: '124' }, stats: ['35'] }]
+        ? [{ athlete: { id: recentPlayerAbsent && Number(id) < 106 ? '122' : '123' }, stats: ['65'] }, { athlete: { id: badOwnGroup ? 'unknown' : '124' }, stats: ['35'] }]
         : [{ athlete: { id: '200' }, stats: [String(allowed * .7)] }, { athlete: { id: badPositions ? 'unknown' : '201' }, stats: [String(allowed * .3)] }] },
       { name: 'receiving', keys: ['receivingYards', ...omitCatches ? [] : ['receptions']], athletes: own
-        ? [{ athlete: { id: '123' }, stats: [String(receiving), String(catches)] }, { athlete: { id: '124' }, stats: ['20', '2'] }]
+        ? [{ athlete: { id: recentPlayerAbsent && Number(id) < 106 ? '122' : '123' }, stats: [String(receiving), String(catches)] }, { athlete: { id: badOwnGroup ? 'unknown' : '124' }, stats: ['20', '2'] }]
         : [{ athlete: { id: '200' }, stats: [String(receivingAllowed * .7), String(Math.ceil(catchesAllowed / 2))] }, { athlete: { id: '201' }, stats: [String(receivingAllowed * .3), String(Math.floor(catchesAllowed / 2))] }] },
     ] }] } });
   const get = async (url) => {
@@ -45,6 +46,7 @@ function fixture({ allowed = 150, receiving = 20, receivingAllowed = 40, catches
       assert.ok(other); return box(id, other.competitions[0].competitors[1].team.id, false);
     }
     const id = new URL(url).pathname.match(/teams\/(\d+)\/schedule/)[1];
+    if (failDefense && id === '5' || failOwn && id === '23') throw new Error('Schedule provider failed');
     if (id === '23') return schedule(id, ownEvents, contenders ? '1st in AFC North' : undefined);
     if (id === '5') return schedule(id, otherEvents, contenders ? '2nd in AFC North' : undefined);
     return schedule(id, Array.from({ length: 8 }, (_, index) => game(600 + index, index + 4, id, '33')));
@@ -76,11 +78,17 @@ test('A receiver’s great recent production is reduced by a tough WR yardage ma
   assert.match(strong.explanation, /WR yardage matchup against Cleveland Browns tempers/);
   assert.doesNotMatch(strong.explanation, /scoring defense/);
 });
-test('Direct opponent history adds a small measured component, not a single-game narrative boost', async () => {
+test('Only current-season opponent meetings affect estimates; prior-season stats are never requested', async () => {
   const base = (await fixture().run())[0], history = (await fixture({ history: true }).run())[0];
-  assert.equal(history.historyGames, 2); assert.equal(history.historyAverage, 100);
-  assert.equal(history.yards, 77); assert.ok(history.yards > base.yards);
-  assert.match(history.explanation, /Past meetings also factor in/);
+  assert.equal(history.historyGames, 0); assert.equal(history.historyAverage, null);
+  assert.equal(history.yards, base.yards);
+  const api = fixture();
+  for (const event of Object.values(api.logs.events)) event.opponent.id = '5';
+  const currentHistory = (await api.run())[0];
+  assert.equal(currentHistory.historyGames, 3); assert.equal(currentHistory.historyAverage, 65);
+  assert.equal(currentHistory.yards, 74);
+  assert.match(currentHistory.explanation, /Past meetings also factor in/);
+  assert.ok(api.calls.every((url) => !url.includes('season=2025') && !url.includes('season=2024')));
   assert.doesNotMatch(history.explanation, /sample|split|share|adjustment|verified meetings/);
   assert.equal(yardageEstimate(100, 100, 1, 200), 110);
 });
@@ -93,14 +101,15 @@ test('Big-matchup component requires verified pregame winning records and suffic
   const regular = (await fixture().run())[0];
   assert.equal(regular.contenderGames, 0); assert.equal(regular.yards, 75);
 });
-test('Missing/unclassified position yards, unavailable providers and undersized samples produce no invented estimate', async () => {
+test('Missing positional coverage uses labeled player-production fallback while small matchup samples remain bounded', async () => {
   const unknown = (await fixture({ badPositions: true }).run())[0];
-  assert.equal(unknown.yards, null);
+  assert.equal(unknown.yards, 65); assert.equal(unknown.basis, 'current-season');
   assert.match(unknown.warnings.join(' '), /position could not be verified/);
   const sparse = (await fixture({ fewerDefenseGames: true }).run())[0];
   assert.equal(sparse.defenseGames, 2); assert.equal(sparse.yards, 70); assert.equal(sparse.limitedData, true);
   const blocked = await fixture({ fail: true }).run();
-  assert.ok(blocked.every((row) => row.yards === null));
+  assert.equal(blocked[0].estimate, 65); assert.equal(blocked[1].estimate, 20); assert.equal(blocked[2].estimate, 4);
+  assert.ok(blocked.every((row) => row.basis === 'current-season'));
   assert.match(blocked[0].warnings.join(' '), /403/);
   assert.equal((await fixture().run({ logs: null }))[0].yards, 75, 'Completed boxes recover missing player logs');
 });
@@ -149,7 +158,7 @@ test('RB, WR and TE reception estimates use measured catches and positional allo
     assert.match(weak.explanation, /reception matchup/);
   }
   const historical = (await fixture({ history: true }).run()).find((row) => row.market === 'player_receptions');
-  assert.equal(historical.estimate, 4.9); assert.equal(historical.historyAverage, 6);
+  assert.equal(historical.estimate, 4.8); assert.equal(historical.historyAverage, null);
 });
 test('Reception samples never fabricate missing or invalid catches; existing yardage estimates remain intact', async () => {
   for (const options of [{ omitCatches: true }, { catches: -1 }, { catches: 1.5 }]) {
@@ -172,6 +181,51 @@ test('One completed game and missing/malformed player logs still produce labeled
   const malformed = (await fixture({ ownCount: 2 }).run({ logs: { names: [] } }))[0];
   assert.equal(malformed.playerGames, 2); assert.ok(malformed.estimate > 0);
   assert.equal((await fixture({ ownCount: 0 }).run({ logs: null }))[0].estimate, null);
+});
+test('Missing own/opponent schedules or group classification cannot suppress a verified current-season player average', async () => {
+  for (const options of [{ failDefense: true }, { failOwn: true }, { badOwnGroup: true }]) {
+    const result = await fixture(options).run();
+    assert.deepEqual(result.map((row) => row.estimate), [65, 20, 4], JSON.stringify(options));
+    assert.ok(result.every((row) => row.basis === 'current-season'));
+    assert.ok(result.every((row) => row.explanation.includes('fallback estimate')));
+  }
+  const independent = await fixture({ badOwnGroup: true }).run({ logs: null });
+  assert.deepEqual(independent.map((row) => row.estimate), [65, 20, 4], 'Target stats survive unrelated unclassified teammates');
+  const noProduction = await fixture({ fail: true }).run({ logs: null });
+  assert.ok(noProduction.every((row) => row.estimate === null));
+  assert.match(noProduction[0].explanation, /No verified current-season/);
+});
+test('Fallbacks recover earlier completed games in the same season without inventing absent-player zeroes or using prior seasons', async () => {
+  const api = fixture({ recentPlayerAbsent: true });
+  const rows = await api.run({ logs: null });
+  assert.deepEqual(rows.map((row) => row.estimate), [65, 20, 4]);
+  assert.ok(rows.every((row) => row.playerGames === 3 && row.basis === 'current-season'));
+  assert.ok(api.calls.some((url) => url.includes('event=106')));
+  assert.ok(api.calls.every((url) => !url.includes('/gamelog')));
+  const absent = await fixture({ recentPlayerAbsent: true, ownCount: 5 }).run({ logs: null });
+  assert.ok(absent.every((row) => row.estimate === null));
+  const box = fixture().box('101', '23', true);
+  assert.equal(completedPlayerMetric(box, '101', '23', 2026, 'rushing', 'rushingYards', '123'), 65);
+  assert.equal(completedPlayerMetric(box, '101', '23', 2026, 'rushing', 'rushingYards', 'absent'), null);
+  assert.throws(() => completedPlayerMetric(box, '101', '23', 2025, 'rushing', 'rushingYards', '123'), /requested completed/);
+  box.header.competitions[0].status.type.completed = false;
+  assert.throws(() => completedPlayerMetric(box, '101', '23', 2026, 'rushing', 'rushingYards', '123'), /requested completed/);
+});
+test('Fallbacks apply available backup roles and measured zero production remains a real estimate', async () => {
+  const first = (await fixture({ failDefense: true }).run())[0];
+  const second = (await fixture({ failDefense: true, depthRank: 2 }).run())[0];
+  assert.equal(first.estimate, 65); assert.equal(second.estimate, 40);
+  const withoutShare = (await fixture({ badOwnGroup: true, depthRank: 2 }).run())[0];
+  assert.equal(withoutShare.estimate, 42); assert.equal(withoutShare.role.rank, 2);
+  const zero = (await fixture({ failDefense: true, catches: 0 }).run()).find((row) => row.market === 'player_receptions');
+  assert.equal(zero.estimate, 0); assert.equal(zero.basis, 'current-season');
+});
+test('Older current-season production remains usable but explicitly discloses stale workload', async () => {
+  const rows = await fixture().run({ now: Date.parse('2026-11-23T18:00:00Z'), matchup: { ...matchup, start: '2026-11-25T18:00:00Z' } });
+  assert.deepEqual(rows.map((row) => row.estimate), [65, 20, 4]);
+  assert.ok(rows.every((row) => row.basis === 'current-season' && row.limitedData));
+  assert.match(rows[0].explanation, /over 21 days old/);
+  assert.match(rows[0].warnings.join(' '), /does not confirm a current workload/);
 });
 test('Verified backup depth lowers opportunity while missing depth uses explicit usage ranking', async () => {
   const primary = (await fixture().run())[0], backup = (await fixture({ depthRank: 2 }).run())[0];
