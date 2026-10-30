@@ -14,43 +14,64 @@ function PlayerPortrait({ player }: { player: BotPlayer }) {
   return <div className="gwb-portrait">{failed ? <span>{player.position}<small>Photo unavailable</small></span>
     : <OfflineImage src={`https://a.espncdn.com/i/headshots/nfl/players/full/${player.id}.png`} alt="" onError={() => setFailed(true)} />}</div>;
 }
+function Guidance({ report }: { report: BotReport }) {
+  const editorial = report.editorial;
+  return <div className="gwb-verdict-grid"><div><span>START / SIT</span><strong className={report.indication === 'Must Start' || report.indication === 'Start' ? 'gwb-positive' : ''}>{report.indication}</strong><small>GameWire’s weekly verdict</small></div>
+    <div><span>GUIDANCE SOURCES</span><strong>{editorial.graphics.length ? 'Published Start/Sit' : 'Recent workload'}</strong>
+      <small>{editorial.ranking ? `GameWire ${formats.find((row) => row.value === editorial.ranking!.format)?.label} · ${editorial.ranking.position} #${editorial.ranking.rank}` : 'No matching weekly ranking supplied yet'}</small></div></div>;
+}
+function Snapshot({ report }: { report: BotReport }) {
+  return <><p className="gwb-muted">Verified snapshot · {stamp(report.checkedAt)} · Not a live injury or odds feed.</p>
+    {report.dataIssues.length > 0 && <div className="gwb-warning" role="status"><b>Partial data · Some sources could not load</b>
+      {report.dataIssues.map((issue) => <p key={issue}>{issue}</p>)}<p>Only available verified sources are used. Use Refresh outlook to retry; partial snapshots cache for 30 seconds.</p></div>}
+    <p className="gwb-muted">Roster availability: {report.availability}. Check the official game-day injury report.</p></>;
+}
+function Matchup({ report }: { report: BotReport }) {
+  const matchup = report.matchup;
+  return <section><h5>This week’s matchup</h5>
+    {matchup ? <p>{report.player.teamAbbr} {matchup.home ? 'vs.' : '@'} {matchup.opponent} · {stamp(matchup.start)} · {matchup.state === 'pre' ? 'Scheduled' : matchup.state === 'in' ? 'In progress' : 'Final'}</p> : <p>No game on the current week scoreboard.</p>}
+    {matchup && <p>{report.matchupText}</p>}</section>;
+}
+function PropLab({ report }: { report: BotReport }) {
+  return <section className="gwb-prop-lab"><h5>Prop Lab</h5>
+    {report.projections.length > 0 && <><p className="gwb-muted">Matchup-adjusted estimates · Not sportsbook lines.</p>
+      {report.projections.map((projection) => <div className="gwb-projection" key={projection.market}><div className="gwb-projection-heading"><b>{projection.label}</b>
+        <strong>{projection.estimate === null ? 'Unavailable' : <>{projection.estimate}<small>{projection.unit === 'receptions' ? ' catches' : ' yd'} estimate</small></>}</strong></div>
+        {projection.limitedData && projection.estimate !== null && <small className="gwb-muted">Limited-data estimate · {projection.playerGames} player / {projection.defenseGames} opponent games</small>}
+        {projection.role && <small className="gwb-muted">{projection.role.source === 'depth-chart' ? `ESPN depth chart · ${report.player.position} depth ${projection.role.rank}` : `Recent usage rank ${projection.role.rank} at ${report.player.position} · Not a confirmed depth chart`}</small>}
+        {projection.defenseRank != null && <small className="gwb-muted">Opponent {report.player.position} yardage allowance · #{projection.defenseRank} of 32 (1 = fewest)</small>}
+        <p>{projection.explanation}</p></div>)}</>}
+    {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><p>{prop.breakdown}</p></div>)}
+    {!report.props.length && !report.projections.length && report.production.map((stat) => <div className="gwb-prop-empty" key={stat.label}><div><b>{stat.label}</b><span>Recent recorded average, not a projection</span></div><div><strong>{stat.average.toFixed(1)}<small> avg</small></strong><span>No published line</span></div></div>)}
+    <p className="gwb-muted">{report.propNote}</p></section>;
+}
+function Verdict({ report }: { report: BotReport }) {
+  const editorial = report.editorial;
+  return <section className="gwb-verdict"><h5><Sparkles size={16} aria-hidden="true" />GamewAIre Verdict</h5><p>{report.summary}</p>
+    {editorial.graphics.map((graphic) => <div className="gwb-editorial" key={graphic.id}><b>Published Week {report.week} Must {graphic.kind === 'start' ? 'Start' : 'Sit'} graphic</b><p>{graphic.reason}</p><small>Graphic updated {stamp(graphic.updatedAt)}</small></div>)}
+    {editorial.ranking && <p className="gwb-muted">This weekly ranking matches your selected scoring format and adds a bounded editorial adjustment to available estimates.</p>}
+  </section>;
+}
 function Breakdown({ report }: { report: BotReport }) {
-  const matchup = report.matchup, editorial = report.editorial;
   return <article className="gwb-answer">
     <header><span className="gwb-avatar"><Bot size={18} aria-hidden="true" /></span><div><b>Gamew<span className="gwb-ai">AI</span>re</b><span>PLAYER ANALYSIS · Week {report.week} · {report.season} · {formats.find((row) => row.value === report.format)?.label}</span></div></header>
     <div className="gwb-player-line"><PlayerPortrait key={report.player.id} player={report.player} /><div><h4>{report.player.name}</h4><span>{report.player.position} · {report.player.team}</span>
       <div className="gwb-tags"><span>PLAYER ANALYSIS</span><span>FANTASY</span></div></div></div>
-    <div className="gwb-verdict-grid"><div><span>START / SIT</span><strong className={report.indication === 'Must Start' || report.indication === 'Start' ? 'gwb-positive' : ''}>{report.indication}</strong><small>GameWire’s weekly verdict</small></div>
-      <div><span>GUIDANCE SOURCES</span><strong>{editorial.graphics.length ? 'Published Start/Sit' : 'Recent workload'}</strong>
-        <small>{editorial.ranking ? `GameWire ${formats.find((row) => row.value === editorial.ranking!.format)?.label} · ${editorial.ranking.position} #${editorial.ranking.rank}` : 'No matching weekly ranking supplied yet'}</small></div></div>
-    <p className="gwb-muted">Verified snapshot · {stamp(report.checkedAt)} · Not a live injury or odds feed.</p>
-    {report.dataIssues.length > 0 && <div className="gwb-warning" role="status"><b>Partial data · Some sources could not load</b>
-      {report.dataIssues.map((issue) => <p key={issue}>{issue}</p>)}<p>Only available verified sources are used. Use Refresh outlook to retry; partial snapshots cache for 30 seconds.</p></div>}
+    <Guidance report={report} />
+    <Snapshot report={report} />
     <>
-      <p className="gwb-muted">Roster availability: {report.availability}. Check the official game-day injury report.</p>
       <div className="gwb-stat-grid">{[...report.workload, ...report.production].map((stat) => <div key={stat.label}><strong>{stat.average.toFixed(1)}</strong><span>{stat.label}/game</span><small>Last {stat.games} recorded appearances</small></div>)}</div>
       {report.fantasyAverage !== null ? <p className="gwb-muted">Historical scoring average: {report.fantasyAverage.toFixed(1)} points/game. Not a projection.</p>
         : <p className="gwb-muted">A complete fantasy scoring average is unavailable; unreported stats are not treated as zero.</p>}
     </>
-    <section><h5>This week’s matchup</h5>
-      {matchup ? <p>{report.player.teamAbbr} {matchup.home ? 'vs.' : '@'} {matchup.opponent} · {stamp(matchup.start)} · {matchup.state === 'pre' ? 'Scheduled' : matchup.state === 'in' ? 'In progress' : 'Final'}</p> : <p>No game on the current week scoreboard.</p>}
-      {matchup && <p>{report.matchupText}</p>}</section>
-    <section className="gwb-prop-lab"><h5>Prop Lab</h5>
-      {report.projections.length > 0 && <><p className="gwb-muted">Matchup-adjusted estimates · Not sportsbook lines.</p>
-        {report.projections.map((projection) => <div className="gwb-projection" key={projection.market}><div className="gwb-projection-heading"><b>{projection.label}</b>
-          <strong>{projection.estimate === null ? 'Unavailable' : <>{projection.estimate}<small>{projection.unit === 'receptions' ? ' catches' : ' yd'} estimate</small></>}</strong></div>
-          {projection.limitedData && projection.estimate !== null && <small className="gwb-muted">Limited-data estimate · {projection.playerGames} player / {projection.defenseGames} opponent games</small>}
-          {projection.role && <small className="gwb-muted">{projection.role.source === 'depth-chart' ? `ESPN depth chart · ${report.player.position} depth ${projection.role.rank}` : `Recent usage rank ${projection.role.rank} at ${report.player.position} · Not a confirmed depth chart`}</small>}
-          {projection.defenseRank != null && <small className="gwb-muted">Opponent {report.player.position} yardage allowance · #{projection.defenseRank} of 32 (1 = fewest)</small>}
-          <p>{projection.explanation}</p></div>)}</>}
-      {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><p>{prop.breakdown}</p></div>)}
-      {!report.props.length && !report.projections.length && report.production.map((stat) => <div className="gwb-prop-empty" key={stat.label}><div><b>{stat.label}</b><span>Recent recorded average, not a projection</span></div><div><strong>{stat.average.toFixed(1)}<small> avg</small></strong><span>No published line</span></div></div>)}
-      <p className="gwb-muted">{report.propNote}</p></section>
-    <section className="gwb-verdict"><h5><Sparkles size={16} aria-hidden="true" />GamewAIre Verdict</h5><p>{report.summary}</p>
-      {editorial.graphics.map((graphic) => <div className="gwb-editorial" key={graphic.id}><b>Published Week {report.week} Must {graphic.kind === 'start' ? 'Start' : 'Sit'} graphic</b><p>{graphic.reason}</p><small>Graphic updated {stamp(graphic.updatedAt)}</small></div>)}
-      {editorial.ranking && <p className="gwb-muted">This weekly ranking matches your selected scoring format and adds a bounded editorial adjustment to available estimates.</p>}
-    </section>
-    <details className="gwb-method"><summary>Sources &amp; how this analysis works</summary>
+    <Matchup report={report} />
+    <PropLab report={report} />
+    <Verdict report={report} />
+    <Method report={report} />
+  </article>;
+}
+function Method({ report }: { report: BotReport }) {
+  return <details className="gwb-method"><summary>Sources &amp; how this analysis works</summary>
       <p>Data checked {stamp(report.checkedAt)}. Workload snapshots may be cached for five minutes; player search for fifteen minutes. Regular-season appearances only.</p>
       <p>Without published editorial guidance: Start requires QB 25+ pass attempts; RB 15+ touches; WR 7+ targets (8 in standard); TE 5+ targets (6 in standard). Flex: RB 8+ touches, WR 4+ targets, TE 3+ targets. Lower usage indicates Sit; fewer than three appearances, a 21-day data gap or uncertain availability indicates Monitor. Published weekly graphics use their Must Start/Must Sit verdict. A matching top-12 QB/TE or top-24 RB/WR ranking plus Start-level workload also supports Must Start.</p>
       <p>Yardage and reception estimates use verified completed games, including box scores when player logs are incomplete. One or two samples are labeled limited-data with smaller adjustments. ESPN depth-chart order, or clearly labeled recent usage when unavailable, caps backup opportunity without treating usage as a confirmed starting role. Verified bottom-four WR/TE yardage defenses receive an additional bounded matchup boost; scoring-defense rank alone never triggers it. Matching weekly rankings contribute up to +/-5% as editorial context. These are experimental estimates, not calibrated predictions or sportsbook lines. Missing data is never invented.</p>
@@ -59,8 +80,92 @@ function Breakdown({ report }: { report: BotReport }) {
       <nav aria-label={`${report.player.name} data sources`}><a href={`https://www.espn.com/nfl/player/gamelog/_/id/${report.player.id}`} target="_blank" rel="noreferrer">ESPN game logs</a>
         <a href={`https://www.espn.com/nfl/team/roster/_/id/${report.player.teamId}`} target="_blank" rel="noreferrer">ESPN roster</a>
         <a href={`https://www.espn.com/nfl/scoreboard/_/year/${report.season}/seasontype/2/week/${report.week}`} target="_blank" rel="noreferrer">Week scoreboard</a></nav>
-    </details>
-  </article>;
+    </details>;
+}
+const comparisonTabs = [
+  ['overview', 'Overview'], ['stats', 'Stats'], ['props', 'Props'], ['matchup', 'Matchup'], ['sources', 'Sources'],
+] as const;
+type ComparisonTab = typeof comparisonTabs[number][0];
+type ComparisonValue = { value: number | null; note: string };
+type ComparisonRow = { key: string; label: string; values: [ComparisonValue, ComparisonValue]; decimals?: number };
+function ComparisonTable({ rows, players, caption }: { rows: ComparisonRow[]; players: [BotPlayer | null, BotPlayer | null]; caption: string }) {
+  return <table className="gwb-comparison-table"><caption className="gwb-sr-only">{caption}. Bars compare values, not player quality.</caption>
+    <thead><tr><th scope="col">{players[0]?.name ?? 'Player 1'}</th><th scope="col">Metric</th><th scope="col">{players[1]?.name ?? 'Player 2'}</th></tr></thead>
+    <tbody>{rows.map((row) => {
+      const max = Math.max(...row.values.map((cell) => Math.abs(cell.value ?? 0)));
+      const cell = (slot: PlayerSlot) => {
+        const { value, note } = row.values[slot];
+        return <td><strong>{value === null ? '\u2014' : value.toFixed(row.decimals ?? 1)}</strong>
+          {value !== null && max > 0 && <span className="gwb-comparison-bar" aria-hidden="true"><i style={{ width: `${Math.abs(value) / max * 100}%` }} /></span>}
+          <small>{note}</small></td>;
+      };
+      return <tr key={row.key}>{cell(0)}<th scope="row">{row.label}</th>{cell(1)}</tr>;
+    })}</tbody>
+  </table>;
+}
+function MobileComparison({ reports, players }: { reports: [BotReport | null, BotReport | null]; players: [BotPlayer | null, BotPlayer | null] }) {
+  const [tab, setTab] = useState<ComparisonTab>('overview');
+  const stats = reports.map((report) => report ? [...report.workload, ...report.production] : []);
+  const labels = [...new Set(stats.flatMap((rows) => rows.map((row) => row.label)))];
+  const statRows: ComparisonRow[] = labels.map((label) => {
+    const value = (slot: PlayerSlot): ComparisonValue => {
+      const stat = stats[slot].find((row) => row.label === label);
+      return { value: stat?.average ?? null, note: stat ? `${stat.games} recorded games` : reports[slot] ? 'Not reported' : 'No report' };
+    };
+    return { key: label, label: `${label} / game`, values: [value(0), value(1)] };
+  });
+  const fantasy = (slot: PlayerSlot): ComparisonValue => ({ value: reports[slot]?.fantasyAverage ?? null, note: reports[slot]?.fantasyAverage != null ? 'Historical, not projected' : reports[slot] ? 'Incomplete scoring data' : 'No report' });
+  statRows.push({ key: 'fantasy', label: 'Fantasy points / game', values: [fantasy(0), fantasy(1)] });
+  const markets = [...new Map(reports.flatMap((report) => report?.projections ?? []).map((projection) => [projection.market, projection])).values()];
+  const estimateRows: ComparisonRow[] = markets.map((metric) => {
+    const value = (slot: PlayerSlot): ComparisonValue => {
+      const projection = reports[slot]?.projections.find((row) => row.market === metric.market);
+      return { value: projection?.estimate ?? null, note: projection?.estimate != null ? projection.limitedData ? 'Limited-data estimate' : 'Estimate' : projection ? 'Unavailable' : reports[slot] ? 'Not available for player' : 'No report' };
+    };
+    return { key: metric.market, label: `${metric.label} (${metric.unit === 'yards' ? 'yd' : 'catches'})`, values: [value(0), value(1)], decimals: metric.unit === 'yards' ? 0 : 1 };
+  });
+  const playerContent = (render: (report: BotReport) => React.ReactNode) => <div className="gwb-compare-pair">{reports.map((report, slot) =>
+    <article key={slot} className="gwb-compare-detail" aria-label={`${players[slot]?.name ?? `Player ${slot + 1}`} ${tab}`}>
+      <h5>{players[slot]?.name ?? `Player ${slot + 1}`}</h5>
+      {report ? render(report) : <p className="gwb-muted">Choose a player above. If their report could not load, use Retry.</p>}
+    </article>)}</div>;
+  return <div className="gwb-mobile-comparison" aria-label="Mobile player comparison">
+    <div className="gwb-comparison-tabs" role="tablist" aria-label="Player comparison sections" onKeyDown={(event) => {
+      const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+      const current = buttons.findIndex((button) => button === event.target);
+      if (current < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next].focus(); buttons[next].click();
+    }}>
+      {comparisonTabs.map(([key, label]) => <button key={key} type="button" role="tab" id={`gwb-compare-${key}-tab`}
+        aria-selected={tab === key} aria-controls="gwb-compare-content-panel" tabIndex={tab === key ? 0 : -1}
+        onClick={() => setTab(key)}>{label}</button>)}
+    </div>
+    {reports.some((report) => report?.dataIssues.length) && <p className="gwb-warning" role="status">Partial data: {reports.flatMap((report) => report?.dataIssues.length ? [report.player.name] : []).join(' / ')}. See Overview or Sources for unavailable feeds.</p>}
+    <div className="gwb-comparison-content" role="tabpanel" id="gwb-compare-content-panel" aria-labelledby={`gwb-compare-${tab}-tab`} tabIndex={0}>
+      {tab === 'overview' && <>
+        <h4><BarChart3 size={17} aria-hidden="true" />Recent recorded averages</h4>
+        <p className="gwb-muted">Recorded appearances, not season averages. Each player’s sample size is shown; missing stats are not zero.</p>
+        <ComparisonTable rows={statRows} players={players} caption="Recorded averages by player" />
+        <h4><Sparkles size={17} aria-hidden="true" />Quick take</h4>
+        {playerContent((report) => <><p className="gwb-muted">Week {report.week} · {report.season} · {formats.find((row) => row.value === report.format)?.label}</p>
+          <Verdict report={report} />
+          <details className="gwb-compare-guidance"><summary>Weekly guidance &amp; availability</summary><Guidance report={report} /><Snapshot report={report} /></details></>)}
+      </>}
+      {tab === 'stats' && <><h4><BarChart3 size={17} aria-hidden="true" />Recent recorded averages</h4>
+        <p className="gwb-muted">Per-game averages from each player’s available recorded appearances. Sample sizes may differ. Bars compare values, not player quality. Unreported stats are not zero.</p>
+        <ComparisonTable rows={statRows} players={players} caption="Recorded averages by player" /></>}
+      {tab === 'props' && <><h4><Target size={17} aria-hidden="true" />Prop Lab estimates</h4>
+        <p className="gwb-muted">Experimental estimates · Not sportsbook lines. Different positions may have different available metrics.</p>
+        {estimateRows.length ? <ComparisonTable rows={estimateRows} players={players} caption="Matchup-adjusted estimates by player" /> : <p>No verified estimates available. Published prop coverage is shown below.</p>}
+        {playerContent((report) => <details className="gwb-compare-prop-details"><summary>Estimate details &amp; published props</summary><PropLab report={report} /></details>)}
+      </>}
+      {tab === 'matchup' && <><h4><ArrowLeftRight size={17} aria-hidden="true" />This week’s matchups</h4>{playerContent((report) => <Matchup report={report} />)}</>}
+      {tab === 'sources' && <><h4><ShieldCheck size={17} aria-hidden="true" />Sources &amp; availability</h4>{playerContent((report) => <><Snapshot report={report} /><Method report={report} /></>)}</>}
+    </div>
+  </div>;
 }
 export default function GamewireBot() {
   const [open, setOpen] = useState(false), [directory, setDirectory] = useState<BotDirectory | null>(null);
@@ -184,14 +289,23 @@ export default function GamewireBot() {
           if (comparing) { setActiveSlot(0); setSecondPlayer(null); setSecondReport(null); }
           else { setActiveSlot(selected ? 1 : 0); searchInput.current?.focus(); }
         }}><ArrowLeftRight size={17} aria-hidden="true" />{comparing ? 'Exit Compare' : 'Compare'}</button></div>
+      {comparing && <div className="gwb-compare-heading"><h4>Compare Players</h4><p>Side-by-side outlooks, stats, estimates and matchups.</p></div>}
       {comparing && <div className="gwb-compare-slots" aria-label="Choose comparison player">
-        {([0, 1] as const).map((slot) => <button key={slot} disabled={!!busy} aria-pressed={activeSlot === slot} onClick={() => {
+        {([0, 1] as const).map((slot) => {
+          const player = slot === 0 ? selected : secondPlayer;
+          return <button key={slot} disabled={!!busy} aria-pressed={activeSlot === slot} onClick={() => {
           setActiveSlot(slot); setSearch(''); setError(''); searchInput.current?.focus();
-        }}><small>Player {slot + 1}</small><b>{(slot === 0 ? selected : secondPlayer)?.name ?? 'Choose a player'}</b><span>{activeSlot === slot ? 'Searching this slot' : 'Change player'}</span></button>)}
+        }}><small>Player {slot + 1}</small>
+          {player && <PlayerPortrait key={player.id} player={player} />}
+          <b>{player?.name ?? 'Choose a player'}</b>
+          {player && <small>{player.position} · {player.teamAbbr}</small>}
+          {(slot === 0 ? report : secondReport) && <small className="gwb-slot-verdict">{(slot === 0 ? report : secondReport)?.indication}</small>}
+          <span>{activeSlot === slot ? 'Searching this slot' : 'Change player'}</span></button>;
+        })}
       </div>}
-      {comparing && <p className="gwb-muted" role="status">Search above to choose Player {activeSlot + 1}. Both outlooks use {formats.find((row) => row.value === format)?.label} scoring.</p>}
-      {(selected || comparing && secondPlayer) && <div className="gwb-selected-players" aria-label="Selected players">
-        {([selected, comparing ? secondPlayer : null]).map((player, slot) => player && <div key={slot}>
+      {comparing && <p className="gwb-muted" role="status">Search above for Player {activeSlot + 1} · {formats.find((row) => row.value === format)?.label} scoring.</p>}
+      {(selected || comparing && secondPlayer) && <div className="gwb-selected-players" data-comparing={comparing} aria-label="Selected players">
+        {([selected, comparing ? secondPlayer : null]).map((player, slot) => player && <div key={slot} data-slot={slot + 1}>
           <span>{comparing ? `Player ${slot + 1}: ` : ''}{player.name}</span>
           <button type="button" disabled={!!busy} aria-label={`Clear ${player.name}`} onClick={() => clearPlayer(slot === 0 ? 0 : 1)}>
             <X size={15} aria-hidden="true" />Clear player
@@ -208,6 +322,7 @@ export default function GamewireBot() {
         else void loadPlayers();
       }}>Retry</button></div>}
       {!comparing && !report && !busy && <div className="gwb-welcome"><Bot size={28} aria-hidden="true" /><h4>Your weekly player check-in.</h4><p>Search a QB, RB, WR or TE for Start/Sit guidance, estimates and published props.</p></div>}
+      {comparing && <MobileComparison reports={[report, secondReport]} players={[selected, secondPlayer]} />}
       {comparing ? <div className="gwb-comparison" aria-label="Side-by-side player comparison">
         {[report, secondReport].map((outlook, slot) => <section key={slot} aria-label={`Player ${slot + 1} outlook`}>
           {outlook ? <Breakdown report={outlook} /> : <div className="gwb-compare-empty"><Bot size={28} aria-hidden="true" /><h4>Player {slot + 1}</h4>

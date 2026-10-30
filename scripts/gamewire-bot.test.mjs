@@ -299,7 +299,7 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
   const reportRequests = [], timers = new Map();
   let stateIndex = 0, refIndex = 0, directoryCalls = 0, reportCalls = 0;
   const code = ts.transpileModule(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'),
-    { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const context = vm.createContext({ exports: {}, AbortController, Date, Error, window: {
     setTimeout(callback, delay) { const timer = setTimeout(callback, delay); timers.set(timer, callback); return timer; },
     clearTimeout(timer) { clearTimeout(timer); timers.delete(timer); },
@@ -341,7 +341,8 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
     return render();
   };
   const expire = () => { for (const [timer, callback] of timers) { clearTimeout(timer); timers.delete(timer); callback(); } };
-  return { render, find, byClass, search, reportRequests, expire, counts: () => ({ directoryCalls, reportCalls }) };
+  const renderChild = (node) => { stateIndex = 100; refIndex = 100; return node.type(node.props); };
+  return { render, renderChild, find, byClass, search, reportRequests, expire, counts: () => ({ directoryCalls, reportCalls }) };
 }
 test('Player search opens the lab, analyzes a unique match and keeps the report when closed', async () => {
   const ui = botWelcomeHarness();
@@ -398,7 +399,9 @@ test('GamewAIre density is scoped to desktop and the blue preview keeps accessib
   const phoneCss = botCss.slice(botCss.indexOf('@media (max-width: 600px)'));
   assert.match(phoneCss, /\.gwb\.gwb \.gwb-hero-search input \{ font-size: 16px;/);
   assert.doesNotMatch(phoneCss, /zoom:/);
-  assert.match(phoneCss, /\.gwb-comparison \{ grid-template-columns: 1fr;/);
+  assert.match(phoneCss, /\.gwb-comparison \{ display: none;/);
+  assert.match(phoneCss, /\.gwb-mobile-comparison \{ display: block;/);
+  assert.match(phoneCss, /\.gwb-compare-pair \{[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(phoneCss, /\.gwb-hero-title h3 \{ font-size: 23px;/);
   assert.match(phoneCss, /\.gwb-answer section \{ margin-top: 14px; padding-top: 12px;/);
   assert.match(botCss, /@media \(min-width: 1100px\) \{\s*\.gwb \{ zoom: \.94;/);
@@ -545,11 +548,69 @@ test('Estimate cards show receptions with catch units and concise blurbs without
   const breakdown = ui.byClass(tree, 'gwb-result').props.children;
   const rendered = breakdown.type(breakdown.props);
   assert.equal(ui.byClass(rendered, 'gwb-projection-evidence'), undefined);
-  const card = ui.byClass(rendered, 'gwb-projection');
+  const propLab = ui.find(rendered, (node) => node.type?.name === 'PropLab');
+  const card = ui.byClass(ui.renderChild(propLab), 'gwb-projection');
   assert.equal(card.props.children.filter(Boolean).length, 2);
   assert.equal(card.props.children.at(-1).props.children, projection.explanation);
   assert.deepEqual(card.props.children[0].props.children[1].props.children.props.children[0], 4.8);
   assert.match(JSON.stringify(card.props.children[0].props.children[1].props.children.props.children[1].props.children), /catches/);
+});
+test('Mobile comparison aligns real stats and estimates while keeping full analysis in accessible sections', async () => {
+  const first = { ...report(), workload: [{ label: 'Carries', average: 15.7, games: 3 }], production: [{ label: 'Rushing yards', average: 84, games: 3 }],
+    projections: [{ market: 'rush', label: 'Rushing yards', unit: 'yards', estimate: 82, limitedData: false }] };
+  const second = { ...report(), player: secondPlayer, workload: [{ label: 'Targets', average: 8.3, games: 2 }],
+    production: [{ label: 'Receiving yards', average: 53.7, games: 2 }], fantasyAverage: null,
+    projections: [{ market: 'receiving', label: 'Receiving yards', unit: 'yards', estimate: null, limitedData: true }] };
+  const ui = botWelcomeHarness({ players: [player, secondPlayer], loadReport: (id) => id === player.id ? first : second });
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-compare-button').props.onClick();
+  tree = await ui.search(secondPlayer.name);
+  const component = ui.find(tree, (node) => node.type?.name === 'MobileComparison');
+  let mobile = ui.renderChild(component);
+  const select = (name) => {
+    ui.find(mobile, (node) => node.props?.id === `gwb-compare-${name}-tab`).props.onClick();
+    mobile = ui.renderChild(component);
+  };
+  assert.equal(ui.find(mobile, (node) => node.props?.id === 'gwb-compare-overview-tab').props['aria-selected'], true);
+  const guidance = ui.find(mobile, (node) => node.type?.name === 'Guidance');
+  assert.equal(guidance.props.report, first);
+  assert.equal(ui.find(mobile, (node) => node.type?.name === 'Verdict').props.report, first);
+  select('stats');
+  assert.equal(ui.find(mobile, (node) => node.props?.role === 'tabpanel').props['aria-labelledby'], 'gwb-compare-stats-tab');
+  const table = ui.find(mobile, (node) => node.type?.name === 'ComparisonTable');
+  const rows = table.props.rows;
+  assert.deepEqual(Array.from(rows.find((row) => row.key === 'Carries').values, (cell) => cell.value), [15.7, null]);
+  assert.deepEqual(Array.from(rows.find((row) => row.key === 'Targets').values, (cell) => cell.value), [null, 8.3]);
+  assert.match(rows.find((row) => row.key === 'Targets').values[1].note, /2 recorded games/);
+  assert.equal(rows.find((row) => row.key === 'fantasy').values[1].value, null);
+  const markup = ui.renderChild(table);
+  assert.equal(markup.type, 'table');
+  select('props');
+  const estimates = ui.find(mobile, (node) => node.type?.name === 'ComparisonTable').props.rows;
+  assert.deepEqual(Array.from(estimates[0].values, (cell) => cell.value), [82, null]);
+  assert.deepEqual(Array.from(estimates[1].values, (cell) => cell.value), [null, null]);
+  assert.equal(estimates[1].values[1].note, 'Unavailable');
+  assert.equal(ui.find(mobile, (node) => node.type?.name === 'PropLab').props.report, first);
+  select('matchup');
+  assert.equal(ui.find(mobile, (node) => node.type?.name === 'Matchup').props.report, first);
+  select('sources');
+  assert.equal(ui.find(mobile, (node) => node.type?.name === 'Method').props.report, first);
+  assert.deepEqual(ui.counts(), { directoryCalls: 1, reportCalls: 2 }, 'Changing sections does not request new reports or modify values');
+});
+test('Mobile comparison keeps the completed player when another slot is empty or fails', async () => {
+  const ui = botWelcomeHarness({ players: [player, secondPlayer], loadReport(id) {
+    if (id === secondPlayer.id) throw new Error('Second report unavailable');
+    return report();
+  } });
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-compare-button').props.onClick();
+  tree = await ui.search(secondPlayer.name);
+  const component = ui.find(tree, (node) => node.type?.name === 'MobileComparison');
+  assert.equal(component.props.reports[0].player.id, player.id);
+  assert.equal(component.props.reports[1], null);
+  const mobile = ui.renderChild(component);
+  assert.ok(ui.find(mobile, (node) => node.type === 'p' && String(node.props.children).includes('use Retry')));
+  assert.match(ui.byClass(tree, 'gwb-error').props.children[0].props.children, /Second report unavailable/);
 });
 test('Ranking editor endpoints deny members and validate scope, position and duplicate players before publishing', async () => {
   const body = { action: 'save-rankings', season: 2026, week: 8, format: 'ppr', position: 'RB', playerIds: ['123'] };
