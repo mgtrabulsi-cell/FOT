@@ -428,7 +428,10 @@ test('Clear search removes typed text but preserves the selected player outlook'
 test('Clear player removes their outlook without fetching again', async () => {
   const ui = botWelcomeHarness();
   let tree = await ui.search(player.name);
-  ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${player.name}`).props.onClick(); tree = ui.render();
+  const analysis = ui.renderChild(ui.byClass(tree, 'gwb-result').props.children);
+  const close = ui.find(analysis, (node) => node.props?.['aria-label'] === `Clear ${player.name}`);
+  assert.equal(close.props.className, 'gwb-clear-player');
+  close.props.onClick(); tree = ui.render();
   assert.equal(ui.byClass(tree, 'gwb-result'), undefined);
   assert.equal(ui.byClass(tree, 'gwb-selected-players'), undefined);
   assert.equal(ui.byClass(tree, 'gwb-followups'), undefined);
@@ -442,13 +445,15 @@ test('Clearing either comparison player preserves the other and allows refilling
   let tree = await ui.search(player.name);
   ui.byClass(tree, 'gwb-compare-button').props.onClick();
   tree = await ui.search(secondPlayer.name);
-  ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${player.name}`).props.onClick(); tree = ui.render();
+  const first = ui.renderChild(ui.byClass(tree, 'gwb-comparison').props.children[0].props.children);
+  ui.find(first, (node) => node.props?.['aria-label'] === `Clear ${player.name}`).props.onClick(); tree = ui.render();
   let columns = ui.byClass(tree, 'gwb-comparison').props.children;
   assert.equal(columns[0].props.children.props.className, 'gwb-compare-empty');
   assert.equal(columns[1].props.children.props.report.player.id, secondPlayer.id);
   assert.equal(ui.byClass(tree, 'gwb-compare-slots').props.children[0].props['aria-pressed'], true);
   tree = await ui.search(player.name);
-  ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${secondPlayer.name}`).props.onClick(); tree = ui.render();
+  const mobile = ui.renderChild(ui.find(tree, (node) => node.type?.name === 'MobileComparison'));
+  ui.find(mobile, (node) => node.props?.['aria-label'] === `Clear ${secondPlayer.name}`).props.onClick(); tree = ui.render();
   columns = ui.byClass(tree, 'gwb-comparison').props.children;
   assert.equal(columns[0].props.children.props.report.player.id, player.id);
   assert.equal(columns[1].props.children.props.className, 'gwb-compare-empty');
@@ -456,6 +461,23 @@ test('Clearing either comparison player preserves the other and allows refilling
   await new Promise(setImmediate); tree = ui.render();
   assert.equal(ui.reportRequests.at(-1).id, player.id);
   assert.equal(ui.byClass(tree, 'gwb-comparison').props.children[1].props.children.props.className, 'gwb-compare-empty');
+});
+test('In-box clear controls remain available for failed reports and disabled during refresh', async () => {
+  let fail = true;
+  const ui = botWelcomeHarness({ loadReport: () => { if (fail) throw new Error('Feed unavailable'); return report(); } });
+  let tree = await ui.search(player.name);
+  const failedClose = ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${player.name}`);
+  assert.equal(failedClose.props.className, 'gwb-clear-player');
+  failedClose.props.onClick();
+  assert.equal(ui.find(ui.render(), (node) => node.props?.['aria-label'] === `Clear ${player.name}`), undefined);
+  fail = false; tree = await ui.search(player.name);
+  const breakdown = ui.byClass(tree, 'gwb-result').props.children;
+  const busyBox = ui.renderChild({ ...breakdown, props: { ...breakdown.props, busy: true } });
+  assert.equal(ui.find(busyBox, (node) => node.props?.className === 'gwb-clear-player').props.disabled, true);
+  const css = readFileSync(new URL('../src/gamewire-bot.css', import.meta.url), 'utf8');
+  assert.match(css, /\.gwb \.gwb-hero-search input:focus \{ outline: none; box-shadow: none;/);
+  assert.match(css, /\.gwb-hero-search:focus-within \{ border-color: #00aaff;/);
+  assert.match(css, /\.gwb \.gwb-clear-player \{[^}]*top: 6px; right: 6px;/);
 });
 test('Searching a new player replaces the first player with one analysis and no chat area', async () => {
   const ui = botWelcomeHarness({ players: [player, secondPlayer] });

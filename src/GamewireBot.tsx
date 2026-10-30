@@ -56,8 +56,9 @@ function Verdict({ report }: { report: BotReport }) {
     {editorial.ranking && <p className="gwb-muted">This weekly ranking matches your selected scoring format and adds a bounded editorial adjustment to available estimates.</p>}
   </section>;
 }
-function Breakdown({ report }: { report: BotReport }) {
+function Breakdown({ report, onClear, busy }: { report: BotReport; onClear: () => void; busy: boolean }) {
   return <article className="gwb-answer">
+    <button className="gwb-clear-player" type="button" disabled={busy} aria-label={`Clear ${report.player.name}`} title="Clear player" onClick={onClear}><X size={18} aria-hidden="true" /></button>
     <header><BotMark compact /><div><b>Gamew<span className="gwb-ai">AI</span>re</b><span>PLAYER ANALYSIS · Week {report.week} · {report.season} · {formats.find((row) => row.value === report.format)?.label}</span></div></header>
     <div className="gwb-player-line"><PlayerPortrait key={report.player.id} player={report.player} /><div><h4>{report.player.name}</h4><span>{report.player.position} · {report.player.team}</span>
       <div className="gwb-tags"><span>PLAYER ANALYSIS</span><span>FANTASY</span></div></div></div>
@@ -107,7 +108,7 @@ function ComparisonTable({ rows, players, caption }: { rows: ComparisonRow[]; pl
     })}</tbody>
   </table>;
 }
-function MobileComparison({ reports, players }: { reports: [BotReport | null, BotReport | null]; players: [BotPlayer | null, BotPlayer | null] }) {
+function MobileComparison({ reports, players, onClear, busy }: { reports: [BotReport | null, BotReport | null]; players: [BotPlayer | null, BotPlayer | null]; onClear: (slot: PlayerSlot) => void; busy: boolean }) {
   const [tab, setTab] = useState<ComparisonTab>('overview');
   const stats = reports.map((report) => report ? [...report.workload, ...report.production] : []);
   const labels = [...new Set(stats.flatMap((rows) => rows.map((row) => row.label)))];
@@ -130,6 +131,7 @@ function MobileComparison({ reports, players }: { reports: [BotReport | null, Bo
   });
   const playerContent = (render: (report: BotReport) => React.ReactNode) => <div className="gwb-compare-pair">{reports.map((report, slot) =>
     <article key={slot} className="gwb-compare-detail" aria-label={`${players[slot]?.name ?? `Player ${slot + 1}`} ${tab}`}>
+      {players[slot] && <button className="gwb-clear-player" type="button" disabled={busy} aria-label={`Clear ${players[slot]!.name}`} title="Clear player" onClick={() => onClear(slot === 0 ? 0 : 1)}><X size={18} aria-hidden="true" /></button>}
       <h5>{players[slot]?.name ?? `Player ${slot + 1}`}</h5>
       {report ? render(report) : <p className="gwb-muted">Choose a player above. If their report could not load, use Retry.</p>}
     </article>)}</div>;
@@ -308,14 +310,6 @@ export default function GamewireBot() {
         })}
       </div>}
       {comparing && <p className="gwb-muted" role="status">Search above for Player {activeSlot + 1} · {formats.find((row) => row.value === format)?.label} scoring.</p>}
-      {(selected || comparing && secondPlayer) && <div className="gwb-selected-players" data-comparing={comparing} aria-label="Selected players">
-        {([selected, comparing ? secondPlayer : null]).map((player, slot) => player && <div key={slot} data-slot={slot + 1}>
-          <span>{comparing ? `Player ${slot + 1}: ` : ''}{player.name}</span>
-          <button type="button" disabled={!!busy} aria-label={`Clear ${player.name}`} onClick={() => clearPlayer(slot === 0 ? 0 : 1)}>
-            <X size={15} aria-hidden="true" />Clear player
-          </button>
-        </div>)}
-      </div>}
       {directory?.warnings.map((warning) => <p className="gwb-warning" key={warning}>{warning}</p>)}
       {query.length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL players">
         {matches.map((player) => <button key={player.id} disabled={!!busy} onClick={() => { void analyze(player); }}><span>{player.name}</span><small>{player.teamAbbr} · {player.position}</small><ArrowUp size={15} aria-hidden="true" /></button>)}
@@ -325,14 +319,18 @@ export default function GamewireBot() {
         if (lastAttempt.current === 'report' && lastReports.current.length) void loadOutlooks(lastReports.current.filter(({ slot }) => comparing || slot === 0));
         else void loadPlayers();
       }}>Retry</button></div>}
-      {!comparing && !report && !busy && <div className="gwb-welcome"><Bot size={28} aria-hidden="true" /><h4>Your weekly player check-in.</h4><p>Search a QB, RB, WR or TE for Start/Sit guidance, estimates and published props.</p></div>}
-      {comparing && <MobileComparison reports={[report, secondReport]} players={[selected, secondPlayer]} />}
+      {!comparing && !report && !busy && <div className="gwb-welcome">
+        {selected && <button className="gwb-clear-player" type="button" aria-label={`Clear ${selected.name}`} title="Clear player" onClick={() => clearPlayer(0)}><X size={18} aria-hidden="true" /></button>}
+        <Bot size={28} aria-hidden="true" /><h4>Your weekly player check-in.</h4><p>Search a QB, RB, WR or TE for Start/Sit guidance, estimates and published props.</p></div>}
+      {comparing && <MobileComparison reports={[report, secondReport]} players={[selected, secondPlayer]} onClear={clearPlayer} busy={!!busy} />}
       {comparing ? <div className="gwb-comparison" aria-label="Side-by-side player comparison">
         {[report, secondReport].map((outlook, slot) => <section key={slot} aria-label={`Player ${slot + 1} outlook`}>
-          {outlook ? <Breakdown report={outlook} /> : <div className="gwb-compare-empty"><Bot size={28} aria-hidden="true" /><h4>Player {slot + 1}</h4>
+          {outlook ? <Breakdown report={outlook} onClear={() => clearPlayer(slot === 0 ? 0 : 1)} busy={!!busy} /> : <div className="gwb-compare-empty">
+            {(slot === 0 ? selected : secondPlayer) && <button className="gwb-clear-player" type="button" disabled={!!busy} aria-label={`Clear ${(slot === 0 ? selected : secondPlayer)!.name}`} title="Clear player" onClick={() => clearPlayer(slot === 0 ? 0 : 1)}><X size={18} aria-hidden="true" /></button>}
+            <Bot size={28} aria-hidden="true" /><h4>Player {slot + 1}</h4>
             <p>{(slot === 0 ? selected : secondPlayer)?.name ?? 'Choose a player using search above.'}</p>{!busy && <button onClick={() => { setActiveSlot(slot === 0 ? 0 : 1); searchInput.current?.focus(); }}>Choose player</button>}</div>}
         </section>)}
-      </div> : report && <div className="gwb-result" aria-label="Player analysis"><Breakdown report={report} /></div>}
+      </div> : report && <div className="gwb-result" aria-label="Player analysis"><Breakdown report={report} onClear={() => clearPlayer(0)} busy={!!busy} /></div>}
       {comparing && (selected || secondPlayer) && <button className="gwb-compare-refresh" disabled={!!busy} onClick={() => {
         const requests: OutlookRequest[] = [];
         if (selected) requests.push({ player: selected, slot: 0 });
