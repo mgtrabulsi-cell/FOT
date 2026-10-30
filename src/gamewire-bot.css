@@ -140,6 +140,10 @@
 .gwb-compare-empty h4 { margin: 12px 0; color: white; }
 .gwb .gwb-compare-empty button { border: 1px solid #087bc4; border-radius: 10px; background: #082540; }
 .gwb .gwb-compare-refresh { margin-top: 16px; }
+.gwb-selected-players { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.gwb-selected-players > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; min-width: 0; padding: 6px 10px 6px 14px; border: 1px solid #34516e; border-radius: 12px; background: #0b1c2f; }
+.gwb-selected-players > div > span { font-size: 13px; overflow-wrap: anywhere; }
+.gwb .gwb-selected-players button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px 10px; border: 1px solid #52677e; border-radius: 9px; color: #d3e6f9; background: #132b42; font-size: 12px; }
 @media (min-width: 1100px) {
   .gwb-hero-main { min-height: 205px; padding: 28px; }
   .gwb-panel { padding: 18px; }

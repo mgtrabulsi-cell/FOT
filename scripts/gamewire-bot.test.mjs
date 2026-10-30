@@ -389,6 +389,52 @@ test('GamewAIre density is scoped to desktop and the blue preview keeps accessib
 });
 const secondPlayer = { ...player, id: '456', name: 'Other Receiver', position: 'WR' };
 const thirdPlayer = { ...player, id: '789', name: 'Third Tight End', position: 'TE' };
+test('Clear search removes typed text but preserves the selected player outlook', async () => {
+  const ui = botWelcomeHarness();
+  let tree = await ui.search(player.name);
+  ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.onChange({ target: { value: 'New search' } });
+  tree = ui.render();
+  const clear = ui.find(tree, (node) => node.props?.['aria-label'] === 'Clear player search');
+  assert.equal(clear.props.type, 'button');
+  clear.props.onClick(); tree = ui.render();
+  assert.equal(ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.value, '');
+  assert.equal(ui.byClass(tree, 'gwb-search-results'), undefined);
+  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 1);
+});
+test('Clear player removes their outlook, question and follow-up history without fetching again', async () => {
+  const ui = botWelcomeHarness();
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-followups').props.children[0][0].props.onClick(); tree = ui.render();
+  ui.find(tree, (node) => node.props?.id === 'gwb-question').props.onChange({ target: { value: 'His props?' } }); tree = ui.render();
+  ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${player.name}`).props.onClick(); tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children.length, 0);
+  assert.equal(ui.byClass(tree, 'gwb-selected-players'), undefined);
+  assert.equal(ui.byClass(tree, 'gwb-followups'), undefined);
+  ui.find(tree, (node) => node.type === 'select').props.onChange({ target: { value: 'half' } });
+  assert.equal(ui.counts().reportCalls, 1, 'Cleared players cannot be refreshed by a scoring change');
+  tree = await ui.search(player.name);
+  assert.equal(ui.find(tree, (node) => node.props?.id === 'gwb-question').props.value, '');
+});
+test('Clearing either comparison player preserves the other and allows refilling the cleared slot', async () => {
+  const ui = botWelcomeHarness({ players: [player, secondPlayer] });
+  let tree = await ui.search(player.name);
+  ui.byClass(tree, 'gwb-compare-button').props.onClick();
+  tree = await ui.search(secondPlayer.name);
+  ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${player.name}`).props.onClick(); tree = ui.render();
+  let columns = ui.byClass(tree, 'gwb-comparison').props.children;
+  assert.equal(columns[0].props.children.props.className, 'gwb-compare-empty');
+  assert.equal(columns[1].props.children.props.report.player.id, secondPlayer.id);
+  assert.equal(ui.byClass(tree, 'gwb-compare-slots').props.children[0].props['aria-pressed'], true);
+  tree = await ui.search(player.name);
+  ui.find(tree, (node) => node.props?.['aria-label'] === `Clear ${secondPlayer.name}`).props.onClick(); tree = ui.render();
+  columns = ui.byClass(tree, 'gwb-comparison').props.children;
+  assert.equal(columns[0].props.children.props.report.player.id, player.id);
+  assert.equal(columns[1].props.children.props.className, 'gwb-compare-empty');
+  ui.find(tree, (node) => node.type === 'select').props.onChange({ target: { value: 'half' } });
+  await new Promise(setImmediate); tree = ui.render();
+  assert.equal(ui.reportRequests.at(-1).id, player.id);
+  assert.equal(ui.byClass(tree, 'gwb-comparison').props.children[1].props.children.props.className, 'gwb-compare-empty');
+});
 test('Searching a new player replaces the first player and clears their follow-up history', async () => {
   const ui = botWelcomeHarness({ players: [player, secondPlayer] });
   let tree = await ui.search(player.name);

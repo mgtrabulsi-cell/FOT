@@ -116,6 +116,14 @@ export default function GamewireBot() {
     }
     return loadOutlooks([{ player, slot }], nextFormat);
   }
+  function clearPlayer(slot: PlayerSlot) {
+    if (busy) return;
+    if (slot === 0) { setSelected(null); setReport(null); setMessages([]); }
+    else { setSecondPlayer(null); setSecondReport(null); }
+    lastReports.current = lastReports.current.filter((request) => request.slot !== slot);
+    setActiveSlot(slot); setSearch(''); setQuestion(''); setError('');
+    searchInput.current?.focus();
+  }
   function followUp(topic: BotTopic | null, prompt: string) {
     if (!report || busy) return;
     if (report.matchup && report.indication !== 'Game locked' && Date.parse(report.matchup.start) <= Date.now()) {
@@ -160,6 +168,9 @@ export default function GamewireBot() {
           <input id="gwb-player-search" ref={searchInput} value={search} disabled={busy === 'report'} maxLength={80}
             placeholder="Search a player for start/sit, props or matchups..." aria-controls={open && query.length >= 2 ? 'gwb-player-results' : undefined}
             onFocus={openBot} onChange={(event) => { setSearch(event.target.value); openBot(); }} />
+          {search && <button type="button" disabled={busy === 'report'} aria-label="Clear player search" onClick={() => {
+            setSearch(''); searchInput.current?.focus();
+          }}><X size={18} aria-hidden="true" /></button>}
           <button type="submit" disabled={!!busy} aria-label="Search NFL players"><Send size={23} aria-hidden="true" /></button>
         </form>
       </div>
@@ -188,6 +199,14 @@ export default function GamewireBot() {
         }}><small>Player {slot + 1}</small><b>{(slot === 0 ? selected : secondPlayer)?.name ?? 'Choose a player'}</b><span>{activeSlot === slot ? 'Searching this slot' : 'Change player'}</span></button>)}
       </div>}
       {comparing && <p className="gwb-muted" role="status">Search above to choose Player {activeSlot + 1}. Both outlooks use {formats.find((row) => row.value === format)?.label} scoring.</p>}
+      {(selected || comparing && secondPlayer) && <div className="gwb-selected-players" aria-label="Selected players">
+        {([selected, comparing ? secondPlayer : null]).map((player, slot) => player && <div key={slot}>
+          <span>{comparing ? `Player ${slot + 1}: ` : ''}{player.name}</span>
+          <button type="button" disabled={!!busy} aria-label={`Clear ${player.name}`} onClick={() => clearPlayer(slot === 0 ? 0 : 1)}>
+            <X size={15} aria-hidden="true" />Clear player
+          </button>
+        </div>)}
+      </div>}
       {directory?.warnings.map((warning) => <p className="gwb-warning" key={warning}>{warning}</p>)}
       {query.length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL players">
         {matches.map((player) => <button key={player.id} disabled={!!busy} onClick={() => { void analyze(player); }}><span>{player.name}</span><small>{player.teamAbbr} · {player.position}</small><ArrowUp size={15} aria-hidden="true" /></button>)}
