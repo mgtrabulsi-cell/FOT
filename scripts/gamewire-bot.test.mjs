@@ -3,6 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import * as jsxRuntime from 'react/jsx-runtime';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as bot from '../supabase/functions/_shared/gamewireBot.ts';
@@ -279,4 +280,96 @@ test('Bot client topics are constrained and UI remains owner-gated with accessib
   assert.match(ui, /aria-expanded=/); assert.match(ui, /Conversational AI not enabled/); assert.match(ui, /role="alert"/);
   assert.match(ui, /controller\.current\?\.abort/);
   assert.match(ui, /Questions stay in this tab/);
+});
+
+function botWelcomeHarness({ directoryError = false } = {}) {
+  const state = [], refs = [];
+  let stateIndex = 0, refIndex = 0, directoryCalls = 0, reportCalls = 0;
+  const code = ts.transpileModule(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+  const context = vm.createContext({ exports: {}, AbortController, Date, Error, window: { setTimeout, clearTimeout }, require: (name) => {
+    if (name === 'react/jsx-runtime') return jsxRuntime;
+    if (name === 'react') return {
+      useState(initial) {
+        const index = stateIndex++;
+        if (!(index in state)) state[index] = typeof initial === 'function' ? initial() : initial;
+        return [state[index], (next) => { state[index] = typeof next === 'function' ? next(state[index]) : next; }];
+      },
+      useRef(initial) { const index = refIndex++; return refs[index] ??= { current: initial }; },
+      useEffect() {},
+    };
+    if (name === './services/gamewireBot') return {
+      async loadBotDirectory() { directoryCalls++; if (directoryError) throw new Error('Roster feed unavailable'); return { players: [player], warnings: [] }; },
+      async loadBotReport() { reportCalls++; return report(); },
+    };
+    if (name === 'lucide-react') return new Proxy({}, { get: (_, icon) => icon });
+    return {};
+  } });
+  vm.runInContext(code, context);
+  const render = () => { stateIndex = 0; refIndex = 0; return context.exports.default(); };
+  const find = (root, predicate) => {
+    if (!root || typeof root !== 'object') return undefined;
+    if (predicate(root)) return root;
+    const children = Array.isArray(root) ? root : root.props?.children;
+    for (const child of Array.isArray(children) ? children : [children]) {
+      const found = find(child, predicate); if (found) return found;
+    }
+  };
+  const byClass = (tree, name) => find(tree, (node) => node.props?.className === name);
+  return { render, find, byClass, counts: () => ({ directoryCalls, reportCalls }) };
+}
+test('Welcome search opens the preview, analyzes a unique match and keeps the conversation when closed', async () => {
+  const ui = botWelcomeHarness();
+  let tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-toggle').props['aria-expanded'], false);
+  ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.onFocus();
+  await new Promise(setImmediate);
+  tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-toggle').props['aria-expanded'], true);
+  ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.onChange({ target: { value: 'Test Runner' } });
+  tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-search-results').props.children[0].length, 1);
+  ui.byClass(tree, 'gwb-hero-search').props.onSubmit({ preventDefault() {} });
+  await new Promise(setImmediate);
+  tree = ui.render();
+  const conversation = ui.byClass(tree, 'gwb-conversation').props.children;
+  assert.equal(conversation.length, 1);
+  assert.match(conversation[0].props.children[0].props.children, /Test Runner/);
+  ui.byClass(tree, 'gwb-toggle').props.onClick();
+  tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-panel'), undefined);
+  ui.byClass(tree, 'gwb-toggle').props.onClick();
+  tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-conversation').props.children[0].key, conversation[0].key);
+  assert.deepEqual(ui.counts(), { directoryCalls: 1, reportCalls: 1 });
+});
+test('Welcome search survives close/reopen and displays roster feed errors with a retry', async () => {
+  const ui = botWelcomeHarness({ directoryError: true });
+  let tree = ui.render();
+  ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.onChange({ target: { value: 'Runner' } });
+  await new Promise(setImmediate);
+  tree = ui.render();
+  assert.equal(ui.byClass(tree, 'gwb-error').props.role, 'alert');
+  assert.equal(ui.byClass(tree, 'gwb-error').props.children[0].props.children, 'Roster feed unavailable');
+  assert.equal(ui.byClass(tree, 'gwb-error').props.children[1].props.children, 'Retry');
+  ui.byClass(tree, 'gwb-toggle').props.onClick();
+  tree = ui.render();
+  assert.equal(ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.value, 'Runner');
+  ui.byClass(tree, 'gwb-toggle').props.onClick();
+  await new Promise(setImmediate);
+  tree = ui.render();
+  assert.equal(ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.value, 'Runner');
+  assert.equal(ui.counts().directoryCalls, 2);
+});
+test('GamewAIre density is scoped to desktop and the blue preview keeps accessible phone input sizes', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  const botCss = readFileSync(new URL('../src/gamewire-bot.css', import.meta.url), 'utf8');
+  assert.match(app, /view === 'Gamewaire' \? 'page-wrap gamewaire-page'/);
+  assert.match(css, /@media \(min-width: 1100px\) \{\s*\.page-wrap\.gamewaire-page \{ zoom: \.9;/);
+  assert.match(botCss, /\.gwb-wordmark \{[^}]*var\(--display/);
+  assert.match(botCss, /\.gwb-prop-lab \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  const phoneCss = botCss.slice(botCss.indexOf('@media (max-width: 600px)'));
+  assert.match(phoneCss, /\.gwb\.gwb \.gwb-hero-search input \{ font-size: 16px;/);
+  assert.doesNotMatch(phoneCss, /zoom:/);
 });

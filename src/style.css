@@ -154,6 +154,9 @@ button { color: inherit; }
 .account-setting-form > button:disabled { opacity: .6; cursor: wait; }
 .page-wrap { max-width: 1440px; padding: 31px 36px 25px; margin: 0 auto; }
 @media (min-width: 761px) { .page-wrap.players-zoom { zoom: 1.25; } }
+@media (min-width: 1100px) {
+  .page-wrap.gamewaire-page { zoom: .9; max-width: 1720px; padding-top: 20px; }
+}
 .page-heading { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
 .wire-page { padding-top: 8px; }
 .wire-score-content { min-width: 0; }

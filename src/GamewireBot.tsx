@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Bot, ChevronDown, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { Activity, ArrowUp, BarChart3, Bot, BrainCircuit, ChevronDown, RefreshCw, Search, Send, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
 import { botTopic, loadBotDirectory, loadBotReport } from './services/gamewireBot';
 import type { BotDirectory, BotFormat, BotPlayer, BotReport, BotTopic } from './services/gamewireBot';
 import './gamewire-bot.css';
@@ -74,6 +74,7 @@ export default function GamewireBot() {
   const [report, setReport] = useState<BotReport | null>(null), [messages, setMessages] = useState<Message[]>([]), [question, setQuestion] = useState('');
   const [busy, setBusy] = useState<'directory' | 'report' | null>(null), [error, setError] = useState('');
   const controller = useRef<AbortController | null>(null), messageId = useRef(0), lastMessage = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const lastAttempt = useRef<'directory' | 'report'>('directory');
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
   useEffect(() => { if (messages.length) lastMessage.current?.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }, [messages.length]);
@@ -102,19 +103,50 @@ export default function GamewireBot() {
   }
   const query = search.trim().toLocaleLowerCase();
   const matches = query.length >= 2 ? directory?.players.filter((player) => `${player.name} ${player.teamAbbr}`.toLocaleLowerCase().includes(query)).slice(0, 10) ?? [] : [];
+  function openBot() {
+    setOpen(true);
+    if (!directory && !busy) void loadPlayers();
+  }
   return <section className="gwb" aria-label="GameWire Bot owner preview">
-    <button className="gwb-toggle" aria-expanded={open} aria-controls="gamewire-bot-panel" onClick={() => { setOpen(!open); if (!open && !directory && !busy) void loadPlayers(); }}>
-      <span className="gwb-brand-icon"><Bot size={28} aria-hidden="true" /></span><span className="gwb-toggle-text"><span className="gwb-eyebrow">GAMEWAIRE LAB · OWNER PREVIEW</span><strong>Meet your <em>GameWire Bot.</em></strong><span>One player. This week. A clearer outlook.</span></span>
-      <span className="gwb-open-label">{open ? 'Close' : 'Open Bot'}</span><ChevronDown size={20} className={open ? 'gwb-chevron-open' : ''} aria-hidden="true" />
-    </button>
+    <header className="gwb-hero">
+      <div className="gwb-hero-main">
+        <div className="gwb-hero-robot" aria-hidden="true"><Bot strokeWidth={1.6} /><Activity className="gwb-robot-pulse" /></div>
+        <div className="gwb-hero-copy">
+          <div className="gwb-wordmark">Gamew<strong>AI</strong>re<Activity aria-hidden="true" /></div>
+          <span className="gwb-hero-kicker">SPORTS ANALYST · OWNER PREVIEW</span>
+          <div className="gwb-hero-title"><h3>Meet your Gamew<strong>AI</strong>re Bot.</h3><span className="gwb-preview-badge"><span />PREVIEW</span></div>
+          <p>One player. Real data. Smarter insights.</p>
+        </div>
+        <button className="gwb-toggle" aria-expanded={open} aria-controls="gamewire-bot-panel" onClick={() => { if (open) setOpen(false); else openBot(); }}>
+          {open ? 'Close' : 'Open Bot'}{open ? <X size={18} aria-hidden="true" /> : <ChevronDown size={18} aria-hidden="true" />}
+        </button>
+        <svg className="gwb-hero-pulse" viewBox="0 0 400 130" fill="none" aria-hidden="true"><path d="M0 70H210L222 94L246 10L268 122L286 56L300 70H400" /></svg>
+      </div>
+      <div className="gwb-hero-footer">
+        <div className="gwb-hero-features" aria-label="Bot features">
+          <div><BarChart3 aria-hidden="true" /><span><b>Real Data</b><small>Stats, trends &amp; matchups</small></span></div>
+          <div><BrainCircuit aria-hidden="true" /><span><b>Matchup Analysis</b><small>Verified weekly context</small></span></div>
+          <div><Target aria-hidden="true" /><span><b>Player Focused</b><small>A clearer outlook</small></span></div>
+        </div>
+        <form className="gwb-hero-search" onSubmit={(event) => {
+          event.preventDefault(); openBot();
+          if (matches.length === 1 && !busy) void analyze(matches[0]);
+          else searchInput.current?.focus();
+        }}>
+          <Search size={22} aria-hidden="true" /><label className="gwb-sr-only" htmlFor="gwb-player-search">Find an NFL player</label>
+          <input id="gwb-player-search" ref={searchInput} value={search} disabled={busy === 'report'} maxLength={80}
+            placeholder="Search a player for start/sit, props or matchups..." aria-controls={open && query.length >= 2 ? 'gwb-player-results' : undefined}
+            onFocus={openBot} onChange={(event) => { setSearch(event.target.value); openBot(); }} />
+          <button type="submit" disabled={!!busy} aria-label="Search NFL players"><Send size={23} aria-hidden="true" /></button>
+        </form>
+      </div>
+    </header>
     {open && <div id="gamewire-bot-panel" className="gwb-panel">
       <div className="gwb-mode"><ShieldCheck size={16} aria-hidden="true" /><span>Owner-only · Verified NFL data · Conversational AI not enabled</span></div>
       <div className="gwb-controls"><label>League scoring<select value={format} disabled={!!busy} onChange={(event) => {
         const nextFormat = formats.find((row) => row.value === event.target.value)?.value;
         if (nextFormat) { setFormat(nextFormat); if (selected) void analyze(selected, nextFormat); }
       }}>{formats.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        <label className="gwb-search-label">Find an NFL player<span><Search size={17} aria-hidden="true" /><input value={search} disabled={!directory || !!busy} placeholder={directory ? 'Search name or team...' : 'Loading NFL players...'} maxLength={80}
-          aria-controls="gwb-player-results" onChange={(event) => setSearch(event.target.value)} /></span></label>
         <button className="gwb-icon-button" disabled={!!busy} onClick={() => { void loadPlayers(); }} aria-label="Refresh NFL player search"><RefreshCw size={17} aria-hidden="true" /></button></div>
       {directory?.warnings.map((warning) => <p className="gwb-warning" key={warning}>{warning}</p>)}
       {query.length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL players">

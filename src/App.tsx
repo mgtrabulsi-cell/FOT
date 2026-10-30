@@ -1216,7 +1216,7 @@ function App() {
           )}
         </div>
       </header>
-      <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : 'page-wrap'}>
+      <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : view === 'Gamewaire' ? 'page-wrap gamewaire-page' : 'page-wrap'}>
         <PullToRefresh />
         {analystUnread.error && <p className="feed-warning" role="status">{analystUnread.error}</p>}
         <div className="page-heading">
