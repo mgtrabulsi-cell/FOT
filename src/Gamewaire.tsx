@@ -3,6 +3,7 @@ import { loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames
 import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
 import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
+import { loadPublishedNFLWeek } from './services/gamewairePublishedWeek';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import './gamewaire.css';
 import GamewairePickOrder from './GamewairePickOrder';
@@ -226,8 +227,22 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
   const [stretches, setStretches] = useState<StretchPick[]>([]);
   const [resultsView, setResultsView] = useState<'top' | 'leans' | 'all'>('top');
   const [section, setSection] = useState<'bot' | 'bets'>('bot');
+  const [memberWeek, setMemberWeek] = useState<number | null>(null);
+  const [weekSchedule, setWeekSchedule] = useState<Awaited<ReturnType<typeof loadPublishedNFLWeek>> | null>(null);
+  const [weekError, setWeekError] = useState(''), [weekLoading, setWeekLoading] = useState(false);
+  const [weekRetry, setWeekRetry] = useState(0);
   useEffect(() => subscribeForegroundRefresh(() => setRefresh((value) => value + 1)), []);
   useEffect(() => subscribePickOrderRefresh(() => setRefresh((value) => value + 1)), []);
+  useEffect(() => {
+    if (memberSport !== 'NFL') return;
+    const controller = new AbortController();
+    setWeekLoading(true); setWeekError('');
+    void loadPublishedNFLWeek(memberWeek, controller.signal).then((schedule) => {
+      if (!controller.signal.aborted) setWeekSchedule(schedule);
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setWeekError(errorMessage(cause)); })
+      .finally(() => { if (!controller.signal.aborted) setWeekLoading(false); });
+    return () => controller.abort();
+  }, [memberSport, memberWeek, weekRetry]);
   useEffect(() => {
     let active = true;
     const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 20_000);
@@ -259,19 +274,24 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
   const matchingRuns = reviewRuns.filter((run) => run.sport === sport && nbaCalendarDate(new Date(run.event_start)) === date
     && (!eventId || run.event_id === eventId));
   const report = matchingRuns.find((run) => run.id === selectedRun) ?? matchingRuns[0];
-  const memberGames = published.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate);
+  const matchesPublishedPeriod = (game: { sport: Sport; event_id: string; event_start: string }) => memberSport === 'NFL'
+    ? !weekLoading && !weekError && !!weekSchedule && (memberWeek === null || weekSchedule.week === memberWeek) && game.sport === 'NFL' && weekSchedule.eventIds.includes(game.event_id)
+    : nbaCalendarDate(new Date(game.event_start)) === memberDate;
+  const memberGames = published.filter((game) => (memberSport === 'all' || game.sport === memberSport) && matchesPublishedPeriod(game));
   const memberReport = memberGames.find((game) => game.event_id === memberGame);
   const candidateView = !!status?.canAnalyze && pickView === 'candidates';
-  const visibleLeans = leans.filter((game) => (memberSport === 'all' || game.sport === memberSport) && nbaCalendarDate(new Date(game.event_start)) === memberDate
+  const visibleLeans = leans.filter((game) => (memberSport === 'all' || game.sport === memberSport) && matchesPublishedPeriod(game)
     && (!memberGame || game.event_id === memberGame));
   const matchingSelections = publishedSelections(memberGame ? (memberReport ? [memberReport] : []) : memberGames, visibleLeans);
   const dateSelections = publishedSelections(
     published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate),
     leans.filter((game) => nbaCalendarDate(new Date(game.event_start)) === memberDate));
+  const orderDates = memberSport === 'NFL'
+    ? [...new Set(matchingSelections.map((pick) => nbaCalendarDate(new Date(pick.start))))].sort() : [memberDate];
   const publishedPicks = orderedTopPicks(matchingSelections, orders).slice(0, 5);
   const publishedBestBets = bestBetLabels(publishedPicks);
   const gameOptions = [...memberGames, ...leans.filter((game) => (memberSport === 'all' || game.sport === memberSport)
-    && nbaCalendarDate(new Date(game.event_start)) === memberDate && !memberGames.some((publishedGame) => publishedGame.event_id === game.event_id))];
+    && matchesPublishedPeriod(game) && !memberGames.some((publishedGame) => publishedGame.event_id === game.event_id))];
   const refreshHistory = () => setRefresh((value) => value + 1);
   const openReport = (run: AnalysisRun) => {
     setSport(run.sport); setDate(nbaCalendarDate(new Date(run.event_start))); setEventId(run.event_id); setSettings(fullAnalysisSettings(run.settings, run.sport));
@@ -424,7 +444,14 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     </div>}
     {!candidateView && <section aria-label="Game picks">
       <div className="gai-form">
-        <label>Game date (Eastern)<input type="date" value={memberDate} onChange={(event) => { setMemberDate(event.target.value); setMemberGame(''); }} /></label>
+        {memberSport === 'NFL' ? <label>NFL regular-season week{weekSchedule ? ` · ${weekSchedule.season}` : ''}
+          <select value={memberWeek ?? weekSchedule?.week ?? ''} disabled={weekLoading} onChange={(event) => { setMemberWeek(Number(event.target.value)); setMemberGame(''); }}>
+            {!memberWeek && !weekSchedule && <option value="">Current week</option>}
+            {Array.from({ length: 18 }, (_, index) => <option key={index + 1} value={index + 1}>Week {index + 1}</option>)}
+          </select></label>
+        : <label>Game date (Eastern)<input className="gai-published-date" type="date" value={memberDate} onChange={(event) => { setMemberDate(event.target.value); setMemberGame(''); }} /></label>}
+        {memberSport === 'NFL' && weekLoading && <p role="status">Loading NFL week…</p>}
+        {memberSport === 'NFL' && weekError && <p role="alert" className="feed-warning">{weekError} <button type="button" onClick={() => setWeekRetry((value) => value + 1)}>Retry week</button></p>}
         <label>Game<select value={memberGame} onChange={(event) => setMemberGame(event.target.value)}>
           <option value="">All analyzed games</option>
           {gameOptions.map((game) => <option key={game.event_id} value={game.event_id}>{game.matchup} · {stamp(game.event_start)}</option>)}
@@ -521,22 +548,27 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         </>}
       </section> : <>
         {status?.canAnalyze && onCreatePost && <CreateAnglePost picks={publishedPicks} disabled={!loaded || !!error} onCreate={onCreatePost} />}
-        {status?.canAnalyze && <GamewaireBestBetsDownload picks={dateSelections} orders={orders} date={memberDate} disabled={!loaded || !!error} />}
-        {status?.canAnalyze &&
-          <GamewairePickOrder key={memberDate} date={memberDate} refresh={refreshHistory}
-            picks={dateSelections}
+        {status?.canAnalyze && orderDates.map((orderDate) => {
+          const daySelections = memberSport === 'NFL' ? publishedSelections(
+            published.filter((game) => nbaCalendarDate(new Date(game.event_start)) === orderDate),
+            leans.filter((game) => nbaCalendarDate(new Date(game.event_start)) === orderDate)) : dateSelections;
+          return <div key={orderDate}>
+          <GamewaireBestBetsDownload picks={daySelections} orders={orders} date={orderDate} disabled={!loaded || !!error} />
+          <GamewairePickOrder date={orderDate} refresh={refreshHistory}
+            picks={daySelections}
             visibleKeys={matchingSelections.map((pick) => pick.key)}
             renderPick={(pick, rank, orderedKeys) => <PickCard pick={pick} rank={rank}
               bestBet={bestBetLabels(orderedKeys.flatMap((key) => matchingSelections.filter((selection) => selection.key === key))).get(pick.key)}
-              lean={dateSelections.find((selection) => selection.key === pick.key)?.isGameLean}
+              lean={daySelections.find((selection) => selection.key === pick.key)?.isGameLean}
               stretch={stretches.some((row) => row.pick_key === pick.key && published.some((game) => game.run_id === row.run_id && game.picks.some((candidate) => candidate.key === pick.key)))}
-              record={picks.find((row) => (dateSelections.find((selection) => selection.key === pick.key)?.isGameLean ? row.is_game_lean : row.is_top_pick)
+              record={picks.find((row) => (daySelections.find((selection) => selection.key === pick.key)?.isGameLean ? row.is_game_lean : row.is_top_pick)
                 && row.data.key === pick.key && row.data.book === pick.book && row.american === pick.american && row.data.modelVersion === pick.modelVersion)} />}
-            order={orders.find((order) => order.game_date === memberDate)}
+            order={orders.find((order) => order.game_date === orderDate)}
             onSave={(saved) => { setOrders((previous) => [saved, ...previous.filter((order) => order.game_date !== saved.game_date)]); refreshHistory(); }} />
-        }
+          </div>;
+        })}
         {memberReport && <p>{memberReport.matchup} · Published {stamp(memberReport.published_at)}</p>}
-        {loaded && !publishedPicks.length && <div className="gai-empty"><h4>No published picks yet</h4><p>No published picks or Game Leans for this league and date yet. An admin must analyze and publish a game first.</p></div>}
+        {loaded && !publishedPicks.length && !weekLoading && <div className="gai-empty"><h4>No published picks yet</h4><p>No published picks or Game Leans for this league and {memberSport === 'NFL' ? 'week' : 'date'} yet. An admin must analyze and publish a game first.</p></div>}
         {!status?.canAnalyze && <div className="gai-picks gai-published-picks">{publishedPicks.map((pick, index) => <PickCard key={`${pick.key}:${pick.book}:${pick.american}`} pick={pick} rank={index + 1}
           bestBet={publishedBestBets.get(pick.key)}
           lean={pick.isGameLean}

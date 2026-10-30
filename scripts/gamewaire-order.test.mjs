@@ -50,14 +50,14 @@ const code = ts.transpileModule(source, { compilerOptions: {
   target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
 } }).outputText;
 function editor(response = { data: { revision: 1 }, error: null }, props = {}) {
-  const states = [], refs = [], calls = [];
+  const states = [], refs = [], calls = [], effects = [];
   let slot = 0, refSlot = 0, refreshed = 0, notified = 0, hovered = null;
   const rows = new Map(picks.map((pick) => [pick.key, { closest() { return this; } }]));
   const jsx = (type, props) => ({ type, props });
   const context = vm.createContext({ exports: {}, console, Map,
     document: { elementFromPoint: () => hovered },
     window: { innerHeight: 1000, scrollBy() {} }, require(name) {
-    if (name === 'react') return { useEffect() {}, useLayoutEffect() {},
+    if (name === 'react') return { useEffect(callback) { effects.push(callback); }, useLayoutEffect() {},
       useRef(initial) { const i = refSlot++; return refs[i] ??= { current: initial }; },
       useState(initial) { const i = slot++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial;
         return [states[i], (value) => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; } };
@@ -74,7 +74,8 @@ function editor(response = { data: { revision: 1 }, error: null }, props = {}) {
     picks, date: '2026-10-27', refresh: () => { refreshed++; }, onSave: () => { refreshed++; },
     ...props,
   })); };
-  return { render, states, refs, calls, refreshed: () => refreshed, notified: () => notified,
+  return { render, states, refs, calls, flushEffects() { effects.splice(0).forEach((effect) => effect()); },
+    updateProps(next) { Object.assign(props, next); }, refreshed: () => refreshed, notified: () => notified,
     hover(key) {
       refs[0].current = { querySelectorAll: () => states[0].map((key) => rows.get(key)), setPointerCapture() {} };
       hovered = rows.get(key);
@@ -103,7 +104,7 @@ test('Three-line handles support keyboard ordering and save one free revision-ch
   assert.ok(fixture.render().some((node) => node.props?.role === 'status' && node.props.children === 'Order saved for everyone.'));
   assert.doesNotMatch(source, /engineRequest|analyze|gamewaire_publish|fetch\(/);
 });
-test('Save failures retain draft and surface backend error, pointer cancellation restores pre-drag order', async () => {
+test('Pointer cancellation and save failures retain the edited order and surface backend errors', async () => {
   const fixture = editor({ data: null, error: { message: 'Order changed elsewhere' } });
   let nodes = fixture.render();
   let handle = nodes.find((node) => node.props?.className === 'gai-order-handle');
@@ -112,7 +113,7 @@ test('Save failures retain draft and surface backend error, pointer cancellation
   handle = nodes.find((node) => node.props?.className === 'gai-order-handle');
   handle.props.onKeyDown({ key: 'End', preventDefault() {} });
   fixture.render().find((node) => node.type === 'ol').props.onPointerCancel();
-  assert.deepEqual([...fixture.states[0]], ['6', '5', '4', '3', '2', '1', '0']);
+  assert.deepEqual([...fixture.states[0]], ['5', '4', '3', '2', '1', '0', '6']);
   nodes = fixture.render();
   nodes.find((node) => node.props?.className === 'gai-order-handle').props.onKeyDown({ key: 'ArrowDown', preventDefault() {} });
   nodes = fixture.render();
@@ -120,8 +121,23 @@ test('Save failures retain draft and surface backend error, pointer cancellation
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(fixture.refreshed(), 0);
   assert.equal(fixture.notified(), 0);
-  assert.deepEqual([...fixture.states[0]], ['5', '6', '4', '3', '2', '1', '0']);
+  assert.deepEqual([...fixture.states[0]], ['4', '5', '3', '2', '1', '0', '6']);
   assert.ok(fixture.render().some((node) => node.props?.role === 'alert' && node.props.children[0] === 'Order changed elsewhere'));
+});
+test('Refreshes and even a queued clean-state effect cannot reset an active draft before Save or Discard', () => {
+  const fixture = editor();
+  const nodes = fixture.render();
+  nodes.find((node) => node.props?.className === 'gai-order-handle').props.onKeyDown({ key: 'End', preventDefault() {} });
+  fixture.flushEffects();
+  assert.deepEqual([...fixture.states[0]], ['5', '4', '3', '2', '1', '0', '6']);
+  fixture.updateProps({ picks: [...picks], order: { revision: 3, game_date: '2026-10-27', pick_keys: ['0', '1', '2', '3', '4', '5', '6'] } });
+  fixture.render(); fixture.flushEffects();
+  assert.deepEqual([...fixture.states[0]], ['5', '4', '3', '2', '1', '0', '6']);
+  assert.equal(fixture.states[6], 0, 'draft retains its original conflict-check revision');
+  fixture.render().find((node) => node.type === 'button' && node.props.children === 'Discard changes').props.onClick();
+  fixture.render(); fixture.flushEffects();
+  assert.deepEqual([...fixture.states[0]], ['0', '1', '2', '3', '4', '5', '6']);
+  assert.equal(fixture.states[6], 3);
 });
 test('Published pick cards reorder inline through filters while saving the complete site-wide order', async () => {
   const fixture = editor(undefined, { visibleKeys: ['0', '2', '4', '6'], renderPick: (pick, rank) => ({ type: 'PickCard', props: { pick, rank } }) });

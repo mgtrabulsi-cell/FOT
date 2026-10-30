@@ -334,12 +334,17 @@ test('Player analysis validates reports, is available to members and has no chat
 });
 
 function botWelcomeHarness({ directoryError = false, players = [player], loadReport = (id, format) => ({ ...report({ format }), player: players.find((row) => row.id === id) }) } = {}) {
-  const state = [], refs = [];
+  const state = [], refs = [], effects = [], scrolls = [];
   const reportRequests = [], timers = new Map();
   let stateIndex = 0, refIndex = 0, directoryCalls = 0, reportCalls = 0;
   const code = ts.transpileModule(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const context = vm.createContext({ exports: {}, AbortController, Date, Error, window: {
+    matchMedia() { return { matches: true }; },
+    getComputedStyle() { return { zoom: '.75' }; },
+    innerHeight: 900,
+    requestAnimationFrame(callback) { callback(); return 1; },
+    cancelAnimationFrame() {},
     setTimeout(callback, delay) { const timer = setTimeout(callback, delay); timers.set(timer, callback); return timer; },
     clearTimeout(timer) { clearTimeout(timer); timers.delete(timer); },
   }, require: (name) => {
@@ -351,7 +356,7 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
         return [state[index], (next) => { state[index] = typeof next === 'function' ? next(state[index]) : next; }];
       },
       useRef(initial) { const index = refIndex++; return refs[index] ??= { current: initial }; },
-      useEffect() {},
+      useEffect(callback) { effects.push(callback); },
     };
     if (name === './services/gamewireBot') return {
       async loadBotDirectory() { directoryCalls++; if (directoryError) throw new Error('Roster feed unavailable'); return { players, warnings: [] }; },
@@ -361,7 +366,14 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
     return {};
   } });
   vm.runInContext(code, context);
-  const render = () => { stateIndex = 0; refIndex = 0; return context.exports.default(); };
+  const render = () => {
+    stateIndex = 0; refIndex = 0;
+    const tree = context.exports.default();
+    const panel = find(tree, (node) => node.props?.id === 'gamewire-bot-panel');
+    if (panel) panel.ref.current = { style: {}, parentElement: null, scrollIntoView: (options) => scrolls.push(options) };
+    effects.splice(0).forEach((effect) => effect());
+    return tree;
+  };
   const find = (root, predicate) => {
     if (!root || typeof root !== 'object') return undefined;
     if (predicate(root)) return root;
@@ -381,8 +393,37 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
   };
   const expire = () => { for (const [timer, callback] of timers) { clearTimeout(timer); timers.delete(timer); callback(); } };
   const renderChild = (node) => { stateIndex = 100; refIndex = 100; return node.type(node.props); };
-  return { render, renderChild, find, byClass, search, reportRequests, expire, counts: () => ({ directoryCalls, reportCalls }) };
+  return { render, renderChild, find, byClass, search, reportRequests, expire, scrolls, counts: () => ({ directoryCalls, reportCalls }) };
 }
+test('Opening a searched player scrolls to the blue analysis divider once; rerenders and clearing do not scroll', async () => {
+  const ui = botWelcomeHarness({ players: [player, { ...player, id: '456', name: 'Other Receiver' }] });
+  let tree = await ui.search(player.name);
+  assert.equal(ui.scrolls.length, 1);
+  assert.equal(ui.scrolls[0].block, 'start');
+  assert.equal(ui.scrolls[0].behavior, 'auto', 'reduced-motion preference is respected');
+  assert.equal(ui.find(tree, (node) => node.props?.id === 'gamewire-bot-panel').ref.current.style.minHeight, '1200px',
+    'short reports reserve a full viewport after inherited desktop scaling');
+  ui.render(); ui.render();
+  assert.equal(ui.scrolls.length, 1);
+  tree = await ui.search('Other Receiver');
+  assert.equal(ui.scrolls.length, 2);
+  const breakdown = ui.find(tree, (node) => node.props?.onClear && node.props?.report);
+  breakdown.props.onClear(); ui.render();
+  assert.equal(ui.scrolls.length, 2);
+});
+test('Saved player props carry GamewAIre published-pick branding inside the red card', async () => {
+  const ui = botWelcomeHarness({ loadReport: () => ({ ...report(), props: [{
+    selection: 'Test Runner Over 25.5 receiving yards', american: -110, book: 'Saved book',
+    savedAt: new Date(now).toISOString(), breakdown: 'Published analysis.',
+  }] }) });
+  const tree = await ui.search(player.name);
+  const breakdown = ui.renderChild(ui.find(tree, (node) => node.type?.name === 'Breakdown'));
+  const lab = ui.renderChild(ui.find(breakdown, (node) => node.type?.name === 'PropLab'));
+  const brand = ui.byClass(lab, 'gwb-published-brand');
+  assert.ok(brand);
+  assert.equal(ui.find(brand, (node) => node.type === 'strong').props.children, 'AI');
+  assert.equal(ui.find(brand, (node) => node.type === 'small').props.children, 'PUBLISHED TOP PICK');
+});
 test('Player search opens the lab, analyzes a unique match and keeps the report when closed', async () => {
   const ui = botWelcomeHarness();
   let tree = ui.render();
@@ -430,7 +471,7 @@ test('GamewAIre density is scoped to desktop and the blue preview keeps accessib
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   const botCss = readFileSync(new URL('../src/gamewire-bot.css', import.meta.url), 'utf8');
   assert.match(app, /view === 'Gamewaire' \? 'page-wrap gamewaire-page'/);
-  assert.match(css, /@media \(min-width: 1100px\) \{\s*\.page-wrap\.gamewaire-page \{ zoom: \.9;/);
+  assert.match(css, /@media \(min-width: 1100px\) \{\s*\.page-wrap\.gamewaire-page \{ zoom: \.675;/);
   assert.match(botCss, /\.gwb-wordmark \{[^}]*var\(--display/);
   assert.match(botCss, /\.gwb-hero-footer \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(botCss, /\.gwb-hero-search \{[^}]*width: 100%;/);

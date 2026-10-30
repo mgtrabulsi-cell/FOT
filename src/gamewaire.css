@@ -313,3 +313,5 @@
 .gai-best-bets-slides { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
 .gai-best-bets-slides figure { margin: 0; min-width: 0; }
 .gai-best-bets-slides img { width: 100%; max-width: 380px; }
+.gai-published-date { color-scheme: dark; }
+.gai-published-date::-webkit-calendar-picker-indicator { opacity: 1; cursor: pointer; min-width: 22px; min-height: 22px; padding: 5px; background-color: #163d5c; border-radius: 5px; }

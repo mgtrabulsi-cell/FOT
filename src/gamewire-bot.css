@@ -49,7 +49,11 @@
 .gwb-hero-robot.gwb-avatar { width: 36px; height: 36px; border-radius: 9px; }
 .gwb-avatar > svg:first-child { width: 25px; height: 25px; }
 .gwb-avatar .gwb-robot-pulse { width: 13px; height: 9px; top: 15px; }
-.gwb-panel { padding: 16px; border-top: 1px solid #07558b; }
+.gwb-panel { padding: 16px; border-top: 1px solid #07558b; scroll-margin-top: 0; }
+.gwb-published-brand { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; color: #eef4ff; }
+.gwb-published-brand .gamewaire-name { font: 600 21px/1.2 var(--display, 'Oswald', sans-serif); }
+.gwb-published-brand strong { color: #ff5965; }
+.gwb-published-brand small { font-size: 10px; letter-spacing: .08em; color: #ff9aaf; }
 .gwb-mode { display: flex; align-items: center; gap: 8px; color: #b7c8d6; font-size: 11px; margin-bottom: 12px; }
 .gwb-mode svg { color: #ff7b83; flex-shrink: 0; }
 .gwb-controls { display: flex; align-items: end; gap: 12px; }

@@ -47,7 +47,7 @@ function PropLab({ report }: { report: BotReport }) {
         {projection.evidence && <small className="gwb-muted">Matchup: {projection.evidence.matchup} · Forecast confidence: uncalibrated
           {projection.evidence.usage ? ` · ${projection.evidence.usage.trend} ${projection.evidence.usage.label.toLowerCase()}` : ''}</small>}
         <p>{projection.explanation}</p></div>)}</>}
-    {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><p>{prop.breakdown}</p>
+    {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><div className="gwb-published-brand"><span className="gamewaire-name">Gamew<strong>AI</strong>re</span><small>PUBLISHED TOP PICK</small></div><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><p>{prop.breakdown}</p>
       {prop.comparison && <p>{prop.comparison.assessment} · Difference {prop.comparison.difference > 0 ? '+' : ''}{prop.comparison.difference}.
         {prop.comparison.games > 0 ? ` Recorded games: ${prop.comparison.over} over / ${prop.comparison.under} under / ${prop.comparison.pushes} pushes (${prop.comparison.games} samples; ${prop.comparison.observedOverRate}% observed over, ${prop.comparison.observedUnderRate}% under).` : ' No verified hit-rate sample.'}
         {' '}Historical counts, not forecast probabilities. Saved line only, not a current market edge.</p>}</div>)}
@@ -210,6 +210,24 @@ export default function GamewireBot() {
   const searchInput = useRef<HTMLInputElement>(null);
   const lastAttempt = useRef<'directory' | 'report'>('directory');
   const lastReports = useRef<OutlookRequest[]>([]);
+  const analysisPanel = useRef<HTMLDivElement | null>(null);
+  const scrollToAnalysis = useRef(false);
+  useEffect(() => {
+    if (!busy && scrollToAnalysis.current && (report || secondReport)) {
+      const frame = window.requestAnimationFrame(() => {
+        const panel = analysisPanel.current;
+        if (!panel) return;
+        scrollToAnalysis.current = false;
+        // Account for inherited desktop zoom so short reports can reach the viewport top.
+        let scale = 1;
+        for (let element: HTMLElement | null = panel; element; element = element.parentElement)
+          scale *= Number(window.getComputedStyle(element).zoom) || 1;
+        panel.style.minHeight = `${Math.ceil(window.innerHeight / scale)}px`;
+        panel.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [busy, report, secondReport]);
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
   async function loadPlayers() {
     controller.current?.abort(); const next = new AbortController(); controller.current = next;
@@ -249,6 +267,7 @@ export default function GamewireBot() {
     if (comparing && player.id === (slot === 0 ? secondPlayer : selected)?.id) {
       setError('Choose two different players to compare.'); return;
     }
+    scrollToAnalysis.current = true;
     return loadOutlooks([{ player, slot }], nextFormat);
   }
   function clearPlayer(slot: PlayerSlot) {
@@ -303,7 +322,7 @@ export default function GamewireBot() {
         </form>
       </div>
     </header>
-    {open && <div id="gamewire-bot-panel" className="gwb-panel">
+    {open && <div id="gamewire-bot-panel" className="gwb-panel" ref={analysisPanel}>
       <div className="gwb-mode"><ShieldCheck size={16} aria-hidden="true" /><span>Verified NFL data · Search-only player analysis · Experimental estimates</span></div>
       <div className="gwb-controls"><label>League scoring<select value={format} disabled={!!busy} onChange={(event) => {
         const nextFormat = formats.find((row) => row.value === event.target.value)?.value;
@@ -363,7 +382,7 @@ export default function GamewireBot() {
         if (secondPlayer) requests.push({ player: secondPlayer, slot: 1 });
         void loadOutlooks(requests);
       }}>Refresh comparison</button>}
-      {!comparing && report && <button className="gwb-compare-refresh" disabled={!!busy} onClick={() => { void analyze(report.player); }}>Refresh outlook</button>}
+      {!comparing && report && <button className="gwb-compare-refresh" disabled={!!busy} onClick={() => { void loadOutlooks([{ player: report.player, slot: 0 }]); }}>Refresh outlook</button>}
     </div>}
   </section>;
 }

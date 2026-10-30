@@ -598,6 +598,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import GamewireRankings from [^;]+;/, 'const GamewireRankings=()=>"Admin weekly ranking editor";')
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>{const visible=picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key));return visible.map((p,i)=>renderPick(p,i+1,visible.map(p=>p.key)));};')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
+    .replace(/import \{ loadPublishedNFLWeek \} from [^;]+;/, 'const loadPublishedNFLWeek=()=>{};')
     .replace(/from ['"]\.\/services\/gamewaireOrder['"]/g, `from '${new URL('../src/services/gamewaireOrder.ts', import.meta.url)}'`)
     .replace(/from ['"]\.\/services\/gamewairePresentation['"]/g, `from '${new URL('../src/services/gamewairePresentation.ts', import.meta.url)}'`)
     .replace(/from ['"]\.\/services\/gamewaireGames['"]/g, `from '${new URL('../src/services/gamewaireGames.ts', import.meta.url)}'`)
@@ -913,10 +914,13 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   fixture(sourceState);
   assert.equal((renderToStaticMarkup(createElement(Page)).match(/class="gai-history-row"/g) ?? []).length, 1, 'Lean results sport filter is isolated');
   mixed[24] = 'NFL'; mixed[20] = 'NFL';
+  mixed[35] = 7; mixed[36] = { season: 2026, week: 7, eventIds: ['nfl'] };
   fixture(mixed);
   const nflOnly = renderToStaticMarkup(createElement(Page));
   assert.equal((nflOnly.match(/class="gai-pick angle-card gai-best-bet"/g) ?? []).length, 1);
   assert.equal((nflOnly.match(/class="gai-history-row"/g) ?? []).length, 1);
+  assert.match(nflOnly, /NFL regular-season week/);
+  assert.match(nflOnly, /selected="">Week 7/);
   assert.match(nflOnly, /Summary: all NFL history/);
   assert.match(nflOnly, /<dt>Win rate<\/dt><dd class="gai-hit-rate-positive">100\.0%/);
   assert.doesNotMatch(nflOnly, /gai-result-loss">Lost/);

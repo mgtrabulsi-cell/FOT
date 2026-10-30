@@ -16,13 +16,13 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
   const [revision, setRevision] = useState(order?.revision ?? 0);
   const list = useRef<HTMLOListElement>(null);
   const positions = useRef(new Map<string, number>());
-  const beforeDrag = useRef<{ keys: string[]; dirty: boolean; notice: string; error: string }>({ keys: [], dirty: false, notice: '', error: '' });
+  const draftActive = useRef(false);
   useEffect(() => {
-    if (!dirty && (order?.revision ?? 0) >= revision) {
+    if (!draftActive.current && !dirty && !dragging && (order?.revision ?? 0) >= revision) {
       setKeys(orderedTopPicks(picks, order ? [order] : []).map((pick) => pick.key));
       setRevision(order?.revision ?? 0);
     }
-  }, [picks, order, dirty, revision]);
+  }, [picks, order, dirty, revision, dragging]);
   useLayoutEffect(() => {
     const next = new Map<string, number>();
     for (const row of list.current?.querySelectorAll<HTMLLIElement>('li[data-pick-key]') ?? []) {
@@ -43,6 +43,7 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
   const move = (key: string, to: number) => {
     const targetKey = displayedKeys[to];
     if (!targetKey || targetKey === key) return;
+    draftActive.current = true;
     setKeys((current) => movePick(current, current.indexOf(key), current.indexOf(targetKey)));
     setDirty(true); setNotice('Order changed. Save to update everyone’s view.'); setError('');
   };
@@ -57,6 +58,7 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
       if (!data || typeof data.revision !== 'number') throw new Error('The saved pick order could not be confirmed.');
       setRevision(data.revision); setDirty(false); setNotice('Order saved for everyone.');
       onSave({ game_date: date, pick_keys: keys, revision: data.revision });
+      draftActive.current = false;
       notifyPickOrderSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : typeof cause === 'object' && cause && 'message' in cause && typeof cause.message === 'string'
@@ -78,10 +80,7 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
         else if (event.clientY < 100) window.scrollBy(0, -12);
       }}
       onPointerUp={() => setDragging(null)}
-      onPointerCancel={() => {
-        setKeys(beforeDrag.current.keys); setDirty(beforeDrag.current.dirty);
-        setNotice(beforeDrag.current.notice); setError(beforeDrag.current.error); setDragging(null);
-      }}
+      onPointerCancel={() => setDragging(null)}
       onLostPointerCapture={() => setDragging(null)}>{displayedKeys.map((key, index) => {
       const pick = picks.find((candidate) => candidate.key === key);
       if (!pick) return null;
@@ -96,7 +95,7 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
           }}
           onPointerDown={(event) => {
             if (event.button !== 0) return;
-            beforeDrag.current = { keys, dirty, notice, error }; setDragging(key);
+            setDragging(key);
             list.current?.setPointerCapture(event.pointerId);
           }}>
           <span aria-hidden="true"><i /><i /><i /></span>
@@ -105,11 +104,11 @@ export default function GamewairePickOrder({ picks, order, date, refresh, onSave
     })}</ol>
     <div className="gai-order-actions"><button disabled={busy || !dirty || !!dragging} onClick={() => void save()}>{busy ? 'Saving…' : 'Save order · 0 credits'}</button>
       <button disabled={busy || !dirty || !!dragging} onClick={() => {
-        setKeys(orderedTopPicks(picks, order ? [order] : []).map((pick) => pick.key)); setDirty(false); setError(''); setNotice('');
+        draftActive.current = false; setKeys(orderedTopPicks(picks, order ? [order] : []).map((pick) => pick.key)); setDirty(false); setError(''); setNotice('');
       }}>Discard changes</button></div>
     {notice && <p role="status" className="gai-note">{notice}</p>}
     {error && <p role="alert" className="feed-warning">{error} <button disabled={busy} onClick={() => {
-      setDirty(false); setRevision(order?.revision ?? 0); setError(''); refresh();
+      draftActive.current = false; setDirty(false); setRevision(order?.revision ?? 0); setError(''); refresh();
     }}>Reload published order</button></p>}
   </section>;
 }
