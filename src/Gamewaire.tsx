@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Activity, ArrowRight, BarChart3, Bot, Crosshair, Layers, Star } from 'lucide-react';
 import { loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
 import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
 import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
@@ -342,6 +343,12 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       history.querySelector('summary')?.focus({ preventScroll: true });
     }
   };
+  const openPublishedPicks = () => {
+    setPickView('published');
+    window.requestAnimationFrame(() => document.getElementById('gai-top-picks')?.scrollIntoView({
+      block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    }));
+  };
   return <section className="gai-panel" aria-label="GamewAIre">
     <div className="gai-section-tabs" role="tablist" aria-label="GamewAIre sections"
       onKeyDown={(event) => {
@@ -366,11 +373,13 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     </div>
     <div id="gai-bets-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bets-tab"
       hidden={section !== 'bets'} tabIndex={0}>
-    <header className="gai-hero">
+    <header className="gai-hero gai-home-hero">
       <div className="gai-hero-copy"><span className="eyebrow">NFL + NBA · MODEL-DRIVEN INSIGHTS</span>
         <h2>THE <em>ANALYSIS ENGINE</em></h2>
         <p>Data. Matchups. A clearer view.</p>
-        <small>Compare real prices and model estimates. Verified data. No promise of profit.</small></div>
+        <small>Compare real prices and model estimates. Verified data. No promise of profit.</small>
+        <button type="button" className="gai-latest-link" onClick={openPublishedPicks}>View published picks <ArrowRight size={19} aria-hidden="true" /></button></div>
+      <svg className="gai-home-pulse" viewBox="0 0 600 200" fill="none" aria-hidden="true"><path d="M0 110H275L298 97L318 129L365 20L386 180L410 91L430 110H600" /></svg>
       <div className="gai-hero-features" aria-label="Analysis features">
         <div><b>01</b><span>Sportsbook<br />lines &amp; prices</span></div>
         <div><b>02</b><span>Statistical<br />analysis</span></div>
@@ -387,7 +396,9 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
             const rows = picks.filter((pick) => view === 'all' || (view === 'top' ? pick.is_top_pick : pick.is_game_lean));
             const summary = performance(rows.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
               american: pick.american, result: pick.result, withdrawn: pick.withdrawn })));
+            const Icon = view === 'top' ? Crosshair : view === 'leans' ? BarChart3 : Star;
             return <button key={view} className="gai-record-card" onClick={() => openResults(view)} aria-label={`View ${label} results`}>
+              <Icon className="gai-record-icon" size={28} aria-hidden="true" />
               <span className="gai-record-label">{label}</span>
               <strong>{summary.wins}<small> Hit · </small>{rows.filter((pick) => pick.result === 'loss').length}<small> Missed</small></strong>
               <span><span className={summary.winRate !== null && summary.winRate > 0.5 ? 'gai-hit-rate-positive' : undefined}>{percent(summary.winRate)}</span> hit rate · {summary.pending} pending</span>
@@ -397,6 +408,38 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         </div>}
       <p className="gai-note">Published picks only · Manually recorded outcomes · Pushes and voids excluded from hit rate. All Picks counts shared selections once.</p>
     </section>
+    {!candidateView && <section className="gai-latest-published" aria-label="Featured published pick">
+      <div className="gai-home-heading"><h3>Featured published pick</h3><button type="button" onClick={openPublishedPicks}>View all picks <ArrowRight size={17} aria-hidden="true" /></button></div>
+      <p className="gai-note">Featured from your selected league, {memberSport === 'NFL' ? 'week' : 'date'} and game. Saved published prices, not live odds.</p>
+      {!loaded || weekLoading ? <p role="status">Loading published picks...</p>
+        : error || (memberSport === 'NFL' && weekError) ? <p className="gai-note">Published picks could not be verified. Retry the feed below.</p>
+        : publishedPicks.length ? <article className="gai-featured-pick">
+          <div className="gai-featured-matchup"><span>{publishedPicks[0].away}</span><small>vs.</small><span>{publishedPicks[0].home}</span></div>
+          <div className="gai-featured-selection"><h4>{pickTitle(publishedPicks[0])}</h4>
+            <span className="gai-tag"><Star size={14} aria-hidden="true" />{publishedPicks[0].isGameLean ? 'Game Lean' : 'Top Pick'}</span>
+            <p>{odds(publishedPicks[0].american)} · {publishedPicks[0].book} · {stamp(publishedPicks[0].start)}</p>
+          </div>
+          <span className={`gai-probability-badge${publishedPicks[0].probability >= .5 ? ' is-positive' : ''}`}
+            aria-label={`Estimated probability grade ${probabilityGrade(publishedPicks[0].probability)}`}>
+            {probabilityGrade(publishedPicks[0].probability)}</span>
+          <p className="gai-featured-reason">{pickBlurb(publishedPicks[0])}</p>
+        </article>
+        : <p className="gai-note">No published picks for these filters yet. Choose another league, week or date below.</p>}
+    </section>}
+    <nav className="gai-quick-access" aria-label="GamewAIre quick access">
+      <h3>Quick access</h3>
+      <div>
+        <button type="button" onClick={openPublishedPicks}><Layers size={27} aria-hidden="true" /><b>Top Picks &amp; Game Leans</b><ArrowRight size={18} aria-hidden="true" /></button>
+        <button type="button" onClick={() => {
+          setSection('bot');
+          window.requestAnimationFrame(() => {
+            document.getElementById('gai-bot-tab')?.focus();
+            document.getElementById('gwb-player-search')?.focus();
+          });
+        }}><Bot size={27} aria-hidden="true" /><b>Player Lab &amp; Props</b><ArrowRight size={18} aria-hidden="true" /></button>
+        <button type="button" onClick={() => openResults('all')}><Activity size={27} aria-hidden="true" /><b>Results &amp; History</b><ArrowRight size={18} aria-hidden="true" /></button>
+      </div>
+    </nav>
     {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
     {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
     {status?.canAnalyze && <section id="gai-saved-games" className="gai-scheduled" aria-label="Saved analyses">

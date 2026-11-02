@@ -315,3 +315,59 @@
 .gai-best-bets-slides img { width: 100%; max-width: 380px; }
 .gai-published-date { color-scheme: dark; }
 .gai-published-date::-webkit-calendar-picker-indicator { opacity: 1; cursor: pointer; min-width: 22px; min-height: 22px; padding: 5px; background-color: #163d5c; border-radius: 5px; }
+.gai-home-hero {
+  min-height: 310px; padding: clamp(22px, 3vw, 44px); grid-template-columns: minmax(0, 1fr);
+  background: linear-gradient(100deg, #060d19 12%, #060d19bb 55%, #07101ee6),
+    repeating-radial-gradient(ellipse at 75% -45%, transparent 0 48px, #6b809c55 50px 52px, transparent 54px 78px),
+    radial-gradient(ellipse at 80% 0%, #a6c8ed66, transparent 52%), #0b182b;
+}
+.gai-home-hero::after { inset: auto 0 0; width: 100%; height: 35%; transform: none; border: 0; background: linear-gradient(0deg, #030b13, transparent); }
+.gai-home-hero .gai-hero-copy { max-width: 610px; }
+.gai-home-hero h2 { max-width: 550px; font-size: clamp(34px, 4.4vw, 64px); line-height: 1.03; }
+.gai-home-hero .gai-hero-copy p { display: block; font-style: italic; font-size: 19px; color: #c4cfde; }
+.gai-home-hero .gai-hero-copy small { display: block; margin-top: 10px; }
+.gai-panel .gai-latest-link { display: inline-flex; align-items: center; gap: 14px; margin-top: 18px; padding: 12px 20px; background: #c51938; border-color: #ff3657; color: #fff; font-weight: 700; }
+.gai-home-pulse { position: absolute; right: -2%; top: 15%; width: 49%; height: 62%; pointer-events: none; color: #ff3657; filter: drop-shadow(0 0 9px #ff365777); }
+.gai-home-pulse path { stroke: currentColor; stroke-width: 4; }
+.gai-home-hero .gai-hero-features { display: grid; width: 100%; max-width: 800px; padding: 14px 0; }
+.gai-home-hero .gai-hero-features b { display: none; }
+.gai-home-hero .gai-hero-features span { font-size: 12px; }
+.gai-record-overview { border-color: #293b51; background: linear-gradient(130deg, #0b1422, #111623); }
+.gai-panel .gai-record-card { grid-template-columns: 38px minmax(0, 1fr); column-gap: 16px; padding: 18px; background: linear-gradient(135deg, #132033, #0b121e); }
+.gai-record-icon { grid-column: 1; grid-row: 1 / 5; align-self: center; color: #dde9f6; }
+.gai-record-card > span, .gai-record-card > strong { grid-column: 2; }
+.gai-record-card strong { font-size: 32px; }
+.gai-latest-published { padding: 20px; border: 1px solid #293b51; border-radius: 10px; background: linear-gradient(140deg, #111b2a, #08111e); }
+.gai-home-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.gai-home-heading h3, .gai-quick-access h3 { margin: 0; font: italic 700 26px var(--display); }
+.gai-home-heading h3::before, .gai-quick-access h3::before { content: ''; display: inline-block; width: 6px; height: 22px; margin-right: 12px; background: #ff3657; transform: skew(-18deg); }
+.gai-home-heading button { display: inline-flex; align-items: center; gap: 10px; }
+.gai-featured-pick { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(0, 2fr) auto; gap: 20px; align-items: center; padding: 22px; border: 1px solid #2a405a; border-radius: 12px; background: #091525; }
+.gai-featured-matchup { display: grid; gap: 8px; font-weight: 800; font-size: 19px; }
+.gai-featured-matchup small { color: #91a4bb; font-size: 12px; }
+.gai-featured-selection h4 { margin: 0 0 12px; font-size: 24px; }
+.gai-featured-selection .gai-tag { display: inline-flex; align-items: center; gap: 6px; }
+.gai-featured-selection p, .gai-featured-reason { color: #b0bfd0; line-height: 1.6; }
+.gai-featured-reason { grid-column: 1 / -1; margin: 0; padding-top: 14px; border-top: 1px solid #263952; }
+.gai-probability-badge { padding: 16px; font-size: 28px; font-weight: 900; border-radius: 10px; border: 1px solid #34465e; }
+.gai-probability-badge.is-positive { color: #55d8a1; background: #11352c; border-color: #256c50; }
+.gai-quick-access { display: grid; gap: 14px; }
+.gai-quick-access > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.gai-panel .gai-quick-access button { display: grid; grid-template-columns: 30px minmax(0, 1fr) 20px; align-items: center; gap: 14px; padding: 22px 16px; background: linear-gradient(135deg, #152235, #0a111e); text-align: left; }
+.gai-quick-access button > svg:last-child { color: #ff3657; }
+@media (max-width: 760px) {
+  .gai-home-hero { min-height: 260px; padding: 20px; }
+  .gai-home-hero h2 { font-size: clamp(30px, 7vw, 42px); max-width: 85%; }
+  .gai-home-pulse { opacity: .28; width: 70%; top: 10%; }
+  .gai-home-hero .gai-hero-copy p { font-size: 15px; }
+  .gai-home-hero .gai-hero-features { display: none; }
+  .gai-panel .gai-record-card { gap: 7px 12px; padding: 12px; }
+  .gai-record-card strong { font-size: 28px; }
+  .gai-latest-published { padding: 14px; }
+  .gai-featured-pick { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 14px; }
+  .gai-featured-matchup { grid-column: 1 / -1; font-size: 16px; }
+  .gai-featured-selection h4 { font-size: 19px; }
+  .gai-home-heading h3, .gai-quick-access h3 { font-size: 22px; }
+  .gai-quick-access > div { grid-template-columns: 1fr; gap: 8px; }
+  .gai-panel .gai-quick-access button { padding: 15px; }
+}

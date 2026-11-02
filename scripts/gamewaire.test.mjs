@@ -605,6 +605,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
+    .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
     .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, fullAnalysisSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
@@ -680,6 +681,13 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   memberState[23] = 'event'; memberState[25] = quote.start.slice(0, 10);
   fixture(memberState);
   const report = renderToStaticMarkup(createElement(Page));
+  assert.match(report, /aria-label="GamewAIre quick access"/);
+  assert.match(report, /Top Picks &amp; Game Leans/);
+  assert.match(report, /Player Lab &amp; Props/);
+  assert.match(report, /Results &amp; History/);
+  assert.match(report, /class="gai-featured-pick"/);
+  assert.match(report, /Featured from your selected league/);
+  assert.match(report, /Saved published prices, not live odds/);
   assert.match(report, /GameWire player analysis/);
   assert.doesNotMatch(report, /Admin weekly ranking editor/);
   assert.match(report, /class="gai-pick angle-card gai-best-bet"/);

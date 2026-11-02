@@ -481,7 +481,9 @@ test('GamewAIre density is scoped to desktop and the blue preview keeps accessib
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   const botCss = readFileSync(new URL('../src/gamewire-bot.css', import.meta.url), 'utf8');
   assert.match(app, /view === 'Gamewaire' \? 'page-wrap gamewaire-page'/);
-  assert.match(css, /@media \(min-width: 1100px\) \{\s*\.page-wrap\.gamewaire-page \{ zoom: \.675;/);
+  assert.match(css, /@media \(min-width: 1100px\) \{\s*\.page-wrap\.gamewaire-page \{ zoom: \.75;/);
+  assert.match(css, /@media \(min-width: 1440px\) \{\s*\.page-wrap\.gamewaire-page \{ zoom: \.8;/);
+  assert.match(css, /@media \(min-width: 1920px\) \{\s*\.page-wrap\.gamewaire-page \{ zoom: \.85;/);
   assert.match(botCss, /\.gwb-wordmark \{[^}]*var\(--display/);
   assert.match(botCss, /\.gwb-hero-footer \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(botCss, /\.gwb-hero-search \{[^}]*width: 100%;/);
