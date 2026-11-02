@@ -1,0 +1,75 @@
+import { useEffect, useState } from 'react';
+import { loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
+import type { ParlayPlayer, ParlayTeam } from './services/parlayRoster';
+import type { ParlaySport } from './services/parlayGraphic';
+import type { BestBetSubject } from './services/bestBetGraphic';
+
+const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Player / team images could not load. Retry.';
+export default function BestBetSubjectPicker({ sport, value, onChoose }: {
+  sport: string; value?: BestBetSubject; onChoose: (sport: ParlaySport, value?: BestBetSubject) => void;
+}) {
+  const [open, setOpen] = useState(false), [league, setLeague] = useState<ParlaySport>(sport === 'NBA' ? 'NBA' : 'NFL');
+  const [teams, setTeams] = useState<ParlayTeam[]>([]), [season, setSeason] = useState(0), [teamId, setTeamId] = useState('');
+  const [type, setType] = useState<'player' | 'team'>('player'), [players, setPlayers] = useState<ParlayPlayer[]>([]);
+  const [query, setQuery] = useState(''), [loading, setLoading] = useState(false), [error, setError] = useState(''), [warning, setWarning] = useState('');
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setTeams([]); setPlayers([]); setTeamId(''); setSeason(0); setError(''); setWarning(''); setLoading(true);
+    void loadParlayTeams(league, controller.signal).then(({ data, warning }) => {
+      if (!controller.signal.aborted) { setTeams(data.teams); setSeason(data.season); setWarning(warning); }
+    }).catch(cause => { if (!controller.signal.aborted) setError(message(cause)); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [open, league, retry]);
+  useEffect(() => {
+    setPlayers([]); setQuery('');
+    if (!open || !teamId || !season || type !== 'player') return;
+    const controller = new AbortController(); setError(''); setLoading(true);
+    void loadParlayPlayers(league, teamId, season, controller.signal).then(({ data, warning }) => {
+      if (!controller.signal.aborted) { setPlayers(data.players); setWarning(warning); }
+    }).catch(cause => { if (!controller.signal.aborted) setError(message(cause)); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [open, league, teamId, season, type, retry]);
+  const team = teams.find(row => row.id === teamId);
+  const choose = (player?: ParlayPlayer) => {
+    if (!team) return;
+    onChoose(league, { type: player ? 'player' : 'team', subject: {
+      id: player?.id ?? team.id, name: player?.name ?? team.name, image: player?.image ?? team.logo,
+      teamId: team.id, teamName: team.name, teamLogo: team.logo, color: team.color,
+    } });
+  };
+  return <div className="best-bet-participant">
+    {value && <div className="best-bet-subject">
+      {value.subject.image && <img src={value.subject.image} alt="" />}
+      <strong>{value.subject.name}</strong>
+      {!value.subject.image && <small>No roster image is available; this selection will export as text.</small>}
+      <button type="button" onClick={() => onChoose(league, undefined)}>Remove player / team image</button>
+    </div>}
+    <details onToggle={event => setOpen(event.currentTarget.open)}><summary>{value ? 'Change' : 'Add'} player face / team logo</summary>
+      <p>Choose a verified NBA / NFL roster image. Other sports can still be entered manually without images. Your selection text remains editable.</p>
+      <div className="parlay-fields">
+        <label>Image league<select value={league} onChange={event => {
+          if (event.target.value === 'NBA' || event.target.value === 'NFL') { setTeamId(''); setLeague(event.target.value); }
+        }}><option>NFL</option><option>NBA</option></select></label>
+        <label>Image type<select value={type} onChange={event => {
+          if (event.target.value === 'player' || event.target.value === 'team') { setLoading(false); setType(event.target.value); }
+        }}><option value="player">Player face + team logo</option><option value="team">Team logo</option></select></label>
+        <label className="parlay-wide">Image team<select value={teamId} disabled={loading && !teams.length} onChange={event => setTeamId(event.target.value)}>
+          <option value="">Choose a team</option>{teams.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+        </select></label>
+      </div>
+      {loading && <p role="status">Loading {league} teams / players...</p>}
+      {warning && <p className="parlay-warning">{warning}</p>}
+      {error && <p role="alert" className="feed-warning">{error} <button type="button" onClick={() => setRetry(n => n + 1)}>Retry image search</button></p>}
+      {type === 'team' && team && <button type="button" onClick={() => choose()}>Use {team.name} logo</button>}
+      {type === 'player' && team && <><label>Search roster player<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Player name" /></label>
+        <div className="parlay-player-list">{players.filter(row => row.name.toLowerCase().includes(query.trim().toLowerCase())).map(row =>
+          <button type="button" key={row.id} onClick={() => choose(row)}>{row.name}<small>{row.position}</small></button>)}</div>
+        {!loading && !error && players.length > 0 && !players.some(row => row.name.toLowerCase().includes(query.trim().toLowerCase())) && <p>No matching players.</p>}
+      </>}
+    </details>
+  </div>;
+}

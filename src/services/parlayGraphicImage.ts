@@ -28,15 +28,16 @@ function image(url: string) {
   if (cached) return cached;
   const request = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image(); img.crossOrigin = 'anonymous';
-    const timer = setTimeout(() => { img.src = ''; reject(new Error('A parlay portrait timed out. Retry, or turn off portraits/logos to render offline.')); }, 12_000);
+    const timer = setTimeout(() => { img.src = ''; reject(new Error('A graphic portrait timed out. Retry, or turn off portraits/logos to render offline.')); }, 12_000);
     img.onload = () => { clearTimeout(timer); resolve(img); };
-    img.onerror = () => { clearTimeout(timer); reject(new Error('A parlay portrait could not load. Retry, or turn off portraits/logos to use a name-only graphic.')); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('A graphic portrait could not load. Retry, or turn off portraits/logos to use a name-only graphic.')); };
     img.src = url;
   });
   imageCache.set(url, request);
   void request.catch(() => imageCache.delete(url));
   return request;
 }
+export { image as loadGraphicImage, portrait as drawGraphicPortrait };
 export async function renderParlayGraphic(graphic: ParlayGraphic): Promise<Blob> {
   const error = parlayGraphicError(graphic);
   if (error) throw new Error(error);

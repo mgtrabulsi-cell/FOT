@@ -38,5 +38,14 @@
 .best-bet-studio .parlay-preview img { display: block; width: min(100%, 420px); height: auto; }
 .best-bet-studio input, .best-bet-studio select, .best-bet-studio textarea { width: 100%; min-width: 0; border: 1px solid #33475e; border-radius: 8px; background: #0b1626; color: #e5eaf3; padding: 10px; font: inherit; }
 .best-bet-studio textarea { min-height: 72px; resize: vertical; }
+.best-bet-studio fieldset > fieldset { margin-top: 18px; border-top: 3px solid #499dc7; background: #0b1626; }
+.best-bet-participant { margin-top: 14px; }
+.best-bet-participant summary { cursor: pointer; padding: 10px 0; color: #8bc9ea; font-weight: 700; }
+.best-bet-subject { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: #e5eaf3; }
+.best-bet-subject img { width: 64px; height: 64px; object-fit: contain; border-radius: 50%; background: #152c44; }
+.best-bet-subject strong { overflow-wrap: anywhere; }
+.best-bet-studio .parlay-checkbox input { width: 20px; height: 20px; flex-shrink: 0; }
+.best-bet-studio button { border: 1px solid #347597; border-radius: 8px; background: #15354c; color: #e5eaf3; padding: 10px 14px; cursor: pointer; }
+.best-bet-studio button:disabled { opacity: .5; cursor: default; }
 .best-bet-studio input:focus-visible, .best-bet-studio select:focus-visible, .best-bet-studio textarea:focus-visible { outline: 2px solid #49c6ff; outline-offset: 2px; }
 @media (max-width: 760px) { .best-bet-studio input, .best-bet-studio select, .best-bet-studio textarea { font-size: 16px; } }

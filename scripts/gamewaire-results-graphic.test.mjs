@@ -101,7 +101,7 @@ test('Analyst record layout fits overall straights and three best sports without
   const text = r.texts.map(row => row.text).join('\n');
   assert.match(text, /ANALYST DESK/);
   assert.match(text, /STRAIGHTS ONLY/);
-  assert.match(text, /Top sports: win rate, then wins/);
+  assert.match(text, /Top sports: 5\+ settled straights\. Ranked by win rate, then wins/);
   assert.equal(r.boxes.length, 8);
   assert.ok(r.boxes.every(box => box[3] === 120 && box[1] + box[3] < 1178));
   assert.ok(r.texts.every(row => row.y < 1350));

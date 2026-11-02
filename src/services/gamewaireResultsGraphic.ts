@@ -93,7 +93,7 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
     });
     if (!analyst) text(`${section.pushes} push / ${section.voids} void`, 60, y + 243, 19, muted, 960, 400);
   });
-  if (analyst) text('Top sports: win rate, then wins. Settled records only; samples vary.', 60, 1178, 20, muted);
+  if (analyst) text('Top sports: 5+ settled straights. Ranked by win rate, then wins.', 60, 1178, 20, muted);
   text(analyst ? 'Wins / (Wins + Losses). No parlays, pending picks or sprinkles.'
     : 'Hit rate = Wins / (Wins + Losses). Pending, pushes and voids excluded.', 60, 1222, 20, muted);
   text('Admin-recorded outcomes / No guaranteed future results', 60, 1260, 19, muted);

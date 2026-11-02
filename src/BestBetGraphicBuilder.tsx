@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { bestBetGraphicError, newBestBetEntry, newBestBetGraphic, readBestBetGraphic, renderBestBetGraphic } from './services/bestBetGraphic';
+import { bestBetGraphicError, bestBetGraphicHeight, newBestBetEntry, newBestBetGraphic, readBestBetGraphic, renderBestBetGraphic } from './services/bestBetGraphic';
 import type { BestBetEntry, BestBetGraphic } from './services/bestBetGraphic';
+import BestBetSubjectPicker from './BestBetSubjectPicker';
 import './parlayGraphic.css';
 
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'The Best Bet graphic could not be saved or exported. Retry.';
@@ -43,8 +44,10 @@ export default function BestBetGraphicBuilder({ userId }: { userId: string }) {
         <label>Title<input maxLength={48} value={value.title} onChange={event => update({ ...value, title: event.target.value })} /></label>
         <label>Slate / date / time (optional)<input maxLength={100} placeholder="NFL Week 9 / Sunday / 1 PM ET" value={value.subtitle} onChange={event => update({ ...value, subtitle: event.target.value })} /></label>
       </div>
+      <label className="parlay-checkbox"><input type="checkbox" checked={value.images !== false} onChange={event => update({ ...value, images: event.target.checked })} />Include selected player faces and team logos</label>
+      <small>Choose images per straight below. Turn off images for a text-only export without portrait requests.</small>
       {value.entries.map((row, index) => <fieldset key={row.id}><legend>Straight bet {index + 1}</legend><div className="parlay-fields">
-        <label>Sport<input maxLength={20} placeholder="NFL, NBA, NHL..." value={row.sport} onChange={event => edit(row.id, { sport: event.target.value })} /></label>
+        <label>Sport<input maxLength={20} placeholder="NFL, NBA, NHL..." value={row.sport} onChange={event => edit(row.id, { sport: event.target.value, participant: undefined })} /></label>
         <label>American odds (optional)<input maxLength={12} placeholder="-110" value={row.odds} onChange={event => edit(row.id, { odds: event.target.value })} /></label>
         <label className="parlay-wide">Selection<textarea maxLength={200} placeholder="Player / team, side, exact line and stat" value={row.selection} onChange={event => edit(row.id, { selection: event.target.value })} /></label>
         <label>Result mark<select value={row.result} onChange={event => {
@@ -52,10 +55,10 @@ export default function BestBetGraphicBuilder({ userId }: { userId: string }) {
           if (result === 'pending' || result === 'hit' || result === 'miss') edit(row.id, { result });
         }}><option value="pending">Pregame / no mark</option><option value="hit">Hit / green check</option><option value="miss">Miss / red X</option></select></label>
         <button type="button" disabled={value.entries.length === 1} onClick={() => update({ ...value, entries: value.entries.filter(entry => entry.id !== row.id) })}>Remove straight {index + 1}</button>
-      </div></fieldset>)}
+      </div><BestBetSubjectPicker sport={row.sport} value={row.participant} onChoose={(sport, participant) => edit(row.id, { ...(participant ? { sport } : {}), participant })} /></fieldset>)}
       <button type="button" disabled={value.entries.length >= 8} onClick={() => update({ ...value, entries: [...value.entries, newBestBetEntry()] })}>Add straight bet · {value.entries.length}/8</button>
       <p>{bestBetGraphicError(value) ?? 'Ready to download.'}</p>
-      <button type="button" disabled={!!bestBetGraphicError(value)} onClick={() => void download()}>{busy ? 'Creating graphic...' : 'Download Best Bet PNG · 2160 x 2700'}</button>
+      <button type="button" disabled={!!bestBetGraphicError(value)} onClick={() => void download()}>{busy ? 'Creating graphic...' : `Download Best Bet PNG · 2160 x ${bestBetGraphicHeight(value.entries.length) * 2}`}</button>
       </fieldset>
       {error && <p role="alert" className="feed-warning">{error}</p>}
       {preview && <div className="parlay-preview"><img src={preview} alt="Manually entered Analyst Desk Best Bet straight selections" /><a href={preview} download="GameWire-Analyst-Desk-Best-Bets.png">Save PNG again</a></div>}

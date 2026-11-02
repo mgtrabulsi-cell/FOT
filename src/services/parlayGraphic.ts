@@ -24,6 +24,12 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, limit: number): value is string => typeof value === 'string' && value.length <= limit;
 const imageUrl = (value: unknown): value is string => bounded(value, 500) && (!value || /^https:\/\//.test(value));
+export function isParlaySubject(value: unknown): value is ParlaySubject {
+  return object(value) && bounded(value.id, 100) && bounded(value.name, 80)
+    && bounded(value.teamId, 100) && bounded(value.teamName, 80)
+    && imageUrl(value.image) && imageUrl(value.teamLogo)
+    && bounded(value.color, 7) && /^[0-9a-f]{6}$/i.test(value.color);
+}
 export function readParlayGraphic(value: unknown): ParlayGraphic {
   if (!object(value) || value.version !== 1 || typeof value.pickId !== 'string' || !uuid.test(value.pickId)
     || !['PARLAY', 'SAME GAME PARLAY', 'CROSS GAME PARLAY'].includes(String(value.title))
@@ -35,10 +41,7 @@ export function readParlayGraphic(value: unknown): ParlayGraphic {
     if (!object(leg) || typeof leg.id !== 'string' || !uuid.test(leg.id) || ids.has(leg.id)
       || !bounded(leg.sport, 32) || !['player', 'spread', 'moneyline', 'custom'].includes(String(leg.type))
       || (leg.type !== 'custom' && !['NBA', 'NFL'].includes(leg.sport))
-      || !object(leg.subject) || !bounded(leg.subject.id, 100) || !bounded(leg.subject.name, 80)
-      || !bounded(leg.subject.teamId, 100) || !bounded(leg.subject.teamName, 80)
-      || !imageUrl(leg.subject.image) || !imageUrl(leg.subject.teamLogo)
-      || !bounded(leg.subject.color, 7) || !/^[0-9a-f]{6}$/i.test(leg.subject.color)
+      || !isParlaySubject(leg.subject)
       || !bounded(leg.market, 50) || !bounded(leg.line, 12) || !['Over', 'Under', 'At least'].includes(String(leg.side))) {
       throw new Error('A saved parlay leg is invalid. It was not overwritten.');
     }

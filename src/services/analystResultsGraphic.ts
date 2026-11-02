@@ -5,7 +5,7 @@ import type { RecordGraphicSection } from './gamewaireResultsGraphic';
 
 export function analystResultsSections(rows: Angle[]): RecordGraphicSection[] {
   const records = angleSportRecords(rows, 'straight');
-  const best = records.filter(row => row.key !== 'COMBO' && row.wins + row.losses > 0)
+  const best = records.filter(row => row.key !== 'COMBO' && row.wins + row.losses >= 5)
     .sort((a, b) => b.wins / (b.wins + b.losses) - a.wins / (a.wins + a.losses)
       || b.wins - a.wins || a.label.localeCompare(b.label)).slice(0, 3);
   const section = (title: string, wins: number, losses: number): RecordGraphicSection =>

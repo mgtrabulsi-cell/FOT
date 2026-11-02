@@ -382,23 +382,10 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <small>Compare real prices and model estimates. Verified data. No promise of profit.</small>
         <button type="button" className="gai-latest-link" onClick={openPublishedPicks}>View published picks <ArrowRight size={19} aria-hidden="true" /></button></div>
       <div className="gai-stadium-brand" aria-hidden="true">
-        <svg viewBox="0 0 500 260" fill="none">
-          <defs>
-            <linearGradient id="gai-stadium-neon" x1="55" y1="65" x2="445" y2="215" gradientUnits="userSpaceOnUse"><stop stopColor="#77deff" /><stop offset=".6" stopColor="#268bc0" /><stop offset="1" stopColor="#ff3657" /></linearGradient>
-            <linearGradient id="gai-stadium-bowl" x1="250" y1="95" x2="250" y2="222" gradientUnits="userSpaceOnUse"><stop stopColor="#15344c" /><stop offset="1" stopColor="#071522" /></linearGradient>
-          </defs>
-          <path d="M55 116v39c0 39 87 71 195 71s195-32 195-71v-39" fill="url(#gai-stadium-bowl)" stroke="url(#gai-stadium-neon)" strokeWidth="2" />
-          <path d="M65 163c40 63 330 63 370 0M64 180c66 48 305 48 372 0M93 143v43m49-30v47m53-39v46m55-44v48m55-48v46m53-54v47m49-60v43" stroke="#28485e" strokeWidth="1.5" />
-          <ellipse cx="250" cy="116" rx="195" ry="66" fill="#081c2c" stroke="url(#gai-stadium-neon)" strokeWidth="4" />
-          <ellipse cx="250" cy="116" rx="166" ry="49" stroke="#3e83a2" strokeWidth="2" />
-          <ellipse cx="250" cy="118" rx="140" ry="36" stroke="#244d65" strokeWidth="8" />
-          <path d="m156 124 94-27 94 27-94 31-94-31Z" fill="#103a47" stroke="#51abc2" strokeWidth="1.5" />
-          <path d="m180 117 94 30m-65-39 94 30m-65-39 94 30M202 137l94-27" stroke="#77c9d0" strokeOpacity=".4" />
-          <path d="M84 83V38m65 26V25m202 39V25m65 58V38" stroke="#4c829e" strokeWidth="3" />
-          <path d="M68 38h32m33-13h32m170 0h32m33 13h32" stroke="#bceeff" strokeWidth="5" strokeLinecap="round" />
-          <path d="M31 126h139l18-17 19 30 28-70 26 98 25-53 18 12h165" stroke="#fb4664" strokeOpacity=".18" strokeWidth="12" strokeLinejoin="round" />
-          <path d="M31 126h139l18-17 19 30 28-70 26 98 25-53 18 12h165" stroke="#ff617b" strokeWidth="3" strokeLinejoin="round" pathLength="100" />
-          <path className="gai-stadium-pulse" d="M31 126h139l18-17 19 30 28-70 26 98 25-53 18 12h165" stroke="#e5faff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" pathLength="100" />
+        <svg viewBox="260 115 1016 770" fill="none">
+          <image href="/gamewire-mark.png" width="1536" height="1024" />
+          <path className="gai-stadium-pulse" d="M496 585 668 596 691 558 722 631 769 408 783 757 839 555 865 605 1038 584"
+            stroke="#fff1f4" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" pathLength="100" />
         </svg>
         <span className="gamewaire-name">Gamew<strong>AI</strong>re <small><i /> LIVE INTELLIGENCE</small></span>
       </div>
