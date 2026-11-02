@@ -180,6 +180,7 @@ test('Best Bet roster picker loads only on opening and stores verified player/te
       if (!dependencies[i] || next.some((value, index) => value !== dependencies[i][index])) effects.push(callback);
       dependencies[i] = next; },
   } : {
+    isRosterSport: value => ['NBA', 'NFL', 'NHL', 'UCL'].includes(value),
     loadParlayTeams: async league => { calls.push(['teams', league]); if (failed) throw new Error('Roster unavailable');
       return { data: { teams: [team], season: 2026 }, warning: 'Using a saved roster' }; },
     loadParlayPlayers: async (...args) => { calls.push(['players', ...args.slice(0, 3)]); return { data: { players: [player] }, warning: '' }; },
@@ -203,7 +204,27 @@ test('Best Bet roster picker loads only on opening and stores verified player/te
   tree.find(node => node.type === 'select' && node.props.value === 'player').props.onChange({ target: { value: 'team' } });
   tree = render(); tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Use ').props.onClick();
   assert.equal(selections[1][1].type, 'team'); assert.equal(selections[1][1].subject.image, team.logo);
-  failed = true; tree.find(node => node.type === 'select' && node.props.value === 'NFL').props.onChange({ target: { value: 'NBA' } });
+  tree.find(node => node.type === 'select' && node.props.value === 'NFL').props.onChange({ target: { value: 'NHL' } });
+  tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
+  render(); await flush(); tree = render();
+  tree.find(node => node.type === 'select' && node.props.value === '').props.onChange({ target: { value: '1' } });
+  tree.find(node => node.type === 'select' && node.props.value === 'team').props.onChange({ target: { value: 'player' } });
+  render(); await flush(); tree = render();
+  tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Test Player').props.onClick();
+  assert.equal(selections[2][0], 'NHL'); assert.equal(selections[2][1].type, 'player');
+  tree = render();
+  tree.find(node => node.type === 'select' && node.props.value === 'NHL').props.onChange({ target: { value: 'UCL' } });
+  tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
+  render(); await flush(); tree = render();
+  assert.equal(tree.find(node => node.type === 'select' && node.props.value === 'team').props.disabled, true);
+  const playerCalls = calls.filter(row => row[0] === 'players').length;
+  tree.find(node => node.type === 'select' && node.props.value === '').props.onChange({ target: { value: '1' } });
+  render(); await flush(); tree = render();
+  assert.equal(calls.filter(row => row[0] === 'players').length, playerCalls, 'UCL never requests a player roster');
+  tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Use ').props.onClick();
+  assert.equal(selections[3][0], 'UCL'); assert.equal(selections[3][1].type, 'team');
+  tree = render();
+  failed = true; tree.find(node => node.type === 'select' && node.props.value === 'UCL').props.onChange({ target: { value: 'NBA' } });
   tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
   render(); await flush(); tree = render();
   assert.ok(tree.some(node => node.props?.role === 'alert'));

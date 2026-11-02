@@ -12,11 +12,12 @@ export async function handleParlayRoster(request: Request, fetcher: typeof fetch
   const image = params.get('image');
   if (image !== null) return graphicImage(image, fetcher, cors);
   const sport = params.get('sport'), team = params.get('team'), season = params.get('season');
-  if (!['NBA', 'NFL'].includes(sport ?? '') || team !== null && (!/^\d{1,2}$/.test(team) || Number(team) < 1 || Number(team) > (sport === 'NBA' ? 30 : 34))
+  if (!['NBA', 'NFL', 'NHL', 'UCL'].includes(sport ?? '') || team !== null && (sport === 'UCL' || !/^[1-9]\d{0,5}$/.test(team)
+    || sport === 'NBA' && Number(team) > 30 || sport === 'NFL' && Number(team) > 34)
     || team !== null && (!season || !/^\d{4}$/.test(season) || Number(season) < 2000 || Number(season) > 2200)) {
-    return json({ error: 'Choose a valid NBA/NFL team and season.' }, 400);
+    return json({ error: 'Choose a valid NBA, NFL or NHL team and season, or the Champions League team directory.' }, 400);
   }
-  const path = sport === 'NBA' ? 'basketball/nba' : 'football/nfl';
+  const path = sport === 'NBA' ? 'basketball/nba' : sport === 'NHL' ? 'hockey/nhl' : sport === 'UCL' ? 'soccer/uefa.champions' : 'football/nfl';
   try {
     const upstream = await fetcher(`https://site.api.espn.com/apis/site/v2/sports/${path}/teams${team ? `/${team}/roster?season=${season}` : '?limit=100'}`, {
       signal: AbortSignal.timeout(12_000), headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' },

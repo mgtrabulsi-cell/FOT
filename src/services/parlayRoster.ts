@@ -1,6 +1,7 @@
 import { createDraftStorage } from './draftStorage';
 import { publicSupabaseConfig } from './supabaseClient';
-import type { ParlaySport } from './parlayGraphic';
+export type RosterSport = 'NBA' | 'NFL' | 'NHL' | 'UCL';
+export const isRosterSport = (value: string): value is RosterSport => ['NBA', 'NFL', 'NHL', 'UCL'].includes(value);
 
 export type ParlayTeam = { id: string; name: string; abbr: string; logo: string; color: string };
 export type ParlayPlayer = { id: string; name: string; position: string; image: string };
@@ -19,7 +20,7 @@ function roster(value: unknown): { players: ParlayPlayer[] } {
     && ['id', 'name', 'position', 'image'].every((k) => typeof p[k] === 'string'))) throw new Error('Invalid parlay player roster.');
   return data as { players: ParlayPlayer[] };
 }
-async function load<T>(sport: ParlaySport, team: string | undefined, season: number | undefined, read: (value: unknown) => T, signal: AbortSignal) {
+async function load<T>(sport: RosterSport, team: string | undefined, season: number | undefined, read: (value: unknown) => T, signal: AbortSignal) {
   const key = `${sport}:${team ?? 'teams'}:${season ?? ''}`;
   let value: T;
   try {
@@ -45,5 +46,5 @@ async function load<T>(sport: ParlaySport, team: string | undefined, season: num
   }
   return { data: value, warning: '' };
 }
-export const loadParlayTeams = (sport: ParlaySport, signal: AbortSignal) => load(sport, undefined, undefined, directory, signal);
-export const loadParlayPlayers = (sport: ParlaySport, team: string, season: number, signal: AbortSignal) => load(sport, team, season, roster, signal);
+export const loadParlayTeams = (sport: RosterSport, signal: AbortSignal) => load(sport, undefined, undefined, directory, signal);
+export const loadParlayPlayers = (sport: RosterSport, team: string, season: number, signal: AbortSignal) => load(sport, team, season, roster, signal);

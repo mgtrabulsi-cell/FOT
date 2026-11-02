@@ -142,19 +142,32 @@ function endpoint() {
   vm.runInContext(code, context);
   return context.exports.handleParlayRoster;
 }
-test('Roster endpoint supports NBA/NFL only, rejects unsafe paths, normalizes grouped players and surfaces upstream errors', async () => {
+test('Roster endpoint supports NBA/NFL/NHL, including six-digit NHL IDs, rejects unsafe paths and surfaces upstream errors', async () => {
   const handle = endpoint(), urls = [];
   const fetcher = async (url) => { urls.push(url); return Response.json({ athletes: [{ items: [{ id: '1', displayName: 'Player', position: { abbreviation: 'WR' }, headshot: { href: 'https://example.test/player.png' } }] }] }); };
-  for (const sport of ['NBA', 'NFL']) {
-    const result = await handle(new Request(`https://test/?sport=${sport}&team=2&season=2026`), fetcher);
+  for (const sport of ['NBA', 'NFL', 'NHL']) {
+    const result = await handle(new Request(`https://test/?sport=${sport}&team=${sport === 'NHL' ? '129764' : '2'}&season=2026`), fetcher);
     assert.equal(result.status, 200);
     assert.equal((await result.json()).players[0].name, 'Player');
   }
   assert.ok(urls[0].includes('basketball/nba'));
   assert.ok(urls[1].includes('football/nfl'));
-  for (const query of ['sport=NHL', 'sport=NBA&team=99&season=2026', 'sport=NFL&team=../secrets&season=2026', 'sport=NFL&team=1&season=no']) {
+  assert.ok(urls[2].includes('hockey/nhl/teams/129764/roster'));
+  for (const query of ['sport=OTHER', 'sport=NBA&team=99&season=2026', 'sport=NHL&team=1234567&season=2026', 'sport=NFL&team=../secrets&season=2026', 'sport=NFL&team=1&season=no', 'sport=UCL&team=359&season=2026']) {
     assert.equal((await handle(new Request(`https://test/?${query}`), fetcher)).status, 400);
   }
-  assert.equal(urls.length, 2);
+  assert.equal(urls.length, 3);
   assert.equal((await handle(new Request('https://test/?sport=NBA'), async () => new Response('', { status: 503 }))).status, 502);
+});
+test('Champions League returns its full team directory with soccer crests, not unsupported player rosters', async () => {
+  const handle = endpoint();
+  const response = await handle(new Request('https://test/?sport=UCL'), async url => {
+    assert.ok(url.endsWith('soccer/uefa.champions/teams?limit=100'));
+    return Response.json({ sports: [{ leagues: [{ season: { year: 2026 }, teams: Array.from({ length: 36 }, (_, i) =>
+      ({ team: { id: String(100 + i), displayName: `Club ${i}`, abbreviation: `C${i}`,
+        logos: [{ href: `https://a.espncdn.com/i/teamlogos/soccer/500/${100 + i}.png` }] } })) }] }] });
+  });
+  const data = await response.json();
+  assert.equal(response.status, 200); assert.equal(data.teams.length, 36); assert.equal(data.season, 2026);
+  assert.equal(data.teams[35].logo, 'https://a.espncdn.com/i/teamlogos/soccer/500/135.png');
 });

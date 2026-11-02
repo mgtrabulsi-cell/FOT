@@ -36,7 +36,7 @@ function decodeImage(url: string) {
 async function retrieveImage(url: string) {
   try { return await decodeImage(url); }
   catch (cause) {
-    if (!publicSupabaseConfig || !/^https:\/\/a\.espncdn\.com\/i\/(?:headshots\/(?:nfl|nba)\/players\/full\/\d+|teamlogos\/(?:nfl|nba)\/500\/[a-z0-9_-]+)\.png$/.test(url)) throw cause;
+    if (!publicSupabaseConfig || !/^https:\/\/a\.espncdn\.com\/i\/(?:headshots\/(?:nfl|nba|nhl)\/players\/full\/\d+|teamlogos\/(?:nfl|nba|nhl|soccer)\/500\/[a-z0-9_-]+)\.png$/.test(url)) throw cause;
     console.warn('Direct graphic image failed; retrying through the image service.', url, cause);
     const relay = new URL(`${publicSupabaseConfig.url}/functions/v1/parlay-roster`);
     relay.searchParams.set('image', url);

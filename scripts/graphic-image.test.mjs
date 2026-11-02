@@ -8,7 +8,9 @@ const portrait = 'https://a.espncdn.com/i/headshots/nfl/players/full/3139477.png
 const cors = { 'Access-Control-Allow-Origin': '*' };
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 test('Image relay only accepts bounded ESPN player portraits/team logos and returns canvas-safe PNG bytes', async () => {
-  for (const url of [portrait, 'https://a.espncdn.com/i/teamlogos/nba/500/bos.png']) {
+  for (const url of [portrait, 'https://a.espncdn.com/i/teamlogos/nba/500/bos.png',
+    'https://a.espncdn.com/i/headshots/nhl/players/full/5149153.png', 'https://a.espncdn.com/i/teamlogos/nhl/500/utah.png',
+    'https://a.espncdn.com/i/teamlogos/soccer/500/359.png']) {
     const response = await graphicImage(url, async (source, options) => {
       assert.equal(source, url); assert.equal(options.redirect, 'error');
       return new Response(png, { headers: { 'content-type': 'image/png' } });
@@ -72,4 +74,12 @@ test('Relay failures stay explicit and retryable; failed blob decodes still revo
   assert.deepEqual(decode.revoked, ['blob:graphic']);
   const unsupported = loader(); await assert.rejects(unsupported.load('https://example.com/photo.png'), /could not load/);
   assert.equal(unsupported.calls.length, 0);
+});
+test('NHL portraits/logos and Champions League crests retain the Safari image-service recovery path', async () => {
+  for (const url of ['https://a.espncdn.com/i/headshots/nhl/players/full/5149153.png',
+    'https://a.espncdn.com/i/teamlogos/nhl/500/ana.png', 'https://a.espncdn.com/i/teamlogos/soccer/500/359.png']) {
+    const r = loader(); await r.load(url);
+    assert.equal(new URL(r.calls[0][0]).searchParams.get('image'), url);
+    assert.deepEqual(r.revoked, ['blob:graphic']);
+  }
 });

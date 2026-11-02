@@ -2,7 +2,7 @@ const maxBytes = 5 * 1024 * 1024;
 export function espnGraphicImage(value: string) {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.hostname !== 'a.espncdn.com' || url.port || url.username || url.password || url.search || url.hash
-    || !/^\/i\/(?:headshots\/(?:nfl|nba)\/players\/full\/\d+|teamlogos\/(?:nfl|nba)\/500\/[a-z0-9_-]+)\.png$/.test(url.pathname))
+    || !/^\/i\/(?:headshots\/(?:nfl|nba|nhl)\/players\/full\/\d+|teamlogos\/(?:nfl|nba|nhl|soccer)\/500\/[a-z0-9_-]+)\.png$/.test(url.pathname))
     throw new Error('Choose a supported ESPN player portrait or team logo.');
   return url.href;
 }

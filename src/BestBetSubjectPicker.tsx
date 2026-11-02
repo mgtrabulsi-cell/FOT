@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
+import { isRosterSport, loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
 import type { ParlayPlayer, ParlayTeam } from './services/parlayRoster';
-import type { ParlaySport } from './services/parlayGraphic';
+import type { RosterSport } from './services/parlayRoster';
 import type { BestBetSubject } from './services/bestBetGraphic';
 
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Player / team images could not load. Retry.';
 export default function BestBetSubjectPicker({ sport, value, onChoose, children }: {
-  sport: string; value?: BestBetSubject; onChoose: (sport: ParlaySport, value?: BestBetSubject) => void; children?: ReactNode;
+  sport: string; value?: BestBetSubject; onChoose: (sport: RosterSport, value?: BestBetSubject) => void; children?: ReactNode;
 }) {
-  const [open, setOpen] = useState(false), [league, setLeague] = useState<ParlaySport>(sport === 'NBA' ? 'NBA' : 'NFL');
+  const [open, setOpen] = useState(false), [league, setLeague] = useState<RosterSport>(isRosterSport(sport) ? sport : 'NFL');
   const [teams, setTeams] = useState<ParlayTeam[]>([]), [season, setSeason] = useState(0), [teamId, setTeamId] = useState('');
-  const [type, setType] = useState<'player' | 'team'>('player'), [players, setPlayers] = useState<ParlayPlayer[]>([]);
+  const [type, setType] = useState<'player' | 'team'>(sport === 'UCL' ? 'team' : 'player'), [players, setPlayers] = useState<ParlayPlayer[]>([]);
   const [query, setQuery] = useState(''), [loading, setLoading] = useState(false), [error, setError] = useState(''), [warning, setWarning] = useState('');
   const [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -26,7 +26,7 @@ export default function BestBetSubjectPicker({ sport, value, onChoose, children 
   }, [open, league, retry]);
   useEffect(() => {
     setPlayers([]); setQuery('');
-    if (!open || !teamId || !season || type !== 'player') return;
+    if (!open || !teamId || !season || type !== 'player' || league === 'UCL') return;
     const controller = new AbortController(); setError(''); setLoading(true);
     void loadParlayPlayers(league, teamId, season, controller.signal).then(({ data, warning }) => {
       if (!controller.signal.aborted) { setPlayers(data.players); setWarning(warning); }
@@ -51,14 +51,17 @@ export default function BestBetSubjectPicker({ sport, value, onChoose, children 
       <button type="button" onClick={() => onChoose(league, undefined)}>Remove player / team image</button>
     </div>}
     <details open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{value ? 'Change' : 'Add'} player face / team logo</summary>
-      <p>Choose a verified NBA / NFL roster image. Other sports can still be entered manually without images. Your selection text remains editable.</p>
+      <p>Choose NBA, NFL or NHL players / teams, or UEFA Champions League team logos. Your bet text stays editable below.</p>
       <div className="parlay-fields">
         <label>Image league<select value={league} onChange={event => {
-          if (event.target.value === 'NBA' || event.target.value === 'NFL') { setTeamId(''); setLeague(event.target.value); }
-        }}><option>NFL</option><option>NBA</option></select></label>
+          if (isRosterSport(event.target.value)) {
+            setTeamId(''); setPlayers([]); setLeague(event.target.value);
+            if (event.target.value === 'UCL') setType('team');
+          }
+        }}><option>NFL</option><option>NBA</option><option>NHL</option><option value="UCL">UEFA Champions League</option></select></label>
         <label>Image type<select value={type} onChange={event => {
           if (event.target.value === 'player' || event.target.value === 'team') { setLoading(false); setType(event.target.value); }
-        }}><option value="player">Player face + team logo</option><option value="team">Team logo</option></select></label>
+        }} disabled={league === 'UCL'}>{league !== 'UCL' && <option value="player">Player face + team logo</option>}<option value="team">Team logo</option></select></label>
         <label className="parlay-wide">Image team<select value={teamId} disabled={loading && !teams.length} onChange={event => setTeamId(event.target.value)}>
           <option value="">Choose a team</option>{teams.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select></label>
