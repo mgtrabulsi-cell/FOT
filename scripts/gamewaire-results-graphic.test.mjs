@@ -93,3 +93,17 @@ test('Only hit rates strictly above 50 percent are green; exactly 50, below and 
     assert.ok(rates.every((row) => row.color === '#e5eaf3'));
   }
 });
+test('Analyst record layout fits overall straights and three best sports without leaking individual picks or parlays', async () => {
+  const r = fixture();
+  const sections = ['ALL STRAIGHTS', '#1 SPORT / NFL', '#2 SPORT / NBA', '#3 SPORT / NHL'].map(title =>
+    ({ title, wins: 10, losses: 3, hitRate: 10 / 13, pending: 0, pushes: 0, voids: 0 }));
+  await r.renderResultsGraphic([], new Date(), { sections });
+  const text = r.texts.map(row => row.text).join('\n');
+  assert.match(text, /ANALYST DESK/);
+  assert.match(text, /STRAIGHTS ONLY/);
+  assert.match(text, /Top sports: win rate, then wins/);
+  assert.equal(r.boxes.length, 8);
+  assert.ok(r.boxes.every(box => box[3] === 120 && box[1] + box[3] < 1178));
+  assert.ok(r.texts.every(row => row.y < 1350));
+  assert.doesNotMatch(text, /GAME LEANS|TOP PICKS|Player \d/);
+});

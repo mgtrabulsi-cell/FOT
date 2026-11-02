@@ -413,13 +413,14 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
             const summary = performance(rows.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
               american: pick.american, result: pick.result, withdrawn: pick.withdrawn })));
             const Icon = view === 'top' ? Crosshair : view === 'leans' ? BarChart3 : Star;
-            return <button key={view} className="gai-record-card" onClick={() => openResults(view)} aria-label={`View ${label} results`}>
+            return <div key={view} className="gai-record-card">
+              <button type="button" className="gai-record-open" onClick={openPublishedPicks} aria-label={`View published picks for ${label}`} />
               <Icon className="gai-record-icon" size={28} aria-hidden="true" />
               <span className="gai-record-label">{label}</span>
               <strong>{summary.wins}<small> Hit · </small>{rows.filter((pick) => pick.result === 'loss').length}<small> Missed</small></strong>
               <span><span className={summary.winRate !== null && summary.winRate > 0.5 ? 'gai-hit-rate-positive' : undefined}>{percent(summary.winRate)}</span> hit rate · {summary.pending} pending</span>
-              <span className="gai-record-link">View results <span aria-hidden="true">→</span></span>
-            </button>;
+              <button type="button" className="gai-record-link" onClick={() => openResults(view)} aria-label={`View ${label} results`}>See results <span aria-hidden="true">→</span></button>
+            </div>;
           })}
         </div>}
       <p className="gai-note">Published picks only · Manually recorded outcomes · Pushes and voids excluded from hit rate. All Picks counts shared selections once.</p>

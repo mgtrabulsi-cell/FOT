@@ -1776,3 +1776,7 @@ td:first-child { color: #828c84; }
 @keyframes wire-latest-pulse { 50% { opacity: .35; } }
 @media (max-width: 640px) { .wire-latest-play { padding: 10px 12px; margin-bottom: 12px; } .wire-latest-play-body p { font-size: 14px; } }
 @media (prefers-reduced-motion: reduce) { .wire-latest-play-label i, .wire-latest-play-body { animation: none; } }
+.results-panel .gai-results-download { display: grid; gap: 12px; padding: 16px; margin: 14px 0; border: 1px solid #245f84; border-radius: 12px; background: #101b2c; }
+.results-panel .gai-results-download > button { justify-self: start; }
+.results-panel .gai-results-download small { color: var(--muted); line-height: 1.5; }
+.results-panel .gai-results-download img { display: block; width: min(100%, 380px); height: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; }

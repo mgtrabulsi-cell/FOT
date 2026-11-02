@@ -9,13 +9,15 @@ const source = ts.transpileModule(readFileSync(new URL('../src/OurResults.tsx', 
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText
   .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let states = [], index = 0;
-    export const fixture = (rows, sport, category = null) => { states = [null, rows, false, true, false, '', '', '', '', false, 0, sport, category]; index = 0; };
+    export const fixture = (rows, sport, category = null, admin = false) => { states = [null, rows, admin, true, false, '', '', '', '', false, 0, sport, category]; index = 0; };
     const useEffect = () => {}; const useState = () => [states[index++], () => {}];`)
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
   .replace(/import \{ supabase \} from [^;]+;/, 'const supabase = null;')
   .replace(/import \{ readRenderSnapshot, saveRenderSnapshot \} from [^;]+;/, 'const readRenderSnapshot = () => null; const saveRenderSnapshot = () => {};')
   .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh = () => () => {};')
+  .replace(/import \{ ResultsGraphicDownload \} from [^;]+;/, `const ResultsGraphicDownload = () => 'Analyst result download';`)
+  .replace(/import \{ renderAnalystResultsGraphic \} from [^;]+;/, 'const renderAnalystResultsGraphic = () => {};')
   .replace(/from ['"]\.\/services\/theAngle['"]/g, `from '${new URL('../src/services/theAngle.ts', import.meta.url)}'`)
   .replace(/from ['"]\.\/services\/anglePicks['"]/g, `from '${new URL('../src/services/anglePicks.ts', import.meta.url)}'`)
   .replace(/import \{ PickResult \} from [^;]+;/, 'const PickResult = () => null;');
@@ -43,6 +45,12 @@ test('Sport records filter all-week picks without changing records, losing pendi
     if (sport === 'SOCCER') assert.match(html, /No published Soccer picks yet/);
     if (sport === 'COMBO') assert.match(html, /No published Combo picks yet/);
   }
+});
+test('Analyst straight results export is admin-only and independent of visible sport/type filters', () => {
+  fixture(rows, 'NFL', 'parlay', true);
+  assert.match(renderToStaticMarkup(createElement(Results, { user: null })), /Analyst result download/);
+  fixture(rows, 'NFL', 'parlay', false);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(Results, { user: null })), /Analyst result download/);
 });
 
 test('Separate Straight and Parlay records exclude Sprinkles while type and sport filters preserve every pick', () => {

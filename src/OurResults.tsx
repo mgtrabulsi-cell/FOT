@@ -9,6 +9,8 @@ import { pickCategories, pickCategory, pickCategoryLabels } from './services/ang
 import type { PickCategory } from './services/anglePicks';
 import { readRenderSnapshot, saveRenderSnapshot } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
+import { ResultsGraphicDownload } from './GamewaireResultsDownload';
+import { renderAnalystResultsGraphic } from './services/analystResultsGraphic';
 
 const message = (cause: unknown) => cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string'
   ? cause.message : 'Could not load results. Please retry.';
@@ -101,6 +103,10 @@ export default function OurResults({ user }: { user: User | null }) {
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}
     {!loaded && !error && <p role="status">Loading results...</p>}
+    {admin && <ResultsGraphicDownload generate={() => renderAnalystResultsGraphic(rows)} disabled={!loaded || refreshing || busy || !!error}
+      filename="GameWire-Analyst-Desk-Straights-Results.png"
+      description="1080 x 1350 PNG. All-time straight record plus your top three sports by win rate, then wins. Parlays, sprinkles and pending picks excluded. Filters do not change the export; fewer sports appear if fewer have settled records."
+      alt="Analyst Desk straight-pick results and top three sports records" />}
     {loaded && (['straight', 'parlay'] as const).map((category) => {
       const categoryPicks = picks.filter(({ pick }) => pickCategory(pick) === category);
       const categoryRecords = angleSportRecords(rows, category);

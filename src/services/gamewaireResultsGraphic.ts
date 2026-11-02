@@ -12,11 +12,7 @@ export function resultsGraphicSections(picks: StoredPick[]) {
       voids: rows.filter((pick) => pick.result === 'void').length };
   });
 }
-export async function renderResultsGraphic(picks: StoredPick[], now = new Date()): Promise<Blob> {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1080; canvas.height = 1350;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Your browser could not create the results graphic.');
+export async function loadGamewireGraphicAssets() {
   const fonts = ['700 48px Oswald', '400 22px "DM Sans"', '700 22px "DM Sans"'];
   let fontTimeout: ReturnType<typeof setTimeout> | undefined;
   const loadedFonts = await Promise.race([Promise.all(fonts.map((font) => document.fonts.load(font))), new Promise<never>((_, reject) => {
@@ -32,6 +28,16 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
     image.onerror = () => { clearTimeout(timer); reject(new Error('The GameWire logo could not load. Retry the results graphic.')); };
     image.src = `${import.meta.env.BASE_URL}gamewire-mark-transparent.png`;
   });
+  return logo;
+}
+export type RecordGraphicSection = { title: string; wins: number; losses: number; hitRate: number | null; pending: number; pushes: number; voids: number };
+export async function renderResultsGraphic(picks: StoredPick[], now = new Date(),
+  analyst?: { sections: RecordGraphicSection[] }): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080; canvas.height = 1350;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Your browser could not create the results graphic.');
+  const logo = await loadGamewireGraphicAssets();
   const ink = '#e5eaf3', muted = '#b6c6db', red = '#ff5965', green = '#86d9ad';
   const text = (value: string, x: number, y: number, size: number, color = ink, maxWidth = 960, weight = 700, family = '"DM Sans"') => {
     let fitted = size;
@@ -47,15 +53,20 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
   ctx.drawImage(logo, 680, 65, logoWidth, logoHeight);
   ctx.fillStyle = red; ctx.fillRect(60, 55, 75, 7);
   text('GAMEWIRE', 60, 116, 36, ink, 960, 700, 'Oswald');
-  text('Gamew', 60, 211, 76, ink, 960, 700, 'Oswald');
-  const aiX = 60 + ctx.measureText('Gamew').width;
-  text('AI', aiX, 211, 76, red, 960, 700, 'Oswald');
-  text('re', aiX + ctx.measureText('AI').width, 211, 76, ink, 960, 700, 'Oswald');
+  if (analyst) text('ANALYST DESK', 60, 211, 66, ink, 590, 700, 'Oswald');
+  else {
+    text('Gamew', 60, 211, 76, ink, 960, 700, 'Oswald');
+    const aiX = 60 + ctx.measureText('Gamew').width;
+    text('AI', aiX, 211, 76, red, 960, 700, 'Oswald');
+    text('re', aiX + ctx.measureText('AI').width, 211, 76, ink, 960, 700, 'Oswald');
+  }
   text('THE RECORD', 60, 270, 30, red);
   const generated = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
-  text(`ALL TIME / NBA + NFL / AS OF ${generated.toUpperCase()} ET`, 60, 310, 22, muted);
-  resultsGraphicSections(picks).forEach((section, index) => {
-    const y = 362 + index * 264;
+  text(`ALL TIME / ${analyst ? 'STRAIGHTS ONLY' : 'NBA + NFL'} / AS OF ${generated.toUpperCase()} ET`, 60, 310, 22, muted);
+  const sections = analyst?.sections ?? resultsGraphicSections(picks);
+  if (sections.length > 4) throw new Error('At most four record sections fit on the results graphic.');
+  sections.forEach((section, index) => {
+    const y = 362 + index * (analyst ? 198 : 264);
     text(section.title, 60, y + 28, 26, muted);
     const stats = [
       { label: 'Record', value: String(section.wins) },
@@ -64,24 +75,27 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
     const width = (960 - 16) / 2;
     let x = 60;
     stats.forEach((stat) => {
-      ctx.beginPath(); ctx.roundRect(x, y + 50, width, 162, 12); ctx.fillStyle = '#101b2c'; ctx.fill();
+      ctx.beginPath(); ctx.roundRect(x, y + 50, width, analyst ? 120 : 162, 12); ctx.fillStyle = '#101b2c'; ctx.fill();
       ctx.strokeStyle = '#263b55'; ctx.lineWidth = 2; ctx.stroke();
       text(stat.label, x + 28, y + 94, 22, muted, width - 56, 400);
-      text(stat.value, x + 28, y + 162, 48, stat.label === 'Win rate' && section.hitRate !== null && section.hitRate > 0.5 ? green : ink, width - 56, 700, 'Oswald');
+      const valueY = y + (analyst ? 147 : 162);
+      text(stat.value, x + 28, valueY, 48, stat.label === 'Win rate' && section.hitRate !== null && section.hitRate > 0.5 ? green : ink, width - 56, 700, 'Oswald');
       if (stat.label === 'Record') {
         let nextX = x + 28 + ctx.measureText(stat.value).width;
-        text(' W · ', nextX, y + 162, 22, muted, width - 56, 500, 'sans-serif');
+        text(' W · ', nextX, valueY, 22, muted, width - 56, 500, 'sans-serif');
         nextX += ctx.measureText(' W · ').width;
-        text(String(section.losses), nextX, y + 162, 48, ink, width - 56, 700, 'Oswald');
+        text(String(section.losses), nextX, valueY, 48, ink, width - 56, 700, 'Oswald');
         nextX += ctx.measureText(String(section.losses)).width;
-        text(' L', nextX, y + 162, 22, muted, width - 56, 500, 'sans-serif');
+        text(' L', nextX, valueY, 22, muted, width - 56, 500, 'sans-serif');
         if (nextX + ctx.measureText(' L').width > x + width - 28) throw new Error('The record is too wide for the results graphic.');
       }
       x += width + 16;
     });
-    text(`${section.pushes} push / ${section.voids} void`, 60, y + 243, 19, muted, 960, 400);
+    if (!analyst) text(`${section.pushes} push / ${section.voids} void`, 60, y + 243, 19, muted, 960, 400);
   });
-  text('Hit rate = Wins / (Wins + Losses). Pending, pushes and voids excluded.', 60, 1222, 20, muted);
+  if (analyst) text('Top sports: win rate, then wins. Settled records only; samples vary.', 60, 1178, 20, muted);
+  text(analyst ? 'Wins / (Wins + Losses). No parlays, pending picks or sprinkles.'
+    : 'Hit rate = Wins / (Wins + Losses). Pending, pushes and voids excluded.', 60, 1222, 20, muted);
   text('Admin-recorded outcomes / No guaranteed future results', 60, 1260, 19, muted);
   text('gamewire.us', 60, 1305, 24, ink);
   return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob)

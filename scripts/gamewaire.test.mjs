@@ -690,6 +690,12 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /Featured from your selected league/);
   assert.match(report, /Saved published prices, not live odds/);
   assert.match(report, /GameWire player analysis/);
+  assert.equal((report.match(/class="gai-record-open"/g) ?? []).length, 3);
+  assert.equal((report.match(/>See results <span/g) ?? []).length, 3);
+  for (const label of ['Top Picks', 'Game Leans', 'All Picks']) {
+    assert.ok(report.includes(`aria-label="View published picks for ${label}"`));
+    assert.ok(report.includes(`aria-label="View ${label} results"`));
+  }
   assert.doesNotMatch(report, /Admin weekly ranking editor/);
   assert.match(report, /class="gai-pick angle-card gai-best-bet"/);
   assert.match(report, /Book A/);

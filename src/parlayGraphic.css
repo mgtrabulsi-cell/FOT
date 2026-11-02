@@ -33,3 +33,10 @@
   .parlay-player-list { grid-template-columns: minmax(0, 1fr); }
   .parlay-leg-actions button { flex: 1 1 auto; }
 }
+.best-bet-studio { padding: 14px; border: 1px solid #245f84; border-radius: 12px; background: #101b2c; margin-bottom: 14px; }
+.best-bet-studio > summary { cursor: pointer; font-weight: 700; color: #e5eaf3; padding: 8px 0; }
+.best-bet-studio .parlay-preview img { display: block; width: min(100%, 420px); height: auto; }
+.best-bet-studio input, .best-bet-studio select, .best-bet-studio textarea { width: 100%; min-width: 0; border: 1px solid #33475e; border-radius: 8px; background: #0b1626; color: #e5eaf3; padding: 10px; font: inherit; }
+.best-bet-studio textarea { min-height: 72px; resize: vertical; }
+.best-bet-studio input:focus-visible, .best-bet-studio select:focus-visible, .best-bet-studio textarea:focus-visible { outline: 2px solid #49c6ff; outline-offset: 2px; }
+@media (max-width: 760px) { .best-bet-studio input, .best-bet-studio select, .best-bet-studio textarea { font-size: 16px; } }
