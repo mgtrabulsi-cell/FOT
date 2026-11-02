@@ -97,13 +97,13 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
   </article>;
 }
 function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun; refresh: () => void; onFreshReport: (run: AnalysisRun) => void }) {
-  const candidates = rankTopPicks(report.payload.picks ?? []);
+  const candidates = rankTopPicks((report.payload.picks ?? []).filter((pick) => pick.market.startsWith('player_') || pick.market === 'totals'));
   const [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const stale = candidates.some((pick) => Date.now() - Date.parse(pick.updatedAt) > 600_000) || Date.parse(report.event_start) <= Date.now();
-  const legacy = candidates.some((pick) => pick.modelVersion !== modelVersion);
-  return <section className="gai-publish" aria-label="Choose member picks"><h4>Choose up to four member picks</h4>
-    <p className="gai-note">Tap for reasoning. Check up to four picks to publish.</p>
+  const legacy = candidates.some((pick) => (pick.learning?.baseModelVersion ?? pick.modelVersion) !== modelVersion);
+  return <section className="gai-publish" aria-label="Choose member picks"><h4>Choose up to four props / totals</h4>
+    <p className="gai-note">Player props publish as Top Picks; full-game totals publish as Game Leans. Moneylines and spreads belong in Game Leans. Tap for reasoning, then select up to four picks.</p>
     <div className="gai-picks">{candidates.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} technical stretch={report.payload.stretchKeys?.includes(pick.key)}
       selection={{ checked: selected.includes(pick.key), disabled: busy || (!selected.includes(pick.key) && selected.length >= 4),
         onChange: (checked) => setSelected((previous) => checked ? [...previous, pick.key] : previous.filter((key) => key !== pick.key)) }} />)}</div>
@@ -130,8 +130,9 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const lean = report.payload.teamLean;
   const started = Date.parse(report.event_start) <= Date.now();
-  const stale = !lean || Date.now() - Date.parse(lean.pick.updatedAt) > 600_000
-    || Date.now() - Date.parse(lean.pick.dataAt) > 3_600_000 || lean.pick.modelVersion !== modelVersion;
+  const invalid = !lean || !Number.isFinite(Date.parse(lean.pick.updatedAt)) || !Number.isFinite(Date.parse(lean.pick.dataAt))
+    || Date.parse(lean.pick.updatedAt) > Date.now() + 60_000 || Date.parse(lean.pick.dataAt) > Date.now() + 60_000
+    || (lean.pick.learning?.baseModelVersion ?? lean.pick.modelVersion) !== modelVersion;
   const analyze = async (players: boolean) => {
     setBusy(true); setError(''); setNotice('');
     try {
@@ -143,19 +144,20 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
   };
   return <section aria-label="Review game lean">
     <h4>Game lean · review before publishing</h4>
-    <p className="gai-note">NBA and NFL analyses stay private until you publish. Game leans are moneyline/spread only and are separate from Top Picks.</p>
+    <p className="gai-note">NBA and NFL analyses stay private until you publish. Review the saved moneyline/spread below. Full-game totals also count in Game Leans; player props count in Top Picks.</p>
     {lean ? <><p className="gai-note">{lean.reason}</p><PickCard pick={lean.pick} rank={1} technical /></>
       : <p>No verified game lean is available in this report. Missing data is not replaced with a forced pick.</p>}
-    {stale && !started && <p className="gai-note">Saved prices/data need refreshing before publication. Refreshing only the game lean never requests player markets.</p>}
+    {lean && <p className="gai-note">Publish this saved pregame snapshot without another odds request. Saved odds: {stamp(lean.pick.updatedAt)} · Data: {stamp(lean.pick.dataAt)}. These are not live prices; current lines and availability may differ.</p>}
+    {invalid && !started && <p className="gai-note">A verified game lean from the current model is required before publishing.</p>}
     <div className="gai-actions">
-      <button disabled={busy || started || stale} onClick={() => {
+      <button disabled={busy || started || invalid} onClick={() => {
         setBusy(true); setError(''); setNotice('');
         void engineRequest({ action: 'publishLean', runId: report.id })
           .then(() => { setNotice('Game lean published · 0 additional credits.'); refresh(); })
           .catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
       }}>Publish game lean · 0 credits</button>
     </div>
-    <details className="gai-review-tools"><summary>Refresh prices or analyze players</summary>
+    <details className="gai-review-tools"><summary>Optional: refresh prices or analyze players</summary>
       <button disabled={busy || started} onClick={() => void analyze(false)}>Refresh game lean only · up to 2 credits</button>
       <button disabled={busy || started} onClick={() => void analyze(true)}>Analyze players &amp; full game · up to 7 credits</button>
     </details>
@@ -183,7 +185,7 @@ function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }
     <button disabled={busy || !result}>{busy ? 'Saving…' : 'Save result'}</button>
     {pick.is_game_lean && <div>
       {!confirmDelete ? <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete game lean</button> : <>
-        <p>Delete this Game Lean from published leans and results?{pick.is_top_pick ? ' Its separate Top Pick and recorded outcome will stay.' : ' It will no longer count in the record.'}</p>
+        <p>Delete this Game Lean from published picks and results? It will no longer count in the record. Its saved analysis and audited outcome will remain.</p>
         <button type="button" disabled={busy} onClick={() => {
           setBusy(true); setError(''); setSaved(false);
           void engineRequest({ action: 'deleteLean', id: pick.id, revision: pick.revision })
@@ -381,19 +383,23 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <button type="button" className="gai-latest-link" onClick={openPublishedPicks}>View published picks <ArrowRight size={19} aria-hidden="true" /></button></div>
       <div className="gai-stadium-brand" aria-hidden="true">
         <svg viewBox="0 0 500 260" fill="none">
-          <defs><linearGradient id="gai-stadium-neon" x1="50" y1="40" x2="440" y2="230" gradientUnits="userSpaceOnUse"><stop stopColor="#62d4ff" /><stop offset=".55" stopColor="#186da5" /><stop offset="1" stopColor="#ff3657" /></linearGradient></defs>
-          <ellipse cx="250" cy="157" rx="213" ry="76" stroke="url(#gai-stadium-neon)" strokeWidth="3" />
-          <ellipse cx="250" cy="146" rx="195" ry="65" stroke="#3784af" strokeWidth="2" />
-          <ellipse cx="250" cy="136" rx="175" ry="53" stroke="#25516e" strokeWidth="2" />
-          <path d="M83 121v71m334-71v71M126 94v103m248-103v103M178 83v126m144-126v126M250 82v133" stroke="#22465f" strokeWidth="2" />
-          <path d="M116 156l134-43 134 43-134 48-134-48Z" fill="#0e293a" stroke="#42aace" strokeWidth="2" />
-          <path d="M150 155l101 36m-58-49 102 36m-59-50 102 36m-58-50 100 34" stroke="#225972" />
-          <path d="M68 115V56m364 59V56M137 90V31m226 59V31" stroke="#588aa7" strokeWidth="3" />
-          <path d="M48 56h40m324 0h40M117 31h40m186 0h40" stroke="#a9eaff" strokeWidth="5" strokeLinecap="round" />
-          <circle className="gai-stadium-signal" cx="250" cy="125" r="37" stroke="#49ccff" strokeWidth="2" />
-          <circle className="gai-stadium-signal gai-stadium-signal-delayed" cx="250" cy="125" r="37" stroke="#ff3657" strokeWidth="2" />
+          <defs>
+            <linearGradient id="gai-stadium-neon" x1="55" y1="65" x2="445" y2="215" gradientUnits="userSpaceOnUse"><stop stopColor="#77deff" /><stop offset=".6" stopColor="#268bc0" /><stop offset="1" stopColor="#ff3657" /></linearGradient>
+            <linearGradient id="gai-stadium-bowl" x1="250" y1="95" x2="250" y2="222" gradientUnits="userSpaceOnUse"><stop stopColor="#15344c" /><stop offset="1" stopColor="#071522" /></linearGradient>
+          </defs>
+          <path d="M55 116v39c0 39 87 71 195 71s195-32 195-71v-39" fill="url(#gai-stadium-bowl)" stroke="url(#gai-stadium-neon)" strokeWidth="2" />
+          <path d="M65 163c40 63 330 63 370 0M64 180c66 48 305 48 372 0M93 143v43m49-30v47m53-39v46m55-44v48m55-48v46m53-54v47m49-60v43" stroke="#28485e" strokeWidth="1.5" />
+          <ellipse cx="250" cy="116" rx="195" ry="66" fill="#081c2c" stroke="url(#gai-stadium-neon)" strokeWidth="4" />
+          <ellipse cx="250" cy="116" rx="166" ry="49" stroke="#3e83a2" strokeWidth="2" />
+          <ellipse cx="250" cy="118" rx="140" ry="36" stroke="#244d65" strokeWidth="8" />
+          <path d="m156 124 94-27 94 27-94 31-94-31Z" fill="#103a47" stroke="#51abc2" strokeWidth="1.5" />
+          <path d="m180 117 94 30m-65-39 94 30m-65-39 94 30M202 137l94-27" stroke="#77c9d0" strokeOpacity=".4" />
+          <path d="M84 83V38m65 26V25m202 39V25m65 58V38" stroke="#4c829e" strokeWidth="3" />
+          <path d="M68 38h32m33-13h32m170 0h32m33 13h32" stroke="#bceeff" strokeWidth="5" strokeLinecap="round" />
+          <path d="M31 126h139l18-17 19 30 28-70 26 98 25-53 18 12h165" stroke="#fb4664" strokeOpacity=".18" strokeWidth="12" strokeLinejoin="round" />
+          <path d="M31 126h139l18-17 19 30 28-70 26 98 25-53 18 12h165" stroke="#ff617b" strokeWidth="3" strokeLinejoin="round" pathLength="100" />
+          <path className="gai-stadium-pulse" d="M31 126h139l18-17 19 30 28-70 26 98 25-53 18 12h165" stroke="#e5faff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" pathLength="100" />
         </svg>
-        <div className="gai-stadium-bot"><Bot strokeWidth={1.6} /></div>
         <span className="gamewaire-name">Gamew<strong>AI</strong>re <small><i /> LIVE INTELLIGENCE</small></span>
       </div>
       <div className="gai-hero-features" aria-label="Analysis features">
@@ -591,7 +597,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           {report.sport === 'NFL' && !report.settings.markets.some((market) => market.startsWith('player_')) && <p className="gai-note">This saved report checked team markets only; no player props were requested. Run the full NFL analysis below to request player candidates.</p>}
           {report.payload.playerPropMinimum && !(report.payload.picks ?? []).some((pick) => pick.market.startsWith('player_')) ? <p role="status" className="feed-warning">No eligible player props were returned. Markets may not be posted yet, or prices/data failed the checks. See Data notes &amp; excluded markets for the exact reasons; refreshing cannot create unavailable lines.</p> : null}
           <ReviewGameLean key={`lean:${report.id}`} report={report} refresh={refreshHistory} onFreshReport={openReport} />
-          {report.status === 'completed' && !!report.payload.picks?.length && <details className="gai-top-pick-tools"><summary>Top Pick candidates · select &amp; publish</summary><PublishPicks key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} /></details>}
+          {report.status === 'completed' && !!report.payload.picks?.length && <details className="gai-top-pick-tools"><summary>Prop &amp; total candidates · select &amp; publish</summary><PublishPicks key={report.id} report={report} refresh={refreshHistory} onFreshReport={openReport} /></details>}
           {report.status !== 'in_progress' && (!report.payload.picks?.length || report.sport === 'NFL' && !(report.payload.picks ?? []).some((pick) => pick.market.startsWith('player_'))) && Date.parse(report.event_start) > Date.now() && <button disabled={busy} onClick={() => {
             setBusy(true); setActionError('');
             void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: fullAnalysisSettings(report.settings, report.sport), fullAnalysis: true })

@@ -34,20 +34,25 @@ begin
   select run_id into run from public.gamewaire_picks where id=shared;
   select data into candidate from public.gamewaire_picks where id=shared;
   -- Disable only the notification trigger during rollback test publication.
-  alter table public.gamewaire_publications disable trigger gamewaire_published_push;
+  if exists(select 1 from pg_trigger where tgrelid='public.gamewaire_publications'::regclass and tgname='gamewaire_published_push') then
+    alter table public.gamewaire_publications disable trigger gamewaire_published_push;
+  end if;
   perform public.gamewaire_publish(run,array[candidate->>'key']);
   select * into tracked from public.gamewaire_picks where id=shared;
-  assert tracked.is_game_lean and tracked.is_top_pick,'Both records share a selection when lean is published first';
+  assert tracked.is_game_lean and not tracked.is_top_pick,'A team market stays exclusively in Game Leans';
   assert (select count(*) from public.gamewaire_picks where run_id=run)=1,'All Picks must count shared fingerprint once';
 
   -- Preserve manual outcome, revision and historical metadata when republishing a lean.
   update public.gamewaire_picks set result='win',revision=revision+1,settled_at=now(),settlement_note='Existing note' where id=shared;
-  perform public.gamewaire_publish_lean(run);
+  begin
+    perform public.gamewaire_publish_lean(run);
+    raise exception 'Settled lean republished';
+  exception when raise_exception then if sqlerrm='Settled lean republished' then raise; end if; end;
   select * into tracked from public.gamewaire_picks where id=shared;
   assert tracked.result='win' and tracked.revision=2 and tracked.settlement_note='Existing note','Lean republish cannot reset settlement';
   update public.gamewaire_picks set result='loss',revision=revision+1 where id=shared;
-  assert exists(select 1 from public.gamewaire_picks where id=shared and is_top_pick and is_game_lean and result='loss'),
-    'Hit/Missed result is shared across both records';
+  assert exists(select 1 from public.gamewaire_picks where id=shared and not is_top_pick and is_game_lean and result='loss'),
+    'Team outcomes stay in Game Leans';
   assert exists(select 1 from public.gamewaire_pick_changes where pick_id=shared),'Lean outcomes retain settlement audit';
 
   -- Changed price is a new selection snapshot, not an overwrite of the settled record.
@@ -62,7 +67,7 @@ begin
   -- Top Pick first, then lean: attach lean membership without changing outcome.
   perform public.gamewaire_publish(run,array[candidate->>'key']);
   select id into top_first from public.gamewaire_picks where run_id=run and american=-115;
-  assert exists(select 1 from public.gamewaire_picks where id=top_first and is_top_pick and is_game_lean),'Republished Top Pick retains both memberships';
+  assert exists(select 1 from public.gamewaire_picks where id=top_first and not is_top_pick and is_game_lean),'Team publication cannot restore Top Pick membership';
   insert into public.gamewaire_runs(sport,event_id,event_start,matchup,settings,status)
     values('NBA','lean-results-top-first',now()+interval '1 day','Away @ Home','{}','in_progress') returning id into run;
   candidate:=candidate||jsonb_build_object('eventId','lean-results-top-first','key','lean-results-top-first|h2h');
@@ -71,10 +76,15 @@ begin
   perform public.gamewaire_publish(run,array[candidate->>'key']);
   select id into top_first from public.gamewaire_picks where run_id=run;
   update public.gamewaire_picks set result='win',revision=2 where id=top_first;
-  perform public.gamewaire_publish_lean(run);
-  assert exists(select 1 from public.gamewaire_picks where id=top_first and is_top_pick and is_game_lean and result='win' and revision=2),
-    'Top Pick first also shares membership without resetting results';
-  alter table public.gamewaire_publications enable trigger gamewaire_published_push;
+  begin
+    perform public.gamewaire_publish_lean(run);
+    raise exception 'Settled team selection republished';
+  exception when raise_exception then if sqlerrm='Settled team selection republished' then raise; end if; end;
+  assert exists(select 1 from public.gamewaire_picks where id=top_first and not is_top_pick and is_game_lean and result='win' and revision=2),
+    'Settled team selections retain category and result';
+  if exists(select 1 from pg_trigger where tgrelid='public.gamewaire_publications'::regclass and tgname='gamewaire_published_push') then
+    alter table public.gamewaire_publications enable trigger gamewaire_published_push;
+  end if;
 end $$;
 
 set local role authenticated;

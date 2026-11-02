@@ -5,7 +5,10 @@ export type PickOrder = { game_date: string; pick_keys: string[]; revision: numb
 export const wirePickLimit = (desktop: boolean) => desktop ? 5 : 3;
 export function publishedSelections(publications: { picks: Candidate[] }[], leans: { team_lean: { pick: Candidate } | null }[]) {
   const selections = new Map<string, Candidate & { isGameLean: boolean; isPublishedLean: boolean }>();
-  for (const game of publications) for (const pick of game.picks) selections.set(pick.key, { ...pick, isGameLean: false, isPublishedLean: false });
+  for (const game of publications) for (const pick of game.picks) {
+    const team = pick.market === 'h2h' || pick.market === 'spreads' || pick.market === 'totals';
+    selections.set(pick.key, { ...pick, isGameLean: team, isPublishedLean: team });
+  }
   for (const game of leans) {
     const pick = game.team_lean?.pick;
     if (!pick) continue;

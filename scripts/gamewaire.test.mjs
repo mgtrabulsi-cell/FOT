@@ -727,7 +727,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(admin, /Profit \/ loss/);
   assert.match(admin, /<dt>ROI/);
   assert.match(admin, /Model diagnostics/);
-  assert.match(admin, /Choose up to four member picks/);
+  assert.match(admin, /Choose up to four props \/ totals/);
   assert.match(admin, /Run analysis · up to 7 credits/);
   assert.match(admin, /reusing a fresh cached report costs 0 credits/);
   const costState = [status, [run], [], true];
@@ -766,6 +766,9 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.equal((admin.match(/class="gai-pick angle-card"/g) ?? []).length, 1, 'Selection and evidence share one card, not duplicated rows');
   const scheduledRun = { ...run, event_start: new Date(Date.now() + 60_000).toISOString(),
     payload: { ...run.payload, scheduled: { jobId: 'job', selectionNote: 'Standings-ranked matchup.' },
+      teamLean: { qualifies: true, reason: 'Saved overnight lean', pick: { ...candidate, market: 'h2h',
+        modelVersion: engine.modelVersion, updatedAt: new Date(Date.now() - 43_200_000).toISOString(),
+        dataAt: new Date(Date.now() - 43_200_000).toISOString() } },
       providerUsage: { requestCost: 7, creditsUsed: 21, creditsRemaining: 479, checkedAt: quote.updatedAt } } };
   const scheduledState = [status, [scheduledRun], [], true];
   scheduledState[7] = scheduledRun.event_start.slice(0, 10);
@@ -780,7 +783,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(scheduledView, /<option value="run" selected="">NBA · Away at Home/);
   assert.doesNotMatch(scheduledView, /gai-saved-list|Open saved picks for/);
   assert.match(scheduledView, /<details class="gai-schedule-details"><summary>Scheduled shortlists/);
-  assert.match(scheduledView, /<details class="gai-top-pick-tools"><summary>Top Pick candidates/);
+  assert.match(scheduledView, /<details class="gai-top-pick-tools"><summary>Prop &amp; total candidates/);
   assert.match(scheduledView, /0 credits to view picks and explanations/);
   assert.match(scheduledView, /Overnight shortlist · Standings-ranked matchup/);
   assert.match(scheduledView, /Odds API: 7 credits for this saved request · 479 remaining/);
@@ -794,6 +797,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(finishedView, /No saved games awaiting review/);
   assert.match(finishedView, /Results &amp; pick history/, 'Published results history remains available');
   assert.match(scheduledView, /Publish game lean · 0 credits/);
+  assert.match(scheduledView, /<button>Publish game lean · 0 credits<\/button>/, 'An overnight lean remains publishable without paid refresh');
+  assert.match(scheduledView, /These are not live prices/);
   assert.match(scheduledView, /Refresh game lean only · up to 2 credits/);
   assert.match(scheduledView, /Analyze players &amp; full game · up to 7 credits/);
   assert.match(raw, /<ReviewGameLean key=\{`lean:\$\{report\.id\}`\}/, 'Lean review and sibling Top Pick publication have distinct React keys');
@@ -814,10 +819,9 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     { ...candidate, key: 'ml', market: 'h2h', subject: 'Denver Nuggets', side: 'Denver Nuggets', line: null },
   ] } }], [], true]);
   const teamMarkets = renderToStaticMarkup(createElement(Page));
-  assert.match(teamMarkets, /<h3>Boston Celtics \+4\.5<\/h3>/);
-  assert.match(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
-  assert.match(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
-  assert.match(teamMarkets, /We&#x27;re taking/);
+  assert.doesNotMatch(teamMarkets, /aria-label="Select Boston Celtics \+4\.5"/);
+  assert.doesNotMatch(teamMarkets, /<h3>Denver Nuggets ML<\/h3>/);
+  assert.match(teamMarkets, /Moneylines and spreads belong in Game Leans/);
   assert.doesNotMatch(teamMarkets, /outscored opponents by|lost by|shift the outlook/);
   assert.doesNotMatch(teamMarkets, /Unvalidated estimates, not betting value\. Probability-first; close ties/);
   for (const [market, label] of Object.entries({

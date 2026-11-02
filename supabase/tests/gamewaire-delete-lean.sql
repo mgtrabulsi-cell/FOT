@@ -36,8 +36,8 @@ begin
   perform public.gamewaire_delete_lean(tracked.id,tracked.revision);
   assert exists(select 1 from public.gamewaire_team_leans where event_id='delete-lean-test'
     and team_lean->'pick'->>'american'='-115'),'Do not remove a newer publication';
-  assert exists(select 1 from public.gamewaire_picks where id=tracked.id and is_top_pick and not is_game_lean and result='win'),
-    'Shared Top Pick and result survive';
+  assert exists(select 1 from public.gamewaire_picks where id=tracked.id and not is_top_pick and not is_game_lean and result='win'),
+    'Deleted team snapshot retains its audited result without Top Pick membership';
 end $$;
 rollback;
-select 'PASS: revision checks, service-only permissions, exact snapshot deletion, shared Top Pick preservation and audit retention' result;
+select 'PASS: revision checks, service-only permissions, exact snapshot deletion, newer publication preservation and audit retention' result;

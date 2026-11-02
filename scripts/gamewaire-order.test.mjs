@@ -10,13 +10,13 @@ const picks = Array.from({ length: 7 }, (_, index) => ({
   key: `${index}`, start: '2026-10-28T01:00:00Z', sport: index % 2 ? 'NFL' : 'NBA',
   market: 'h2h', subject: `Team ${index}`, home: 'Home', away: 'Away', probability: 0.6 + index / 100,
 }));
-test('Published selection union includes lean-only games, deduplicates keys with Top Pick precedence and leaves inputs unchanged', () => {
+test('Published selection union routes team markets to Game Leans, deduplicates keys and leaves inputs unchanged', () => {
   const top = picks[0], lean = { ...picks[1], american: -110 };
   const publications = [{ picks: [top] }];
   const leans = [{ team_lean: { pick: lean } }, { team_lean: { pick: { ...top, american: -120 } } }, { team_lean: null }];
   const snapshot = JSON.stringify({ publications, leans });
   const merged = orderHelpers.publishedSelections(publications, leans);
-  assert.deepEqual(merged.map((pick) => [pick.key, pick.isGameLean]), [['0', false], ['1', true]]);
+  assert.deepEqual(merged.map((pick) => [pick.key, pick.isGameLean]), [['0', true], ['1', true]]);
   assert.equal(merged[0].american, top.american);
   assert.equal(JSON.stringify({ publications, leans }), snapshot);
   assert.deepEqual(orderedTopPicks(merged, [{ game_date: '2026-10-27', pick_keys: ['1', '0'] }]).map((pick) => pick.key), ['1', '0']);
@@ -33,16 +33,23 @@ test('Editorial order spans sports, ignores removed keys and appends new picks w
   assert.deepEqual(movePick(['a', 'b', 'c'], 0, 2), ['b', 'c', 'a']);
   assert.deepEqual(movePick(['a', 'b'], 0, -1), ['a', 'b']);
 });
-test('Best Bet branding follows the first selection in each category, including a shared Top Pick/Game Lean', () => {
-  const merged = orderHelpers.publishedSelections([{ picks: [picks[0], picks[1]] }],
+test('Best Bet branding keeps props and team markets in exclusive categories even for old mixed publications', () => {
+  const merged = orderHelpers.publishedSelections([{ picks: [picks[0], { ...picks[1], market: 'player_points' }] }],
     [{ team_lean: { pick: picks[2] } }, { team_lean: { pick: picks[0] } }]);
   const snapshot = JSON.stringify(merged);
-  assert.deepEqual([...orderHelpers.bestBetLabels(merged)], [['0', 'Top Pick + Game Lean']]);
+  assert.deepEqual([...orderHelpers.bestBetLabels(merged)], [['1', 'Top Pick'], ['0', 'Game Lean']]);
   assert.deepEqual([...orderHelpers.bestBetLabels([merged[2], merged[1], merged[0]])],
     [['1', 'Top Pick'], ['2', 'Game Lean']]);
   assert.deepEqual([...orderHelpers.bestBetLabels([merged[2]])], [['2', 'Game Lean']]);
   assert.equal(orderHelpers.bestBetLabels([]).size, 0);
   assert.equal(JSON.stringify(merged), snapshot);
+});
+test('Moneylines, spreads and totals all remain Game Leans while props remain Top Picks', () => {
+  const merged = orderHelpers.publishedSelections([{ picks: ['h2h', 'spreads', 'totals', 'player_points'].map((market, index) =>
+    ({ ...picks[index], market })) }], []);
+  assert.deepEqual(merged.map((pick) => [pick.market, pick.isGameLean, pick.isPublishedLean]), [
+    ['h2h', true, true], ['spreads', true, true], ['totals', true, true], ['player_points', false, false],
+  ]);
 });
 
 const source = readFileSync(new URL('../src/GamewairePickOrder.tsx', import.meta.url), 'utf8');

@@ -25,11 +25,9 @@ begin
   end;
   update public.gamewaire_runs set status='completed',payload=jsonb_build_object('teamLean',
     jsonb_set(lean,'{pick,updatedAt}',to_jsonb(now()-interval '11 minutes'))) where id=run;
-  begin
-    perform public.gamewaire_publish_lean(run);
-    raise exception 'Stale lean accepted';
-  exception when raise_exception then if sqlerrm='Stale lean accepted' then raise; end if;
-  end;
+  perform public.gamewaire_publish_lean(run);
+  assert exists(select 1 from public.gamewaire_team_leans where event_id='nba-private-lean-test'
+    and (team_lean->'pick'->>'updatedAt')::timestamptz=now()-interval '11 minutes'),'Saved pregame lean stays publishable without refresh';
   update public.gamewaire_runs set payload=jsonb_build_object('teamLean',
     jsonb_set(lean,'{pick,market}','"player_points"')) where id=run;
   begin
