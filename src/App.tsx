@@ -19,6 +19,7 @@ import {
 import { fetchFavoriteNews, fetchNFLFavoritePlays, fetchNFLGameDetails, fetchNFLNotificationGame, fetchScoreboards, findFeaturedNFLGame, findNFLTeamsForPlayerSearch, getPrimetimeLabel, getTuesdayCutoff, isPastTuesdayCutoff } from './services/sportsData';
 import { readGameDetailsSnapshot, readRenderSnapshot, saveRenderSnapshot, subscribeRenderSnapshots } from './services/renderSnapshots';
 import type { FavoriteTarget, Game, NFLGameDetails, NFLPlayerStatKey, NFLSkillPlayer, Team } from './services/sportsData';
+import { FavoritePersistence, readFavorites } from './services/favoritePersistence';
 import { useLockerRoomHistory } from './useLockerRoomHistory';
 import { useSiteOpenTracking } from './useSiteOpenTracking';
 import NotificationOnboarding from './NotificationOnboarding';
@@ -647,6 +648,7 @@ function App() {
   const [favorites, setFavorites] = useState<FavoriteTarget[]>(() => supabase ? [] : loadGuestFavorites());
   const [favoritesOwnerId, setFavoritesOwnerId] = useState<string | null>(null);
   const [favoriteSyncError, setFavoriteSyncError] = useState('');
+  const favoritePersistence = useRef<FavoritePersistence | null>(null);
   const [selectedNFLWeek, setSelectedNFLWeek] = useState<number | null>(null);
   const [currentNFLWeek, setCurrentNFLWeek] = useState<number | null>(() => readRenderSnapshot('scoreboard', 'current')?.nflWeek ?? null);
   const [loadedNFLWeek, setLoadedNFLWeek] = useState<number | null>(() => readRenderSnapshot('scoreboard', 'current')?.nflWeek ?? null);
@@ -819,35 +821,51 @@ function App() {
       setFavoritesOwnerId('guest');
       return;
     }
-    let active = true;
     setFavorites([]);
     setFavoritesOwnerId(null);
     setFavoriteSyncError('');
-    void supabase.from('user_favorites').select('favorites').eq('user_id', authUser.id).maybeSingle().then(({ data, error }) => {
-      if (!active) return;
-      if (error) {
-        setFavoriteSyncError('Could not load saved favorites. Check that the Supabase favorites table is set up.');
-        return;
-      }
-      setFavorites(parseFavorites(data?.favorites));
-      setFavoritesOwnerId(authUser.id);
+    const client = supabase, userId = authUser.id;
+    const persistence = new FavoritePersistence({
+      userId, storage: {
+        getItem: (key) => localStorage.getItem(key),
+        setItem: (key, value) => localStorage.setItem(key, value),
+      },
+      read: async () => {
+        const { data, error } = await client.from('user_favorites').select('favorites,updated_at').eq('user_id', userId)
+          .abortSignal(AbortSignal.timeout(15_000)).maybeSingle();
+        if (error) throw error;
+        if (!data) return null;
+        if (typeof data.updated_at !== 'string' || !Number.isFinite(Date.parse(data.updated_at))) throw new Error('Saved favorites timestamp is invalid.');
+        return { favorites: readFavorites(data.favorites), updatedAt: data.updated_at };
+      },
+      write: async (next, base) => {
+        const updatedAt = new Date(Math.max(Date.now(), base ? Date.parse(base.updatedAt) + 1 : 0)).toISOString();
+        const values = { user_id: userId, favorites: next, updated_at: updatedAt };
+        const result = base
+          ? await client.from('user_favorites').update(values).eq('user_id', userId)
+            .eq('updated_at', base.updatedAt).eq('favorites', JSON.stringify(base.favorites)).select('favorites,updated_at')
+            .abortSignal(AbortSignal.timeout(15_000)).maybeSingle()
+          : await client.from('user_favorites').insert(values).select('favorites,updated_at').abortSignal(AbortSignal.timeout(15_000)).single();
+        if (result.error) {
+          if (!base && result.error.code === '23505') return null;
+          throw result.error;
+        }
+        if (!result.data) return null;
+        return { favorites: readFavorites(result.data.favorites), updatedAt: result.data.updated_at };
+      },
+      changed: (next, ready) => { setFavorites(next); setFavoritesOwnerId(ready ? userId : null); },
+      error: setFavoriteSyncError,
     });
-    return () => { active = false; };
+    favoritePersistence.current = persistence;
+    void persistence.load();
+    return () => { persistence.stop(); if (favoritePersistence.current === persistence) favoritePersistence.current = null; };
   }, [authUser?.id]);
 
   useEffect(() => {
-    if (!supabase || !authUser || favoritesOwnerId !== authUser.id) return;
-    let active = true;
-    void supabase.from('user_favorites').upsert({
-      user_id: authUser.id,
-      favorites,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' }).then(({ error }) => {
-      if (!active) return;
-      setFavoriteSyncError(error ? 'Your favorites could not be saved. Please check your connection.' : '');
+    return subscribeForegroundRefresh(() => {
+      if (navigator.onLine) void favoritePersistence.current?.retry();
     });
-    return () => { active = false; };
-  }, [authUser?.id, favorites, favoritesOwnerId]);
+  }, []);
 
   useEffect(() => {
     favoritesRef.current = favorites;
@@ -910,11 +928,18 @@ function App() {
 
   const toggleFavorite = (favorite: FavoriteTarget) => {
     if (!online) { setFavoriteSyncError('Reconnect to change favorites. Offline browsing is read-only.'); return; }
+    if (supabase && authUser && favoritesOwnerId !== authUser.id) {
+      setFavoriteSyncError('Favorites have not finished loading. Retry loading saved favorites before making changes.'); return;
+    }
+    const change = (transform: (current: FavoriteTarget[]) => FavoriteTarget[]) => {
+      if (supabase && authUser) favoritePersistence.current?.change(transform);
+      else setFavorites(transform);
+    };
     if (favorites.some((item) => item.key === favorite.key)) {
-      setFavorites((current) => current.filter((item) => item.key !== favorite.key));
+      change((current) => current.filter((item) => item.key !== favorite.key));
       return;
     }
-    setFavorites((current) => [...current, favorite]);
+    change((current) => current.some((item) => item.key === favorite.key) ? current : [...current, favorite]);
     const cutoff = getTuesdayCutoff();
     const matchingGames = games.filter((game) => game.status !== 'UPCOMING'
       && (!game.date || Date.parse(game.date) >= cutoff)
@@ -942,7 +967,10 @@ function App() {
 
   const moveTeamFavorite = (favoriteKey: string, direction: -1 | 1) => {
     if (!online) { setFavoriteSyncError('Reconnect to reorder favorites. Offline browsing is read-only.'); return; }
-    setFavorites((current) => {
+    if (supabase && authUser && favoritesOwnerId !== authUser.id) {
+      setFavoriteSyncError('Favorites have not finished loading. Retry loading saved favorites before reordering.'); return;
+    }
+    const reorder = (current: FavoriteTarget[]) => {
       const feedPath = current.find((favorite) => favorite.key === favoriteKey)?.feedPath;
       const teamIndexes = current.flatMap((favorite, index) => favorite.type === 'team' && favorite.feedPath === feedPath ? [index] : []);
       const teamPosition = teamIndexes.findIndex((index) => current[index]?.key === favoriteKey);
@@ -953,7 +981,9 @@ function App() {
       const otherIndex = teamIndexes[otherPosition];
       [next[currentIndex], next[otherIndex]] = [next[otherIndex], next[currentIndex]];
       return next;
-    });
+    };
+    if (supabase && authUser) favoritePersistence.current?.change(reorder);
+    else setFavorites(reorder);
   };
 
   useEffect(() => {
@@ -1262,7 +1292,9 @@ function App() {
           </div>}
           {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
-        {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}</div>}
+        {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}
+          {authUser && <button type="button" onClick={() => { void favoritePersistence.current?.retry(); }}>Retry favorites sync</button>}
+        </div>}
         <AccountRequired hasAccount={!!sessionUser} section={view === 'Gamewaire' ? 'GamewAIre' : view === 'Analyst' ? 'Analyst Desk' : null} online={online} onSignIn={() => { localStorage.removeItem('gamewire-guest-mode'); setGuestMode(false); }}>
         {view === 'Gamewaire' && <Suspense fallback={<p role="status">Opening GamewAIre…</p>}><Gamewaire key={sessionUser?.id ?? 'guest'} onCreatePost={async (picks) => {
           if (!sessionUser) throw new Error('Sign in before creating an Angle post.');

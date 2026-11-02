@@ -418,6 +418,8 @@ This is native background-refresh groundwork, not an App Store approval guarante
 
 ## Accounts and favorites
 
+Account favorites load without automatically rewriting the cloud row. Only intentional additions, removals and reorders save, in a serialized queue. Each cloud update checks the previously loaded timestamp and list; concurrent changes merge only local additions/removals/reorders instead of replacing another device's favorites. A per-account device backup retains pending edits through failed saves and page reloads. Reconnecting or returning to the app retries pending saves; **Retry favorites sync** also retries failed loads. Edits are blocked until cloud favorites have been verified, and load failures retain any device backup rather than substituting and saving an empty list. Guest favorites stay separate. Device-storage errors are explicit; clearing browser storage removes the backup, not cloud favorites. This prevents new losses but cannot reconstruct favorites deleted before any backup existed.
+
 ### Permanent account deletion
 
 The compact delete-account section is last on Profile, below notifications, email, and password settings. Selecting Delete my account reveals the full deletion warnings and confirmation form; no account is deleted by opening it.
