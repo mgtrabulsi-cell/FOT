@@ -1,3 +1,5 @@
+import { graphicImage } from './graphicImage.ts';
+
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'GET, OPTIONS' };
 const obj = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
@@ -7,6 +9,8 @@ export async function handleParlayRoster(request: Request, fetcher: typeof fetch
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (request.method !== 'GET') return json({ error: 'Use GET to load parlay teams or players.' }, 405);
   const params = new URL(request.url).searchParams;
+  const image = params.get('image');
+  if (image !== null) return graphicImage(image, fetcher, cors);
   const sport = params.get('sport'), team = params.get('team'), season = params.get('season');
   if (!['NBA', 'NFL'].includes(sport ?? '') || team !== null && (!/^\d{1,2}$/.test(team) || Number(team) < 1 || Number(team) > (sport === 'NBA' ? 30 : 34))
     || team !== null && (!season || !/^\d{4}$/.test(season) || Number(season) < 2000 || Number(season) > 2200)) {

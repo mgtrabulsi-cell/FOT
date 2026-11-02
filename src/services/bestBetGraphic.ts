@@ -35,11 +35,17 @@ export async function renderBestBetGraphic(value: BestBetGraphic): Promise<Blob>
   const error = bestBetGraphicError(value);
   if (error) throw new Error(error);
   const logo = await loadGamewireGraphicAssets();
-  const photos = await Promise.all(value.entries.map(async row => ({
-    photo: value.images !== false && row.participant?.subject.image ? await loadGraphicImage(row.participant.subject.image) : null,
-    logo: value.images !== false && row.participant?.type === 'player' && row.participant.subject.teamLogo
-      ? await loadGraphicImage(row.participant.subject.teamLogo) : null,
-  })));
+  const photos = await Promise.all(value.entries.map(async (row, index) => {
+    try {
+      return {
+        photo: value.images !== false && row.participant?.subject.image ? await loadGraphicImage(row.participant.subject.image) : null,
+        logo: value.images !== false && row.participant?.type === 'player' && row.participant.subject.teamLogo
+          ? await loadGraphicImage(row.participant.subject.teamLogo) : null,
+      };
+    } catch (cause) {
+      throw new Error(`Straight ${index + 1}${row.participant ? ` / ${row.participant.subject.name}` : ''}: ${cause instanceof Error ? cause.message : 'The selected image could not load. Retry.'}`);
+    }
+  }));
   const canvas = document.createElement('canvas'), graphicHeight = bestBetGraphicHeight(value.entries.length);
   canvas.width = 2160; canvas.height = graphicHeight * 2;
   const ctx = canvas.getContext('2d');

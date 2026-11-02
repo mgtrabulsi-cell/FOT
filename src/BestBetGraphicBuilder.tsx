@@ -46,16 +46,20 @@ export default function BestBetGraphicBuilder({ userId }: { userId: string }) {
       </div>
       <label className="parlay-checkbox"><input type="checkbox" checked={value.images !== false} onChange={event => update({ ...value, images: event.target.checked })} />Include selected player faces and team logos</label>
       <small>Choose images per straight below. Turn off images for a text-only export without portrait requests.</small>
-      {value.entries.map((row, index) => <fieldset key={row.id}><legend>Straight bet {index + 1}</legend><div className="parlay-fields">
+      {value.entries.map((row, index) => <fieldset key={row.id}><legend>Straight bet {index + 1}</legend>
+        <BestBetSubjectPicker sport={row.sport} value={row.participant} onChoose={(sport, participant) => edit(row.id, { ...(participant ? { sport } : {}), participant })}>
+        <div className="parlay-fields">
         <label>Sport<input maxLength={20} placeholder="NFL, NBA, NHL..." value={row.sport} onChange={event => edit(row.id, { sport: event.target.value, participant: undefined })} /></label>
         <label>American odds (optional)<input maxLength={12} placeholder="-110" value={row.odds} onChange={event => edit(row.id, { odds: event.target.value })} /></label>
-        <label className="parlay-wide">Selection<textarea maxLength={200} placeholder="Player / team, side, exact line and stat" value={row.selection} onChange={event => edit(row.id, { selection: event.target.value })} /></label>
+        <label className="parlay-wide">{row.participant ? `Bet for ${row.participant.subject.name}` : 'Bet / selection'}<textarea maxLength={200}
+          placeholder={row.participant ? 'Over 60.5 receiving yards / Moneyline / Spread -3.5' : 'Player / team, side, exact line and stat'}
+          value={row.selection} onChange={event => edit(row.id, { selection: event.target.value })} /></label>
         <label>Result mark<select value={row.result} onChange={event => {
           const result = event.target.value;
           if (result === 'pending' || result === 'hit' || result === 'miss') edit(row.id, { result });
         }}><option value="pending">Pregame / no mark</option><option value="hit">Hit / green check</option><option value="miss">Miss / red X</option></select></label>
         <button type="button" disabled={value.entries.length === 1} onClick={() => update({ ...value, entries: value.entries.filter(entry => entry.id !== row.id) })}>Remove straight {index + 1}</button>
-      </div><BestBetSubjectPicker sport={row.sport} value={row.participant} onChoose={(sport, participant) => edit(row.id, { ...(participant ? { sport } : {}), participant })} /></fieldset>)}
+      </div></BestBetSubjectPicker></fieldset>)}
       <button type="button" disabled={value.entries.length >= 8} onClick={() => update({ ...value, entries: [...value.entries, newBestBetEntry()] })}>Add straight bet · {value.entries.length}/8</button>
       <p>{bestBetGraphicError(value) ?? 'Ready to download.'}</p>
       <button type="button" disabled={!!bestBetGraphicError(value)} onClick={() => void download()}>{busy ? 'Creating graphic...' : `Download Best Bet PNG · 2160 x ${bestBetGraphicHeight(value.entries.length) * 2}`}</button>

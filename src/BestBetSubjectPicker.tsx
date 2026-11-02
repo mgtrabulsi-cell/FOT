@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
 import type { ParlayPlayer, ParlayTeam } from './services/parlayRoster';
 import type { ParlaySport } from './services/parlayGraphic';
 import type { BestBetSubject } from './services/bestBetGraphic';
 
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Player / team images could not load. Retry.';
-export default function BestBetSubjectPicker({ sport, value, onChoose }: {
-  sport: string; value?: BestBetSubject; onChoose: (sport: ParlaySport, value?: BestBetSubject) => void;
+export default function BestBetSubjectPicker({ sport, value, onChoose, children }: {
+  sport: string; value?: BestBetSubject; onChoose: (sport: ParlaySport, value?: BestBetSubject) => void; children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false), [league, setLeague] = useState<ParlaySport>(sport === 'NBA' ? 'NBA' : 'NFL');
   const [teams, setTeams] = useState<ParlayTeam[]>([]), [season, setSeason] = useState(0), [teamId, setTeamId] = useState('');
@@ -40,15 +41,16 @@ export default function BestBetSubjectPicker({ sport, value, onChoose }: {
       id: player?.id ?? team.id, name: player?.name ?? team.name, image: player?.image ?? team.logo,
       teamId: team.id, teamName: team.name, teamLogo: team.logo, color: team.color,
     } });
+    setOpen(false);
   };
   return <div className="best-bet-participant">
     {value && <div className="best-bet-subject">
-      {value.subject.image && <img src={value.subject.image} alt="" />}
+      {value.subject.image && <img src={value.subject.image} crossOrigin="anonymous" referrerPolicy="no-referrer" alt="" />}
       <strong>{value.subject.name}</strong>
       {!value.subject.image && <small>No roster image is available; this selection will export as text.</small>}
       <button type="button" onClick={() => onChoose(league, undefined)}>Remove player / team image</button>
     </div>}
-    <details onToggle={event => setOpen(event.currentTarget.open)}><summary>{value ? 'Change' : 'Add'} player face / team logo</summary>
+    <details open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{value ? 'Change' : 'Add'} player face / team logo</summary>
       <p>Choose a verified NBA / NFL roster image. Other sports can still be entered manually without images. Your selection text remains editable.</p>
       <div className="parlay-fields">
         <label>Image league<select value={league} onChange={event => {
@@ -71,5 +73,6 @@ export default function BestBetSubjectPicker({ sport, value, onChoose }: {
         {!loading && !error && players.length > 0 && !players.some(row => row.name.toLowerCase().includes(query.trim().toLowerCase())) && <p>No matching players.</p>}
       </>}
     </details>
+    <div className="best-bet-selection-fields">{children}</div>
   </div>;
 }

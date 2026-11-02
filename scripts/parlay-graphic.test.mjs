@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { newManualParlayLeg, newParlayGraphic, readParlayGraphic, parlayGraphicError, parlayLegLabel, parlayPickText, withParlayPick, parlayMarkets } from '../src/services/parlayGraphic.ts';
 import { angleWriteFields, readAngles } from '../src/services/theAngle.ts';
+import { graphicImage } from '../supabase/functions/parlay-roster/graphicImage.ts';
 
 const subject = { id: '1', name: 'Test Player', image: '', teamId: '2', teamName: 'Test Team', teamLogo: '', color: '167bcb' };
 const leg = (patch = {}) => ({ id: crypto.randomUUID(), sport: 'NBA', type: 'player', subject, market: 'Points', side: 'At least', line: '20', ...patch });
@@ -137,7 +138,7 @@ test('Name-only renderer works offline, expands for eight legs and prints every 
 function endpoint() {
   const source = readFileSync(new URL('../supabase/functions/parlay-roster/index.ts', import.meta.url), 'utf8').replace(/if \(import\.meta\.main\)[\s\S]*$/, '');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const context = vm.createContext({ exports: {}, Response, URL, AbortSignal, console });
+  const context = vm.createContext({ exports: {}, Response, URL, AbortSignal, console, require: () => ({ graphicImage }) });
   vm.runInContext(code, context);
   return context.exports.handleParlayRoster;
 }

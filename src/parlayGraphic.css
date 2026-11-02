@@ -40,6 +40,7 @@
 .best-bet-studio textarea { min-height: 72px; resize: vertical; }
 .best-bet-studio fieldset > fieldset { margin-top: 18px; border-top: 3px solid #499dc7; background: #0b1626; }
 .best-bet-participant { margin-top: 14px; }
+.best-bet-selection-fields { margin-top: 14px; border-top: 1px solid #347597; padding-top: 14px; }
 .best-bet-participant summary { cursor: pointer; padding: 10px 0; color: #8bc9ea; font-weight: 700; }
 .best-bet-subject { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: #e5eaf3; }
 .best-bet-subject img { width: 64px; height: 64px; object-fit: contain; border-radius: 50%; background: #152c44; }

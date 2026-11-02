@@ -1,5 +1,6 @@
 import { parlayGraphicError, parlayLegLabel } from './parlayGraphic';
 import type { ParlayGraphic } from './parlayGraphic';
+import { publicSupabaseConfig } from './supabaseClient';
 
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
 export function parlayPortraitCrop(pixels: Uint8ClampedArray, width: number, height: number) {
@@ -23,16 +24,36 @@ function portrait(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: numbe
   const crop = parlayPortraitCrop(sourceCtx.getImageData(0, 0, source.width, source.height).data, source.width, source.height);
   ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, x, y, size, size);
 }
-function image(url: string) {
-  const cached = imageCache.get(url);
-  if (cached) return cached;
-  const request = new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image(); img.crossOrigin = 'anonymous';
+function decodeImage(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image(); img.crossOrigin = 'anonymous'; img.referrerPolicy = 'no-referrer';
     const timer = setTimeout(() => { img.src = ''; reject(new Error('A graphic portrait timed out. Retry, or turn off portraits/logos to render offline.')); }, 12_000);
     img.onload = () => { clearTimeout(timer); resolve(img); };
     img.onerror = () => { clearTimeout(timer); reject(new Error('A graphic portrait could not load. Retry, or turn off portraits/logos to use a name-only graphic.')); };
     img.src = url;
   });
+}
+async function retrieveImage(url: string) {
+  try { return await decodeImage(url); }
+  catch (cause) {
+    if (!publicSupabaseConfig || !/^https:\/\/a\.espncdn\.com\/i\/(?:headshots\/(?:nfl|nba)\/players\/full\/\d+|teamlogos\/(?:nfl|nba)\/500\/[a-z0-9_-]+)\.png$/.test(url)) throw cause;
+    console.warn('Direct graphic image failed; retrying through the image service.', url, cause);
+    const relay = new URL(`${publicSupabaseConfig.url}/functions/v1/parlay-roster`);
+    relay.searchParams.set('image', url);
+    const response = await fetch(relay, { signal: AbortSignal.timeout(15_000), credentials: 'omit' });
+    if (!response.ok || response.headers.get('content-type')?.split(';')[0].trim() !== 'image/png')
+      throw new Error('The selected player photo or team logo could not load, including the image-service retry. Reconnect and retry, or choose another image.');
+    const blob = await response.blob();
+    if (!blob.size || blob.size > 5 * 1024 * 1024) throw new Error('The selected player photo or team logo has an invalid image size.');
+    const local = URL.createObjectURL(blob);
+    try { return await decodeImage(local); }
+    finally { URL.revokeObjectURL(local); }
+  }
+}
+function image(url: string) {
+  const cached = imageCache.get(url);
+  if (cached) return cached;
+  const request = retrieveImage(url);
   imageCache.set(url, request);
   void request.catch(() => imageCache.delete(url));
   return request;
