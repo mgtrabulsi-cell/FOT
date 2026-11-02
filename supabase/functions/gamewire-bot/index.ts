@@ -7,6 +7,8 @@ import { collectBotProjections, collectReceivingDefenses } from '../_shared/game
 import { observedLineComparison } from '../_shared/gamewireBotIntelligence.ts';
 import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
+import { archivePlayerForecast, finalPlayerStats, loadPlayerHistory, settleForecasts } from '../_shared/gamewireForecasts.ts';
+import type { PlayerForecast } from '../_shared/gamewireForecasts.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -17,18 +19,30 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (request.method !== 'POST') return json({ error: 'Use POST for the GameWire Bot.' }, 405);
   const authorization = request.headers.get('authorization');
-  if (!authorization?.startsWith('Bearer ')) return json({ error: 'Sign in to use GamewAIre player analysis.' }, 401);
+  const cronSecret = env.get('GAMEWIRE_CRON_SECRET');
+  const cron = !!cronSecret && request.headers.get('x-gamewire-cron-secret') === cronSecret;
+  if (!cron && !authorization?.startsWith('Bearer ')) return json({ error: 'Sign in to use GamewAIre player analysis.' }, 401);
   const url = env.get('SUPABASE_URL'), anon = env.get('SUPABASE_ANON_KEY'), service = env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !anon || !service) return json({ error: 'Bot account services are not configured.' }, 503);
-  const client = createClient(url, anon, { auth: { persistSession: false }, global: { headers: { Authorization: authorization } } });
+  const client = createClient(url, anon, { auth: { persistSession: false }, global: { headers: authorization ? { Authorization: authorization } : {} } });
   const admin = createClient(url, service, { auth: { persistSession: false } });
   try {
+    if (cron) {
+      const input = object(await request.json());
+      if (input.action !== 'settle-projections') return json({ error: 'Invalid forecast settlement job.' }, 400);
+      const pending = await admin.from('gamewire_player_forecasts').select('*').is('settled_at', null)
+        .lt('event_start', new Date().toISOString()).gt('event_start', new Date(Date.now() - 21 * 86400000).toISOString())
+        .order('event_start', { ascending: true }).limit(80);
+      if (pending.error) throw new Error('Could not load pending player forecasts.');
+      const settled = await settleForecasts(admin, pending.data as PlayerForecast[], fetcher);
+      return json({ settled: settled.weeks.filter(row => row.settled_at).length, issues: settled.issues }, settled.issues.length ? 207 : 200);
+    }
     const user = await client.auth.getUser();
     if (user.error || !user.data.user || user.data.user.is_anonymous) return json({ error: 'Sign in with an account to use player analysis.' }, 401);
     let raw: unknown;
     try { raw = await request.json(); } catch { return json({ error: 'Invalid bot request.' }, 400); }
     const input = object(raw);
-    if (!['directory', 'breakdown', 'rankings', 'save-rankings'].includes(text(input.action))) return json({ error: 'Choose player search or a player breakdown.' }, 400);
+    if (!['directory', 'breakdown', 'history', 'rankings', 'save-rankings'].includes(text(input.action))) return json({ error: 'Choose player search or a player breakdown.' }, 400);
     const editingRankings = input.action === 'rankings' || input.action === 'save-rankings';
     if (editingRankings) {
       const permission = await client.rpc('gamewaire_can_admin');
@@ -36,7 +50,8 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       if (permission.data !== true) return json({ error: 'Only GamewAIre admins can edit weekly rankings.' }, 403);
       try { rankingScope(input); } catch (cause) { return json({ error: cause instanceof Error ? cause.message : 'Invalid ranking scope.' }, 400); }
     }
-    if (input.action === 'breakdown' && (!/^\d{1,12}$/.test(text(input.playerId)) || !['ppr', 'half', 'standard'].includes(text(input.format))))
+    if (['breakdown', 'history'].includes(text(input.action)) && (!/^\d{1,12}$/.test(text(input.playerId)) || !['ppr', 'half', 'standard'].includes(text(input.format))
+      || input.action === 'history' && (!Number.isInteger(input.season) || Number(input.season) < 2000 || Number(input.season) > 2200)))
       return json({ error: 'Choose an NFL player and a supported scoring format.' }, 400);
     let claimed = false;
     const claim = async () => {
@@ -117,6 +132,29 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     const player = directory.data.players.find((row) => row.id === input.playerId);
     if (!player) return json({ error: 'This player is not in the current verified NFL directory. Retry player search.' }, 404);
     const format = input.format as BotFormat, matchup = botMatchup(board, player);
+    if (input.action === 'history') {
+      if (!await claim()) return json({ error: 'Player history refresh limit reached. Retry after the hour changes.' }, 429);
+      const history = await loadPlayerHistory(admin, player.id, Number(input.season), format, fetcher);
+      if (Number(input.season) === week.season && week.seasonType === 2 && matchup && !history.weeks.some(row => row.event_id === matchup.eventId)) {
+        const current: PlayerForecast = { id: 'current-unrecorded', player_id: player.id, team_id: player.teamId, position: player.position,
+          season: week.season, week: week.week, format, event_id: matchup.eventId, event_start: matchup.start, opponent: matchup.opponent,
+          model_version: 'No pregame forecast recorded', forecast_at: '', projections: [], actuals: null, settled_at: null };
+        if (matchup.state === 'post') {
+          try {
+            const summary = await publicJSON(`${site}/summary?event=${matchup.eventId}`, fetcher);
+            const markets = player.position === 'QB' ? ['player_pass_yds', 'player_rush_yds'] : player.position === 'RB'
+              ? ['player_rush_yds', 'player_reception_yds', 'player_receptions'] : ['player_reception_yds', 'player_receptions'];
+            current.actuals = finalPlayerStats(summary, current, markets);
+            if (current.actuals) current.settled_at = new Date().toISOString();
+          } catch (cause) {
+            console.error('Current unrecorded player actual stats failed', player.id, cause);
+            history.issues.push(`Current week: ${cause instanceof Error ? cause.message : 'Final stats could not load.'}`);
+          }
+        }
+        history.weeks.unshift(current);
+      }
+      return json(history);
+    }
     const cacheKey = `nfl:breakdown:v8:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
     const result = await cached<BotReport>(cacheKey, (report) => report.dataIssues.length ? 30_000 : 5 * 60_000, async () => {
       const [roster, logs] = await Promise.allSettled([
@@ -181,6 +219,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     if (matchup && (matchup.state !== 'pre' || Date.parse(matchup.start) <= Date.now())) {
       report.indication = 'Game locked'; report.summary = 'This week’s game has started or finished. Saved workload is historical, not a pregame recommendation.';
     }
+    await archivePlayerForecast(admin, report, Date.now());
     if (matchup && report.indication !== 'Game locked') {
       const start = new Date(Date.parse(matchup.start) - 6 * 3600000).toISOString(), end = new Date(Date.parse(matchup.start) + 6 * 3600000).toISOString();
       const publications = await admin.from('gamewaire_publications').select('picks,event_start').eq('sport', 'NFL').gte('event_start', start).lte('event_start', end).limit(30);

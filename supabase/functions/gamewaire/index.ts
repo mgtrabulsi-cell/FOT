@@ -5,6 +5,7 @@ import type { Candidate, Quote, Sport } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses } from '../_shared/gamewaireSchedule.ts';
 import type { ScheduledJob } from '../_shared/gamewaireSchedule.ts';
+import { loadPickLearning } from '../_shared/gamewirePickLearning.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -269,7 +270,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const anchor: Quote = quotes[0];
       const matchup = await resolveMatchup(anchor, fetcher);
       const data = await collectEvidence(allQuotes, matchup, Date.now(), fetcher);
-      report = { ...evaluate(quotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks), warnings: data.warnings, coverage: data.coverage,
+      const learning = await loadPickLearning(admin, sport, modelVersion, Date.now());
+      report = { ...evaluate(quotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks, learning), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (aiKey && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');

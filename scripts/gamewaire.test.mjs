@@ -7,6 +7,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
+import * as pickLearningTools from '../supabase/functions/_shared/gamewirePickLearning.ts';
 import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
 import { completedSavedGames, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
 
@@ -650,7 +651,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(empty, /GameWire player analysis/);
   assert.match(empty, /Admin weekly ranking editor/);
   assert.match(empty, /Download results graphic/);
-  assert.doesNotMatch(empty, /Gamew<strong>AI<\/strong>re/, 'The App heading owns the single GamewAIre title');
+  assert.match(empty, /class="gai-stadium-brand" aria-hidden="true"/, 'Decorative stadium branding does not add a second page heading');
   assert.match(empty, /ANALYSIS ENGINE/);
   assert.match(empty, /class="gai-dashboard"/);
   assert.match(empty, /aria-label="Game filters"/);
@@ -953,6 +954,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       tables.push(table);
       const builder = {
         select: (columns) => { builder.columns = columns; return builder; }, eq: () => builder, order: () => builder, limit: () => builder, lt: () => builder,
+        gt: () => builder, in: () => builder, or: () => builder, range: () => builder,
         update: (value) => { writes.push({ table, value }); return builder; }, insert: (value) => { builder.value = value; return builder; },
         upsert: () => builder,
         delete: () => builder,
@@ -962,7 +964,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
           : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } }
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
-        then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
+        then: (resolve) => Promise.resolve({ data: table === 'gamewaire_picks' ? [] : null, error: null }).then(resolve),
       };
       return builder;
     },
@@ -981,6 +983,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
   const context = vm.createContext({ exports: {}, Response, Request, URL, AbortSignal, Date: class extends Date { static now() { return now; } }, console,
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
+      if (name.includes('gamewirePickLearning')) return pickLearningTools;
       if (name.includes('gamewaireSchedule')) return { ...schedule, planScheduledAnalyses: async () => {} };
       if (name.includes('gamewaireSources')) return { ...sources, resolveMatchup: async () => ({}), collectEvidence: async (quotes) => ({
         evidence: new Map(quotes.map((q) => [q.key, evidence])), warnings: [], coverage: {},

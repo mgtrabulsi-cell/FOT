@@ -1,3 +1,5 @@
+import { adjustedPickProbability, pickLearningKey } from './gamewireLearning.ts';
+import type { LearningAdjustment } from './gamewireLearning.ts';
 export type Sport = 'NFL' | 'NBA';
 export const modelVersion = 'empirical-baseline-v8';
 export const markets = {
@@ -48,6 +50,7 @@ export type Evidence = {
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
+  learning?: LearningAdjustment & { baseModelVersion: string; baseConditional: number };
   modelVersion: string; probability: number; pushProbability: number; implied: number;
   edge: number; ev: number; conservativeEV: number; projection: number;
   sampleSize: number; effectiveSample: number; last5: number; last10: number; seasonAverage: number;
@@ -341,7 +344,8 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
   return result;
 }
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 | 9 = 4, minimumPlayerPicks: 0 | 3 | 8 = 0): Evaluation {
+export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 | 9 = 4, minimumPlayerPicks: 0 | 3 | 8 = 0,
+  learning: Map<string, LearningAdjustment> = new Map()): Evaluation {
   const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [], teamOptions: TeamLean[] = [];
   const stretchOptions: Candidate[] = [];
   const best = new Map<string, Quote>();
@@ -402,9 +406,11 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const effectiveSample = 1 / weights.reduce((sum, value) => sum + value * value, 0);
     const conditionalWin = 1 - push > 0 ? Math.min(1, wins / (1 - push)) : 0;
     const decisiveSample = effectiveSample * (1 - push);
-    const conditional = (conditionalWin * decisiveSample + quote.noVig * 4) / (decisiveSample + 4);
+    const baseConditional = (conditionalWin * decisiveSample + quote.noVig * 4) / (decisiveSample + 4);
+    const adjustment = learning.get(pickLearningKey(quote.market, quote.side));
+    const conditional = adjustment?.active ? adjustedPickProbability(baseConditional, quote.market, quote.side, adjustment.adjustment) : baseConditional;
     const probability = conditional * (1 - push);
-    const uncertainty = Math.sqrt(conditional * (1 - conditional) / (decisiveSample + 5));
+    const uncertainty = Math.sqrt(Math.max(baseConditional * (1 - baseConditional), conditional * (1 - conditional)) / (decisiveSample + 5));
     const conservative = Math.max(0, conditional - 1.645 * uncertainty) * (1 - push);
     const implied = impliedProbability(quote.american);
     const edge = conditional - implied, ev = expectedValue(probability, push, quote.american);
@@ -417,7 +423,10 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       `Observed current-season last 5 average ${mean(current.slice(0, 5).map((row) => row.value)).toFixed(1)}; last 10 average ${mean(current.slice(0, 10).map((row) => row.value)).toFixed(1)}.`,
       `Estimated EV ${(ev * 100).toFixed(1)}% of one unit, including pushes. This baseline is not calibrated or independently validated.`,
     ];
+    if (adjustment?.active) facts.push(`A bounded ${((conditional - baseConditional) * 100).toFixed(1)} percentage-point settled-result correction passed chronological validation on ${adjustment.validationGames} later games. This does not establish universal calibration or guarantee future improvement.`);
     const candidate: Candidate = { ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,
+      ...(adjustment ? { learning: { ...adjustment, baseModelVersion: modelVersion, baseConditional },
+        ...(adjustment.active ? { modelVersion: `${modelVersion}+wf1:${adjustment.adjustment}:${adjustment.through}` } : {}) } : {}),
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,

@@ -379,7 +379,23 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <p>Data. Matchups. A clearer view.</p>
         <small>Compare real prices and model estimates. Verified data. No promise of profit.</small>
         <button type="button" className="gai-latest-link" onClick={openPublishedPicks}>View published picks <ArrowRight size={19} aria-hidden="true" /></button></div>
-      <svg className="gai-home-pulse" viewBox="0 0 600 200" fill="none" aria-hidden="true"><path d="M0 110H275L298 97L318 129L365 20L386 180L410 91L430 110H600" /></svg>
+      <div className="gai-stadium-brand" aria-hidden="true">
+        <svg viewBox="0 0 500 260" fill="none">
+          <defs><linearGradient id="gai-stadium-neon" x1="50" y1="40" x2="440" y2="230" gradientUnits="userSpaceOnUse"><stop stopColor="#62d4ff" /><stop offset=".55" stopColor="#186da5" /><stop offset="1" stopColor="#ff3657" /></linearGradient></defs>
+          <ellipse cx="250" cy="157" rx="213" ry="76" stroke="url(#gai-stadium-neon)" strokeWidth="3" />
+          <ellipse cx="250" cy="146" rx="195" ry="65" stroke="#3784af" strokeWidth="2" />
+          <ellipse cx="250" cy="136" rx="175" ry="53" stroke="#25516e" strokeWidth="2" />
+          <path d="M83 121v71m334-71v71M126 94v103m248-103v103M178 83v126m144-126v126M250 82v133" stroke="#22465f" strokeWidth="2" />
+          <path d="M116 156l134-43 134 43-134 48-134-48Z" fill="#0e293a" stroke="#42aace" strokeWidth="2" />
+          <path d="M150 155l101 36m-58-49 102 36m-59-50 102 36m-58-50 100 34" stroke="#225972" />
+          <path d="M68 115V56m364 59V56M137 90V31m226 59V31" stroke="#588aa7" strokeWidth="3" />
+          <path d="M48 56h40m324 0h40M117 31h40m186 0h40" stroke="#a9eaff" strokeWidth="5" strokeLinecap="round" />
+          <circle className="gai-stadium-signal" cx="250" cy="125" r="37" stroke="#49ccff" strokeWidth="2" />
+          <circle className="gai-stadium-signal gai-stadium-signal-delayed" cx="250" cy="125" r="37" stroke="#ff3657" strokeWidth="2" />
+        </svg>
+        <div className="gai-stadium-bot"><Bot strokeWidth={1.6} /></div>
+        <span className="gamewaire-name">Gamew<strong>AI</strong>re <small><i /> LIVE INTELLIGENCE</small></span>
+      </div>
       <div className="gai-hero-features" aria-label="Analysis features">
         <div><b>01</b><span>Sportsbook<br />lines &amp; prices</span></div>
         <div><b>02</b><span>Statistical<br />analysis</span></div>

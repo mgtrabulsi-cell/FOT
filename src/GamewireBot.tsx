@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowLeftRight, ArrowUp, BarChart3, Bot, BrainCircuit, ChevronDown, RefreshCw, Search, Send, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
-import { loadBotDirectory, loadBotReport } from './services/gamewireBot';
-import type { BotDirectory, BotFormat, BotPlayer, BotReport } from './services/gamewireBot';
+import { loadBotDirectory, loadBotHistory, loadBotReport } from './services/gamewireBot';
+import type { BotDirectory, BotFormat, BotPlayer, BotReport, PlayerWeekHistory } from './services/gamewireBot';
 import './gamewire-bot.css';
 import OfflineImage from './OfflineImage';
 
@@ -34,6 +34,46 @@ function Matchup({ report }: { report: BotReport }) {
   return <section><h5>This week’s matchup</h5>
     {matchup ? <p>{report.player.teamAbbr} {matchup.home ? 'vs.' : '@'} {matchup.opponent} · {stamp(matchup.start)} · {matchup.state === 'pre' ? 'Scheduled' : matchup.state === 'in' ? 'In progress' : 'Final'}</p> : <p>No game on the current week scoreboard.</p>}
     {matchup && <p>{report.matchupText}</p>}</section>;
+}
+export function WeeklyTracker({ report }: { report: BotReport }) {
+  const [history, setHistory] = useState<PlayerWeekHistory | null>(null);
+  const [error, setError] = useState(''), [loading, setLoading] = useState(true), [retry, setRetry] = useState(0);
+  const [past, setPast] = useState(false), [selected, setSelected] = useState(report.matchup?.eventId ?? '');
+  useEffect(() => {
+    const controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 20000);
+    let active = true;
+    setLoading(true); setError('');
+    void loadBotHistory(report.player.id, report.season, report.format, controller.signal)
+      .then(value => { if (active) setHistory(value); })
+      .catch((cause: unknown) => { if (active) setError(controller.signal.aborted ? 'Weekly history timed out. Retry to load verified results.' : cause instanceof Error ? cause.message : 'Weekly history could not load. Retry.'); })
+      .finally(() => { window.clearTimeout(timeout); if (active) setLoading(false); });
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
+  }, [report.player.id, report.season, report.format, report.checkedAt, retry]);
+  const week = history?.weeks.find(row => row.event_id === selected) ?? history?.weeks[0];
+  const labels: Record<string, string> = { player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions' };
+  const markets = week ? [...new Set([...week.projections.map(row => row.market), ...Object.keys(week.actuals ?? {})])] : [];
+  return <section className="gwb-weekly-tracker" aria-label={`${report.player.name} weekly projections and actual stats`}>
+    <div className="gwb-weekly-heading"><h5>GamewAIre weekly tracker</h5>
+      <button type="button" aria-expanded={past} onClick={() => setPast(value => !value)}>{past ? 'Hide past weeks' : 'Past Weeks'}</button></div>
+    {past && <div className="gwb-week-buttons" aria-label="Select a saved NFL week">
+      {history?.weeks.map(row => <button type="button" key={row.event_id} aria-pressed={week?.event_id === row.event_id}
+        onClick={() => setSelected(row.event_id)}>Week {row.week}</button>)}
+      {!loading && !history?.weeks.length && <p>No saved weeks yet.</p>}
+    </div>}
+    {loading && <p role="status">Loading saved forecasts and verified final stats...</p>}
+    {error && <p role="alert" className="gwb-warning">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry weekly history</button></p>}
+    {history?.issues.map(issue => <p key={issue} className="gwb-warning" role="status">{issue} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry stats</button></p>)}
+    {week && <><p><b>Week {week.week} · {week.season}</b> · vs. {week.opponent}</p>
+      {markets.length > 0 && <div className="gwb-week-table"><table><thead><tr><th scope="col">Stat</th><th scope="col">GamewAIre estimate</th><th scope="col">Actual · Final</th></tr></thead>
+        <tbody>{markets.map(market => <tr key={market}><th scope="row">{labels[market] ?? market}</th>
+          <td>{week.projections.find(stat => stat.market === market)?.estimate ?? 'Not recorded'}</td>
+          <td>{week.actuals?.[market] ?? (week.settled_at ? 'Not reported' : 'Awaiting final')}</td></tr>)}</tbody></table></div>}
+      <p className="gwb-muted">{week.forecast_at ? `Pregame forecast saved ${stamp(week.forecast_at)}. Locked at kickoff; actuals use verified final ESPN box scores.` : 'No forecast was saved before this game. We do not recreate old projections with hindsight.'}</p>
+      {week.projections.some(stat => stat.learning?.active) && <p className="gwb-muted">Includes a bounded adjustment validated against later settled games. Accuracy is not guaranteed.</p>}
+    </>}
+    {!loading && !error && !week && <p className="gwb-muted">No saved forecasts for this season yet. Verified pregame estimates are archived when a player is analyzed.</p>}
+    <p className="gwb-muted">Past Weeks contains recorded forecasts only. Missing stats are never treated as zero.</p>
+  </section>;
 }
 function PropLab({ report }: { report: BotReport }) {
   return <section className="gwb-prop-lab"><h5>Prop Lab</h5>
@@ -69,6 +109,7 @@ function Breakdown({ report, onClear, busy }: { report: BotReport; onClear: () =
       <div className="gwb-tags"><span>PLAYER ANALYSIS</span><span>FANTASY</span></div></div></div>
     <Guidance report={report} />
     <Snapshot report={report} />
+    <WeeklyTracker key={`${report.player.id}:${report.season}:${report.week}:${report.format}`} report={report} />
     <>
       <div className="gwb-stat-grid">{[...report.workload, ...report.production].map((stat) => <div key={stat.label}><strong>{stat.average.toFixed(1)}</strong><span>{stat.label}/game</span><small>Last {stat.games} recorded appearances</small></div>)}</div>
       {report.fantasyAverage !== null ? <p className="gwb-muted">Historical scoring average: {report.fantasyAverage.toFixed(1)} points/game. Not a projection.</p>

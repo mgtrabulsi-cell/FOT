@@ -1,8 +1,32 @@
 import { supabase } from './supabaseClient';
-import type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supabase/functions/_shared/gamewireBot';
+import type { BotDirectory, BotFormat, BotPlayer, BotReport, PlayerWeekHistory } from '../../supabase/functions/_shared/gamewireBot';
 import { readRankingList } from '../../supabase/functions/_shared/gamewireRankings';
 import type { RankingList } from '../../supabase/functions/_shared/gamewireRankings';
 export type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supabase/functions/_shared/gamewireBot';
+export type { PlayerWeekHistory } from '../../supabase/functions/_shared/gamewireBot';
+
+export async function loadBotHistory(playerId: string, season: number, format: BotFormat, signal: AbortSignal): Promise<PlayerWeekHistory> {
+  const value = await request<unknown>({ action: 'history', playerId, season, format }, signal);
+  if (!validHistory(value, playerId, season, format)) throw new Error('The Bot returned invalid weekly forecast history. Retry.');
+  return value;
+}
+function validHistory(value: unknown, playerId: string, season: number, format: BotFormat): value is PlayerWeekHistory {
+  const row = object(value);
+  return list(row.issues, issue => typeof issue === 'string') && list(row.weeks, item => {
+    const week = object(item), actuals = object(week.actuals);
+    return strings(week, ['id', 'player_id', 'team_id', 'position', 'format', 'event_id', 'event_start', 'opponent', 'model_version', 'forecast_at'])
+      && week.player_id === playerId && week.season === season && week.format === format
+      && Number.isInteger(week.week) && Number(week.week) >= 1 && Number(week.week) <= 18
+      && /^\d+$/.test(String(week.event_id)) && Number.isFinite(Date.parse(String(week.event_start)))
+      && (week.forecast_at === '' && Array.isArray(week.projections) && !week.projections.length
+        || Number.isFinite(Date.parse(String(week.forecast_at))) && Date.parse(String(week.forecast_at)) < Date.parse(String(week.event_start)))
+      && (week.settled_at === null || Number.isFinite(Date.parse(String(week.settled_at))) && Date.parse(String(week.settled_at)) >= Date.parse(String(week.event_start)))
+      && (week.actuals === null && week.settled_at === null || week.settled_at !== null && week.actuals !== null
+        && typeof week.actuals === 'object' && !Array.isArray(week.actuals) && Object.values(actuals).every(nullableNumber))
+      && list(week.projections, stat => { const projection = object(stat);
+        return strings(projection, ['market', 'label']) && finite(projection.estimate) && finite(projection.base); });
+  });
+}
 
 async function request<T>(body: Record<string, unknown>, signal: AbortSignal): Promise<T> {
   if (!supabase) throw new Error('Account services are not configured.');

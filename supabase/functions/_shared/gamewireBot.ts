@@ -1,8 +1,16 @@
 import { array, normalize, numeric, object, text } from './gamewaire.ts';
 import type { BotProjection } from './gamewireBotProjections.ts';
 import type { observedLineComparison } from './gamewireBotIntelligence.ts';
+import type { LearningAdjustment } from './gamewireLearning.ts';
 
 export type BotFormat = 'ppr' | 'half' | 'standard';
+export type ForecastStat = { market: string; label: string; estimate: number; base: number; learning?: LearningAdjustment };
+export type PlayerForecast = {
+  id: string; player_id: string; team_id: string; position: string; season: number; week: number; format: string;
+  event_id: string; event_start: string; opponent: string; model_version: string; forecast_at: string;
+  projections: ForecastStat[]; actuals: Record<string, number | null> | null; settled_at: string | null;
+};
+export type PlayerWeekHistory = { weeks: PlayerForecast[]; issues: string[] };
 export type BotPlayer = { id: string; name: string; position: 'QB' | 'RB' | 'WR' | 'TE'; teamId: string; team: string; teamAbbr: string };
 export type BotWeek = { season: number; week: number; seasonType: number };
 export type BotDirectory = BotWeek & { players: BotPlayer[]; positions: Record<string, string>; warnings: string[]; checkedAt: string };

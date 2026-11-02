@@ -3,6 +3,7 @@ import { botLogRows } from './gamewireBot.ts';
 import type { BotDirectory, BotMatchup, BotPlayer } from './gamewireBot.ts';
 import { projectionIntelligence } from './gamewireBotIntelligence.ts';
 import type { ProjectionEvidence, ProjectionObservation, ComparableObservation } from './gamewireBotIntelligence.ts';
+import type { LearningAdjustment } from './gamewireLearning.ts';
 
 export type BotProjection = {
   market: string; label: string; estimate: number | null; unit: 'yards' | 'receptions'; baseline: number | null; playerGames: number;
@@ -14,6 +15,7 @@ export type BotProjection = {
   defenseRank?: number | null; limitedData?: boolean;
   basis?: 'matchup' | 'current-season';
   evidence?: ProjectionEvidence;
+  learning?: LearningAdjustment;
   sourceGames: Array<{ id: string; date: string; role: 'team' | 'opponent' }>;
 };
 type ScheduledGame = { id: string; date: string; opponentId: string; pointsFor: number; pointsAgainst: number };

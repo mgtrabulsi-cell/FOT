@@ -9,6 +9,7 @@ import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as bot from '../supabase/functions/_shared/gamewireBot.ts';
 import * as rankingTools from '../supabase/functions/_shared/gamewireRankings.ts';
 import * as intelligenceTools from '../supabase/functions/_shared/gamewireBotIntelligence.ts';
+import * as forecastTools from '../supabase/functions/_shared/gamewireForecasts.ts';
 
 const now = Date.parse('2026-10-29T18:00:00Z');
 const player = { id: '123', name: 'Test Runner', position: 'RB', teamId: '23', team: 'Pittsburgh Steelers', teamAbbr: 'PIT' };
@@ -121,7 +122,7 @@ test('Missing weekly games, kickoff lock, postseason and transferred player iden
 
 const endpointCode = ts.transpileModule(readFileSync(new URL('../supabase/functions/gamewire-bot/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
+function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], forecastRows = [], finalSummary = null, upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
   const calls = [], writes = [], rpcs = [], queries = [], cache = new Map(), expires = new Date(now + 3600000).toISOString();
   if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expires });
   const client = {
@@ -133,9 +134,10 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
       const builder = {
         select: () => builder, eq: (key, value) => { filters[key] = value; return builder; },
         gt: () => builder, gte: () => builder, lte: () => builder, limit: () => builder, not: () => builder, order: () => builder,
+        update: () => builder,
         maybeSingle: async () => ({ data: cache.get(filters.cache_key) ?? null, error: cacheFailure ? { message: 'DB failed' } : null }),
         upsert: async (value) => { writes.push(table); cache.set(value.cache_key, value); return { error: null }; },
-        then: (resolve) => Promise.resolve({ data: table === 'fantasy_graphics' ? graphics : table === 'gamewire_fantasy_rankings' ? rankings : pubs, error: pubFailure ? { message: 'DB failed' } : null }).then(resolve),
+        then: (resolve) => Promise.resolve({ data: table === 'gamewire_player_forecasts' ? forecastRows : table === 'fantasy_graphics' ? graphics : table === 'gamewire_fantasy_rankings' ? rankings : pubs, error: pubFailure ? { message: 'DB failed' } : null }).then(resolve),
       }; return builder;
     },
   };
@@ -150,6 +152,7 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     if (primaryWeekFail && href.includes('site.api.espn.com') && href.includes('/scoreboard')) return new Response('', { status: 403 });
     if (primaryRosterFail && href.includes('site.api.espn.com') && href.includes('/roster')) return new Response('', { status: 403 });
     if (href.includes('/scoreboard')) return Response.json(board);
+    if (href.includes('/summary?') && finalSummary) return Response.json(finalSummary);
     if (href.includes('/gamelog')) return badLogs ? new Response('', { status: 503 }) : Response.json(logs);
     if (href.includes('/standings')) return Response.json({ season: { year: 2026 }, children: [{
       standings: { entries: Array.from({ length: 32 }, (_, id) => ({ team: { id: String(id + 1), displayName: id === 4 ? 'Cleveland Browns' : `Team ${id}` },
@@ -163,6 +166,7 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     Date: class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } },
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
+      if (name.includes('gamewireForecasts')) return forecastTools;
       if (name.includes('gamewireRankings')) return rankingTools;
       if (name.includes('gamewireBotProjections')) return { collectBotProjections: async () => projections };
       if (name.includes('gamewireBotIntelligence')) return intelligenceTools;
@@ -198,6 +202,24 @@ test('Input validation happens before fetches and usage claims', async () => {
     const api = endpoint(), result = await api.run(body);
     assert.equal(result.status, 400); assert.equal(api.calls.length, 0); assert.ok(!api.rpcs.includes('gamewire_bot_claim'));
   }
+});
+test('Weekly history returns recorded estimates and final actuals separately; missing forecasts are never reconstructed', async () => {
+  const saved = { id: 'archived-forecast', player_id: player.id, team_id: player.teamId, position: 'RB', season: 2026, week: 7, format: 'ppr',
+    event_id: '401234566', event_start: '2026-10-18T18:00:00Z', forecast_at: '2026-10-18T15:00:00Z', opponent: 'Test opponent', model_version: 'player-intelligence-v1',
+    projections: [{ market: 'player_rush_yds', label: 'Rushing yards', estimate: 80, base: 80 }], actuals: null, settled_at: null };
+  const summary = { header: { id: saved.event_id, season: { year: 2026, type: 2 }, week: 7, competitions: [{ status: { type: { completed: true } } }] },
+    boxscore: { players: [{ team: { id: player.teamId }, statistics: [{ name: 'rushing', keys: ['rushingYards'], athletes: [{ athlete: { id: player.id }, stats: ['60'] }] }] }] } };
+  const api = endpoint({ forecastRows: [saved], finalSummary: summary });
+  const response = await api.run({ action: 'history', playerId: player.id, season: 2026, format: 'ppr' }), history = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(history.weeks.find(row => row.week === 7).projections[0].estimate, 80);
+  assert.equal(history.weeks.find(row => row.week === 7).actuals.player_rush_yds, 60);
+  assert.equal(history.weeks.find(row => row.week === 8).projections.length, 0);
+  assert.equal(history.weeks.find(row => row.week === 8).forecast_at, '');
+  assert.equal(api.rpcs.includes('gamewire_save_forecast'), false, 'Opening past results never creates a forecast');
+  assert.ok(api.queries.some(query => query.table === 'gamewire_player_forecasts' && query.filters.player_id === player.id));
+  for (const invalid of [{ action: 'history', playerId: player.id, season: '2026', format: 'ppr' }, { action: 'history', playerId: '../private', season: 2026, format: 'ppr' }])
+    assert.equal((await endpoint().run(invalid)).status, 400);
 });
 test('Verified owner breakdown uses only public ESPN feeds, reuses snapshots and returns no private metrics', async () => {
   const api = endpoint(), response = await api.run(), data = await response.json();
