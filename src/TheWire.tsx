@@ -1,5 +1,5 @@
-import OfflineImage from './OfflineImage';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import TeamAbbrMark from './TeamAbbrMark';
 import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
@@ -265,11 +265,7 @@ function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
         {meta && <span className="wire-latest-play-type">{meta}</span>}
       </div>
       <div className="wire-latest-play-body" key={play.id ?? play.text}>
-        {team && (
-          <span className="team-mark wire-latest-play-team" style={{ '--team-color': team.color } as React.CSSProperties} title={team.name}>
-            {team.logo ? <OfflineImage src={team.logo} alt="" /> : team.abbr.slice(0, 2)}
-          </span>
-        )}
+        {team && <TeamAbbrMark className="wire-latest-play-team" abbr={team.abbr} color={team.color} name={team.name} />}
         <p>{text}</p>
       </div>
       {play.drive && <small className="wire-latest-play-drive">{team ? `${team.abbr} drive` : 'Drive'}: {play.drive}</small>}
@@ -818,7 +814,6 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
       shortName: 'abbr' in team ? team.abbr : team.abbreviation,
       feedPath: 'football/nfl',
       teamAbbr: 'abbr' in team ? team.abbr : team.abbreviation,
-      logo: team.logo,
     };
     onToggleFavorite(target);
   };
@@ -871,9 +866,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                 const lost = final && team.score < opponent.score;
                 return (
                   <span className={`wire-board-team${lost ? ' is-loser' : ''}`} key={team.id}>
-                    <span className="team-mark wire-board-mark" style={{ '--team-color': team.color } as React.CSSProperties}>
-                      {team.logo ? <OfflineImage src={team.logo} alt="" /> : team.abbr.slice(0, 2)}
-                    </span>
+                    <TeamAbbrMark className="wire-board-mark" abbr={team.abbr} color={team.color} name={team.name} />
                     <span className="wire-board-team-name">
                       <b>
                         <span className="wire-board-team-label">{team.name}</span>
@@ -1065,16 +1058,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               {/* Away Team */}
               <div className={`wire-matchup-team wire-team-left${awayLost ? ' is-loser' : ''}`}>
                 <div className="wire-matchup-mark-wrapper">
-                  <span
-                    className="team-mark team-mark-large"
-                    style={{ '--team-color': selectedGame.away.color } as React.CSSProperties}
-                  >
-                    {selectedGame.away.logo ? (
-                      <OfflineImage src={selectedGame.away.logo} alt="" />
-                    ) : (
-                      selectedGame.away.abbr.slice(0, 2)
-                    )}
-                  </span>
+                  <TeamAbbrMark large abbr={selectedGame.away.abbr} color={selectedGame.away.color} name={selectedGame.away.name} />
                   <button
                     className={`favorite-star-button${isTeamFavorite(selectedGame.away.id, selectedGame.feedPath) ? ' is-favorite' : ''}`}
                     title={isTeamFavorite(selectedGame.away.id, selectedGame.feedPath) ? 'Remove favorite' : 'Add favorite'}
@@ -1152,16 +1136,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                   <small>{selectedGame.home.record || 'Home'}</small>
                 </div>
                 <div className="wire-matchup-mark-wrapper">
-                  <span
-                    className="team-mark team-mark-large"
-                    style={{ '--team-color': selectedGame.home.color } as React.CSSProperties}
-                  >
-                    {selectedGame.home.logo ? (
-                      <OfflineImage src={selectedGame.home.logo} alt="" />
-                    ) : (
-                      selectedGame.home.abbr.slice(0, 2)
-                    )}
-                  </span>
+                  <TeamAbbrMark large abbr={selectedGame.home.abbr} color={selectedGame.home.color} name={selectedGame.home.name} />
                   <button
                     className={`favorite-star-button${isTeamFavorite(selectedGame.home.id, selectedGame.feedPath) ? ' is-favorite' : ''}`}
                     title={isTeamFavorite(selectedGame.home.id, selectedGame.feedPath) ? 'Remove favorite' : 'Add favorite'}
@@ -1196,7 +1171,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     <tr className={`${selectedTeamSide === 'away' ? 'active-team-row' : ''}${awayLost ? ' is-loser' : ''}`}>
                       <td className="wire-col-team">
                         <div className="wire-team-inline">
-                          {awayBoxTeam?.logo && <OfflineImage src={awayBoxTeam.logo} alt="" />}
+                          <TeamAbbrMark abbr={awayBoxTeam?.abbreviation ?? selectedGame.away.abbr} color={awayBoxTeam?.color || selectedGame.away.color} name={awayBoxTeam?.name ?? selectedGame.away.name} />
                           <span>{awayBoxTeam?.abbreviation ?? selectedGame.away.abbr}</span>
                         </div>
                       </td>
@@ -1212,7 +1187,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     <tr className={`${selectedTeamSide === 'home' ? 'active-team-row' : ''}${homeLost ? ' is-loser' : ''}`}>
                       <td className="wire-col-team">
                         <div className="wire-team-inline">
-                          {homeBoxTeam?.logo && <OfflineImage src={homeBoxTeam.logo} alt="" />}
+                          <TeamAbbrMark abbr={homeBoxTeam?.abbreviation ?? selectedGame.home.abbr} color={homeBoxTeam?.color || selectedGame.home.color} name={homeBoxTeam?.name ?? selectedGame.home.name} />
                           <span>{homeBoxTeam?.abbreviation ?? selectedGame.home.abbr}</span>
                         </div>
                       </td>
@@ -1245,16 +1220,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               >
                 <div className="wire-team-half-content">
                   <div className="wire-team-half-left">
-                    <span
-                      className="team-mark"
-                      style={{ '--team-color': awayBoxTeam?.color || selectedGame.away.color } as React.CSSProperties}
-                    >
-                      {awayBoxTeam?.logo ? (
-                        <OfflineImage src={awayBoxTeam.logo} alt="" />
-                      ) : (
-                        (awayBoxTeam?.abbreviation || selectedGame.away.abbr).slice(0, 2)
-                      )}
-                    </span>
+                    <TeamAbbrMark abbr={awayBoxTeam?.abbreviation || selectedGame.away.abbr} color={awayBoxTeam?.color || selectedGame.away.color} name={awayBoxTeam?.name || selectedGame.away.name} />
                     <div className="wire-team-half-copy">
                       <span className="wire-team-half-name">
                         {awayBoxTeam?.name || selectedGame.away.name}
@@ -1284,16 +1250,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               >
                 <div className="wire-team-half-content">
                   <div className="wire-team-half-left">
-                    <span
-                      className="team-mark"
-                      style={{ '--team-color': homeBoxTeam?.color || selectedGame.home.color } as React.CSSProperties}
-                    >
-                      {homeBoxTeam?.logo ? (
-                        <OfflineImage src={homeBoxTeam.logo} alt="" />
-                      ) : (
-                        (homeBoxTeam?.abbreviation || selectedGame.home.abbr).slice(0, 2)
-                      )}
-                    </span>
+                    <TeamAbbrMark abbr={homeBoxTeam?.abbreviation || selectedGame.home.abbr} color={homeBoxTeam?.color || selectedGame.home.color} name={homeBoxTeam?.name || selectedGame.home.name} />
                     <div className="wire-team-half-copy">
                       <span className="wire-team-half-name">
                         {homeBoxTeam?.name || selectedGame.home.name}
@@ -1373,12 +1330,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               <div className="wire-comparison-card">
                 <header className="wire-comparison-header">
                   <div className="wire-comp-team">
-                    <span
-                      className="team-mark"
-                      style={{ '--team-color': compAwayColor } as React.CSSProperties}
-                    >
-                      {selectedGame.away.logo ? <OfflineImage src={selectedGame.away.logo} alt="" /> : selectedGame.away.abbr}
-                    </span>
+                    <TeamAbbrMark abbr={selectedGame.away.abbr} color={compAwayColor} name={awayBoxTeam?.name ?? selectedGame.away.name} />
                     <b>{awayBoxTeam?.name ?? selectedGame.away.name}</b>
                     <span
                       className="wire-comp-swatch"
@@ -1394,12 +1346,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                       title={`${homeBoxTeam?.name ?? selectedGame.home.name} bar line`}
                     />
                     <b>{homeBoxTeam?.name ?? selectedGame.home.name}</b>
-                    <span
-                      className="team-mark"
-                      style={{ '--team-color': compHomeColor } as React.CSSProperties}
-                    >
-                      {selectedGame.home.logo ? <OfflineImage src={selectedGame.home.logo} alt="" /> : selectedGame.home.abbr}
-                    </span>
+                    <TeamAbbrMark abbr={selectedGame.home.abbr} color={compHomeColor} name={homeBoxTeam?.name ?? selectedGame.home.name} />
                   </div>
                 </header>
 

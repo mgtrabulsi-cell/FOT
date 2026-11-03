@@ -290,11 +290,14 @@ button { color: inherit; }
 .game-state { display: flex; gap: 7px; align-items: center; color: #7b857d; font: 9px var(--mono); }
 .game-state.is-live { color: #b74e3b; }
 .game-state.is-live i { width: 5px; height: 5px; box-shadow: none; }
-.score-row { display: grid; grid-template-columns: 25px minmax(0, 1fr) 48px 28px; align-items: center; gap: 8px; min-height: 34px; }
+.score-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 48px 28px; align-items: center; gap: 8px; min-height: 34px; }
 .home-team { margin-top: 1px; }
-.team-mark { --team-color: #536b8d; width: 23px; height: 23px; display: grid; place-items: center; border-radius: 5px; background: color-mix(in srgb, var(--team-color) 15%, white); color: var(--team-color); font: 700 8px var(--mono); }
-.team-mark-large { width: 47px; height: 47px; border-radius: 11px; font-size: 13px; }
-.team-mark img { display: block; width: 78%; height: 78%; object-fit: contain; }
+.team-mark { --team-color: #536b8d; width: 32px; height: 32px; display: grid; justify-items: center; align-content: center; gap: 3px; border-radius: 8px; background: color-mix(in srgb, var(--team-color) 18%, #101826); color: var(--team-color); font: 800 9px/1 var(--mono); letter-spacing: .08em; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--team-color) 22%, transparent); }
+.team-mark > b { font: inherit; color: inherit; letter-spacing: inherit; }
+.team-mark::after { content: ''; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
+.team-mark-large { width: 56px; height: 56px; border-radius: 12px; font-size: 14px; letter-spacing: .1em; gap: 5px; }
+.team-mark-large::after { width: 20px; height: 2.5px; }
+.team-mark img { display: none; }
 .team-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .team-record { color: #929b93; font: 9px var(--mono); text-align: right; }
 .team-score { font: 600 17px var(--display); text-align: right; }
@@ -1090,7 +1093,7 @@ td:first-child { color: #828c84; }
 .card-bottom { border-top-color: #29384e; }
 .game-card-players { color: #9daec7; }
 .game-card-players:hover { background: #a51c28; border-color: #cc2633; color: #fff; }
-.team-mark { background: color-mix(in srgb, var(--team-color) 28%, #172337); }
+.team-mark { background: color-mix(in srgb, var(--team-color) 22%, #101826); }
 .favorite-star-button { color: #9eadc4; background: #182438; border-color: #3b4b63; }
 .favorite-star-button:hover { color: #fff; border-color: #cc2633; background: #a51c28; }
 .favorite-star-button.is-favorite { color: #fff; border-color: #cc2633; background: #a51c28; }
@@ -1191,7 +1194,7 @@ td:first-child { color: #828c84; }
 .primary-nav button.active::after { background: #cc2633; }
 .feed-status-warning, .game-state.is-live { color: #fff; background: #a51c28; border-radius: 3px; padding: 2px 4px; }
 .nfl-score-rule { background: #7486a3; }
-.team-mark { background: color-mix(in srgb, var(--team-color) 28%, #172337); }
+.team-mark { background: color-mix(in srgb, var(--team-color) 22%, #101826); }
 .game-card-main:focus-visible, .game-center-team-players:focus-visible, .nfl-directory-player-main:focus-visible { outline-color: #cc2633; }
 
 /* iOS Safari auto-zooms into any field under 16px; keep fields at 16px on touch devices so the page never zooms. */
@@ -1216,7 +1219,7 @@ td:first-child { color: #828c84; }
 .team-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .team-mark-large { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 8px; font-size: 14px; }
 .wire-team-inline { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.wire-team-inline img { width: 20px; height: 20px; object-fit: contain; flex: 0 0 20px; display: block; }
+.wire-team-inline .team-mark { width: 28px; height: 28px; flex: 0 0 28px; font-size: 8px; }
 
 /* The Wire - Container and Layout */
 .the-wire-container { display: grid; gap: 20px; min-width: 0; max-width: 100%; }
@@ -1306,7 +1309,7 @@ td:first-child { color: #828c84; }
 .wire-board-status .live-pill i { width: 6px; height: 6px; border-radius: 50%; background: #ff4d5a; box-shadow: 0 0 6px #cc2633; display: inline-block; }
 .wire-board-final { color: #8fa4c2; }
 .wire-board-teams { grid-area: teams; display: grid; gap: 6px; min-width: 0; }
-.wire-board-team { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; }
+.wire-board-team { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; }
 .wire-board-team.is-loser .wire-board-team-name b,
 .wire-board-team.is-loser .wire-board-score,
 .wire-wheel-card .wire-wheel-row.is-loser .wire-wheel-team-abbr,
@@ -1318,7 +1321,7 @@ td:first-child { color: #828c84; }
 .wire-team-half.is-loser .wire-team-half-score,
 .wire-linescore-table .is-loser .wire-team-inline span,
 .wire-linescore-table .is-loser .wire-col-total strong { color: #9aa7b8; }
-.wire-board-mark { width: 30px; height: 30px; border-radius: 6px; font-size: 11px; }
+.wire-board-mark { width: 36px; height: 36px; border-radius: 8px; font-size: 10px; }
 .wire-board-team-name { display: grid; min-width: 0; }
 .wire-board-team-name b { display: flex; align-items: center; gap: 4px; overflow: hidden; font: 600 15px/1.25 var(--display); color: #fff; letter-spacing: .3px; white-space: nowrap; text-overflow: ellipsis; }
 .wire-board-team-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -1651,8 +1654,8 @@ td:first-child { color: #828c84; }
   .wire-board { gap: 14px; }
   .wire-board-card { grid-template-columns: 64px minmax(0, 1fr); gap: 8px 10px; padding: 10px; }
   .wire-board-status { font-size: 11px; }
-  .wire-board-team { grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; }
-  .wire-board-mark { width: 26px; height: 26px; }
+  .wire-board-team { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; }
+  .wire-board-mark { width: 32px; height: 32px; font-size: 8px; }
   .wire-board-team-name b { font-size: 14px; }
   .wire-board-score { font-size: 19px; }
   .wire-back-button { min-height: 34px; }
@@ -1732,7 +1735,7 @@ td:first-child { color: #828c84; }
   .wire-linescore-table th.wire-col-total, .wire-linescore-table td.wire-col-total { width: auto; min-width: 0; padding: 5px 2px; font-size: 10px; }
   .wire-linescore-table th.wire-col-team, .wire-linescore-table td.wire-col-team { width: 64px; padding-left: 4px; padding-right: 4px; }
   .wire-linescore-table .wire-team-inline { gap: 4px; font-size: 10px; }
-  .wire-linescore-table .wire-team-inline img { width: 16px; height: 16px; flex-basis: 16px; }
+  .wire-linescore-table .wire-team-inline .team-mark { width: 24px; height: 24px; flex-basis: 24px; font-size: 7px; }
 }
 
 /* Score change: slot-wheel roll + fireworks burst (ScoreTicker) */
@@ -1766,7 +1769,7 @@ td:first-child { color: #828c84; }
 .wire-latest-play-type { font: 600 11px/1.2 var(--mono); color: #9fb0c8; text-transform: uppercase; letter-spacing: .04em; }
 .wire-latest-play-body { display: flex; align-items: flex-start; gap: 10px; animation: wire-latest-in .45s ease-out both; }
 .wire-latest-play-body p { margin: 0; color: #e8edf5; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
-.wire-latest-play-team.team-mark { flex: none; width: 30px; height: 30px; font-size: 11px; }
+.wire-latest-play-team.team-mark { flex: none; width: 36px; height: 36px; font-size: 10px; }
 .wire-latest-play-drive { color: #8394ad; font: 500 11px/1.3 var(--mono); }
 @keyframes wire-latest-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes wire-latest-pulse { 50% { opacity: .35; } }

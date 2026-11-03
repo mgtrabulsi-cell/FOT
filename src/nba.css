@@ -19,11 +19,11 @@
 .nba-game-wheel button.is-selected, .nba-segments button[aria-pressed=true], .nba-stat-picker button[aria-pressed=true] { border-color: #557299; background: #1f3048; color: #fff; box-shadow: inset 0 -2px #cc2633; }
 .nba-game-option > small { color: var(--nba-muted); min-height: 17px; font-size: 11px; }
 .nba-game-option > span { display: flex; align-items: center; gap: 9px; }
-.nba-game-option img { width: 25px; height: 25px; object-fit: contain; pointer-events: none; }
+.nba-game-option .team-mark { width: 28px; height: 28px; font-size: 8px; pointer-events: none; }
 .nba-game-option strong { margin-left: auto; }
 .nba-matchup { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 22px 12px; margin-top: 12px; border: 1px solid var(--nba-line); border-radius: 16px; background: #111b2b; }
 .nba-matchup > div:not(.nba-score) { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; text-align: center; }
-.nba-matchup img { width: 60px; height: 60px; object-fit: contain; }
+.nba-matchup .team-mark-large { width: 60px; height: 60px; font-size: 15px; }
 .nba-score { display: grid; text-align: center; gap: 7px; max-width: 200px; }
 .nba-score b { font-size: clamp(19px, 3.5vw, 32px); white-space: nowrap; }
 .nba-score small { color: var(--nba-muted); font-size: 12px; }
@@ -33,7 +33,7 @@
 .nba-experience button.nba-favorite, .nba-profile button.nba-favorite { border-radius: 50%; color: #9eadc4; background: #182438; border-color: #3b4b63; }
 .nba-experience button.nba-favorite:is(.is-favorite,:hover), .nba-profile button.nba-favorite:is(.is-favorite,:hover) { color: #fff; border-color: #cc2633; background: #a51c28; }
 .nba-team-heading { margin-top: 15px; }
-.nba-team-heading > img { width: 43px; height: 43px; object-fit: contain; }
+.nba-team-heading > .team-mark { width: 43px; height: 43px; font-size: 11px; }
 .nba-team-heading h3 { font-size: 17px; }
 .nba-team-heading small, .nba-player-link small { color: var(--nba-muted, #a5b5cc); display: block; margin-top: 4px; }
 .nba-segments { display: flex; gap: 7px; margin: 18px 0; flex-wrap: wrap; }
@@ -70,7 +70,7 @@
 .nba-team-toggle button::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--team-bar-color); }
 .nba-team-toggle button:hover { border-color: color-mix(in srgb, var(--team-bar-color) 60%, #fff); }
 .nba-team-toggle button[aria-pressed=true] { border-color: var(--team-bar-color); background: color-mix(in srgb, var(--team-bar-color) 28%, #131c2b); box-shadow: 0 0 0 1px var(--team-bar-color), 0 6px 22px color-mix(in srgb, var(--team-bar-color) 30%, transparent); }
-.nba-team-toggle img { width: 28px; height: 28px; object-fit: contain; }
+.nba-team-toggle .team-mark { width: 28px; height: 28px; font-size: 8px; }
 .nba-experience .wire-latest-play { margin: 4px 0 16px; }
 .nba-play-quarter h4 { padding-bottom: 10px; border-bottom: 1px solid var(--nba-line); font: 600 21px var(--display); color: #fff; }
 .nba-experience button.nba-player-link { border: 0; padding: 0; display: flex; align-items: center; gap: 10px; background: transparent; text-align: left; min-width: 0; }

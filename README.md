@@ -370,7 +370,7 @@ Weak connections and feed/access refresh failures do not hide or reset the worki
 
 The live preview and **2160×2700 PNG** download use the same canvas renderer and actual site fonts. Rendering fails visibly on missing fonts/images or copy that exceeds six lines per card rather than clipping the output. Four players, manually attached photos, and reasoning are required to publish/download; incomplete drafts may be saved. Previously published graphics with provider image URLs still render so they can be migrated or unpublished. Published graphics also include an accessible text analysis view.
 
-The site is player-likeness-free: Stat Hub, box scores, Locker Room, Favorable Matchups and the GamewAIre bot show initials, names or team logos instead of player photos, and no graphic builder auto-fills player faces or team logos — all graphic artwork is attached manually via Add photo. Player avatars use first-plus-last-name initials (name suffixes such as Jr. or III are never used as initials).
+The site is player-likeness-free and does not display third-party team logo artwork: Stat Hub, box scores, Locker Room, Favorable Matchups and the GamewAIre bot show initials, names, or abbreviation tiles in team colors (full NFL/NBA abbr plus a color underline) instead of player photos or provider logos. No graphic builder auto-fills player faces or team logos — all graphic artwork is attached manually via Add photo. Player avatars use first-plus-last-name initials (name suffixes such as Jr. or III are never used as initials). The GameWire brand mark remains first-party.
 
 ### Pinned Angle post
 
