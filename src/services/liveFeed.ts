@@ -445,3 +445,87 @@ export async function fetchNFLRosterFeed(
   });
   return players.length === rows.length && players.length ? players : null;
 }
+
+// --- NFL player game logs from API-Sports ---
+
+type PlayerLogContext = { gameId: string; date: string };
+
+const playerLogGates = new Map<number, { expires: number; request: Promise<boolean> }>();
+
+// Game logs are only served once every regular-season final has player stats synced;
+// otherwise a missing game would silently read as "did not play".
+function playerLogsComplete(season: number, config: Config): Promise<boolean> {
+  const cached = playerLogGates.get(season);
+  if (cached && cached.expires > Date.now()) return cached.request;
+  const request = (async () => {
+    const query = new URLSearchParams({ sport: 'eq.NFL', season: `eq.${season}`, select: 'finals_total,players_synced', limit: '1' });
+    const response = await fetch(`${config.url.replace(/\/$/, '')}/rest/v1/live_feed_season_state?${query}`, {
+      headers: { apikey: config.key, Accept: 'application/json' }, signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) throw new Error(`Season sync state returned HTTP ${response.status}`);
+    const rows: unknown = await response.json();
+    const state = Array.isArray(rows) && rows[0] && typeof rows[0] === 'object' ? rows[0] as Record<string, unknown> : null;
+    return !!state && typeof state.finals_total === 'number' && typeof state.players_synced === 'number'
+      && state.finals_total > 0 && state.players_synced >= state.finals_total;
+  })();
+  playerLogGates.set(season, { expires: Date.now() + 60_000, request });
+  void request.catch(() => playerLogGates.delete(season));
+  return request;
+}
+
+const statKeys = new Set(['completions', 'attempts', 'passingYards', 'passingTouchdowns', 'interceptions',
+  'carries', 'rushingYards', 'rushingTouchdowns', 'receptions', 'targets', 'receivingYards', 'receivingTouchdowns', 'totalYards']);
+
+function readPlayerStats(value: unknown): Record<string, number> {
+  const stats = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return Object.fromEntries(Object.entries(stats)
+    .filter(([key, entry]) => statKeys.has(key) && typeof entry === 'number' && Number.isFinite(entry))) as Record<string, number>;
+}
+
+// Returns per-recent-game stat records for one player, or null to fall back to ESPN.
+// A fresh sync with no row for a played game honestly reads as no recorded stats.
+export async function fetchNFLPlayerGameLogFeed(
+  season: number,
+  espnPlayerId: string,
+  recentGames: PlayerLogContext[],
+  signal?: AbortSignal,
+  config: Config | null = configured,
+): Promise<Map<string, Record<string, number>> | null> {
+  if (!config || !Number.isInteger(season) || !espnPlayerId || !recentGames.length) return null;
+  signal?.throwIfAborted();
+  if (!(await playerLogsComplete(season, config))) return null;
+  const headers = { apikey: config.key, Accept: 'application/json' };
+  const base = `${config.url.replace(/\/$/, '')}/rest/v1`;
+  const bridgeQuery = new URLSearchParams({
+    sport: 'eq.NFL', season: `eq.${season}`, espn_player_id: `eq.${espnPlayerId}`, select: 'api_player_id', limit: '1',
+  });
+  const bridgeResponse = await fetch(`${base}/live_feed_rosters?${bridgeQuery}`, {
+    headers, signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(4000)]),
+  });
+  if (!bridgeResponse.ok) throw new Error(`The roster bridge returned HTTP ${bridgeResponse.status}`);
+  const bridgeRows: unknown = await bridgeResponse.json();
+  const bridge = Array.isArray(bridgeRows) && bridgeRows[0] && typeof bridgeRows[0] === 'object' ? bridgeRows[0] as Record<string, unknown> : null;
+  if (!bridge || typeof bridge.api_player_id !== 'string' || !bridge.api_player_id) return null;
+  const logQuery = new URLSearchParams({
+    sport: 'eq.NFL', season: `eq.${season}`, api_player_id: `eq.${bridge.api_player_id}`,
+    select: 'provider_game_id,game_date,stats', limit: '40',
+  });
+  const logResponse = await fetch(`${base}/live_feed_player_games?${logQuery}`, {
+    headers, signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(4000)]),
+  });
+  if (!logResponse.ok) throw new Error(`Player game logs returned HTTP ${logResponse.status}`);
+  const rows: unknown = await logResponse.json();
+  if (!Array.isArray(rows)) throw new Error('Player game logs returned an invalid response.');
+  const entries = rows.flatMap((value): Array<{ time: number; stats: Record<string, number> }> => {
+    const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    if (typeof row.game_date !== 'string') return [];
+    const time = Date.parse(`${row.game_date}T12:00:00Z`);
+    return Number.isFinite(time) ? [{ time, stats: readPlayerStats(row.stats) }] : [];
+  });
+  return new Map(recentGames.map((game) => {
+    const kickoff = Date.parse(game.date);
+    const match = entries.filter((entry) => Number.isFinite(kickoff) && Math.abs(entry.time - kickoff) <= 36 * 3_600_000)
+      .sort((first, second) => Math.abs(first.time - kickoff) - Math.abs(second.time - kickoff))[0];
+    return [game.gameId, match?.stats ?? {}];
+  }));
+}

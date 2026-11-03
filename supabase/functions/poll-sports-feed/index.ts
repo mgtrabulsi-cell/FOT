@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, liveFeedRequestBudget, nflSeasonYear,
-  normalizeNBAGames, normalizeNFLGameDetails, normalizeNFLGames, normalizeNFLTeamGame, readNFLSeasonFinals, utcDay,
+  normalizeNBAGames, normalizeNFLGameDetails, normalizeNFLGames, normalizeNFLPlayerGames, normalizeNFLTeamGame,
+  playerGamesSyncMarker, readNFLSeasonFinals, utcDay,
   type LiveFeedGameRow, type LiveFeedSport,
 } from '../_shared/apiSportsFeed.ts';
 import { nflTeamByAPISportsId, nflTeamMap } from '../_shared/nflTeamMap.ts';
@@ -20,10 +21,11 @@ async function apiSports(url: string, key: string): Promise<unknown> {
 // One request lists the season; one request per missing final fetches both teams' stats.
 async function syncNFLSeason(admin: SupabaseClient, apiKey: string, now: Date, requestBudget: number): Promise<number> {
   const season = nflSeasonYear(now);
-  const state = await admin.from('live_feed_season_state').select('finals_total,finals_synced,updated_at')
+  const state = await admin.from('live_feed_season_state').select('finals_total,finals_synced,players_synced,updated_at')
     .eq('sport', 'NFL').eq('season', season).maybeSingle();
   if (state.error) throw state.error;
-  const complete = state.data && state.data.finals_total > 0 && state.data.finals_synced >= state.data.finals_total;
+  const complete = state.data && state.data.finals_total > 0 && state.data.finals_synced >= state.data.finals_total
+    && (state.data.players_synced ?? 0) >= state.data.finals_total;
   const age = state.data ? now.getTime() - Date.parse(state.data.updated_at) : Number.POSITIVE_INFINITY;
   // A completed sync only rechecks hourly for newly finished games.
   if (complete && age < 60 * 60_000) return 0;
@@ -48,8 +50,28 @@ async function syncNFLSeason(admin: SupabaseClient, apiKey: string, now: Date, r
       console.error(`NFL season stats sync failed for ${final.provider_game_id}`, cause);
     }
   }
+  // Player game logs sync in parallel coverage: one request per final covers every player.
+  const playerSynced = await admin.from('live_feed_player_games').select('provider_game_id')
+    .eq('sport', 'NFL').eq('season', season).eq('api_player_id', playerGamesSyncMarker);
+  if (playerSynced.error) throw playerSynced.error;
+  const havePlayers = new Set((playerSynced.data ?? []).map((row) => row.provider_game_id));
+  const missingPlayers = finals.filter((final) => !havePlayers.has(final.provider_game_id))
+    .slice(0, Math.max(0, Math.min(10, requestBudget - requests)));
+  for (const final of missingPlayers) {
+    try {
+      const stats = await apiSports(`https://v1.american-football.api-sports.io/games/statistics/players?id=${final.provider_game_id}`, apiKey);
+      requests++;
+      const rows = normalizeNFLPlayerGames(season, final, stats);
+      const saved = await admin.from('live_feed_player_games').upsert(rows, { onConflict: 'sport,provider_game_id,api_player_id' });
+      if (saved.error) throw saved.error;
+      havePlayers.add(final.provider_game_id);
+    } catch (cause) {
+      console.error(`NFL player game log sync failed for ${final.provider_game_id}`, cause);
+    }
+  }
   const savedState = await admin.from('live_feed_season_state').upsert({
-    sport: 'NFL', season, finals_total: finals.length, finals_synced: have.size, updated_at: now.toISOString(),
+    sport: 'NFL', season, finals_total: finals.length, finals_synced: have.size, players_synced: havePlayers.size,
+    updated_at: now.toISOString(),
   }, { onConflict: 'sport,season' });
   if (savedState.error) throw savedState.error;
   return requests;

@@ -366,3 +366,96 @@ export function normalizeNFLTeamGame(
     }];
   });
 }
+
+// --- Per-player game statistics (player game logs) ---
+
+export type NFLPlayerGameRow = {
+  sport: 'NFL';
+  season: number;
+  provider_game_id: string;
+  api_player_id: string;
+  api_team_id: string;
+  name: string;
+  game_date: string;
+  stats: Record<string, number>;
+};
+
+// A sentinel row marks a game as player-synced even when no skill stats were recorded.
+export const playerGamesSyncMarker = 'game';
+
+function parseStatNumber(value: string | null): number | undefined {
+  if (value === null) return undefined;
+  const parsed = Number.parseFloat(value.replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+// Mirrors the ESPN box-score extraction exactly: the same stat keys the player
+// dialog charts, computed from API-Sports Passing/Rushing/Receiving groups.
+export function normalizeNFLPlayerGames(season: number, final: NFLSeasonFinal, playersPayload: unknown): NFLPlayerGameRow[] {
+  const merged = new Map<string, NFLPlayerGameRow>();
+  for (const item of readAPISportsResponse(playersPayload)) {
+    const entry = record(item);
+    const teamId = text(record(entry.team).id);
+    if (!teamId) continue;
+    for (const groupValue of Array.isArray(entry.groups) ? entry.groups : []) {
+      const group = record(groupValue);
+      const groupName = text(group.name).toLowerCase();
+      if (groupName !== 'passing' && groupName !== 'rushing' && groupName !== 'receiving') continue;
+      for (const playerValue of Array.isArray(group.players) ? group.players : []) {
+        const player = record(playerValue);
+        const identity = record(player.player);
+        const playerId = text(identity.id), name = text(identity.name);
+        if (!playerId || !name) continue;
+        const statOf = (statName: string): string | null => {
+          for (const statValue of Array.isArray(player.statistics) ? player.statistics : []) {
+            const stat = record(statValue);
+            if (text(stat.name) === statName) return stat.value === null || stat.value === undefined ? null : text(stat.value);
+          }
+          return null;
+        };
+        const row = merged.get(playerId) ?? {
+          sport: 'NFL' as const, season, provider_game_id: final.provider_game_id,
+          api_player_id: playerId, api_team_id: teamId, name, game_date: final.game_date, stats: {},
+        };
+        if (groupName === 'passing') {
+          const completionAttempt = (statOf('comp att') ?? '').match(/([\d,]+)\s*\/\s*([\d,]+)/);
+          if (completionAttempt) {
+            row.stats.completions = Number.parseInt(completionAttempt[1].replace(/,/g, ''), 10);
+            row.stats.attempts = Number.parseInt(completionAttempt[2].replace(/,/g, ''), 10);
+          }
+          const yards = parseStatNumber(statOf('yards')), touchdowns = parseStatNumber(statOf('passing touch downs'));
+          const interceptions = parseStatNumber(statOf('interceptions'));
+          if (yards !== undefined) row.stats.passingYards = yards;
+          if (touchdowns !== undefined) row.stats.passingTouchdowns = touchdowns;
+          if (interceptions !== undefined) row.stats.interceptions = interceptions;
+        } else if (groupName === 'rushing') {
+          const carries = parseStatNumber(statOf('total rushes')), yards = parseStatNumber(statOf('yards'));
+          const touchdowns = parseStatNumber(statOf('rushing touch downs'));
+          if (carries !== undefined) row.stats.carries = carries;
+          if (yards !== undefined) row.stats.rushingYards = yards;
+          if (touchdowns !== undefined) row.stats.rushingTouchdowns = touchdowns;
+        } else {
+          const receptions = parseStatNumber(statOf('total receptions')), targets = parseStatNumber(statOf('targets'));
+          const yards = parseStatNumber(statOf('yards')), touchdowns = parseStatNumber(statOf('receiving touch downs'));
+          if (receptions !== undefined) row.stats.receptions = receptions;
+          if (targets !== undefined) row.stats.targets = targets;
+          if (yards !== undefined) row.stats.receivingYards = yards;
+          if (touchdowns !== undefined) row.stats.receivingTouchdowns = touchdowns;
+        }
+        merged.set(playerId, row);
+      }
+    }
+  }
+  const rows = [...merged.values()].filter((row) => Object.keys(row.stats).length > 0);
+  for (const row of rows) {
+    const yards = [row.stats.passingYards, row.stats.rushingYards, row.stats.receivingYards]
+      .filter((value): value is number => value !== undefined);
+    if (yards.length > 0) row.stats.totalYards = yards.reduce((total, value) => total + value, 0);
+  }
+  rows.push({
+    sport: 'NFL', season, provider_game_id: final.provider_game_id,
+    api_player_id: playerGamesSyncMarker, api_team_id: playerGamesSyncMarker,
+    name: 'Synced game marker', game_date: final.game_date, stats: {},
+  });
+  return rows;
+}

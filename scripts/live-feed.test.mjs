@@ -491,3 +491,72 @@ test('The roster feed serves fresh active players and falls back on stale or mis
     globalThis.fetch = original;
   }
 });
+
+test('Player game rows mirror the ESPN stat extraction, merge groups and mark synced games', async () => {
+  const { normalizeNFLPlayerGames, playerGamesSyncMarker, readNFLSeasonFinals } = await import('../supabase/functions/_shared/apiSportsFeed.ts');
+  const [final] = readNFLSeasonFinals({ response: [seasonGame(21632)] });
+  const payload = { response: [
+    { team: { id: 18, name: 'Washington Commanders' }, groups: [
+      { name: 'Passing', players: [{ player: { id: 25745, name: 'Jayden Daniels' }, statistics: [
+        { name: 'comp att', value: '16/29' }, { name: 'yards', value: '217' }, { name: 'passing touch downs', value: '1' },
+        { name: 'interceptions', value: '0' }, { name: 'rating', value: '58.9' },
+      ] }] },
+      { name: 'Rushing', players: [{ player: { id: 25745, name: 'Jayden Daniels' }, statistics: [
+        { name: 'total rushes', value: '6' }, { name: 'yards', value: '42' }, { name: 'rushing touch downs', value: null },
+      ] }] },
+      { name: 'Receiving', players: [{ player: { id: 777, name: 'Terry McLaurin' }, statistics: [
+        { name: 'targets', value: '9' }, { name: 'total receptions', value: '6' }, { name: 'yards', value: '81' },
+        { name: 'receiving touch downs', value: '1' },
+      ] }] },
+      { name: 'Defensive', players: [{ player: { id: 888, name: 'Defense Only' }, statistics: [{ name: 'tackles', value: '7' }] }] },
+    ] },
+  ] };
+  const rows = normalizeNFLPlayerGames(2026, final, payload);
+  const daniels = rows.find((row) => row.api_player_id === '25745');
+  assert.deepEqual(daniels.stats, {
+    completions: 16, attempts: 29, passingYards: 217, passingTouchdowns: 1, interceptions: 0,
+    carries: 6, rushingYards: 42, totalYards: 259,
+  }, 'Passing and rushing groups merge; null stats are omitted, never zeroed');
+  const mclaurin = rows.find((row) => row.api_player_id === '777');
+  assert.deepEqual(mclaurin.stats, { targets: 9, receptions: 6, receivingYards: 81, receivingTouchdowns: 1, totalYards: 81 });
+  assert.equal(rows.find((row) => row.api_player_id === '888'), undefined, 'Defense-only players are not stored');
+  const marker = rows.find((row) => row.api_player_id === playerGamesSyncMarker);
+  assert.ok(marker, 'Every synced game carries a marker row');
+  assert.equal(marker.game_date, '2026-10-26');
+});
+
+test('The player log feed gates on full-season sync, bridges IDs and maps games by date', async () => {
+  const { fetchNFLPlayerGameLogFeed } = await import('../src/services/liveFeed.ts');
+  const original = globalThis.fetch;
+  const config = { url: 'https://gamewire.test', key: 'public-test-key' };
+  let state, bridge, logs;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.headers.apikey, 'public-test-key');
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith('live_feed_season_state')) return Response.json(state);
+    if (parsed.pathname.endsWith('live_feed_rosters')) return Response.json(bridge);
+    assert.equal(parsed.searchParams.get('api_player_id'), 'eq.25745');
+    return Response.json(logs);
+  };
+  const recent = [
+    { gameId: '401', date: '2026-11-02T01:20:00Z' },
+    { gameId: '402', date: '2026-10-26T17:00:00Z' },
+  ];
+  try {
+    state = [{ finals_total: 120, players_synced: 90 }];
+    assert.equal(await fetchNFLPlayerGameLogFeed(2041, '101', recent, undefined, config), null, 'Partial player syncs fall back to ESPN');
+    state = [{ finals_total: 120, players_synced: 120 }];
+    bridge = [];
+    assert.equal(await fetchNFLPlayerGameLogFeed(2042, '101', recent, undefined, config), null, 'Unbridged players fall back to ESPN');
+    bridge = [{ api_player_id: '25745' }];
+    logs = [
+      { provider_game_id: '21632', game_date: '2026-11-02', stats: { passingYards: 217, carries: 6, rating: 58.9, bogus: 'x' } },
+    ];
+    const feed = await fetchNFLPlayerGameLogFeed(2043, '101', recent, undefined, config);
+    assert.deepEqual(feed.get('401'), { passingYards: 217, carries: 6 }, 'Unknown stat keys and non-numbers are dropped');
+    assert.deepEqual(feed.get('402'), {}, 'A synced game without a row reads as no recorded stats');
+    assert.equal(await fetchNFLPlayerGameLogFeed(2043, '101', recent, undefined, null), null, 'Unconfigured builds skip the feed');
+  } finally {
+    globalThis.fetch = original;
+  }
+});

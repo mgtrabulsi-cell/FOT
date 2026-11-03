@@ -2,7 +2,7 @@ import { detailsSnapshotKey, readRenderSnapshot, saveRenderSnapshot, teamSnapsho
 import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
 import { fetchStaticSports, readSportsDatabase } from './sportsDatabase.ts';
-import { apiSportsBoxScore, fetchLiveFeedGameDetails, fetchNFLRosterFeed, fetchNFLSeasonAveragesFeed, withLiveFeed } from './liveFeed.ts';
+import { apiSportsBoxScore, fetchLiveFeedGameDetails, fetchNFLPlayerGameLogFeed, fetchNFLRosterFeed, fetchNFLSeasonAveragesFeed, withLiveFeed } from './liveFeed.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -1427,6 +1427,13 @@ function hasFantasyRelevantUsage(stats: Partial<Record<NFLPlayerStatKey, number>
     || (stats.receivingTouchdowns ?? 0) > 0;
 }
 
+function nflSeasonFromDate(date: Date): number | null {
+  if (!Number.isFinite(date.getTime())) return null;
+  const year = date.getUTCFullYear(), month = date.getUTCMonth() + 1;
+  // January and February games belong to the prior NFL season.
+  return month >= 3 ? year : year - 1;
+}
+
 export async function fetchNFLPlayerGameLog(
   feedPath: string,
   teamId: string,
@@ -1434,6 +1441,28 @@ export async function fetchNFLPlayerGameLog(
   recentGames: NFLRecentGame[],
   signal?: AbortSignal,
 ): Promise<NFLPlayerGame[]> {
+  // API-Sports player logs are primary once the full season sync is complete.
+  if (feedPath === 'football/nfl' && recentGames.length) {
+    try {
+      const latest = recentGames.map((game) => Date.parse(game.date)).filter(Number.isFinite).sort((a, b) => b - a)[0];
+      const season = latest ? nflSeasonFromDate(new Date(latest)) : null;
+      const feed = season ? await fetchNFLPlayerGameLogFeed(season, playerId, recentGames, signal) : null;
+      if (feed) {
+        return recentGames.map((game) => ({
+          gameId: game.gameId,
+          date: game.date,
+          opponent: game.opponent,
+          opponentAbbreviation: game.opponentAbbreviation,
+          result: game.result,
+          score: game.score,
+          stats: feed.get(game.gameId) ?? {},
+        }));
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('API-Sports player game logs are unavailable; using the data feed', error);
+    }
+  }
   const results = await Promise.allSettled(recentGames.map(async (game) => {
     const response = await fetch(`${apiBase}/${feedPath}/summary?event=${encodeURIComponent(game.gameId)}`, { signal });
     if (!response.ok) throw new Error(`Game log returned HTTP ${response.status}`);
