@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { array, normalize, numeric, object, pickBlurb, text } from '../_shared/gamewaire.ts';
 import type { Candidate } from '../_shared/gamewaire.ts';
 import { defensiveStandings, publicJSON } from '../_shared/gamewaireSources.ts';
+import { feedDefensiveStandings } from '../_shared/apiSportsBotInputs.ts';
 import { applyBotEditorial, botLogRows, botMatchup, buildBotReport, readBotPositions, readBotRoster, readBotWeek } from '../_shared/gamewireBot.ts';
 import { collectBotProjections, collectReceivingDefenses } from '../_shared/gamewireBotProjections.ts';
 import { observedLineComparison } from '../_shared/gamewireBotIntelligence.ts';
@@ -196,7 +197,9 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       const loadOpponent = async () => {
         if (!report.matchup) return;
         try {
-          const stats = defensiveStandings(await publicJSON(`https://site.web.api.espn.com/apis/v2/sports/football/nfl/standings?season=${week.season}&type=0&level=2`, fetcher), 'NFL', week.season, report.checkedAt);
+          // API-Sports season data is the primary source; ESPN standings remain the fallback.
+          const stats = (await feedDefensiveStandings(admin, week.season, report.checkedAt))
+            ?? defensiveStandings(await publicJSON(`https://site.web.api.espn.com/apis/v2/sports/football/nfl/standings?season=${week.season}&type=0&level=2`, fetcher), 'NFL', week.season, report.checkedAt);
           const opponent = [...stats.values()].find((row) => row.teamId === report.matchup!.opponentId);
           if (!opponent || opponent.games < 3) throw new Error('The opponent has insufficient recorded standings data.');
           report.matchupText = `${opponent.team} rank ${opponent.rank} of ${opponent.leagueSize}${opponent.tied ? ' (tied)' : ''} in scoring defense, allowing ${opponent.pointsAllowed.toFixed(1)} points per game across ${opponent.games} games. This is team scoring defense, not a position-specific fantasy or yardage ranking.`;

@@ -166,6 +166,7 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     Date: class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } },
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
+      if (name.includes('apiSportsBotInputs')) return { feedDefensiveStandings: async () => null };
       if (name.includes('gamewireForecasts')) return forecastTools;
       if (name.includes('gamewireRankings')) return rankingTools;
       if (name.includes('gamewireBotProjections')) return { collectBotProjections: async () => projections };

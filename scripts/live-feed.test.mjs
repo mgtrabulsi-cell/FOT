@@ -603,3 +603,33 @@ test('The push poller feed source falls back whenever a live game is unlinked or
   const finals = pushGamesFromFeed([{ ...liveRow, status: 'FINAL', fetched_at: '2026-11-03T01:29:30Z' }], teamFor, now);
   assert.equal(finals[0].state, 'post');
 });
+
+test('Feed-built defensive standings mirror ESPN semantics: per-game averages, ranks, ties and the 32-team gate', async () => {
+  const { buildDefensiveStandings } = await import('../supabase/functions/_shared/apiSportsBotInputs.ts');
+  const names = ['Arizona Cardinals', 'Atlanta Falcons', 'Baltimore Ravens', 'Buffalo Bills', 'Carolina Panthers', 'Chicago Bears',
+    'Cincinnati Bengals', 'Cleveland Browns', 'Dallas Cowboys', 'Denver Broncos', 'Detroit Lions', 'Green Bay Packers',
+    'Houston Texans', 'Indianapolis Colts', 'Jacksonville Jaguars', 'Kansas City Chiefs', 'Las Vegas Raiders', 'Los Angeles Chargers',
+    'Los Angeles Rams', 'Miami Dolphins', 'Minnesota Vikings', 'New England Patriots', 'New Orleans Saints', 'New York Giants',
+    'New York Jets', 'Philadelphia Eagles', 'Pittsburgh Steelers', 'San Francisco 49ers', 'Seattle Seahawks', 'Tampa Bay Buccaneers',
+    'Tennessee Titans', 'Washington Commanders'];
+  const rows = names.flatMap((name, index) => [
+    { team_name: name, espn_team_id: String(index + 1), points_for: 21, points_against: 10 + index },
+    { team_name: name, espn_team_id: String(index + 1), points_for: 27, points_against: 10 + index },
+  ]);
+  const standings = buildDefensiveStandings(rows, 2026, '2026-11-03T00:00:00Z');
+  assert.equal(standings.size, 32);
+  const best = [...standings.values()].find((team) => team.team === 'Arizona Cardinals');
+  assert.equal(best.rank, 1);
+  assert.equal(best.pointsAllowed, 10);
+  assert.equal(best.pointsScored, 24);
+  assert.equal(best.games, 2);
+  assert.equal(best.leagueSize, 32);
+  assert.equal(best.tied, false);
+  const worst = [...standings.values()].find((team) => team.team === 'Washington Commanders');
+  assert.equal(worst.rank, 32);
+  const tiedRows = rows.map((row) => ({ ...row, points_against: 20 }));
+  const tied = buildDefensiveStandings(tiedRows, 2026, '2026-11-03T00:00:00Z');
+  assert.ok([...tied.values()].every((team) => team.rank === 1 && team.tied), 'Equal points allowed tie at rank 1');
+  assert.throws(() => buildDefensiveStandings(rows.slice(0, 10), 2026, 'x'), /32 teams/);
+  assert.throws(() => buildDefensiveStandings(rows.map((row, index) => index === 0 ? { ...row, points_against: null } : row), 2026, 'x'), /missing final points/);
+});
