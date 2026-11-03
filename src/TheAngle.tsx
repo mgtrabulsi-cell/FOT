@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { BookOpen, ExternalLink, Plus } from 'lucide-react';
+import { BookOpen, ExternalLink, Pin, Plus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
-import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleThemes, angleVisibleInWeek, angleWriteFields, isAngleSource, newsTypes, newestAnglesFirst, readAngles, selectAngleSuggestions } from './services/theAngle';
+import { angleLeadGroup, angleLeadGroups, anglePicks, anglePublishError, angleSport, angleSportGameId, angleSports, angleSection, angleThemes, angleVisibleInWeek, angleWriteFields, isAngleSource, newsTypes, orderedAngleFeed, readAngles, selectAngleSuggestions } from './services/theAngle';
 import type { Angle, AngleSection, AngleSuggestion, NewsType } from './services/theAngle';
 import { fetchFavoriteNews } from './services/sportsData';
 import { fetchBirthdaySuggestions } from './services/angleBirthdays';
@@ -406,8 +406,37 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     : kind === 'all' || row.kind === kind));
   const published = [
     ...(visibleLinked ? [visibleLinked] : []),
-    ...newestAnglesFirst(feedStories),
+    ...orderedAngleFeed(feedStories.filter((row) => row.id !== visibleLinked?.id)),
   ];
+  const pinnedId = news ? null : published.find((angle) => angle.pinned_at)?.id ?? null;
+  const autoExpandedPin = useRef<string | null>(null);
+  useEffect(() => {
+    // The pinned post opens automatically once per pin so readers land on it expanded.
+    if (!pinnedId || autoExpandedPin.current === pinnedId) return;
+    autoExpandedPin.current = pinnedId;
+    setExpandedPosts((previous) => previous.includes(pinnedId) ? previous : [pinnedId, ...previous]);
+  }, [pinnedId]);
+  const togglePin = async (angle: Angle) => {
+    if (!supabase || busy) return;
+    setBusy(true); setActionError('');
+    try {
+      if (angle.pinned_at) {
+        const result = await supabase.from('angles').update({ pinned_at: null }).eq('id', angle.id).select('id').maybeSingle();
+        if (result.error) throw result.error;
+        setRows((previous) => previous.map((row) => row.id === angle.id ? { ...row, pinned_at: null } : row));
+      } else {
+        const cleared = await supabase.from('angles').update({ pinned_at: null }).not('pinned_at', 'is', null).select('id');
+        if (cleared.error) throw cleared.error;
+        const result = await supabase.from('angles').update({ pinned_at: new Date().toISOString() }).eq('id', angle.id).select('id,pinned_at').maybeSingle();
+        if (result.error) throw result.error;
+        if (!result.data) throw new Error('The post could not be pinned. Reload and retry.');
+        const pinnedAt = typeof result.data.pinned_at === 'string' ? result.data.pinned_at : new Date().toISOString();
+        setRows((previous) => previous.map((row) => row.id === angle.id ? { ...row, pinned_at: pinnedAt } : { ...row, pinned_at: null }));
+      }
+      setRefresh((value) => value + 1);
+    } catch (cause) { setActionError(errorMessage(cause)); }
+    finally { setBusy(false); }
+  };
   const readObserver = useAnalystReadObserver(news ? 'news' : 'angle', onSeen, user?.id, published.map((angle) => angle.id).join('|'));
   const publishedKey = published.map((angle) => angle.id).join('|');
   useEffect(() => {
@@ -583,7 +612,10 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {restoringWeek && <p className="nfl-data-note" role="status">Showing saved posts from Week {savedFeed.week}. Updating the selected week in the background.</p>}
     {(!season || !week) && !savedFeed ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     {admin && visible && <XPublishingStatus />}
-    <div className={`angle-cards${news ? '' : ' angle-cards-collapsible'}`} ref={readObserver.root}>{published.map((angle) => <article className={`angle-card${news ? '' : ' angle-card-collapsible'}`} id={`angle-${angle.id}`} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
+    <div className={`angle-cards${news ? '' : ' angle-cards-collapsible'}`} ref={readObserver.root}>{published.map((angle) => <article className={`angle-card${news ? '' : ' angle-card-collapsible'}${angle.pinned_at ? ' angle-card-pinned' : ''}`} id={`angle-${angle.id}`} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
+      {!news && (admin
+        ? <button type="button" className={`angle-pin-button${angle.pinned_at ? ' is-pinned' : ''}`} disabled={busy} aria-pressed={!!angle.pinned_at} title={angle.pinned_at ? 'Unpin this post' : 'Pin this post to the top of the feed'} aria-label={angle.pinned_at ? `Unpin ${angle.title}` : `Pin ${angle.title} to the top of the feed`} onClick={() => void togglePin(angle)}><Pin size={13} aria-hidden="true" /></button>
+        : angle.pinned_at ? <span className="angle-pin-button is-pinned" role="img" title="Pinned post" aria-label="Pinned post"><Pin size={13} aria-hidden="true" /></span> : null)}
       {!news && <h3><button type="button" className="angle-post-toggle" aria-expanded={expandedPosts.includes(angle.id)} aria-controls={`angle-body-${angle.id}`} onClick={() => setExpandedPosts((previous) => previous.includes(angle.id) ? previous.filter((id) => id !== angle.id) : [...previous, angle.id])}><span>{unreadKeys.includes(`angle:${angle.id}`) && <span className="angle-post-unread" role="img" aria-label="Unread post" />}{!expandedPosts.includes(angle.id) && postThemes.filter((theme) => theme.value === angleThemes(angle)[0]).map((theme) => <span className="angle-post-theme" key={theme.value}>{theme.label}: </span>)}{angle.title}</span><span className="angle-post-chevron" aria-hidden="true" /></button></h3>}
       {angle.published_at && <time className="angle-posted-at" dateTime={angle.published_at}>Posted {new Date(angle.published_at).toLocaleString(undefined, {
         month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',

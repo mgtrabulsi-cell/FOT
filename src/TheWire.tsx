@@ -1,5 +1,6 @@
 import OfflineImage from './OfflineImage';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { playerInitials } from './services/playerInitials';
 import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
@@ -1482,7 +1483,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                               <td className="wire-col-athlete" role="cell">
                                 <div className="wire-athlete-cell">
                                   <span className="wire-athlete-avatar">
-                                    {athlete.name.slice(0, 2).toUpperCase()}
+                                    {playerInitials(athlete.name)}
                                   </span>
                                   {player && currentPlayerAverages && activeGameTeam ? (
                                     <button

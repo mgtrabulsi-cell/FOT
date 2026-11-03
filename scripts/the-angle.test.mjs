@@ -125,9 +125,9 @@ test('Newest publications lead regardless of pending picks or later edits, witho
   assert.deepEqual(newestAnglesFirst([]), []);
 });
 
-test('Angle feeds use newest-first ordering, with an explicitly linked story still pinned first', () => {
+test('Angle feeds use pinned-then-newest ordering, with an explicitly linked story still leading', () => {
   const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
-  assert.match(source, /\.\.\.\(visibleLinked \? \[visibleLinked\] : \[\]\),\s*\.\.\.newestAnglesFirst\(feedStories\)/);
+  assert.match(source, /\.\.\.\(visibleLinked \? \[visibleLinked\] : \[\]\),\s*\.\.\.orderedAngleFeed\(feedStories/);
   assert.match(source, /row\.id !== visibleLinked\?\.id/);
 });
 
@@ -476,4 +476,38 @@ test('Angle themes preserve selection order through saves and reads, with sectio
   for (const themes of [null, ['other'], ['news', 'news'], ['news', 'fantasy', 'betting', 'news']]) {
     assert.throws(() => readAngles([{ ...row, themes }]), /invalid/);
   }
+});
+
+test('The pinned angle leads the feed opened ordering while everything else stays newest-first', async () => {
+  const { orderedAngleFeed } = await import('../src/services/theAngle.ts');
+  const stories = [
+    { id: 'a', published_at: '2026-11-01T00:00:00Z', pinned_at: null },
+    { id: 'b', published_at: '2026-11-03T00:00:00Z', pinned_at: null },
+    { id: 'c', published_at: '2026-10-20T00:00:00Z', pinned_at: '2026-11-03T01:00:00Z' },
+  ];
+  assert.deepEqual(orderedAngleFeed(stories).map((story) => story.id), ['c', 'b', 'a'], 'The older pinned post still leads');
+  assert.deepEqual(orderedAngleFeed(stories.map((story) => ({ ...story, pinned_at: null }))).map((story) => story.id), ['b', 'a', 'c'], 'Without a pin the feed is newest-first');
+});
+
+test('Pin timestamps validate like publication dates', async () => {
+  const { readAngles } = await import('../src/services/theAngle.ts');
+  const base = {
+    id: 'x', game_id: 'NFL:1', matchup: 'A at B', subject: '', title: 'T', narrative: 'N', evidence: '', counterpoint: '',
+    pick: '', source_url: 'https://example.com', source_label: 'Source', season: 2026, week: 8, revision: 1,
+    kind: 'player', status: 'published', category: 'Other', reviewed: true,
+  };
+  assert.equal(readAngles([{ ...base, pinned_at: '2026-11-03T01:00:00Z' }])[0].pinned_at, '2026-11-03T01:00:00Z');
+  assert.equal(readAngles([{ ...base, pinned_at: null }])[0].pinned_at, null);
+  assert.throws(() => readAngles([{ ...base, pinned_at: 'yesterday' }]), /invalid pin/);
+});
+
+test('Player avatars use first and last initials, skipping suffixes', async () => {
+  const { playerInitials } = await import('../src/services/playerInitials.ts');
+  assert.equal(playerInitials('Saquon Barkley'), 'SB');
+  assert.equal(playerInitials('Odell Beckham Jr.'), 'OB');
+  assert.equal(playerInitials('Kenneth Walker III'), 'KW');
+  assert.equal(playerInitials('Marvin Harrison Jr'), 'MH');
+  assert.equal(playerInitials('Tanner McKee'), 'TM');
+  assert.equal(playerInitials('Cher'), 'CH');
+  assert.equal(playerInitials(' '), '');
 });

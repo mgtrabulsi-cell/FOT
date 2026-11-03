@@ -40,6 +40,7 @@ export type Angle = {
   themes?: PostTheme[];
   post_to_x?: boolean;
   parlay_graphic?: ParlayGraphic | null;
+  pinned_at?: string | null;
 };
 export type AngleSection = 'angle' | 'news';
 export const newsTypes = [
@@ -65,6 +66,11 @@ export function activeAnglePicks(stories: Angle[]) {
 export function newestAnglesFirst<T extends Pick<Angle, 'published_at'>>(stories: T[]): T[] {
   const published = (story: T) => Date.parse(story.published_at ?? '') || 0;
   return [...stories].sort((a, b) => published(b) - published(a));
+}
+// The single pinned post leads the feed; everything else stays newest-first.
+export function orderedAngleFeed<T extends Pick<Angle, 'published_at' | 'pinned_at'>>(stories: T[]): T[] {
+  const sorted = newestAnglesFirst(stories);
+  return [...sorted.filter((story) => story.pinned_at), ...sorted.filter((story) => !story.pinned_at)];
 }
 export type AngleSuggestion = {
   key: string; game: Game; category: AngleCategory; article: DenNewsItem; sourceLabel?: string; playerName?: string; subject?: string;
@@ -137,6 +143,8 @@ export function readAngles(value: unknown): Angle[] {
     if ('review_picks' in angle) readAngleReviews(angle.review_picks);
     if ('published_at' in angle && angle.published_at !== null
       && (typeof angle.published_at !== 'string' || !Number.isFinite(Date.parse(angle.published_at)))) throw new Error('The server returned an invalid publication date. Please reload.');
+    if ('pinned_at' in angle && angle.pinned_at !== null
+      && (typeof angle.pinned_at !== 'string' || !Number.isFinite(Date.parse(angle.pinned_at)))) throw new Error('The server returned an invalid pin timestamp. Please reload.');
   });
   return value;
 }

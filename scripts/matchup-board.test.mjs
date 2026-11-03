@@ -15,7 +15,7 @@ const compiled = ts.transpileModule(readFileSync(new URL('../src/FavorableMatchu
   .replace(/from ['"]react['"]/g, `from '${import.meta.resolve('react')}'`)
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
-  .replace(/from ['"]\.\/services\/(sportsData|matchupBoard|analystReads|renderSnapshots)['"]/g,
+  .replace(/from ['"]\.\/services\/(sportsData|matchupBoard|analystReads|renderSnapshots|playerInitials)['"]/g,
     (_, name) => `from '${new URL(`../src/services/${name}.ts`, import.meta.url)}'`)
   .replace(/import OfflineImage from [^;]+;/, 'const OfflineImage = () => null;')
   .replace(/import \{ usePublicDataRevision \} from [^;]+;/, 'const usePublicDataRevision = () => 0;')

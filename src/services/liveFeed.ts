@@ -220,13 +220,17 @@ export async function fetchLiveFeedGameDetails(
 const statLabels: Record<string, string> = {
   'comp att': 'C/ATT', yards: 'YDS', average: 'AVG', 'passing touch downs': 'TD', interceptions: 'INT',
   sacks: 'SACKS', rating: 'RTG', 'two pt': '2PT', 'total rushes': 'CAR', 'rushing touch downs': 'TD',
-  'longest rush': 'LONG', receptions: 'REC', 'receiving touch downs': 'TD', 'longest reception': 'LONG',
-  targets: 'TGTS', 'yards after catch': 'YAC', tackles: 'TCKL', 'unassisted tackles': 'SOLO',
-  'total tackles': 'TOT', 'tackles for loss': 'TFL', 'passes defended': 'PD', 'qb hits': 'QB HTS',
-  'intercepted touch downs': 'TD', 'intercepted yards': 'YDS', 'fumbles recovered': 'FR', 'fumbles lost': 'LOST',
-  fumbles: 'FUM', 'field goals': 'FG', 'field goals from 1 19 yards': '1-19', 'field goals from 20 29 yards': '20-29',
+  'longest rush': 'LONG', receptions: 'REC', 'total receptions': 'REC', 'receiving touch downs': 'TD',
+  'longest reception': 'LONG', targets: 'TGTS', 'yards after catch': 'YAC', tackles: 'TCKL',
+  'unassisted tackles': 'SOLO', 'total tackles': 'TOT', 'tackles for loss': 'TFL', tfl: 'TFL',
+  'passes defended': 'PD', 'qb hts': 'QB HIT', 'qb hits': 'QB HIT', 'interceptions for touch downs': 'INT TD',
+  'blocked kicks': 'BLK', 'total interceptions': 'INT', 'intercepted touch downs': 'TD', 'intercepted yards': 'YDS',
+  'fumbles recovered': 'FR', 'fumbles lost': 'LOST', lost: 'LOST', rec: 'REC', 'rec td': 'REC TD',
+  fumbles: 'FUM', 'kick return td': 'RET TD', 'exp return td': 'XP RET',
+  'field goals': 'FG', pct: 'PCT', points: 'PTS', 'extra point': 'XP', 'extra points': 'XP',
+  'field goals from 1 19 yards': '1-19', 'field goals from 20 29 yards': '20-29',
   'field goals from 30 39 yards': '30-39', 'field goals from 40 49 yards': '40-49', 'field goals from 50 yards': '50+',
-  'extra points': 'XP', punts: 'PUNTS', 'longest punt': 'LONG', touchbacks: 'TB', 'inside 20': 'IN 20',
+  punts: 'PUNTS', 'longest punt': 'LONG', long: 'LONG', lg: 'LG', touchbacks: 'TB', 'inside 20': 'IN 20', in20: 'IN 20',
   total: 'TOT', 'longest kick return': 'LONG', 'longest punt return': 'LONG',
 };
 
@@ -267,15 +271,18 @@ function boxTeam(detail: LiveFeedDetailTeam, side: Game['away'], homeAway: 'home
       name: categoryName(group.name),
       title: group.name,
       labels: names.map(statLabel),
-      athletes: group.players.map((player) => ({
-        id: player.id,
-        name: player.name,
-        shortName: player.name.replace(/^(\S)\S*\s+/, '$1. '),
-        jersey: '',
-        headshot: player.image ?? '',
-        position: '',
-        stats: names.map((name) => player.stats.find((stat) => stat.name === name)?.value ?? '-'),
-      })),
+      athletes: group.players.map((player) => {
+        const name = player.name.trim().replace(/\s+/g, ' ');
+        return {
+          id: player.id,
+          name,
+          shortName: name.replace(/^(\S)\S*\s+/, '$1. '),
+          jersey: '',
+          headshot: player.image ?? '',
+          position: '',
+          stats: names.map((statName) => player.stats.find((stat) => stat.name === statName)?.value ?? '-'),
+        };
+      }),
     }];
   });
   const periods = game.completedPeriods ?? [];

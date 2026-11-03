@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { jsx, jsxs } from 'react/jsx-runtime';
+import { playerInitials } from '../src/services/playerInitials.ts';
 
 const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('App.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -28,6 +29,7 @@ function setup() {
   const context = vm.createContext({
     exports: {},
     require: () => ({ jsx, jsxs }),
+    playerInitials,
     AbortController,
     console,
     usePublicDataRevision: () => revision,

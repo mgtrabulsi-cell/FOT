@@ -1,5 +1,6 @@
 import { usePublicDataRevision } from './usePublicDataRevision';
 import { useEffect, useRef, useState } from 'react';
+import { playerInitials } from './services/playerInitials';
 import type { User } from '@supabase/supabase-js';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
@@ -312,7 +313,7 @@ export default function FavorableMatchups({ games, season, week, user, onSeen, b
               const next = new Set(current);
               if (next.has(pick.id)) next.delete(pick.id); else next.add(pick.id);
               return next;
-            })}><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{pick.name.split(/\s+/).map((part) => part[0] ?? '').slice(0, 2).join('')}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small><small className="matchup-breakdown-toggle">{expanded ? 'Hide breakdown' : admin ? 'Write / edit breakdown' : 'Read breakdown'} {expanded ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}</small></span></button>
+            })}><span className="favorable-matchup-rank">{index + 1}</span><span className="nfl-player-avatar">{playerInitials(pick.name)}</span><span className="favorable-matchup-player-copy"><b>{pick.name}</b><small>{team?.abbr ?? 'Team unavailable'} · {position}</small><small>{opponent ? `${game?.home.id === pick.teamId ? 'vs' : '@'} ${opponent.abbr}` : 'Matchup unavailable'}{game && ` · ${new Date(game.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}</small><small className="matchup-breakdown-toggle">{expanded ? 'Hide breakdown' : admin ? 'Write / edit breakdown' : 'Read breakdown'} {expanded ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}</small></span></button>
             <div className="favorable-matchup-metrics"><div><b>{average.average?.toFixed(1) ?? '—'}</b><span>{stat.label} / game</span><small>{average.average === null ? averageLoading ? 'Loading...' : averageError ? 'Retrying game log' : 'No recorded games' : `last ${average.games} games`}</small></div>
               <div><b>{rank === null || rank === undefined ? '—' : `#${rank}`}</b><span>{position === 'QB' ? 'Pass' : position === 'RB' ? 'Rush' : 'Receiving'} defense rank</span><small>{opponent?.abbr ?? 'Unavailable'} · yards</small></div>
               <div><b>{projection?.toFixed(1) ?? '—'}</b><span>Projected PPR</span><small>{projection === undefined ? 'Unavailable' : `Week ${week}`}</small></div>
