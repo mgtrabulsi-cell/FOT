@@ -40,18 +40,20 @@ test('Mobile NFL viewing performs no unrelated NBA roster, box, or nearby-date d
     const noop = () => {};
     const context = vm.createContext({
       warmNBA, AbortController, console, selectedNBADate: '2026-10-25',
-      nbaDateOverride: true, document: { visibilityState: 'visible' },
+      nbaDateOverride: true, nbaRetry: 0, nbaWarmKey: '2026-10-25:0',
+      nbaWarmReadyKey: warmNBA ? '2026-10-25:0' : '',
+      document: { visibilityState: 'visible' },
       window: { setInterval: () => 1, clearInterval: noop },
       readRenderSnapshot: () => ({ games: [{ id: 'NBA:1' }] }),
-      setNBAGames: noop, setNBAGamesDate: noop, setNBAStatus: noop, setNBAError: noop,
+      setNBAGames: noop, setNBAGamesDate: noop, setNBAStatus: noop, setNBAError: noop, setNBAWarmReadyKey: noop,
       fetchNBAScoreboard: async () => { calls.scoreboard++; return [{ id: 'NBA:1' }]; },
       preloadNBABoxes: async () => { calls.boxes++; return []; },
       preloadNBAPregame: async () => { calls.rosters++; return []; },
       preloadNBADates: async () => { calls.dates++; return []; },
     });
-    const stopBoard = compile(effects.find((effect) => effect.includes('preloadNBABoxes(')), context)();
+    const stopBoard = compile(effects.find((effect) => effect.includes('fetchNBAScoreboard(') && effect.includes('setNBAWarmReadyKey')), context)();
     const stopDates = compile(effects.find((effect) => effect.includes('preloadNBADates(')), context)();
-    await new Promise((resolve) => setImmediate(resolve));
+    for (let i = 0; i < 8; i++) await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls.scoreboard, 1, 'Lightweight current NBA scores stay available');
     if (!warmNBA) assert.deepEqual(calls, { scoreboard: 1, boxes: 0, rosters: 0, dates: 0 });
     else {

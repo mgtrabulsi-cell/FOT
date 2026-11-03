@@ -109,7 +109,7 @@ create extension if not exists pg_cron;
 create extension if not exists pg_net with schema extensions;
 select cron.unschedule(jobid) from cron.job where jobname='gamewire-gamewaire-schedule';
 -- Run in both possible Eastern 1 AM UTC hours; the handler checks Eastern time and deduplicates dates.
-select cron.schedule('gamewire-gamewaire-schedule','* 5,6 * * *',$job$
+select cron.schedule('gamewire-gamewaire-schedule','* 5-12 * * *',$job$)
   select net.http_post(
     url := replace((select decrypted_secret from vault.decrypted_secrets where name='gamewire-poll-url'),'/poll-live-games','/gamewaire'),
     headers := jsonb_build_object('Content-Type','application/json',

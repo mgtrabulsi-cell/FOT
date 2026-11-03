@@ -9,7 +9,7 @@ import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as pickLearningTools from '../supabase/functions/_shared/gamewirePickLearning.ts';
 import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
-import { completedSavedGames, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
+import { completedSavedGames, isSavedGamePastReview, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
 
 const now = Date.parse('2026-10-27T18:00:00Z');
 const quote = { key: 'event|player_points|Player|Over|20.5', eventId: 'event', sport: 'NBA',
@@ -35,12 +35,13 @@ test('Saved games leave review only after a matching confirmed final, not at tip
   assert.deepEqual(completedSavedGames([game], [{ ...event, date: 'invalid' }]), [], 'An invalid start cannot confirm a matching game');
   assert.deepEqual(completedSavedGames([{ ...game, matchup: 'Atlanta Hawks @ Boston Celtics' }], [event]), []);
   const requested = [];
+  const duringGame = Date.parse('2026-10-27T23:30:00Z');
   const result = await loadCompletedSavedGames([game, { ...game, event_id: 'same-day' }], new AbortController().signal,
     async (url) => {
       assert.ok(String(url).startsWith('https://site.api.espn.com/'));
       requested.push(String(url));
       return Response.json({ events: [event] });
-    });
+    }, duringGame);
   assert.deepEqual(result.completed.sort(), ['NBA:odds-id', 'NBA:same-day']);
   assert.equal(result.completionWarning, '');
   assert.equal(requested.length, 2, 'Multiple saved reports share the two date-boundary feeds');
@@ -49,13 +50,18 @@ test('Saved games leave review only after a matching confirmed final, not at tip
   const future = await loadCompletedSavedGames([{ ...game, event_start: new Date(Date.now() + 86_400_000).toISOString() }],
     new AbortController().signal, async () => { throw new Error('Pregame reports do not need a completion request'); });
   assert.deepEqual(future, { completed: [], completionWarning: '' });
-  const missing = await loadCompletedSavedGames([game], new AbortController().signal, async () => Response.json({ events: [] }));
+  const missing = await loadCompletedSavedGames([game], new AbortController().signal, async () => Response.json({ events: [] }), duringGame);
   assert.deepEqual(missing.completed, []);
   assert.match(missing.completionWarning, /Unconfirmed games remain/);
+  assert.equal(isSavedGamePastReview(game, duringGame), false);
+  assert.equal(isSavedGamePastReview(game, Date.parse('2026-10-28T04:00:00Z')), true);
+  const finished = await loadCompletedSavedGames([game], new AbortController().signal, async () => Response.json({ events: [] }),
+    Date.parse('2026-10-28T04:00:00Z'));
+  assert.deepEqual(finished.completed, ['NBA:odds-id'], 'Finished games leave review after the game window even without a feed match');
   const identified = { ...game, payload: { picks: [{ ...evaluate().picks[0], identifiers: { espnEventId: '401234567' } }] } };
   const rescheduled = { ...event, id: '401234567', date: '2026-10-29T23:00:00Z' };
   const moved = await loadCompletedSavedGames([identified], new AbortController().signal, async (url) =>
-    String(url).includes('/summary?event=401234567') ? Response.json({ header: rescheduled }) : Response.json({ events: [] }));
+    String(url).includes('/summary?event=401234567') ? Response.json({ header: rescheduled }) : Response.json({ events: [] }), duringGame);
   assert.deepEqual(moved, { completed: ['NBA:odds-id'], completionWarning: '' }, 'Saved ESPN IDs still identify a rescheduled final');
   assert.deepEqual(completedSavedGames([identified], [{ ...rescheduled, id: 'different-game' }]), [], 'Known ESPN IDs must match');
   const nfl = { ...game, sport: 'NFL', event_id: 'nfl-id', matchup: 'New York Jets @ New England Patriots' };
@@ -63,12 +69,12 @@ test('Saved games leave review only after a matching confirmed final, not at tip
     { homeAway: 'away', team: { displayName: 'New York Jets' } }, { homeAway: 'home', team: { displayName: 'New England Patriots' } },
   ] }] };
   const mixed = await loadCompletedSavedGames([game, nfl], new AbortController().signal, async (url) =>
-    Response.json({ events: String(url).includes('football/nfl') ? [nflEvent] : [event] }));
+    Response.json({ events: String(url).includes('football/nfl') ? [nflEvent] : [event] }), duringGame);
   assert.deepEqual(mixed.completed.sort(), ['NBA:odds-id', 'NFL:nfl-id']);
   const original = console.error;
   console.error = () => {};
   try {
-    const failed = await loadCompletedSavedGames([game], new AbortController().signal, async () => new Response('', { status: 503 }));
+    const failed = await loadCompletedSavedGames([game], new AbortController().signal, async () => new Response('', { status: 503 }), duringGame);
     assert.deepEqual(failed.completed, []);
     assert.match(failed.completionWarning, /Unconfirmed games remain/);
   } finally { console.error = original; }

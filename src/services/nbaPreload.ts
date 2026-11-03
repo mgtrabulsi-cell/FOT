@@ -76,10 +76,10 @@ export function nbaNearbyDates(date: string) {
   });
 }
 
-export async function preloadNBABoxes(games: Game[], signal: AbortSignal): Promise<string[]> {
+export async function preloadNBABoxes(games: Game[], signal: AbortSignal, mode: 'live' | 'all' = 'all'): Promise<string[]> {
   const failed: string[] = [];
   const due = games.filter((game) => {
-    if (game.status === 'UPCOMING') return false;
+    if (game.status === 'UPCOMING' || (mode === 'live' && game.status !== 'LIVE')) return false;
     const saved = readRenderSnapshot('nbaSummary', gameSnapshotKey(game.feedPath, game.eventId, game.seasonYear));
     return !(game.status === 'FINAL' && saved?.status === 'post'
       && [game.away.id, game.home.id].every((id) => saved.teams.some((team) => team.id === id && team.players.length)));
@@ -106,8 +106,7 @@ export async function preloadNBADates(date: string, signal: AbortSignal): Promis
   for (const next of nbaNearbyDates(date)) {
     signal.throwIfAborted();
     try {
-      const games = await fetchNBAScoreboard(next, signal);
-      if (next < date) failed.push(...await preloadNBABoxes(games, signal));
+      await fetchNBAScoreboard(next, signal);
     } catch (error) {
       if (signal.aborted) throw error;
       console.error(`Could not preload NBA schedule ${next}`, error);

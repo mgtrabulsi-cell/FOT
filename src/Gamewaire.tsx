@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Activity, ArrowRight, BarChart3, Bot, Crosshair, Layers, Star } from 'lucide-react';
-import { loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
+import { isSavedGamePastReview, loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
 import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
 import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
@@ -272,8 +272,8 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     });
     return () => controller.abort();
   }, [runs, jobs, status?.canAnalyze]);
-  const reviewRuns = runs.filter((run) => !completion.completed.includes(savedGameKey(run)));
-  const reviewJobs = jobs.filter((job) => !completion.completed.includes(savedGameKey(job)));
+  const reviewRuns = runs.filter((run) => !completion.completed.includes(savedGameKey(run)) && !isSavedGamePastReview(run));
+  const reviewJobs = jobs.filter((job) => !completion.completed.includes(savedGameKey(job)) && !isSavedGamePastReview(job));
   const matchingRuns = reviewRuns.filter((run) => run.sport === sport && nbaCalendarDate(new Date(run.event_start)) === date
     && (!eventId || run.event_id === eventId));
   const report = matchingRuns.find((run) => run.id === selectedRun) ?? matchingRuns[0];

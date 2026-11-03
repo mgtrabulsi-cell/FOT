@@ -63,6 +63,12 @@ const guestFavoriteStorageKey = 'fieldhouse:favorites:v1';
 const lockerRoomScoresStorageKey = 'gamewire:locker:scores:v1';
 const lockerRoomPlaysStorageKey = 'gamewire:locker:plays:v1';
 
+function nbaEasternDayLabel(date: string) {
+  const stamp = Date.parse(`${date}T12:00:00Z`);
+  if (!Number.isFinite(stamp)) return date;
+  return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(stamp);
+}
+
 function loadStoredLockerRoomUpdates<T extends { timestamp: string }>(key: string): T[] {
   try {
     const raw = localStorage.getItem(key);
@@ -502,6 +508,8 @@ function App() {
   const [nbaStatus, setNBAStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [nbaError, setNBAError] = useState('');
   const [nbaRetry, setNBARetry] = useState(0);
+  const nbaWarmKey = `${selectedNBADate}:${nbaRetry}`;
+  const [nbaWarmReadyKey, setNBAWarmReadyKey] = useState('');
   useEffect(() => subscribeForegroundRefresh(() => {
     if (!nbaDateOverride) setSelectedNBADate(nbaCalendarDate());
     setNBARetry((value) => value + 1);
@@ -512,24 +520,13 @@ function App() {
     const controller = new AbortController();
     let active = true;
     let refreshing = false;
-    let preloadingBoxes = false;
     let receivedFreshSchedule = false;
     const saved = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [];
-    setNBAGames(saved); setNBAGamesDate(selectedNBADate); setNBAStatus('loading'); setNBAError('');
-    const preload = (next: Game[]) => {
-      if (!warmNBA || preloadingBoxes || !next.length) return;
-      preloadingBoxes = true;
-      void Promise.all([preloadNBABoxes(next, controller.signal), preloadNBAPregame(next, controller.signal)]).then((results) => {
-        if (active && results.some((failed) => failed.length)) setNBAError('Some NBA statistics could not be saved yet. Automatic refresh will retry.');
-      }, (error: unknown) => {
-        if (!controller.signal.aborted) console.error('NBA box-score preload failed', error);
-      }).finally(() => { preloadingBoxes = false; });
-    };
-    preload(saved);
+    setNBAGames(saved); setNBAGamesDate(selectedNBADate); setNBAStatus(saved.length ? 'ready' : 'loading'); setNBAError('');
     if (!saved.length) void fetchStoredNBAScoreboard(selectedNBADate, controller.signal).then((stored) => {
       if (active && !receivedFreshSchedule && stored !== null) {
         saveRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`, { games: stored, nflWeek: null, failedLeagues: [] });
-        setNBAGames(stored); setNBAStatus('ready'); preload(stored);
+        setNBAGames(stored); setNBAStatus('ready');
       }
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) console.error('Could not open shared NBA schedule', error);
@@ -542,7 +539,6 @@ function App() {
         if (active) {
           receivedFreshSchedule = true;
           setNBAGames(next); setNBAStatus('ready'); setNBAError('');
-          preload(next);
         }
       } catch (cause) {
         if (active && !controller.signal.aborted) {
@@ -550,7 +546,10 @@ function App() {
           setNBAStatus('error');
           setNBAError('Could not refresh NBA games. Previously loaded games remain visible. Retry to check the latest scores.');
         }
-      } finally { refreshing = false; }
+      } finally {
+        refreshing = false;
+        if (active) setNBAWarmReadyKey(`${selectedNBADate}:${nbaRetry}`);
+      }
     };
     void refresh();
     const timer = window.setInterval(() => {
@@ -561,15 +560,22 @@ function App() {
     return () => { active = false; controller.abort(); window.clearInterval(timer); };
   }, [selectedNBADate, nbaDateOverride, nbaRetry, warmNBA]);
   useEffect(() => {
-    if (!warmNBA) return;
+    if (!warmNBA || nbaWarmReadyKey !== nbaWarmKey) return;
     const controller = new AbortController();
-    void preloadNBADates(selectedNBADate, controller.signal).then((failed) => {
-      if (!controller.signal.aborted && failed.length) setNBAError('Some nearby NBA dates could not be preloaded. Selecting a date will retry.');
+    const games = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [];
+    void preloadNBABoxes(games, controller.signal, 'live').then(async () => {
+      if (controller.signal.aborted) return;
+      const failed = await Promise.all([preloadNBABoxes(games, controller.signal), preloadNBAPregame(games, controller.signal)]);
+      if (controller.signal.aborted) return;
+      if (failed.some((item) => item.length)) setNBAError('Some NBA statistics could not be saved yet. Automatic refresh will retry.');
+      return preloadNBADates(selectedNBADate, controller.signal);
+    }).then((failed) => {
+      if (!controller.signal.aborted && failed?.length) setNBAError('Some nearby NBA dates could not be preloaded. Selecting a date will retry.');
     }, (error: unknown) => {
       if (!controller.signal.aborted) console.error('NBA date preload failed', error);
     });
     return () => controller.abort();
-  }, [selectedNBADate, nbaRetry, warmNBA]);
+  }, [selectedNBADate, nbaRetry, warmNBA, nbaWarmKey, nbaWarmReadyKey]);
   const previousView = useRef(view);
   useEffect(() => connectMedianNavigation(), []);
   useEffect(() => {
@@ -1176,7 +1182,7 @@ function App() {
     userId: authUser?.id ?? null, season: null, week: null, archiveDate: selectedNBADate,
     games: nbaGames, favorites: !supabase || favoritesOwnerId === (authUser?.id ?? 'guest') ? nbaFavorites : [],
     items: newsItems.filter((item) => nbaFavoriteKeys.has(item.favoriteKey)), plays: [],
-    enabled: nbaGames.length > 0,
+    enabled: view === 'Den' && sportLeague === 'NBA' && nbaGames.length > 0,
   });
   const denHistory = sportLeague === 'NBA' ? nbaHistory : lockerRoomHistory;
   const displayName = typeof authUser?.user_metadata.display_name === 'string' ? authUser.user_metadata.display_name : authUser?.email ?? 'Account';
@@ -1292,6 +1298,12 @@ function App() {
               setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, 1)); setNBASelectedGameId(null);
             }}><ChevronRight size={16} aria-hidden="true" /></button></div><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}
           </div>}
+          {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaStatus === 'ready' && !nbaGames.length && (
+            <div className="nba-empty-day" role="status">
+              <b>No NBA games on {nbaEasternDayLabel(selectedNBADate)}.</b>
+              <span>This Eastern date has no scheduled matchups. Use the date arrows or Today to pick another day.</span>
+            </div>
+          )}
           {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
           {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.liveSource === 'api-sports') && <p className="feed-source" role="status">Live scores and game status provided by API-Sports.</p>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}

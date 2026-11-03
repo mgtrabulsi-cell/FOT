@@ -1,5 +1,5 @@
 import type { FavoriteTarget, Game, NFLFavoritePlay, Team } from './sportsData.ts';
-import { readRenderSnapshot, saveRenderSnapshot } from './renderSnapshots.ts';
+import { gameSnapshotKey, readRenderSnapshot, saveRenderSnapshot } from './renderSnapshots.ts';
 import { fetchStaticSports, sportsResourceKey } from './sportsDatabase.ts';
 
 export type NBAPlayerStatKey = 'points' | 'rebounds' | 'assists' | 'steals' | 'blocks' | 'turnovers' | 'minutes' | 'offensiveRebounds' | 'defensiveRebounds' | 'fouls' | 'threePointersMade' | 'fieldGoalsMade' | 'fieldGoalsAttempted' | 'threePointersAttempted' | 'freeThrowsMade' | 'freeThrowsAttempted' | 'fieldGoalPct' | 'threePointPct' | 'freeThrowPct' | 'plusMinus';
@@ -403,5 +403,10 @@ export async function fetchNBAFavoritePlays(games: Game[], favorites: FavoriteTa
   const nbaFavorites = favorites.filter((favorite) => favorite.feedPath === 'basketball/nba');
   const relevant = games.filter((game) => game.feedPath === 'basketball/nba' && game.status !== 'UPCOMING' && nbaFavorites.some((favorite) =>
     [game.away.id, game.home.id].includes(favorite.type === 'team' ? favorite.id : favorite.teamId ?? '')));
-  return (await Promise.all(relevant.map(async (game) => nbaFavoritePlays(game, await fetchNBASummary(game.eventId, signal), nbaFavorites)))).flat();
+  return (await Promise.all(relevant.map(async (game) => {
+    const saved = game.status === 'FINAL'
+      ? readRenderSnapshot('nbaSummary', gameSnapshotKey(game.feedPath, game.eventId, game.seasonYear)) : null;
+    const summary = saved?.plays?.length ? saved : await fetchNBASummary(game.eventId, signal);
+    return nbaFavoritePlays(game, summary, nbaFavorites);
+  }))).flat();
 }

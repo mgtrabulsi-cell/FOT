@@ -7,6 +7,17 @@ export const savedGameKey = (game: Pick<SavedGame, 'sport' | 'event_id'>) => `${
 const teamKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^losangeles/, 'la');
 const espnId = (game: SavedGame) => game.payload?.teamLean?.pick.identifiers?.espnEventId
   ?? game.payload?.picks?.find((pick) => pick.identifiers?.espnEventId)?.identifiers?.espnEventId;
+export function easternGameDate(value: string | number) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(new Date(value));
+  const part = (name: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === name)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+export function isSavedGamePastReview(game: Pick<SavedGame, 'sport' | 'event_start'>, now = Date.now()) {
+  const start = Date.parse(game.event_start);
+  if (!Number.isFinite(start) || start > now) return false;
+  return now >= start + (game.sport === 'NFL' ? 5 : 4) * 60 * 60_000;
+}
 function savedGameStatus(game: SavedGame, events: unknown[]): boolean | undefined {
   const [away, home] = game.matchup.split(' @ ');
   if (!away || !home) return undefined;
@@ -31,14 +42,15 @@ export function completedSavedGames(games: SavedGame[], events: unknown[]): stri
   return games.filter((game) => savedGameStatus(game, events) === true).map(savedGameKey);
 }
 
-export async function loadCompletedSavedGames(games: SavedGame[], signal: AbortSignal, fetcher: typeof fetch = fetch) {
-  const started = games.filter((game) => Date.parse(game.event_start) <= Date.now());
+export async function loadCompletedSavedGames(games: SavedGame[], signal: AbortSignal, fetcher: typeof fetch = fetch, now = Date.now()) {
+  const started = games.filter((game) => Date.parse(game.event_start) <= now);
   const requests = new Map<string, SavedGame[]>();
   for (const game of started) {
-    for (const hours of [-6, 6]) {
-      const day = new Date(Date.parse(game.event_start) + hours * 60 * 60_000).toISOString().slice(0, 10).replace(/-/g, '');
+    const start = Date.parse(game.event_start);
+    const days = new Set([easternGameDate(start), easternGameDate(start + 12 * 60 * 60_000), easternGameDate(start - 12 * 60 * 60_000)]);
+    for (const day of days) {
       const path = game.sport === 'NBA' ? 'basketball/nba' : 'football/nfl';
-      const url = `https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard?dates=${day}&limit=100`;
+      const url = `https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard?dates=${day.replace(/-/g, '')}&limit=100`;
       requests.set(url, [...(requests.get(url) ?? []), game]);
     }
   }
@@ -83,6 +95,11 @@ export async function loadCompletedSavedGames(games: SavedGame[], signal: AbortS
       failed = true;
     }
   }));
-  const incomplete = failed || started.some((game) => !confirmed.has(savedGameKey(game)));
+  for (const game of started) {
+    const key = savedGameKey(game);
+    if (completed.has(key) || confirmed.has(key)) continue;
+    if (isSavedGamePastReview(game, now)) completed.add(key);
+  }
+  const incomplete = failed || started.some((game) => !confirmed.has(savedGameKey(game)) && !completed.has(savedGameKey(game)));
   return { completed: [...completed], completionWarning: incomplete ? 'Some game statuses could not update. Unconfirmed games remain in saved review; reconnect or retry.' : '' };
 }
