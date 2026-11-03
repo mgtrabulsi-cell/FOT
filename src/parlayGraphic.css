@@ -42,6 +42,9 @@
 .best-bet-participant { margin-top: 14px; }
 .best-bet-selection-fields { margin-top: 14px; border-top: 1px solid #347597; padding-top: 14px; }
 .best-bet-participant summary { cursor: pointer; padding: 10px 0; color: #8bc9ea; font-weight: 700; }
+.best-bet-photo, .parlay-leg-photo label { display: block; margin: 8px 0 4px; font-size: 11px; font-weight: 700; color: #8bc9ea; cursor: pointer; }
+.best-bet-photo input, .parlay-leg-photo input { display: block; margin-top: 4px; font-size: 11px; }
+.parlay-leg-photo img { max-width: 120px; max-height: 90px; object-fit: contain; display: block; margin-top: 6px; border-radius: 6px; }
 .best-bet-subject { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: #e5eaf3; }
 .best-bet-subject img { width: 64px; height: 64px; object-fit: contain; border-radius: 50%; background: #152c44; }
 .best-bet-subject strong { overflow-wrap: anywhere; }

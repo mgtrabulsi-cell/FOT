@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { newManualParlayLeg, newParlayGraphic, parlayGraphicError, parlayLegLabel, parlayMarketOptions, parlayMarkets } from './services/parlayGraphic';
 import type { ParlayGraphic, ParlayLeg, ParlaySport } from './services/parlayGraphic';
 import { loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
+import { readGraphicPhoto } from './services/graphicPhoto';
 import type { ParlayPlayer, ParlayTeam } from './services/parlayRoster';
 import { renderParlayGraphic } from './services/parlayGraphicImage';
 import './parlayGraphic.css';
@@ -52,9 +53,10 @@ export default function ParlayGraphicBuilder({ value, onChange }: { value: Parla
   const team = teams.find((item) => item.id === teamId);
   const addLeg = (player?: ParlayPlayer) => {
     if (!team || value.legs.length >= 8) return;
+    // Name and colors only — photos are attached manually per leg.
     update({ legs: [...value.legs, { id: crypto.randomUUID(), sport, type,
-      subject: { id: player?.id ?? team.id, name: player?.name ?? team.name, image: player?.image ?? team.logo,
-        teamId: team.id, teamName: team.name, teamLogo: team.logo, color: team.color },
+      subject: { id: player?.id ?? team.id, name: player?.name ?? team.name, image: '',
+        teamId: team.id, teamName: team.name, teamLogo: '', color: team.color },
       market: type === 'player' ? parlayMarkets[sport][0] : '', side: 'At least', line: '' }] });
   };
   const buildPreview = async () => {
@@ -76,8 +78,8 @@ export default function ParlayGraphicBuilder({ value, onChange }: { value: Parla
         <option>PARLAY</option><option>SAME GAME PARLAY</option><option>CROSS GAME PARLAY</option></select></label>
       <label>Combined odds (optional)<input maxLength={12} inputMode="text" placeholder="+1360" value={value.odds} onChange={(e) => update({ odds: e.target.value })} /></label>
       <label className="parlay-wide">Matchup / slate label (optional)<input maxLength={100} placeholder="76ers @ Pacers / 7:10 PM ET" value={value.subtitle} onChange={(e) => update({ subtitle: e.target.value })} /></label>
-    </div><label className="parlay-checkbox"><input type="checkbox" checked={value.images} onChange={(e) => update({ images: e.target.checked })} />Include portraits and team logos</label>
-    <small>Combined odds are never calculated from individual legs. Verify the actual sportsbook price. Turn off images for a name-only graphic that renders offline.</small></fieldset>
+    </div><label className="parlay-checkbox"><input type="checkbox" checked={value.images} onChange={(e) => update({ images: e.target.checked })} />Include attached photos</label>
+    <small>Combined odds are never calculated from individual legs. Verify the actual sportsbook price. Photos are never auto-filled; attach your own artwork per leg or turn off images for a name-only graphic that renders offline.</small></fieldset>
     <fieldset disabled={rendering || value.legs.length >= 8}><legend>Add a leg · {value.legs.length}/8</legend>
       <div className="parlay-fields"><label className="parlay-wide">Entry method<select value={entry} onChange={(e) => setEntry(e.target.value as 'roster' | 'manual')}>
         <option value="roster">NBA / NFL roster picker</option><option value="manual">Manual entry / any sport</option></select></label></div>
@@ -116,6 +118,17 @@ export default function ParlayGraphicBuilder({ value, onChange }: { value: Parla
         {(leg.type === 'spread' || leg.type === 'player' && !['Anytime touchdown', 'First touchdown', 'Double-double', 'Triple-double'].includes(leg.market)) && <label>{leg.type === 'spread' ? 'Spread (+ / -)' : 'Stat line'}<input inputMode="text" maxLength={12} placeholder={leg.type === 'spread' ? '-4.5 or +4.5' : '20 or 19.5'} value={leg.line} onChange={(e) => editLeg(leg.id, { line: e.target.value })} /></label>}
       </div>
       <p className="parlay-leg-summary">{parlayLegLabel(leg)}</p>
+      <div className="parlay-leg-photo">
+        {leg.subject.image && <img src={leg.subject.image} alt="" />}
+        <label>{leg.subject.image ? 'Replace photo' : 'Add photo'}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (!file) return;
+          void readGraphicPhoto(file).then((photo) => editLeg(leg.id, { subject: { ...leg.subject, image: photo } }))
+            .catch((cause) => window.alert(cause instanceof Error ? cause.message : 'The photo could not be added. Choose another image.'));
+        }} /></label>
+        {leg.subject.image && <button type="button" onClick={() => editLeg(leg.id, { subject: { ...leg.subject, image: '' } })}>Remove photo</button>}
+      </div>
       <div className="parlay-leg-actions"><button type="button" disabled={index === 0 || rendering} aria-label={`Move leg ${index + 1} up`} onClick={() => { const legs = [...value.legs]; [legs[index - 1], legs[index]] = [legs[index], legs[index - 1]]; update({ legs }); }}>Move up</button>
         <button type="button" disabled={index === value.legs.length - 1 || rendering} aria-label={`Move leg ${index + 1} down`} onClick={() => { const legs = [...value.legs]; [legs[index + 1], legs[index]] = [legs[index], legs[index + 1]]; update({ legs }); }}>Move down</button>
         <button type="button" disabled={rendering} onClick={() => update({ legs: value.legs.filter((item) => item.id !== leg.id) })}>Remove leg {index + 1}</button></div>

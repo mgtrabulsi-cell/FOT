@@ -112,7 +112,10 @@ test('Incomplete, duplicate, wrong-position, unsafe image, and oversized graphic
   const oversized = complete(); oversized.slots[0].reason = 'x'.repeat(651);
   assert.throws(() => readFantasyGraphic(oversized), /650/);
   const noPhoto = complete(); noPhoto.slots[0].player.headshot = '';
-  assert.match(fantasyGraphicPublishError(noPhoto), /no headshot/);
+  assert.match(fantasyGraphicPublishError(noPhoto), /no photo/);
+  const uploaded = complete(); uploaded.slots[0].player.headshot = `data:image/png;base64,${'A'.repeat(120)}`;
+  assert.equal(fantasyGraphicPublishError(uploaded), '', 'Manually uploaded photos are accepted');
+  assert.throws(() => readFantasyGraphic({ ...uploaded, slots: uploaded.slots.map((slot, i) => i === 0 ? { ...slot, player: { ...slot.player, headshot: 'data:text/html;base64,AAAA' } } : slot) }), /invalid player/, 'Non-image data URLs are rejected');
   const noReason = complete(); noReason.slots[0].reason = '  ';
   assert.match(fantasyGraphicPublishError(noReason), /reasoning/);
   assert.throws(() => readFantasyGraphic({ ...complete(), slots: [] }), /layout/);

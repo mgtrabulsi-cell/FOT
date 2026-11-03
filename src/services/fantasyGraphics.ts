@@ -1,4 +1,5 @@
 import type { Game } from './sportsData';
+import { isUploadedPhoto } from './graphicPhoto.ts';
 
 export const graphicPositions = ['QB', 'RB', 'WR', 'TE'] as const;
 export type GraphicPosition = typeof graphicPositions[number];
@@ -20,7 +21,11 @@ export const emptyFantasyGraphic = (): FantasyGraphic => ({
 });
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max;
-const image = (value: unknown): value is string => text(value, 2048) && (value === '' || /^https:\/\/a\.espncdn\.com\/[^\s]*$/.test(value));
+// Uploaded photos are bounded data URLs; legacy https URLs remain readable so
+// previously published graphics can still be opened and migrated.
+const image = (value: unknown): value is string => value === ''
+  || (text(value, 2048) && /^https:\/\/a\.espncdn\.com\/[^\s]*$/.test(value as string))
+  || isUploadedPhoto(value);
 export function readFantasyGraphic(value: unknown): FantasyGraphic {
   if (!isObject(value) || (value.kind !== 'start' && value.kind !== 'sit')
     || !Array.isArray(value.slots) || value.slots.length !== 4) throw new Error('The graphic has an invalid layout.');
@@ -50,7 +55,7 @@ export function readFantasyGraphic(value: unknown): FantasyGraphic {
 export function fantasyGraphicPublishError(graphic: FantasyGraphic) {
   try { readFantasyGraphic(graphic); } catch (cause) { return cause instanceof Error ? cause.message : 'Invalid graphic.'; }
   if (graphic.slots.some((slot) => !slot.player || !slot.reason.trim())) return 'Select all four players and add reasoning for each before publishing or downloading.';
-  if (graphic.slots.some((slot) => !slot.player?.headshot)) return 'A selected player has no headshot. Choose a player with a photo before publishing or downloading.';
+  if (graphic.slots.some((slot) => !slot.player?.headshot)) return 'A selected player has no photo. Use Add photo on each player before publishing or downloading.';
   return '';
 }
 export function readFantasyGraphicRows(value: unknown): FantasyGraphicRow[] {

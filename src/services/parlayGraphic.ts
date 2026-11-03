@@ -1,6 +1,8 @@
 import type { AnglePick } from './anglePicks';
 
 export type ParlaySport = 'NBA' | 'NFL';
+import { isUploadedPhoto } from './graphicPhoto.ts';
+
 export type ParlaySubject = { id: string; name: string; image: string; teamId: string; teamName: string; teamLogo: string; color: string };
 export type ParlayLeg = {
   id: string; sport: string; type: 'player' | 'spread' | 'moneyline' | 'custom'; subject: ParlaySubject;
@@ -23,7 +25,10 @@ export function newManualParlayLeg(): ParlayLeg {
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, limit: number): value is string => typeof value === 'string' && value.length <= limit;
-const imageUrl = (value: unknown): value is string => bounded(value, 500) && (!value || /^https:\/\//.test(value));
+// Uploaded photos are bounded data URLs; legacy https URLs stay readable so
+// existing published parlays can still render.
+const imageUrl = (value: unknown): value is string => value === ''
+  || (bounded(value, 500) && /^https:\/\//.test(value as string)) || isUploadedPhoto(value);
 export function isParlaySubject(value: unknown): value is ParlaySubject {
   return object(value) && bounded(value.id, 100) && bounded(value.name, 80)
     && bounded(value.teamId, 100) && bounded(value.teamName, 80)

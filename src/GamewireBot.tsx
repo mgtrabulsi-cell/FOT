@@ -3,7 +3,6 @@ import { Activity, ArrowLeftRight, ArrowUp, BarChart3, Bot, BrainCircuit, Chevro
 import { loadBotDirectory, loadBotHistory, loadBotReport } from './services/gamewireBot';
 import type { BotDirectory, BotFormat, BotPlayer, BotReport, PlayerWeekHistory } from './services/gamewireBot';
 import './gamewire-bot.css';
-import OfflineImage from './OfflineImage';
 
 type PlayerSlot = 0 | 1;
 type OutlookRequest = { player: BotPlayer; slot: PlayerSlot };
@@ -13,9 +12,7 @@ function BotMark({ compact = false }: { compact?: boolean }) {
   return <div className={`gwb-hero-robot${compact ? ' gwb-avatar' : ''}`} aria-hidden="true"><Bot strokeWidth={1.6} /><Activity className="gwb-robot-pulse" /></div>;
 }
 function PlayerPortrait({ player }: { player: BotPlayer }) {
-  const [failed, setFailed] = useState(false);
-  return <div className="gwb-portrait">{failed ? <span>{player.position}<small>Photo unavailable</small></span>
-    : <OfflineImage src={`https://a.espncdn.com/i/headshots/nfl/players/full/${player.id}.png`} alt="" onError={() => setFailed(true)} />}</div>;
+  return <div className="gwb-portrait"><span>{player.position}<small>{player.teamAbbr}</small></span></div>;
 }
 function Guidance({ report }: { report: BotReport }) {
   const editorial = report.editorial;

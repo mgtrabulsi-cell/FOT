@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Download, Plus, RefreshCw } from 'lucide-react';
 import type { Game } from './services/sportsData';
+import { readGraphicPhoto } from './services/graphicPhoto';
 import { supabase } from './services/supabaseClient';
 import { emptyFantasyGraphic, fantasyGraphicPublishError, graphicPositionLabels, graphicPositions, readFantasyGraphicRows } from './services/fantasyGraphics';
 import type { FantasyGraphic, FantasyGraphicRow, GraphicPlayer } from './services/fantasyGraphics';
@@ -300,10 +301,19 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
                 }}>{player.name} · {player.teamAbbr}</button></li>)}
                 {!matches.length && !rosterLoading && <li>No matching {activeForm.position} players.</li>}
               </ul>}
-              {slot.player ? <><img className="fantasy-graphic-headshot" src={slot.player.headshot || undefined} alt={slot.player.name} /><strong>{slot.player.name}</strong>
+              {slot.player ? <>{slot.player.headshot ? <img className="fantasy-graphic-headshot" src={slot.player.headshot} alt={slot.player.name} /> : <p className="fantasy-graphic-photo-note">No photo attached yet. Add your own artwork; player photos are never auto-filled.</p>}<strong>{slot.player.name}</strong>
                 <div className="fantasy-graphic-opponent"><span>{slot.player.matchup}</span>{slot.player.opponentLogo && <img src={slot.player.opponentLogo} alt="" />}<span>{slot.player.opponent}</span></div>
+                <label className="fantasy-graphic-photo">{slot.player.headshot ? 'Replace photo' : 'Add photo'}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  if (!file) return;
+                  void readGraphicPhoto(file).then((photo) => {
+                    change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index && item.player ? { ...item, player: { ...item.player, headshot: photo } } : item) });
+                  }).catch((cause) => window.alert(cause instanceof Error ? cause.message : 'The photo could not be added. Choose another image.'));
+                }} /></label>
+                {slot.player.headshot && <button type="button" onClick={() => change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index && item.player ? { ...item, player: { ...item.player, headshot: '' } } : item) })}>Remove photo</button>}
                 <button type="button" onClick={() => change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index ? { ...item, player: null } : item) })}>Clear player {index + 1}</button>
-              </> : <p>Choose a player to add their face, name, and matchup.</p>}
+              </> : <p>Choose a player to add their name and matchup, then attach your own photo.</p>}
             </div>
             <label className="fantasy-graphic-reason"><span id={`graphic-reason-${index}`}>The GameWire Take · Player {index + 1}</span><textarea aria-labelledby={`graphic-reason-${index}`} aria-describedby={`graphic-reason-help-${index}`} maxLength={650} rows={5} placeholder="Write your reasoning..." value={slot.reason} onChange={(event) => change({ ...activeForm, slots: activeForm.slots.map((item, i) => i === index ? { ...item, reason: event.target.value } : item) })} /><small id={`graphic-reason-help-${index}`}>{slot.reason.length}/650 · Must fit six lines in the preview</small></label>
           </div>;

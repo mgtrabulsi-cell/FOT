@@ -48,7 +48,7 @@ export async function fetchFantasyGraphicRoster(season: number, games: Game[], s
         for (const player of roster) {
           const position = graphicPositions.find((item) => item === player.position);
           if (position) players.push({ id: player.id, name: player.name, position, teamId: team.id, teamAbbr: team.abbreviation,
-            headshot: player.headshot ?? '', ...graphicPlayerMatchup(team.id, games) });
+            headshot: '', ...graphicPlayerMatchup(team.id, games) });
         }
       } catch (cause) { failures.push(`${team.abbreviation}: ${cause instanceof Error ? cause.message : 'Roster unavailable'}`); }
     }));
