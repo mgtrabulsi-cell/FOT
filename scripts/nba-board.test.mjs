@@ -105,6 +105,7 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
         snapshots.set(`nbaSummary:${key}`, value);
       } };
       if (name === './services/foregroundRefresh') return { subscribeForegroundRefresh: () => () => {} };
+      if (name === './TeamAbbrMark' || name === './OfflineImage') return { default: () => null };
       return {};
     },
   });
