@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { createWebPushServer, isExpiredPushSubscription, sendWebPush } from '../_shared/webpush.ts';
 import { buildPlayAlerts, summaryPlayIds, type PlayFavorite } from '../_shared/plays.ts';
+import { pushGamesFromFeed } from '../_shared/apiSportsFeed.ts';
+import { nflTeamMap } from '../_shared/nflTeamMap.ts';
 
 type TeamScore = { id: string; abbreviation: string; score: number };
 type GameState = {
@@ -121,6 +123,32 @@ const espnHeaders = {
   'Accept': 'application/json',
 };
 
+const pushTeamByName = new Map(nflTeamMap.map((team) => [team.name, { espnId: team.espnId, espnAbbr: team.espnAbbr }]));
+
+// API-Sports (via the live feed tables) is the primary scoreboard for score and
+// final notifications; the ESPN scoreboard remains the automatic fallback. Play
+// alerts and PAT detection still use ESPN summaries, which API-Sports lacks.
+async function loadPushGames(admin: SupabaseClient) {
+  try {
+    const rows = await admin.from('live_feed_games')
+      .select('status,away_name,home_name,away_score,home_score,period,clock,espn_event_id,fetched_at')
+      .eq('sport', 'NFL');
+    if (rows.error) throw rows.error;
+    const games = pushGamesFromFeed(rows.data ?? [], (name) => pushTeamByName.get(name) ?? null, new Date());
+    if (games) return games;
+  } catch (cause) {
+    console.error('Live feed scoreboard unavailable; using the data feed', cause);
+  }
+  const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {
+    headers: espnHeaders,
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`NFL scoreboard returned HTTP ${response.status}`);
+  const scoreboard = asRecord(await response.json());
+  return asArray(scoreboard.events).map(parseEvent)
+    .filter((game): game is NonNullable<ReturnType<typeof parseEvent>> => game !== null && Boolean(game.id));
+}
+
 async function sendPlayAlerts(admin: SupabaseClient, liveGames: Array<{ id: string; away: TeamScore; home: TeamScore }>) {
   const playStateIds = liveGames.map((game) => `plays:${game.id}`);
   const { data: playStates, error: playStateError } = await admin.from('push_game_states').select('event_id,state').in('event_id', playStateIds);
@@ -200,13 +228,7 @@ Deno.serve(async (request) => {
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   try {
-    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {
-      headers: espnHeaders,
-      cache: 'no-store',
-    });
-    if (!response.ok) throw new Error(`NFL scoreboard returned HTTP ${response.status}`);
-    const scoreboard = asRecord(await response.json());
-    const games = asArray(scoreboard.events).map(parseEvent).filter((game): game is NonNullable<ReturnType<typeof parseEvent>> => game !== null && Boolean(game.id));
+    const games = await loadPushGames(admin);
     if (games.length === 0) return Response.json({ checked: 0, sent: 0 });
 
     const { data: priorStates, error: stateError } = await admin.from('push_game_states')

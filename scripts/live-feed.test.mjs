@@ -560,3 +560,46 @@ test('The player log feed gates on full-season sync, bridges IDs and maps games 
     globalThis.fetch = original;
   }
 });
+
+test('ESPN event linking matches mapped teams within the kickoff window', async () => {
+  const { matchESPNEventIds } = await import('../supabase/functions/_shared/apiSportsFeed.ts');
+  const scoreboard = { events: [
+    { id: '401', date: '2026-11-02T01:20:00Z', competitions: [{ competitors: [
+      { homeAway: 'away', team: { id: '21' } }, { homeAway: 'home', team: { id: '28' } },
+    ] }] },
+    { id: '402', date: '2026-11-09T01:20:00Z', competitions: [{ competitors: [
+      { homeAway: 'away', team: { id: '21' } }, { homeAway: 'home', team: { id: '28' } },
+    ] }] },
+  ] };
+  const lookup = (name) => name === 'Philadelphia Eagles' ? '21' : name === 'Washington Commanders' ? '28' : null;
+  const rows = [
+    { provider_game_id: '21632', start_time: '2026-11-02T01:20:00Z', away_name: 'Philadelphia Eagles', home_name: 'Washington Commanders' },
+    { provider_game_id: '999', start_time: '2026-11-02T01:20:00Z', away_name: 'Unknown Team', home_name: 'Washington Commanders' },
+  ];
+  assert.deepEqual(matchESPNEventIds(rows, scoreboard, lookup), [{ provider_game_id: '21632', espn_event_id: '401' }],
+    'The same matchup a week later is a different event; unmapped teams are skipped');
+});
+
+test('The push poller feed source falls back whenever a live game is unlinked or stale', async () => {
+  const { pushGamesFromFeed } = await import('../supabase/functions/_shared/apiSportsFeed.ts');
+  const now = new Date('2026-11-03T01:30:00Z');
+  const teamFor = (name) => name === 'Chicago Bears' ? { espnId: '3', espnAbbr: 'CHI' }
+    : name === 'Seattle Seahawks' ? { espnId: '26', espnAbbr: 'SEA' } : null;
+  const liveRow = {
+    status: 'LIVE', away_name: 'Chicago Bears', home_name: 'Seattle Seahawks',
+    away_score: 7, home_score: 10, period: 2, clock: '4:12',
+    espn_event_id: '555', fetched_at: '2026-11-03T01:29:00Z',
+  };
+  const games = pushGamesFromFeed([liveRow], teamFor, now);
+  assert.deepEqual(games, [{
+    id: '555', away: { id: '3', abbreviation: 'CHI', score: 7 }, home: { id: '26', abbreviation: 'SEA', score: 10 },
+    state: 'in', period: 2, clock: '4:12', lastPlayText: '',
+  }]);
+  assert.equal(pushGamesFromFeed([{ ...liveRow, espn_event_id: null }], teamFor, now), null, 'An unlinked live game forces the ESPN fallback');
+  assert.equal(pushGamesFromFeed([{ ...liveRow, fetched_at: '2026-11-03T01:20:00Z' }], teamFor, now), null, 'A stale live game forces the ESPN fallback');
+  assert.equal(pushGamesFromFeed([], teamFor, now), null, 'No rows forces the ESPN fallback');
+  const upcoming = pushGamesFromFeed([liveRow, { ...liveRow, status: 'UPCOMING', espn_event_id: null, away_score: null, home_score: null }], teamFor, now);
+  assert.equal(upcoming.length, 1, 'Unlinked pregame rows are skipped without forcing a fallback');
+  const finals = pushGamesFromFeed([{ ...liveRow, status: 'FINAL', fetched_at: '2026-11-03T01:29:30Z' }], teamFor, now);
+  assert.equal(finals[0].state, 'post');
+});

@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
-  decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, liveFeedRequestBudget, nflSeasonYear,
+  decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, liveFeedRequestBudget, matchESPNEventIds, nflSeasonYear,
   normalizeNBAGames, normalizeNFLGameDetails, normalizeNFLGames, normalizeNFLPlayerGames, normalizeNFLTeamGame,
   playerGamesSyncMarker, readNFLSeasonFinals, utcDay,
   type LiveFeedGameRow, type LiveFeedSport,
@@ -148,6 +148,25 @@ export async function pollSportsFeed(admin: SupabaseClient, apiKey: string, now 
       let detailCount = 0;
       let seasonCount = 0;
       if (sport === 'NFL') {
+        // Link rows to ESPN event IDs from the shared scoreboard so the push poller can read the feed.
+        try {
+          const unlinked = await admin.from('live_feed_games').select('provider_game_id,start_time,away_name,home_name')
+            .eq('sport', sport).is('espn_event_id', null);
+          if (unlinked.error) throw unlinked.error;
+          if (unlinked.data?.length) {
+            const resource = await admin.from('sports_resources').select('payload').eq('resource_key', 'football/nfl/scoreboard').maybeSingle();
+            if (resource.error) throw resource.error;
+            const nameToESPN = new Map(nflTeamMap.map((team) => [team.name, team.espnId]));
+            const links = matchESPNEventIds(unlinked.data, resource.data?.payload, (name) => nameToESPN.get(name) ?? null);
+            for (const link of links) {
+              const saved = await admin.from('live_feed_games').update({ espn_event_id: link.espn_event_id })
+                .eq('sport', sport).eq('provider_game_id', link.provider_game_id);
+              if (saved.error) throw saved.error;
+            }
+          }
+        } catch (cause) {
+          console.error('ESPN event linking failed', cause);
+        }
         const details = await admin.from('live_feed_game_details').select('provider_game_id,status,fetched_at').eq('sport', sport);
         if (details.error) throw details.error;
         const budgetLeft = Math.floor((liveFeedRequestBudget.NFL - used) / 2);

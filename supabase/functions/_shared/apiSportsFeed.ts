@@ -459,3 +459,78 @@ export function normalizeNFLPlayerGames(season: number, final: NFLSeasonFinal, p
   });
   return rows;
 }
+
+// --- Push poller integration ---
+
+// Matches API-Sports rows to ESPN scoreboard events by mapped team IDs and kickoff time.
+export function matchESPNEventIds(
+  rows: Array<Pick<LiveFeedGameRow, 'provider_game_id' | 'start_time' | 'away_name' | 'home_name'>>,
+  scoreboardPayload: unknown,
+  espnTeamIdFor: (teamName: string) => string | null,
+): Array<{ provider_game_id: string; espn_event_id: string }> {
+  const events = Array.isArray(record(scoreboardPayload).events) ? record(scoreboardPayload).events as unknown[] : [];
+  const index = new Map<string, Array<{ id: string; start: number }>>();
+  for (const value of events) {
+    const event = record(value);
+    const id = text(event.id), start = Date.parse(text(event.date));
+    const competitors = (Array.isArray(record((record(event).competitions as unknown[] ?? [])[0]).competitors)
+      ? record((record(event).competitions as unknown[])[0]).competitors as unknown[] : []).map(record);
+    const away = competitors.find((entry) => text(entry.homeAway) === 'away');
+    const home = competitors.find((entry) => text(entry.homeAway) === 'home');
+    const awayId = text(record(away?.team).id), homeId = text(record(home?.team).id);
+    if (!id || !awayId || !homeId || !Number.isFinite(start)) continue;
+    const key = `${awayId}@${homeId}`;
+    index.set(key, [...(index.get(key) ?? []), { id, start }]);
+  }
+  return rows.flatMap((row) => {
+    const awayId = espnTeamIdFor(row.away_name), homeId = espnTeamIdFor(row.home_name);
+    if (!awayId || !homeId) return [];
+    const start = Date.parse(row.start_time);
+    const match = (index.get(`${awayId}@${homeId}`) ?? [])
+      .find((event) => Number.isFinite(start) && Math.abs(event.start - start) <= 6 * 3_600_000);
+    return match ? [{ provider_game_id: row.provider_game_id, espn_event_id: match.id }] : [];
+  });
+}
+
+export type PushFeedGame = {
+  id: string;
+  away: { id: string; abbreviation: string; score: number };
+  home: { id: string; abbreviation: string; score: number };
+  state: string;
+  period: number;
+  clock: string;
+  lastPlayText: string;
+};
+
+// Converts fresh live-feed rows into the shape the push poller's state machine
+// expects. Returns null — demanding the ESPN scoreboard fallback — when there are
+// no rows or when any live game is unlinked or stale, so notifications never
+// silently skip an active game.
+export function pushGamesFromFeed(
+  rows: Array<Pick<LiveFeedGameRow, 'status' | 'away_name' | 'home_name' | 'away_score' | 'home_score' | 'period' | 'clock'>
+    & { espn_event_id: string | null; fetched_at: string }>,
+  teamFor: (teamName: string) => { espnId: string; espnAbbr: string } | null,
+  now: Date,
+): PushFeedGame[] | null {
+  if (!rows.length) return null;
+  const games: PushFeedGame[] = [];
+  for (const row of rows) {
+    const fresh = Number.isFinite(Date.parse(row.fetched_at)) && now.getTime() - Date.parse(row.fetched_at) <= 150_000;
+    const away = teamFor(row.away_name), home = teamFor(row.home_name);
+    const usable = row.espn_event_id && fresh && away && home;
+    if (!usable) {
+      if (row.status === 'LIVE') return null;
+      continue;
+    }
+    games.push({
+      id: row.espn_event_id as string,
+      away: { id: away.espnId, abbreviation: away.espnAbbr, score: row.away_score ?? 0 },
+      home: { id: home.espnId, abbreviation: home.espnAbbr, score: row.home_score ?? 0 },
+      state: row.status === 'LIVE' ? 'in' : row.status === 'FINAL' ? 'post' : 'pre',
+      period: row.period ?? 0,
+      clock: row.clock ?? '',
+      lastPlayText: '',
+    });
+  }
+  return games.length ? games : null;
+}
