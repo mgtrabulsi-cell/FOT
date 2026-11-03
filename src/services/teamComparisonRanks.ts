@@ -1,5 +1,6 @@
 import { fetchNFLTeamSeasonAverages } from './sportsData.ts';
 import type { NFLTeamSeasonAverages } from './sportsData.ts';
+import { fetchNFLSeasonAveragesFeed } from './liveFeed.ts';
 
 export const teamComparisonMetrics = [
   { key: 'pointsPerGame', label: 'Points / game', defense: false },
@@ -47,6 +48,15 @@ export function fetchTeamComparisonRanks(feedPath: string, season: number): Prom
   const previous = cache.get(key);
   if (previous && previous.expires > Date.now()) return previous.request;
   const request = (async () => {
+    // API-Sports season data covers all 32 teams in two reads once synced.
+    if (feedPath === 'football/nfl') {
+      try {
+        const feed = await fetchNFLSeasonAveragesFeed(season);
+        if (feed && feed.size === 32) return rankTeamAverages([...feed.values()], season);
+      } catch (cause) {
+        console.warn('API-Sports season rankings are unavailable; using the data feed', cause);
+      }
+    }
     const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${feedPath}/teams?limit=32`, {
       signal: AbortSignal.timeout(15_000),
     });

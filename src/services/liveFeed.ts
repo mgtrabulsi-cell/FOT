@@ -318,3 +318,89 @@ export function apiSportsBoxScore(details: LiveFeedGameDetails, game: Game): {
     source: 'api-sports',
   };
 }
+
+// --- Season team averages from API-Sports (Team Comparison) ---
+
+export type NFLSeasonAverages = {
+  teamId: string;
+  pointsPerGame: number | null;
+  totalYardsPerGame: number | null;
+  passingYardsPerGame: number | null;
+  rushingYardsPerGame: number | null;
+  pointsAllowedPerGame: number | null;
+  totalYardsAllowedPerGame: number | null;
+  passingYardsAllowedPerGame: number | null;
+  rushingYardsAllowedPerGame: number | null;
+  source: 'api-sports';
+};
+
+function teamAverages(teamId: string, rows: Array<Record<string, unknown>>): NFLSeasonAverages {
+  // A metric is only reported when every synced game carries it; partial data stays unavailable.
+  const average = (key: string): number | null => {
+    const values = rows.map((row) => row[key]);
+    if (!rows.length || !values.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
+    return Math.round(((values as number[]).reduce((sum, value) => sum + value, 0) / rows.length) * 10) / 10;
+  };
+  return {
+    teamId,
+    pointsPerGame: average('points_for'),
+    totalYardsPerGame: average('yards'),
+    passingYardsPerGame: average('pass_yards'),
+    rushingYardsPerGame: average('rush_yards'),
+    pointsAllowedPerGame: average('points_against'),
+    totalYardsAllowedPerGame: average('yards_against'),
+    passingYardsAllowedPerGame: average('pass_yards_against'),
+    rushingYardsAllowedPerGame: average('rush_yards_against'),
+    source: 'api-sports',
+  };
+}
+
+const seasonCache = new Map<number, { expires: number; request: Promise<Map<string, NFLSeasonAverages> | null> }>();
+
+// Season averages are only served when the server has synced every regular-season
+// final; otherwise partial sums would misstate per-game averages.
+export function fetchNFLSeasonAveragesFeed(
+  season: number,
+  signal?: AbortSignal,
+  config: Config | null = configured,
+): Promise<Map<string, NFLSeasonAverages> | null> {
+  if (!config || !Number.isInteger(season)) return Promise.resolve(null);
+  signal?.throwIfAborted();
+  const cached = seasonCache.get(season);
+  if (cached && cached.expires > Date.now()) return cached.request;
+  const request = (async () => {
+    const headers = { apikey: config.key, Accept: 'application/json' };
+    const base = `${config.url.replace(/\/$/, '')}/rest/v1`;
+    const stateQuery = new URLSearchParams({ sport: 'eq.NFL', season: `eq.${season}`, select: 'finals_total,finals_synced', limit: '1' });
+    const stateResponse = await fetch(`${base}/live_feed_season_state?${stateQuery}`, { headers, signal: AbortSignal.timeout(4000) });
+    if (!stateResponse.ok) throw new Error(`Season sync state returned HTTP ${stateResponse.status}`);
+    const stateRows: unknown = await stateResponse.json();
+    const state = Array.isArray(stateRows) && stateRows[0] && typeof stateRows[0] === 'object' ? stateRows[0] as Record<string, unknown> : null;
+    if (!state || typeof state.finals_total !== 'number' || typeof state.finals_synced !== 'number'
+      || state.finals_total === 0 || state.finals_synced < state.finals_total) return null;
+    const rowsQuery = new URLSearchParams({
+      sport: 'eq.NFL', season: `eq.${season}`, espn_team_id: 'not.is.null',
+      select: 'espn_team_id,points_for,points_against,yards,pass_yards,rush_yards,yards_against,pass_yards_against,rush_yards_against',
+      limit: '1200',
+    });
+    const rowsResponse = await fetch(`${base}/live_feed_team_games?${rowsQuery}`, { headers, signal: AbortSignal.timeout(6000) });
+    if (!rowsResponse.ok) throw new Error(`Season team games returned HTTP ${rowsResponse.status}`);
+    const rows: unknown = await rowsResponse.json();
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const byTeam = new Map<string, Array<Record<string, unknown>>>();
+    for (const value of rows) {
+      const row = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+      if (!row || typeof row.espn_team_id !== 'string') continue;
+      byTeam.set(row.espn_team_id, [...(byTeam.get(row.espn_team_id) ?? []), row]);
+    }
+    return new Map([...byTeam.entries()].map(([teamId, games]) => [teamId, teamAverages(teamId, games)]));
+  })();
+  const entry = { request, expires: Date.now() + 5 * 60_000 };
+  seasonCache.set(season, entry);
+  void request.then((result) => {
+    if (result === null && seasonCache.get(season) === entry) entry.expires = Date.now() + 60_000;
+  }, () => {
+    if (seasonCache.get(season) === entry) seasonCache.delete(season);
+  });
+  return request;
+}

@@ -2,7 +2,7 @@ import { detailsSnapshotKey, readRenderSnapshot, saveRenderSnapshot, teamSnapsho
 import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
 import { fetchStaticSports, readSportsDatabase } from './sportsDatabase.ts';
-import { apiSportsBoxScore, fetchLiveFeedGameDetails, withLiveFeed } from './liveFeed.ts';
+import { apiSportsBoxScore, fetchLiveFeedGameDetails, fetchNFLSeasonAveragesFeed, withLiveFeed } from './liveFeed.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -165,6 +165,7 @@ export type NFLTeamSeasonAverages = {
   totalYardsAllowedPerGame: number | null;
   passingYardsAllowedPerGame: number | null;
   rushingYardsAllowedPerGame: number | null;
+  source?: 'api-sports';
 };
 
 export type NFLGameLeader = {
@@ -1121,6 +1122,20 @@ export async function fetchNFLTeamSeasonAverages(
   signal?: AbortSignal,
   cache: RequestCache = 'default',
 ): Promise<NFLTeamSeasonAverages> {
+  // API-Sports is the primary source once the server has synced the full season.
+  if (feedPath === 'football/nfl') {
+    try {
+      const feed = await fetchNFLSeasonAveragesFeed(seasonYear, signal);
+      const data = feed?.get(teamId);
+      if (data) {
+        if (!signal?.aborted) saveRenderSnapshot('team', teamSnapshotKey(feedPath, teamId, seasonYear), data);
+        return data;
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('API-Sports season averages are unavailable; using the data feed', error);
+    }
+  }
   const response = await fetch(`${apiBase}/${feedPath}/teams/${encodeURIComponent(teamId)}/statistics?season=${seasonYear}&seasontype=2`, { signal, cache });
   if (!response.ok) throw new Error(`Team season averages returned HTTP ${response.status}`);
   const payload = asObject(await response.json());

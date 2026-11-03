@@ -1355,6 +1355,9 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
           ) : subTab === 'teamStats' ? (
             /* Team Comparison View */
             <div className="wire-team-comparison-view">
+              {seasonAverages?.teams.length === 2 && seasonAverages.teams.every((team) => team.source === 'api-sports') && (
+                <p className="feed-source" role="status">Season team averages provided by API-Sports.</p>
+              )}
               <div className="wire-comparison-card">
                 <header className="wire-comparison-header">
                   <div className="wire-comp-team">

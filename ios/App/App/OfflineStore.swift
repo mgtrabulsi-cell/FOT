@@ -58,7 +58,7 @@ final class OfflineStore {
         let publicAPI = !origin(url).isEmpty && origin(url) == settings.string(forKey: "gamewire-public-origin")
         let allowed = image
             ? url.host == "a.espncdn.com" || (publicAPI && (url.path.hasPrefix("/storage/v1/object/public/livewire-photos/") || url.path.hasPrefix("/storage/v1/render/image/public/livewire-photos/")))
-            : espn.contains(url.host ?? "") || (publicAPI && ["/rest/v1/livewire_posts", "/rest/v1/matchup_boards", "/rest/v1/live_feed_games", "/rest/v1/live_feed_game_details"].contains(url.path))
+            : espn.contains(url.host ?? "") || (publicAPI && (["/rest/v1/livewire_posts", "/rest/v1/matchup_boards"].contains(url.path) || url.path.hasPrefix("/rest/v1/live_feed_")))
         guard allowed else { throw error("Only public sports data can be saved") }
         return url
     }

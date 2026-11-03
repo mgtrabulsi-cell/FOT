@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, nflSeasonYear, normalizeNBAGames,
-  normalizeNFLGameDetails, normalizeNFLGames, readAPISportsResponse, utcDay,
+  normalizeNFLGameDetails, normalizeNFLGames, normalizeNFLTeamGame, readAPISportsResponse, readNFLSeasonFinals, utcDay,
 } from '../supabase/functions/_shared/apiSportsFeed.ts';
 import {
-  apiSportsBoxScore, applyLiveFeed, completedPeriodScores, fetchLiveFeed, fetchLiveFeedGameDetails, readLiveFeedRows,
+  apiSportsBoxScore, applyLiveFeed, completedPeriodScores, fetchLiveFeed, fetchLiveFeedGameDetails,
+  fetchNFLSeasonAveragesFeed, readLiveFeedRows,
 } from '../src/services/liveFeed.ts';
 
 const nflGame = (overrides = {}) => ({
@@ -349,6 +350,77 @@ test('Game detail reads validate payloads and reject stale live details but trus
     payload = [{ status: 'FINAL', fetched_at: 'garbage', payload: gameDetails() }];
     assert.equal(await fetchLiveFeedGameDetails('NFL', '21632', undefined, config, Date.parse('2026-11-03T04:00:00Z')), null, 'Malformed rows fall back');
     assert.equal(await fetchLiveFeedGameDetails('NFL', '21632', undefined, null), null, 'Unconfigured builds skip the feed');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+const seasonGame = (id, stage = 'Regular Season', status = 'FT', overrides = {}) => ({
+  game: { id, stage, date: { date: '2026-10-26' }, status: { short: status, long: '' } },
+  teams: { home: { id: 18, name: 'Washington Commanders' }, away: { id: 12, name: 'Philadelphia Eagles' } },
+  scores: { home: { total: 27 }, away: { total: 10 } },
+  ...overrides,
+});
+
+test('Season finals keep only finished regular-season games', () => {
+  const finals = readNFLSeasonFinals({ response: [
+    seasonGame(1), seasonGame(2, 'Pre Season'), seasonGame(3, 'Regular Season', 'NS'), seasonGame(4, 'Post Season'),
+    seasonGame(5, 'Regular Season', 'AOT'),
+  ] });
+  assert.deepEqual(finals.map((final) => final.provider_game_id), ['1', '5']);
+  assert.deepEqual(finals[0].home, { id: '18', name: 'Washington Commanders', points: 27 });
+  assert.equal(finals[0].game_date, '2026-10-26');
+});
+
+test('Team game rows pair each side with its opponent and never cross-assign yardage', () => {
+  const [final] = readNFLSeasonFinals({ response: [seasonGame(21632)] });
+  const rows = normalizeNFLTeamGame(2026, final, detailTeamsPayload, (apiId) => (apiId === '18' ? '28' : apiId === '12' ? '21' : null));
+  assert.equal(rows.length, 2);
+  const home = rows.find((row) => row.api_team_id === '18');
+  const away = rows.find((row) => row.api_team_id === '12');
+  assert.equal(home.espn_team_id, '28');
+  assert.equal(home.points_for, 27);
+  assert.equal(home.points_against, 10);
+  assert.equal(home.yards, 339);
+  assert.equal(home.yards_against, 288, 'Opponent yardage lands in the against column');
+  assert.equal(away.yards, 288);
+  assert.equal(away.yards_against, 339);
+  assert.equal(away.pass_yards_against, 204);
+  const incomplete = normalizeNFLTeamGame(2026, final, { response: [detailTeamsPayload.response[0]] }, () => null);
+  assert.deepEqual(incomplete, [], 'A final missing one side of stats is skipped, not half-recorded');
+});
+
+test('Season averages only serve complete syncs and keep metrics unavailable when any game lacks them', async () => {
+  const original = globalThis.fetch;
+  const config = { url: 'https://gamewire.test', key: 'public-test-key' };
+  const row = (team, extra = {}) => ({
+    espn_team_id: team, points_for: 24, points_against: 17, yards: 350, pass_yards: 250, rush_yards: 100,
+    yards_against: 300, pass_yards_against: 200, rush_yards_against: 100, ...extra,
+  });
+  let state, rows;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.headers.apikey, 'public-test-key');
+    const parsed = new URL(url);
+    if (parsed.pathname.endsWith('live_feed_season_state')) return Response.json(state);
+    assert.equal(parsed.searchParams.get('espn_team_id'), 'not.is.null');
+    return Response.json(rows);
+  };
+  try {
+    state = [{ finals_total: 120, finals_synced: 100 }];
+    assert.equal(await fetchNFLSeasonAveragesFeed(2031, undefined, config), null, 'Partial syncs are never averaged');
+    state = [{ finals_total: 0, finals_synced: 0 }];
+    assert.equal(await fetchNFLSeasonAveragesFeed(2032, undefined, config), null, 'An empty season has no averages');
+    state = [{ finals_total: 2, finals_synced: 2 }];
+    rows = [row('28'), row('28', { points_for: 30, yards: 450 }), row('21', { yards: null })];
+    const feed = await fetchNFLSeasonAveragesFeed(2033, undefined, config);
+    const washington = feed.get('28');
+    assert.equal(washington.pointsPerGame, 27, 'Averages are computed over synced games');
+    assert.equal(washington.totalYardsPerGame, 400);
+    assert.equal(washington.source, 'api-sports');
+    const philadelphia = feed.get('21');
+    assert.equal(philadelphia.totalYardsPerGame, null, 'A missing yardage value keeps the metric unavailable');
+    assert.equal(philadelphia.pointsPerGame, 24);
+    assert.equal(await fetchNFLSeasonAveragesFeed(2033, undefined, null), null, 'Unconfigured builds skip the feed');
   } finally {
     globalThis.fetch = original;
   }

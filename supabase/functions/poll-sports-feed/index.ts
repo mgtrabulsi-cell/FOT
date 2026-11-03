@@ -1,9 +1,10 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, liveFeedRequestBudget, nflSeasonYear,
-  normalizeNBAGames, normalizeNFLGameDetails, normalizeNFLGames, utcDay,
-  type LiveFeedSport,
+  normalizeNBAGames, normalizeNFLGameDetails, normalizeNFLGames, normalizeNFLTeamGame, readNFLSeasonFinals, utcDay,
+  type LiveFeedGameRow, type LiveFeedSport,
 } from '../_shared/apiSportsFeed.ts';
+import { nflTeamByAPISportsId } from '../_shared/nflTeamMap.ts';
 
 async function apiSports(url: string, key: string): Promise<unknown> {
   const response = await fetch(url, {
@@ -12,6 +13,45 @@ async function apiSports(url: string, key: string): Promise<unknown> {
   });
   if (!response.ok) throw new Error(`API-Sports returned HTTP ${response.status}`);
   return response.json();
+}
+
+// Backfills regular-season finals into live_feed_team_games while no game is live.
+// One request lists the season; one request per missing final fetches both teams' stats.
+async function syncNFLSeason(admin: SupabaseClient, apiKey: string, now: Date, requestBudget: number): Promise<number> {
+  const season = nflSeasonYear(now);
+  const state = await admin.from('live_feed_season_state').select('finals_total,finals_synced,updated_at')
+    .eq('sport', 'NFL').eq('season', season).maybeSingle();
+  if (state.error) throw state.error;
+  const complete = state.data && state.data.finals_total > 0 && state.data.finals_synced >= state.data.finals_total;
+  const age = state.data ? now.getTime() - Date.parse(state.data.updated_at) : Number.POSITIVE_INFINITY;
+  // A completed sync only rechecks hourly for newly finished games.
+  if (complete && age < 60 * 60_000) return 0;
+  if (requestBudget < 2) return 0;
+  let requests = 1;
+  const finals = readNFLSeasonFinals(await apiSports(`https://v1.american-football.api-sports.io/games?league=1&season=${season}`, apiKey));
+  const synced = await admin.from('live_feed_team_games').select('provider_game_id').eq('sport', 'NFL').eq('season', season);
+  if (synced.error) throw synced.error;
+  const have = new Set((synced.data ?? []).map((row) => row.provider_game_id));
+  const missing = finals.filter((final) => !have.has(final.provider_game_id))
+    .slice(0, Math.min(10, requestBudget - requests));
+  for (const final of missing) {
+    try {
+      const stats = await apiSports(`https://v1.american-football.api-sports.io/games/statistics/teams?id=${final.provider_game_id}`, apiKey);
+      requests++;
+      const rows = normalizeNFLTeamGame(season, final, stats, (apiTeamId) => nflTeamByAPISportsId.get(apiTeamId)?.espnId ?? null);
+      if (rows.length !== 2) continue;
+      const saved = await admin.from('live_feed_team_games').upsert(rows, { onConflict: 'sport,provider_game_id,api_team_id' });
+      if (saved.error) throw saved.error;
+      have.add(final.provider_game_id);
+    } catch (cause) {
+      console.error(`NFL season stats sync failed for ${final.provider_game_id}`, cause);
+    }
+  }
+  const savedState = await admin.from('live_feed_season_state').upsert({
+    sport: 'NFL', season, finals_total: finals.length, finals_synced: have.size, updated_at: now.toISOString(),
+  }, { onConflict: 'sport,season' });
+  if (savedState.error) throw savedState.error;
+  return requests;
 }
 
 export async function pollSportsFeed(admin: SupabaseClient, apiKey: string, now = new Date()): Promise<Record<string, unknown>> {
@@ -43,6 +83,7 @@ export async function pollSportsFeed(admin: SupabaseClient, apiKey: string, now 
       }
       const used = (state.data && state.data.day === utcDay(now) ? state.data.requests_used : 0) + urls.length;
       let detailCount = 0;
+      let seasonCount = 0;
       if (sport === 'NFL') {
         const details = await admin.from('live_feed_game_details').select('provider_game_id,status,fetched_at').eq('sport', sport);
         if (details.error) throw details.error;
@@ -70,14 +111,22 @@ export async function pollSportsFeed(admin: SupabaseClient, apiKey: string, now 
         const prunedDetails = await admin.from('live_feed_game_details').delete().eq('sport', sport)
           .lt('fetched_at', new Date(now.getTime() - 4 * 86_400_000).toISOString());
         if (prunedDetails.error) throw prunedDetails.error;
+        // Season stats sync only runs outside live windows so live polling keeps priority.
+        if (!unique.some((row: LiveFeedGameRow) => row.status === 'LIVE')) {
+          try {
+            seasonCount = await syncNFLSeason(admin, apiKey, now, liveFeedRequestBudget.NFL - used - detailCount);
+          } catch (cause) {
+            console.error('NFL season stats sync failed', cause);
+          }
+        }
       }
       const savedState = await admin.from('live_feed_state')
-        .upsert({ sport, day: utcDay(now), requests_used: used + detailCount, last_polled_at: now.toISOString() }, { onConflict: 'sport' });
+        .upsert({ sport, day: utcDay(now), requests_used: used + detailCount + seasonCount, last_polled_at: now.toISOString() }, { onConflict: 'sport' });
       if (savedState.error) throw savedState.error;
       const pruned = await admin.from('live_feed_games').delete().eq('sport', sport)
         .lt('start_time', new Date(now.getTime() - 3 * 86_400_000).toISOString());
       if (pruned.error) throw pruned.error;
-      summary[sport] = { polled: true, games: unique.length, details: detailCount / 2, requestsToday: used + detailCount };
+      summary[sport] = { polled: true, games: unique.length, details: detailCount / 2, seasonRequests: seasonCount, requestsToday: used + detailCount + seasonCount };
     } catch (cause) {
       console.error(`${sport} live feed poll failed`, cause);
       summary[sport] = { polled: false, error: cause instanceof Error ? cause.message : String(cause) };

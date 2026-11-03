@@ -283,3 +283,86 @@ export function decideNFLDetailTargets(
   live.sort((first, second) => second.age - first.age);
   return [...live.map((game) => game.id), ...finals].slice(0, maxTargets);
 }
+
+// --- Season-long team game statistics (powers Team Comparison averages and ranks) ---
+
+export type NFLSeasonFinal = {
+  provider_game_id: string;
+  game_date: string;
+  home: { id: string; name: string; points: number | null };
+  away: { id: string; name: string; points: number | null };
+};
+
+// Regular-season finals from the one-request full-season schedule.
+export function readNFLSeasonFinals(payload: unknown): NFLSeasonFinal[] {
+  return readAPISportsResponse(payload).flatMap((item): NFLSeasonFinal[] => {
+    const entry = record(item);
+    const game = record(entry.game);
+    if (text(game.stage) !== 'Regular Season') return [];
+    const status = text(record(game.status).short).toUpperCase();
+    if (status !== 'FT' && status !== 'AOT') return [];
+    const id = text(game.id), date = text(record(game.date).date);
+    const teams = record(entry.teams), scores = record(entry.scores);
+    const side = (key: 'home' | 'away') => ({
+      id: text(record(teams[key]).id), name: text(record(teams[key]).name), points: num(record(scores[key]).total),
+    });
+    const home = side('home'), away = side('away');
+    if (!id || !date || !home.id || !away.id) return [];
+    return [{ provider_game_id: id, game_date: date, home, away }];
+  });
+}
+
+export type NFLTeamGameRow = {
+  sport: 'NFL';
+  season: number;
+  provider_game_id: string;
+  api_team_id: string;
+  espn_team_id: string | null;
+  team_name: string;
+  game_date: string;
+  points_for: number | null;
+  points_against: number | null;
+  yards: number | null;
+  pass_yards: number | null;
+  rush_yards: number | null;
+  yards_against: number | null;
+  pass_yards_against: number | null;
+  rush_yards_against: number | null;
+};
+
+// Two per-team rows for one final, pairing each side's yardage with its opponent's.
+export function normalizeNFLTeamGame(
+  season: number,
+  final: NFLSeasonFinal,
+  teamsStatsPayload: unknown,
+  espnIdFor: (apiTeamId: string) => string | null,
+): NFLTeamGameRow[] {
+  const stats = new Map(readAPISportsResponse(teamsStatsPayload).map((item) => {
+    const entry = record(item);
+    const statistics = record(entry.statistics);
+    return [text(record(entry.team).id), {
+      yards: num(record(statistics.yards).total),
+      pass_yards: num(record(statistics.passing).total),
+      rush_yards: num(record(statistics.rushings).total),
+    }];
+  }));
+  const sides = [
+    { own: final.home, opponent: final.away },
+    { own: final.away, opponent: final.home },
+  ];
+  return sides.flatMap((side): NFLTeamGameRow[] => {
+    const own = stats.get(side.own.id), opponent = stats.get(side.opponent.id);
+    if (!own || !opponent) return [];
+    return [{
+      sport: 'NFL', season,
+      provider_game_id: final.provider_game_id,
+      api_team_id: side.own.id,
+      espn_team_id: espnIdFor(side.own.id),
+      team_name: side.own.name,
+      game_date: final.game_date,
+      points_for: side.own.points, points_against: side.opponent.points,
+      yards: own.yards, pass_yards: own.pass_yards, rush_yards: own.rush_yards,
+      yards_against: opponent.yards, pass_yards_against: opponent.pass_yards, rush_yards_against: opponent.rush_yards,
+    }];
+  });
+}
