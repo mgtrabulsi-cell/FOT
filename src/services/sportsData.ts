@@ -2,6 +2,7 @@ import { detailsSnapshotKey, readRenderSnapshot, saveRenderSnapshot, teamSnapsho
 import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
 import { fetchStaticSports, readSportsDatabase } from './sportsDatabase.ts';
+import { withLiveFeed } from './liveFeed.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -119,6 +120,7 @@ export type Game = {
   nflMarket?: NFLMarket;
   nbaMarket?: NFLMarket;
   sharedSavedAt?: string;
+  liveSource?: 'api-sports';
 };
 
 export type NFLRecentGame = {
@@ -529,8 +531,9 @@ export async function fetchScoreboards(signal?: AbortSignal, nflWeek?: number): 
   });
 
   games.sort((first, second) => Date.parse(first.date) - Date.parse(second.date));
-  const result = { games, failedLeagues, nflWeek: currentNFLWeek };
-  if (!signal?.aborted && games.length && !failedLeagues.length) saveRenderSnapshot('scoreboard', String(nflWeek ?? 'current'), result);
+  const merged = await withLiveFeed(games, 'NFL', signal);
+  const result = { games: merged, failedLeagues, nflWeek: currentNFLWeek };
+  if (!signal?.aborted && merged.length && !failedLeagues.length) saveRenderSnapshot('scoreboard', String(nflWeek ?? 'current'), result);
   return result;
 }
 
@@ -565,15 +568,15 @@ export async function fetchNBAScoreboard(date: string, signal?: AbortSignal): Pr
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T12:00:00Z`))
     || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error('Choose a valid NBA calendar date.');
   const { payload, headers } = await fetchScoreboardJSON(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal, 'NBA');
-  const games = readNBAScoreboard(payload).map((game) => ({ ...game,
-    ...(headers.has('x-gamewire-database') ? { sharedSavedAt: headers.get('x-gamewire-saved-at') ?? '' } : {}) }));
+  const games = await withLiveFeed(readNBAScoreboard(payload).map((game) => ({ ...game,
+    ...(headers.has('x-gamewire-database') ? { sharedSavedAt: headers.get('x-gamewire-saved-at') ?? '' } : {}) })), 'NBA', signal);
   if (!signal?.aborted) saveRenderSnapshot('scoreboard', `NBA:${date}`, { games, nflWeek: null, failedLeagues: [] });
   return games;
 }
 
 export async function fetchStoredNBAScoreboard(date: string, signal: AbortSignal): Promise<Game[] | null> {
   const response = await readSportsDatabase(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal);
-  return response ? readNBAScoreboard(await response.json()).map((game) => ({ ...game, sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })) : null;
+  return response ? withLiveFeed(readNBAScoreboard(await response.json()).map((game) => ({ ...game, sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })), 'NBA', signal) : null;
 }
 
 export async function fetchStoredNFLScoreboard(week: number | null, signal: AbortSignal): Promise<ScoreboardResult | null> {
@@ -584,9 +587,9 @@ export async function fetchStoredNFLScoreboard(week: number | null, signal: Abor
   const feed = scoreFeeds.find((entry) => entry.league === 'NFL');
   if (!feed) throw new Error('NFL feed configuration is missing.');
   return {
-    games: payload.events.map((event) => mapEvent(event, feed)).filter((game): game is Game => game !== null)
+    games: await withLiveFeed(payload.events.map((event) => mapEvent(event, feed)).filter((game): game is Game => game !== null)
       .map((game) => ({ ...game, seasonYear: Number(asObject(payload.season).year) || game.seasonYear,
-        sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })),
+        sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })), 'NFL', signal),
     failedLeagues: [], nflWeek: Number(asObject(payload.week).number) || week,
   };
 }

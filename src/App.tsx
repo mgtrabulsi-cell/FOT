@@ -1291,6 +1291,7 @@ function App() {
             }}><ChevronRight size={16} aria-hidden="true" /></button></div><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}
           </div>}
           {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
+          {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.liveSource === 'api-sports') && <p className="feed-source" role="status">Live scores and game status provided by API-Sports.</p>}
           {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}
           {authUser && <button type="button" onClick={() => { void favoritePersistence.current?.retry(); }}>Retry favorites sync</button>}

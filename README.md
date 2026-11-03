@@ -46,6 +46,14 @@ The secret-protected `sync-sports-resources` function runs hourly through the ex
 
 Backend setup: apply `supabase/sports-resources.sql` to the linked project, deploy `sync-sports-resources` with `--no-verify-jwt` (it validates the existing cron secret itself), and run the scheduled job once to seed it before releasing the client. Existing `gamewire-poll-url` and `gamewire-poll-secret` Vault entries and `GAMEWIRE_CRON_SECRET` function configuration are required. Verify row coverage and `cron.job` after deployment. `supabase/tests/sports-resources.sql` checks anonymous reads and denial of anonymous/authenticated writes in a rolled-back transaction.
 
+### API-Sports live feed
+
+API-Sports is the primary provider for NFL and NBA live scores, clocks, periods and game status. The server-only `API_SPORTS_KEY` Supabase secret authenticates the `poll-sports-feed` function (the key never ships to browsers). The function runs every minute through the shared Vault/pg_cron setup and writes normalized rows to the public-read `live_feed_games` table; per-sport request bookkeeping lives in `live_feed_state` so plan budgets are never exceeded. NFL uses the paid Pro plan (7,500 requests/day) and effectively polls near-live during game windows; NBA remains on the free plan (100 requests/day), so NBA rows refresh roughly every 12 minutes during games and are treated as stale after 25 minutes.
+
+The client overlays fresh feed rows onto the ESPN-shaped scoreboard by matching both team names and the scheduled start time, labeling the board "Live scores and game status provided by API-Sports." ESPN continues to supply enrichment API-Sports does not offer — team records, leaders, odds, down-and-distance, box scores, player game logs, rosters and news — and remains the automatic fallback whenever feed rows are missing or stale. The overlay never rolls a game ESPN already marked final back to live, never applies pregame rows, and clears down-and-distance when the feed reports a final. When the ESPN schedule fails entirely, the shared saved schedule plus the API-Sports overlay keeps scores live instead of stale.
+
+Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `supabase/live-feed.sql` (table, state, RLS and the `gamewire-live-feed` cron job reusing the existing Vault entries), and deploy `poll-sports-feed` with `--no-verify-jwt` (it validates the cron secret itself). `supabase/tests/live-feed.sql` checks anonymous reads and write denial; `scripts/live-feed.test.mjs` covers normalization, budget decisions and the client overlay. Deeper replacement (box scores, player statistics) is deliberately deferred: the NBA free plan cannot sustain it, and ESPN data powers features API-Sports lacks.
+
 ## GamewAIre setup
 
 ### GamewAIre Player Lab

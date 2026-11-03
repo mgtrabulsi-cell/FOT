@@ -267,6 +267,7 @@ button { color: inherit; }
 .no-live-games { align-self: center; padding: 0 16px; color: #c3ccdc; font-size: 11px; }
 .all-live { display: flex; align-items: center; gap: 4px; margin-left: auto; padding-left: 14px; color: #d7deeb; border: 0; background: transparent; font-size: 11px; white-space: nowrap; cursor: pointer; }
 .feed-warning { margin: -10px 0 17px; padding: 9px 11px; border-left: 2px solid #bf7654; background: #fff; color: #765c4d; font-size: 10px; }
+.feed-source { margin: -10px 0 17px; padding: 9px 11px; border-left: 2px solid #547b69; background: #fff; color: #4d6557; font-size: 10px; }
 .score-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(370px, .9fr); gap: 22px; align-items: start; }
 .sport-filter { display: flex; gap: 5px; align-items: center; border-bottom: 1px solid #dfe4dd; margin-bottom: 20px; overflow-x: auto; }
 .sport-filter button { flex: 0 0 auto; padding: 0 12px 12px; border: 0; background: transparent; color: #768078; font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -1073,6 +1074,7 @@ td:first-child { color: #828c84; }
 .date-divider { background: #42516a; }
 .date-button select, .date-button option { color: #e5eaf3; background: #101a29; }
 .feed-warning, .empty-games, .empty-detail { color: #c6cfdd; background: #182438; border-color: #35445b; }
+.feed-source { color: #a9c6b6; background: #18302a; border-color: #3c5d4e; }
 .live-strip { background: #18263c; border: 1px solid #30435f; box-shadow: 0 8px 28px #050a1270; }
 .live-strip-title > b, .ticker-game small, .no-live-games, .all-live { color: #c0cce0; }
 .ticker-games { border-left-color: #40516c; }
