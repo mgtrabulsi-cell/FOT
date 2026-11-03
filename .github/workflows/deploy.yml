@@ -36,7 +36,7 @@ jobs:
       - name: Test results sport filters
         run: node --test scripts/results-filter.test.mjs
       - name: Test API-Sports live feed
-        run: node --test scripts/live-feed.test.mjs
+        run: node --test scripts/live-feed.test.mjs scripts/nfl-team-map.test.mjs
       - name: Test GamewAIre analyses and scheduling
         run: node --test scripts/gamewaire*.test.mjs
       - name: Test foreground score refresh
