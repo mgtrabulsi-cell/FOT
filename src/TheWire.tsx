@@ -1482,11 +1482,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                               <td className="wire-col-athlete" role="cell">
                                 <div className="wire-athlete-cell">
                                   <span className="wire-athlete-avatar">
-                                    {athlete.headshot ? (
-                                      <OfflineImage src={athlete.headshot} alt="" />
-                                    ) : (
-                                      athlete.name.slice(0, 2).toUpperCase()
-                                    )}
+                                    {athlete.name.slice(0, 2).toUpperCase()}
                                   </span>
                                   {player && currentPlayerAverages && activeGameTeam ? (
                                     <button

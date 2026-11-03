@@ -56,7 +56,9 @@ NFL matchup box scores are also API-Sports-first: the poller snapshots per-game 
 
 NFL Team Comparison season averages and league ranks are API-Sports-first too. Outside live windows the poller backfills every regular-season final into `live_feed_team_games` (one request per game covers both teams; points come from the one-request season schedule) and records completeness in `live_feed_season_state`. Clients compute per-game averages and 32-team ranks from two cheap database reads — labeled "Season team averages provided by API-Sports" — but only once every final is synced; partial seasons would misstate averages, so they fall back to the 33-request ESPN flow instead. A metric is unavailable whenever any synced game lacks it. Matchup defense ranks and player usage inside pregame panels remain ESPN.
 
-Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `supabase/live-feed.sql`, `supabase/live-feed-details.sql` and `supabase/live-feed-season.sql` (tables, RLS and the `gamewire-live-feed` cron job reusing the existing Vault entries), and deploy `poll-sports-feed` with `--no-verify-jwt` (it validates the cron secret itself). `supabase/tests/live-feed.sql` checks anonymous reads and write denial; `scripts/live-feed.test.mjs` covers normalization, budget decisions, the client overlay, the box-score adapter and season averages. Deeper replacement (player game logs, bot inputs) is deliberately deferred: the NBA free plan cannot sustain it, and ESPN data powers features API-Sports lacks.
+NFL active rosters are served from the `live_feed_rosters` bridge: the poller refreshes up to four teams per idle run (one API-Sports request each, daily per team), matching ESPN athletes to API-Sports player IDs by normalized unique name within the team. ESPN remains canonical for identity, positions and availability — practice-squad, reserve, suspended and ruled-out players stay inactive — and duplicate names are never bridged. Clients read one database row set per team (Stat Hub directories, player search, favorable matchups, birthdays) and fall back to the ESPN roster flow when bridge rows are missing or older than two days. The bridge's `api_player_id` column is the foundation for migrating player game logs next.
+
+Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `supabase/live-feed.sql`, `supabase/live-feed-details.sql`, `supabase/live-feed-season.sql` and `supabase/live-feed-rosters.sql` (tables, RLS and the `gamewire-live-feed` cron job reusing the existing Vault entries), and deploy `poll-sports-feed` with `--no-verify-jwt` (it validates the cron secret itself). `supabase/tests/live-feed.sql` checks anonymous reads and write denial; `scripts/live-feed.test.mjs` covers normalization, budget decisions, the client overlay, the box-score adapter, season averages and the roster bridge. Deeper replacement (player game logs, bot inputs) is deliberately deferred: the NBA free plan cannot sustain it, and ESPN data powers features API-Sports lacks.
 
 ## GamewAIre setup
 
@@ -262,7 +264,7 @@ Open the local URL printed by Vite. `npm run build` creates a production build.
 
 The VS Code task **Start GameWire dev server** is also configured for launching the app.
 
-Desktop views use an 85% interface scale, with a compact matchup scoreboard and larger player names and headshots in The Wire, Stat Hub's player directory, and player cards. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
+Desktop views use an 85% interface scale, with a compact matchup scoreboard and larger player names in The Wire, Stat Hub's player directory, and player cards. Stat Hub retains its extra player-area emphasis. Screens 760px wide or narrower keep the unscaled mobile layout.
 
 Desktop account profiles have an additional 130% scale, larger text and form controls for readability, and single-column settings on narrower desktop screens. Mobile profile sizing is unchanged.
 
@@ -298,7 +300,7 @@ Pregame Player Box Score can show season-to-date totals or per-game averages for
 
 Desktop pregame tables share fixed column widths across passing, rushing, and receiving, aligning player names, games played, yards, and touchdowns vertically. Unused stat slots stay blank rather than implying a value; mobile hides those slots and keeps the labeled stat grids.
 
-The final column shows QB interceptions (`INT`), rushing fumbles in Rushing, and receiving fumbles in Receiving (`FUM`), not fumbles lost. Missing fumble data remains unavailable. Player portraits retain ESPN's full-resolution images with top-centered framing and larger desktop headshots.
+The final column shows QB interceptions (`INT`), rushing fumbles in Rushing, and receiving fumbles in Receiving (`FUM`), not fumbles lost. Missing fumble data remains unavailable. Stat Hub and box-score player rows are face-free for both NFL and NBA: players show initials-based avatars or name-only rows, never photos.
 
 Pregame QB passing stats omit sacks per game. Live and final box scores retain the sacks reported by ESPN.
 
@@ -554,7 +556,7 @@ The score poller uses ESPN's undocumented public scoreboard feed, so alert timin
 
 ### NFL and NBA navigation
 
-NBA Stat Hub shows ESPN player headshots beside directory names and in the selected player's Recent Performance header when provided by the feed. Directory photos load lazily through the existing offline-image cache; players without a supplied image remain name-only. The Wire's compact NBA box-score rows remain name-only.
+NBA Stat Hub is face-free: directory rows, pregame roster cards, and the selected player's Recent Performance header show names, positions and jersey numbers without photos, matching the NFL treatment. The Wire's compact NBA box-score rows remain name-only.
 
 NBA's date picker has previous/next arrows to browse one Eastern calendar day at a time in The Wire, Stat Hub, and Locker Room. The calendar and Today shortcut remain available. Arrows respect the picker's 2000-2200 date bounds and use the same saved/preloaded schedules as calendar selection.
 
@@ -566,7 +568,7 @@ NBA scores come from ESPN's public basketball feed and refresh every 30 seconds,
 
 Like NFL, NBA The Wire opens to a vertical scoreboard list in kickoff order. Select a game to open its full box score (or pregame rosters), team comparison, and play-by-play; **All games** returns to the list. Visible matchup details refresh while a game is open; live and final NBA boxes also preload in the background from the selected date's scoreboard. The draggable game wheel remains inside the opened matchup and in Stat Hub.
 
-NBA box scores use one team toggle at a time, with ESPN-reported starters first and the bench afterward; starter labels do not indicate who is currently on the floor. Headshots, names, positions, and white numeric statistics follow the NFL navy/mono/display-font styling. Play-by-play is grouped by quarter/overtime, newest period and newest play first. Horizontal wheels, tables, and charts hide their scrollbars while preserving mouse drag, touch, and keyboard scrolling. The sport selector uses standalone NFL/NBA buttons without a surrounding bar; the NBA date controls remain available.
+NBA box scores use one team toggle at a time, with ESPN-reported starters first and the bench afterward; starter labels do not indicate who is currently on the floor. Names, positions, and white numeric statistics follow the NFL navy/mono/display-font styling without player photos. Play-by-play is grouped by quarter/overtime, newest period and newest play first. Horizontal wheels, tables, and charts hide their scrollbars while preserving mouse drag, touch, and keyboard scrolling. The sport selector uses standalone NFL/NBA buttons without a surrounding bar; the NBA date controls remain available.
 
 On mobile (760px or narrower), NFL/NBA, the NBA date, and Today share one compact row with 34px-high controls. Native date-field padding is normalized, and the NFL week picker uses the same height; the date retains an accessible Eastern-time label. The heading reserves the NFL week-control space in NBA so the sport buttons do not jump vertically when switching leagues. NBA matchup controls are slimmer on mobile. Opened Wire matchups hide the game wheel for both sports, leaving the scoreboard and stats with All games for navigation (Stat Hub retains its wheel). NBA box scores use a compact single table row per player, with a pinned full-name/favorite column and no player photos. Smaller names can wrap without ellipsis or abbreviations. MIN, PTS, REB, AST, FG, FT come first. Swipe, drag, or keyboard-scroll horizontally for 3PT and the remaining stats; narrow phones may need a small swipe to reach FT. Starters and bench repeat aligned column headings with a clear section divider. DNP reasons span the stat columns rather than inventing values.
 

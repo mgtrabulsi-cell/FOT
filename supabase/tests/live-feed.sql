@@ -14,12 +14,24 @@ on conflict (sport,provider_game_id,api_team_id) do nothing;
 insert into public.live_feed_season_state(sport,season,finals_total,finals_synced)
 values ('NFL',2026,1,1)
 on conflict (sport,season) do nothing;
+insert into public.live_feed_rosters(sport,season,espn_team_id,api_team_id,espn_player_id,api_player_id,name,position,jersey,active)
+values ('NFL',2026,'28','18','101','25745','Test Player','QB','5',true)
+on conflict (sport,season,espn_team_id,espn_player_id) do nothing;
 set local role anon;
 select provider_game_id from public.live_feed_games where provider_game_id='test-game';
 select sport from public.live_feed_state where sport='NFL';
 select provider_game_id from public.live_feed_game_details where provider_game_id='test-game';
 select api_team_id from public.live_feed_team_games where provider_game_id='test-game';
 select finals_total from public.live_feed_season_state where sport='NFL';
+select espn_player_id from public.live_feed_rosters where espn_player_id='101';
+do $$
+begin
+  begin
+    update public.live_feed_rosters set active=false where espn_player_id='101';
+    raise exception 'Anonymous roster writes must be denied';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
 do $$
 begin
   begin

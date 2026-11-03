@@ -404,3 +404,44 @@ export function fetchNFLSeasonAveragesFeed(
   });
   return request;
 }
+
+// --- NFL roster bridge (Stat Hub, player search, favorable matchups) ---
+
+export type NFLRosterFeedPlayer = { id: string; name: string; position: string; jersey: string };
+
+// Serves the active roster for one team from the server-synced bridge.
+// Returns null when the bridge has no fresh rows so callers fall back to ESPN.
+export async function fetchNFLRosterFeed(
+  season: number,
+  espnTeamId: string,
+  signal?: AbortSignal,
+  config: Config | null = configured,
+  now = Date.now(),
+): Promise<NFLRosterFeedPlayer[] | null> {
+  if (!config || !Number.isInteger(season) || !espnTeamId) return null;
+  signal?.throwIfAborted();
+  const query = new URLSearchParams({
+    sport: 'eq.NFL', season: `eq.${season}`, espn_team_id: `eq.${espnTeamId}`, active: 'is.true',
+    select: 'espn_player_id,name,position,jersey,updated_at', limit: '200',
+  });
+  const response = await fetch(`${config.url.replace(/\/$/, '')}/rest/v1/live_feed_rosters?${query}`, {
+    headers: { apikey: config.key, Accept: 'application/json' },
+    signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(4000)]),
+  });
+  if (!response.ok) throw new Error(`The roster bridge returned HTTP ${response.status}`);
+  const rows: unknown = await response.json();
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const players = rows.flatMap((value): NFLRosterFeedPlayer[] => {
+    const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    if (typeof row.espn_player_id !== 'string' || typeof row.name !== 'string'
+      || typeof row.updated_at !== 'string' || !Number.isFinite(Date.parse(row.updated_at))) return [];
+    // Rosters older than two days are stale; the daily sync should have replaced them.
+    if (now - Date.parse(row.updated_at) > 48 * 3_600_000) return [];
+    return [{
+      id: row.espn_player_id, name: row.name,
+      position: typeof row.position === 'string' ? row.position : '',
+      jersey: typeof row.jersey === 'string' ? row.jersey : '',
+    }];
+  });
+  return players.length === rows.length && players.length ? players : null;
+}

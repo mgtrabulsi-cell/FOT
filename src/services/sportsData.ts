@@ -2,7 +2,7 @@ import { detailsSnapshotKey, readRenderSnapshot, saveRenderSnapshot, teamSnapsho
 import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
 import { fetchStaticSports, readSportsDatabase } from './sportsDatabase.ts';
-import { apiSportsBoxScore, fetchLiveFeedGameDetails, fetchNFLSeasonAveragesFeed, withLiveFeed } from './liveFeed.ts';
+import { apiSportsBoxScore, fetchLiveFeedGameDetails, fetchNFLRosterFeed, fetchNFLSeasonAveragesFeed, withLiveFeed } from './liveFeed.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -1308,11 +1308,20 @@ function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number):
   const cacheKey = `${feedPath}:${teamId}:${season}`;
   const cached = nflRosters.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < 300_000) return cached.promise;
-  const request = fetchStaticSports(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`)
-    .then(async (response) => {
-      if (!response.ok) throw new Error(`Team roster returned HTTP ${response.status}`);
-      return readNFLActiveRoster(await response.json());
-    });
+  const request = (async () => {
+    // The server-synced API-Sports roster bridge is the primary roster source.
+    if (feedPath === 'football/nfl') {
+      try {
+        const feed = await fetchNFLRosterFeed(season, teamId);
+        if (feed) return feed;
+      } catch (error) {
+        console.warn('The roster bridge is unavailable; using the data feed', error);
+      }
+    }
+    const response = await fetchStaticSports(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`);
+    if (!response.ok) throw new Error(`Team roster returned HTTP ${response.status}`);
+    return readNFLActiveRoster(await response.json());
+  })();
   nflRosters.set(cacheKey, { timestamp: Date.now(), promise: request });
   void request.catch(() => nflRosters.delete(cacheKey));
   return request;

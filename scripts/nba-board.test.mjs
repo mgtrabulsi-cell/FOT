@@ -703,10 +703,7 @@ test('NBA directory uses paired NFL team panels with actual positions, search, p
   app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.retry(); app.render(); await app.settle();
   assert.equal(app.nodes().filter((node) => node.props?.className === 'nfl-directory-team').length, 2);
   const photos = app.nodes().filter((node) => node.props?.className === 'nba-directory-headshot');
-  assert.equal(photos.length, 1, 'Players without a supplied headshot remain name-only');
-  assert.equal(photos[0].props.src, 'https://a.espncdn.com/player-1.png');
-  assert.equal(photos[0].props.loading, 'lazy');
-  assert.equal(photos[0].props.alt, '');
+  assert.equal(photos.length, 0, 'Directory rows are face-free even when the feed supplies a headshot');
   const player = app.nodes().find((node) => node.props?.className === 'nfl-directory-player-main');
   player.props.onClick(); assert.deepEqual(opened, ['player-1', away.id]);
   const filter = app.nodes().find((node) => node.props?.role === 'tab' && node.props.children === 'C');
@@ -721,7 +718,7 @@ test('NBA directory uses paired NFL team panels with actual positions, search, p
 test('NBA selected-player window leads with NFL stat tabs and per-game chart, keeping zeros and missing values distinct', async () => {
   const props = { player: { id: '23', name: 'Actual Player', position: 'G', jersey: '23', headshot: 'https://a.espncdn.com/player-23.png' }, team: away, season: 2027, favorites: [], toggle() {}, close() {} };
   const app = setup('stats', new Map(), { name: 'PlayerProfile', props });
-  assert.equal(app.nodes().find((node) => node.props?.className === 'nba-profile-headshot').props.src, props.player.headshot);
+  assert.equal(app.nodes().filter((node) => node.props?.className === 'nba-profile-headshot').length, 0, 'The profile header is face-free even when a headshot is supplied');
   delete props.player.headshot; app.render();
   assert.equal(app.nodes().filter((node) => node.props?.className === 'nba-profile-headshot').length, 0);
   app.data.fetchNBAPlayerProfile = async () => ({ games: [
@@ -748,7 +745,7 @@ test('NBA directory orders each team top-to-bottom by season PPG, with zeros bef
   app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.retry(); app.render(); await app.settle();
   const panels = app.nodes().filter((node) => node.props?.className === 'nfl-directory-team');
   for (const panel of panels) {
-    const names = descendants(panel).filter((node) => node.props?.className === 'nfl-directory-player-main').map((node) => node.props.children[1].props.children[0].props.children);
+    const names = descendants(panel).filter((node) => node.props?.className === 'nfl-directory-player-main').map((node) => node.props.children.props.children[0].props.children);
     assert.deepEqual(names, ['first', 'second', 'tie', 'zero', 'missing']);
   }
   app.unmount();

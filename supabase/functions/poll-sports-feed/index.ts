@@ -4,7 +4,8 @@ import {
   normalizeNBAGames, normalizeNFLGameDetails, normalizeNFLGames, normalizeNFLTeamGame, readNFLSeasonFinals, utcDay,
   type LiveFeedGameRow, type LiveFeedSport,
 } from '../_shared/apiSportsFeed.ts';
-import { nflTeamByAPISportsId } from '../_shared/nflTeamMap.ts';
+import { nflTeamByAPISportsId, nflTeamMap } from '../_shared/nflTeamMap.ts';
+import { matchNFLRoster } from '../_shared/nflRosterSync.ts';
 
 async function apiSports(url: string, key: string): Promise<unknown> {
   const response = await fetch(url, {
@@ -51,6 +52,46 @@ async function syncNFLSeason(admin: SupabaseClient, apiKey: string, now: Date, r
     sport: 'NFL', season, finals_total: finals.length, finals_synced: have.size, updated_at: now.toISOString(),
   }, { onConflict: 'sport,season' });
   if (savedState.error) throw savedState.error;
+  return requests;
+}
+
+// Refreshes up to four team roster bridges per run; each team costs one request.
+// ESPN rosters come from the shared sports_resources cache, never from the browser.
+async function syncNFLRosters(admin: SupabaseClient, apiKey: string, now: Date, requestBudget: number): Promise<number> {
+  if (requestBudget < 1) return 0;
+  const season = nflSeasonYear(now);
+  const state = await admin.from('live_feed_roster_state').select('espn_team_id,synced_at').eq('sport', 'NFL').eq('season', season);
+  if (state.error) throw state.error;
+  const syncedAt = new Map((state.data ?? []).map((row) => [row.espn_team_id, Date.parse(row.synced_at)]));
+  const stale = nflTeamMap.filter((team) => {
+    const last = syncedAt.get(team.espnId);
+    return last === undefined || !Number.isFinite(last) || now.getTime() - last >= 24 * 3_600_000;
+  }).slice(0, Math.min(4, requestBudget));
+  let requests = 0;
+  for (const team of stale) {
+    try {
+      const resource = await admin.from('sports_resources').select('payload')
+        .eq('resource_key', `football/nfl/teams/${team.espnId}/roster?season=${season}`).maybeSingle();
+      if (resource.error) throw resource.error;
+      if (!resource.data) continue; // The hourly ESPN roster sync has not covered this team yet.
+      const players = await apiSports(`https://v1.american-football.api-sports.io/players?team=${team.apiSportsId}&season=${season}`, apiKey);
+      requests++;
+      const rows = matchNFLRoster(season, team.espnId, team.apiSportsId, resource.data.payload, players);
+      if (!rows.length) continue;
+      const syncTime = now.toISOString();
+      const saved = await admin.from('live_feed_rosters')
+        .upsert(rows.map((row) => ({ ...row, updated_at: syncTime })), { onConflict: 'sport,season,espn_team_id,espn_player_id' });
+      if (saved.error) throw saved.error;
+      const removed = await admin.from('live_feed_rosters').delete()
+        .eq('sport', 'NFL').eq('season', season).eq('espn_team_id', team.espnId).lt('updated_at', syncTime);
+      if (removed.error) throw removed.error;
+      const savedState = await admin.from('live_feed_roster_state')
+        .upsert({ sport: 'NFL', season, espn_team_id: team.espnId, synced_at: syncTime }, { onConflict: 'sport,season,espn_team_id' });
+      if (savedState.error) throw savedState.error;
+    } catch (cause) {
+      console.error(`NFL roster sync failed for team ${team.espnId}`, cause);
+    }
+  }
   return requests;
 }
 
@@ -117,6 +158,11 @@ export async function pollSportsFeed(admin: SupabaseClient, apiKey: string, now 
             seasonCount = await syncNFLSeason(admin, apiKey, now, liveFeedRequestBudget.NFL - used - detailCount);
           } catch (cause) {
             console.error('NFL season stats sync failed', cause);
+          }
+          try {
+            seasonCount += await syncNFLRosters(admin, apiKey, now, liveFeedRequestBudget.NFL - used - detailCount - seasonCount);
+          } catch (cause) {
+            console.error('NFL roster bridge sync failed', cause);
           }
         }
       }

@@ -425,3 +425,69 @@ test('Season averages only serve complete syncs and keep metrics unavailable whe
     globalThis.fetch = original;
   }
 });
+
+test('Player names normalize for bridging without losing distinct identities', async () => {
+  const { normalizePlayerName, matchNFLRoster } = await import('../supabase/functions/_shared/nflRosterSync.ts');
+  assert.equal(normalizePlayerName('Odell Beckham Jr.'), 'odell beckham');
+  assert.equal(normalizePlayerName('Kenneth Walker III'), 'kenneth walker');
+  assert.equal(normalizePlayerName("Ja'Marr Chase"), 'ja marr chase');
+  assert.equal(normalizePlayerName('AJ Dillon'), 'aj dillon');
+
+  const espnRoster = { athletes: [{ items: [
+    { id: 101, displayName: 'Jayden Daniels', jersey: '5', position: { abbreviation: 'qb' }, status: { type: 'active' } },
+    { id: 102, displayName: 'Austin Ekeler', jersey: '30', position: { abbreviation: 'RB' }, status: { type: 'active' },
+      injuries: [{ status: 'Out', type: { description: 'Out for week 9' } }] },
+    { id: 103, displayName: 'Luke McCaffrey', jersey: '7', position: { abbreviation: 'WR' }, status: { type: 'practice-squad' } },
+    { id: 104, displayName: 'John Smith', jersey: '80', position: { abbreviation: 'WR' }, status: { type: 'active' } },
+    { id: 105, displayName: 'John Smith', jersey: '81', position: { abbreviation: 'TE' }, status: { type: 'active' } },
+  ] }] };
+  const apiPlayers = { response: [
+    { id: 25745, name: 'Jayden Daniels' },
+    { id: 400, name: 'Austin Ekeler' },
+    { id: 500, name: 'John Smith' },
+  ] };
+  const rows = matchNFLRoster(2026, '28', '18', espnRoster, apiPlayers);
+  assert.equal(rows.length, 5, 'Every ESPN athlete is bridged');
+  const daniels = rows.find((row) => row.espn_player_id === '101');
+  assert.equal(daniels.api_player_id, '25745');
+  assert.equal(daniels.position, 'QB');
+  assert.equal(daniels.active, true);
+  assert.equal(rows.find((row) => row.espn_player_id === '102').active, false, 'Ruled-out players are inactive');
+  assert.equal(rows.find((row) => row.espn_player_id === '103').active, false, 'Practice squad players are inactive');
+  assert.equal(rows.find((row) => row.espn_player_id === '104').api_player_id, null, 'Duplicate names are never bridged');
+  assert.equal(rows.find((row) => row.espn_player_id === '105').api_player_id, null, 'Duplicate names are never bridged');
+  assert.throws(() => matchNFLRoster(2026, '28', '18', { athletes: [] }, apiPlayers), /empty/);
+});
+
+test('The roster feed serves fresh active players and falls back on stale or missing data', async () => {
+  const { fetchNFLRosterFeed } = await import('../src/services/liveFeed.ts');
+  const original = globalThis.fetch;
+  const config = { url: 'https://gamewire.test', key: 'public-test-key' };
+  let rows;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.headers.apikey, 'public-test-key');
+    const parsed = new URL(url);
+    assert.equal(parsed.searchParams.get('active'), 'is.true');
+    assert.equal(parsed.searchParams.get('espn_team_id'), 'eq.28');
+    return Response.json(rows);
+  };
+  try {
+    const fresh = new Date().toISOString();
+    rows = [
+      { espn_player_id: '101', name: 'Jayden Daniels', position: 'QB', jersey: '5', updated_at: fresh },
+      { espn_player_id: '106', name: 'Terry McLaurin', position: 'WR', jersey: '17', updated_at: fresh },
+    ];
+    const roster = await fetchNFLRosterFeed(2026, '28', undefined, config);
+    assert.equal(roster.length, 2);
+    assert.deepEqual(roster[0], { id: '101', name: 'Jayden Daniels', position: 'QB', jersey: '5' });
+    rows = [{ espn_player_id: '101', name: 'Jayden Daniels', position: 'QB', jersey: '5', updated_at: '2026-10-01T00:00:00Z' }];
+    assert.equal(await fetchNFLRosterFeed(2026, '28', undefined, config), null, 'Stale rosters fall back to ESPN');
+    rows = [];
+    assert.equal(await fetchNFLRosterFeed(2026, '28', undefined, config), null, 'Unsynced teams fall back to ESPN');
+    rows = [{ espn_player_id: 7, name: 'Bad Row', updated_at: fresh }];
+    assert.equal(await fetchNFLRosterFeed(2026, '28', undefined, config), null, 'Malformed rows invalidate the response');
+    assert.equal(await fetchNFLRosterFeed(2026, '28', undefined, null), null, 'Unconfigured builds skip the feed');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
