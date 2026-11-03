@@ -687,6 +687,18 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
     if (activeCategoryFilter === 'Special Teams') return ['kicking', 'punting', 'kickReturns', 'puntReturns'].includes(cat.name);
     return cat.title.toLowerCase().includes(activeCategoryFilter.toLowerCase()) || cat.name.toLowerCase().includes(activeCategoryFilter.toLowerCase());
   });
+  const boxStatCount = Math.max(1, ...categoriesToDisplay.map((category) => Math.max(
+    category.labels.length,
+    ...category.athletes.map((athlete) => athlete.stats.length),
+  )));
+  const alignedCategories = categoriesToDisplay.map((category) => ({
+    ...category,
+    labels: Array.from({ length: boxStatCount }, (_, index) => category.labels[index] ?? ''),
+    athletes: category.athletes.map((athlete) => ({
+      ...athlete,
+      stats: Array.from({ length: boxStatCount }, (_, index) => athlete.stats[index] ?? ''),
+    })),
+  }));
 
   // Team comparison colors: if two teams are the same color (e.g. blue), make one of the lines white
   const rawAwayColor = awayBoxTeam?.color || selectedGame?.away.color || '#3b82f6';
@@ -1436,7 +1448,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
             </div>
           ) : (
             /* Player Box Score View */
-            <div className="wire-player-boxscore-view">
+            <div className="wire-player-boxscore-view" style={{ '--wire-stat-count': boxStatCount } as React.CSSProperties}>
               {isUpcoming && currentPlayerAverages && currentPlayerAverages.failedPlayers > 0 && (
                 <div className="wire-comparison-error" role="alert">
                   <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player statistics are shown below.</p>
@@ -1450,8 +1462,8 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                   <p>Unable to load player season totals.</p>
                   <button className="wire-stathub-link" onClick={() => setPlayerAveragesRetry((retry) => retry + 1)}>Retry player totals</button>
                 </div>
-              ) : categoriesToDisplay.length > 0 ? (
-                categoriesToDisplay.map((category) => (
+              ) : alignedCategories.length > 0 ? (
+                alignedCategories.map((category) => (
                   <section className="wire-category-card" key={category.name}>
                     <header className="wire-category-header">
                       <div className="wire-category-title-wrap">
@@ -1464,8 +1476,8 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                     </header>
 
                     <div className="wire-table-scroll-container">
-                      <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} style={{ '--wire-stat-count': category.labels.filter(Boolean).length } as React.CSSProperties} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? playerStatMode === 'total' ? ' season totals' : ' season per-game averages' : ''}`}>
-                        {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{category.labels.map((_, index) => <col key={index} />)}</colgroup>}
+                      <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? playerStatMode === 'total' ? ' season totals' : ' season per-game averages' : ''}`}>
+                        {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{Array.from({ length: boxStatCount }, (_, index) => <col key={index} />)}</colgroup>}
                         <thead role="rowgroup">
                           <tr role="row">
                             <th className="wire-col-athlete" scope="col" role="columnheader">Player</th>
