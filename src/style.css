@@ -292,9 +292,9 @@ button { color: inherit; }
 .game-state.is-live i { width: 5px; height: 5px; box-shadow: none; }
 .score-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 48px 28px; align-items: center; gap: 8px; min-height: 34px; }
 .home-team { margin-top: 1px; }
-.team-mark { --team-color: #536b8d; width: 32px; height: 32px; display: grid; justify-items: center; align-content: center; gap: 3px; border-radius: 8px; background: color-mix(in srgb, var(--team-color) 18%, #101826); color: var(--team-color); font: 800 9px/1 var(--mono); letter-spacing: .08em; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--team-color) 22%, transparent); }
+.team-mark { --team-color: #536b8d; width: 32px; height: 32px; display: grid; justify-items: center; align-content: center; gap: 3px; border-radius: 8px; background: color-mix(in srgb, var(--team-color) 32%, #101826); color: #f4f7fb; font: 800 9px/1 var(--mono); letter-spacing: .08em; text-shadow: 0 1px 1px #0008; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--team-color) 45%, transparent); }
 .team-mark > b { font: inherit; color: inherit; letter-spacing: inherit; }
-.team-mark::after { content: ''; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
+.team-mark::after { content: ''; width: 14px; height: 2px; border-radius: 1px; background: var(--team-color); }
 .team-mark-large { width: 56px; height: 56px; border-radius: 12px; font-size: 14px; letter-spacing: .1em; gap: 5px; }
 .team-mark-large::after { width: 20px; height: 2.5px; }
 .team-mark img { display: none; }
@@ -1093,7 +1093,7 @@ td:first-child { color: #828c84; }
 .card-bottom { border-top-color: #29384e; }
 .game-card-players { color: #9daec7; }
 .game-card-players:hover { background: #a51c28; border-color: #cc2633; color: #fff; }
-.team-mark { background: color-mix(in srgb, var(--team-color) 22%, #101826); }
+.team-mark { background: color-mix(in srgb, var(--team-color) 36%, #101826); color: #f4f7fb; }
 .favorite-star-button { color: #9eadc4; background: #182438; border-color: #3b4b63; }
 .favorite-star-button:hover { color: #fff; border-color: #cc2633; background: #a51c28; }
 .favorite-star-button.is-favorite { color: #fff; border-color: #cc2633; background: #a51c28; }
@@ -1194,7 +1194,7 @@ td:first-child { color: #828c84; }
 .primary-nav button.active::after { background: #cc2633; }
 .feed-status-warning, .game-state.is-live { color: #fff; background: #a51c28; border-radius: 3px; padding: 2px 4px; }
 .nfl-score-rule { background: #7486a3; }
-.team-mark { background: color-mix(in srgb, var(--team-color) 22%, #101826); }
+.team-mark { background: color-mix(in srgb, var(--team-color) 36%, #101826); color: #f4f7fb; }
 .game-card-main:focus-visible, .game-center-team-players:focus-visible, .nfl-directory-player-main:focus-visible { outline-color: #cc2633; }
 
 /* iOS Safari auto-zooms into any field under 16px; keep fields at 16px on touch devices so the page never zooms. */
