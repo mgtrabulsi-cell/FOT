@@ -251,6 +251,7 @@ export default function FantasyStartSit({ active, season: feedSeason, week: feed
       setForm(savedDraft.form); setEditing(savedDraft.editing); setDirty(false); setQueries(savedDraft.queries); setPostToX(savedDraft.postToX);
       setRows(nextRows);
       setNotice(action === 'publish' ? `Graphic published in Start/Sit and The Angle. The working template is cleared for your next graphic.${postToX ? ' Check X publishing status below for delivery; only first publications are eligible.' : ''}` : action === 'unpublish' ? 'Graphic removed from Start/Sit and The Angle. The shared draft is still available to admins. Any tweet already sent is unchanged.' : 'Shared draft saved. All admins can continue editing it.');
+      if (action === 'publish' || action === 'unpublish') window.dispatchEvent(new Event('gamewire-editorial-updated'));
     } catch (cause) {
       if (formScope.current === savedScope) setError(message(cause));
     }

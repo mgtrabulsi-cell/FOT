@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowLeftRight, ArrowUp, BarChart3, Bot, BrainCircuit, ChevronDown, RefreshCw, Search, Send, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
 import { loadBotDirectory, loadBotHistory, loadBotReport } from './services/gamewireBot';
+import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import type { BotDirectory, BotFormat, BotPlayer, BotReport, PlayerWeekHistory } from './services/gamewireBot';
 import './gamewire-bot.css';
 
@@ -17,8 +18,8 @@ function PlayerPortrait({ player }: { player: BotPlayer }) {
 function Guidance({ report }: { report: BotReport }) {
   const editorial = report.editorial;
   return <div className="gwb-verdict-grid"><div><span>START / SIT</span><strong className={report.indication === 'Must Start' || report.indication === 'Start' ? 'gwb-positive' : ''}>{report.indication}</strong><small>GameWire’s weekly verdict</small></div>
-    <div><span>GUIDANCE SOURCES</span><strong>{editorial.graphics.length ? 'Published Start/Sit' : 'Recent workload'}</strong>
-      <small>{editorial.ranking ? `GameWire ${formats.find((row) => row.value === editorial.ranking!.format)?.label} · ${editorial.ranking.position} #${editorial.ranking.rank}` : 'No matching weekly ranking supplied yet'}</small></div></div>;
+    <div><span>GUIDANCE SOURCES</span><strong>{editorial.graphics.length ? 'Published Start/Sit' : editorial.ranking ? 'Published weekly rankings' : 'Recent workload'}</strong>
+      <small>{editorial.ranking ? `GameWire ${formats.find((row) => row.value === editorial.ranking!.format)?.label} · ${editorial.ranking.position} #${editorial.ranking.rank}` : editorial.graphics.length ? `Published Week ${report.week} Start/Sit` : `Week ${report.week} Start/Sit and rankings have not been submitted yet`}</small></div></div>;
 }
 function Snapshot({ report }: { report: BotReport }) {
   return <><p className="gwb-muted">Verified snapshot · {stamp(report.checkedAt)} · Not a live injury or odds feed.</p>
@@ -250,6 +251,9 @@ export default function GamewireBot() {
   const lastReports = useRef<OutlookRequest[]>([]);
   const analysisPanel = useRef<HTMLDivElement | null>(null);
   const scrollToAnalysis = useRef(false);
+  const busyRef = useRef(busy); busyRef.current = busy;
+  const openRef = useRef(open); openRef.current = open;
+  const comparingRef = useRef(comparing); comparingRef.current = comparing;
   useEffect(() => {
     if (!busy && scrollToAnalysis.current && (report || secondReport)) {
       const frame = window.requestAnimationFrame(() => {
@@ -301,6 +305,25 @@ export default function GamewireBot() {
     }
     finally { window.clearTimeout(timer); if (controller.current === next) setBusy(null); }
   }
+  useEffect(() => {
+    if (!open) return;
+    return subscribeForegroundRefresh(() => { if (!busyRef.current) void loadPlayers(); });
+  }, [open]);
+  useEffect(() => {
+    if (!open || busy || !directory?.week) return;
+    if (![report, secondReport].some((outlook) => outlook != null && outlook.week !== directory.week)) return;
+    const requests = lastReports.current.filter(({ slot }) => comparing || slot === 0);
+    if (requests.length) void loadOutlooks(requests);
+  }, [open, busy, comparing, directory?.week, report?.week, secondReport?.week]);
+  useEffect(() => {
+    const refresh = () => {
+      if (!openRef.current || busyRef.current) return;
+      const requests = lastReports.current.filter(({ slot }) => comparingRef.current || slot === 0);
+      if (requests.length) void loadOutlooks(requests);
+    };
+    window.addEventListener('gamewire-editorial-updated', refresh);
+    return () => window.removeEventListener('gamewire-editorial-updated', refresh);
+  }, []);
   function analyze(player: BotPlayer, nextFormat = format, slot = activeSlot) {
     if (comparing && player.id === (slot === 0 ? secondPlayer : selected)?.id) {
       setError('Choose two different players to compare.'); return;

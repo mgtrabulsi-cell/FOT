@@ -61,6 +61,7 @@ test('Top-30 ranking alone never means automatic starter; injury and game locks 
 
 test('Current week and roster parsing reject unverified IDs/week metadata and keep QB/RB/WR/TE only', () => {
   assert.deepEqual(bot.readBotWeek(board), { season: 2026, seasonType: 2, week: 8 });
+  assert.deepEqual(bot.currentBotWeek(board, new Date(now)), { season: 2026, seasonType: 2, week: 8 });
   assert.throws(() => bot.readBotWeek({ season: { year: 2026, type: 2 } }), /valid current NFL/);
   assert.deepEqual(bot.readBotRoster(roster, { id: '23', name: player.team, abbr: 'PIT' }), [player]);
   assert.equal(bot.readBotRoster({ athletes: [athlete, { ...athlete, id: '44', position: { abbreviation: 'K' } }] }, { id: '23', name: player.team, abbr: 'PIT' }).length, 1);
@@ -122,7 +123,7 @@ test('Missing weekly games, kickoff lock, postseason and transferred player iden
 
 const endpointCode = ts.transpileModule(readFileSync(new URL('../supabase/functions/gamewire-bot/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], forecastRows = [], finalSummary = null, upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false } = {}) {
+function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], forecastRows = [], finalSummary = null, upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false, scoreboard = board, weekBoards = {} } = {}) {
   const calls = [], writes = [], rpcs = [], queries = [], cache = new Map(), expires = new Date(now + 3600000).toISOString();
   if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expires });
   const client = {
@@ -151,7 +152,11 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     if (upstreamFail) return new Response('', { status: 503 });
     if (primaryWeekFail && href.includes('site.api.espn.com') && href.includes('/scoreboard')) return new Response('', { status: 403 });
     if (primaryRosterFail && href.includes('site.api.espn.com') && href.includes('/roster')) return new Response('', { status: 403 });
-    if (href.includes('/scoreboard')) return Response.json(board);
+    if (href.includes('/scoreboard')) {
+      const selected = new URL(href).searchParams.get('week');
+      if (selected && weekBoards[selected]) return Response.json(weekBoards[selected]);
+      return Response.json(scoreboard);
+    }
     if (href.includes('/summary?') && finalSummary) return Response.json(finalSummary);
     if (href.includes('/gamelog')) return badLogs ? new Response('', { status: 503 }) : Response.json(logs);
     if (href.includes('/standings')) return Response.json({ season: { year: 2026 }, children: [{
@@ -295,6 +300,26 @@ test('Saved-line differences use final projections without anchoring the indepen
   assert.equal(projection.estimate, 75, 'Editorial and market comparisons never mutate cached independent estimates');
   assert.equal(projection.evidence.editorialAdjustment, 0);
 });
+test('GameWire Tuesday week rollover loads next-week matchups instead of ESPN’s leftover scoreboard', async () => {
+  const stale = { ...board, week: { number: 8 }, leagues: [{ calendar: [{ value: '2', entries: [
+    { value: '8', startDate: '2026-10-22T00:00:00Z' },
+    { value: '9', startDate: '2026-10-29T00:00:00Z' },
+  ] }] }] };
+  assert.deepEqual(bot.currentBotWeek(stale, new Date(now)), { season: 2026, seasonType: 2, week: 9 });
+  const nextBoard = { season: { year: 2026, type: 2 }, week: { number: 9 }, events: [{
+    id: '401234999', date: '2026-11-05T18:00:00Z', competitions: [{ status: { type: { state: 'pre' } }, competitors: [
+      { homeAway: 'home', team: { id: '23', displayName: 'Pittsburgh Steelers' } },
+      { homeAway: 'away', team: { id: '5', displayName: 'Cleveland Browns' } },
+    ] }],
+  }] };
+  const api = endpoint({ scoreboard: stale, weekBoards: { 9: nextBoard } });
+  const response = await api.run(), data = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(data.report.week, 9);
+  assert.equal(data.report.matchup.eventId, '401234999');
+  assert.deepEqual(api.queries.find((query) => query.table === 'fantasy_graphics').filters, { season: 2026, week: 9 });
+  assert.ok(api.calls.some((href) => /week=9/.test(href) && /seasontype=2/.test(href)));
+});
 test('Editorial reads are scoped to this season/week, player and selected scoring, even with cached workloads', async () => {
   const api = endpoint({ graphics: [graphic], rankings: [ranking] });
   const response = await api.run(), data = await response.json();
@@ -370,6 +395,8 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
     cancelAnimationFrame() {},
     setTimeout(callback, delay) { const timer = setTimeout(callback, delay); timers.set(timer, callback); return timer; },
     clearTimeout(timer) { clearTimeout(timer); timers.delete(timer); },
+    addEventListener() {},
+    removeEventListener() {},
   }, require: (name) => {
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name === 'react') return {
@@ -382,9 +409,10 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
       useEffect(callback) { effects.push(callback); },
     };
     if (name === './services/gamewireBot') return {
-      async loadBotDirectory() { directoryCalls++; if (directoryError) throw new Error('Roster feed unavailable'); return { players, warnings: [] }; },
+      async loadBotDirectory() { directoryCalls++; if (directoryError) throw new Error('Roster feed unavailable'); return { players, warnings: [], week: 8, season: 2026, seasonType: 2 }; },
       async loadBotReport(id, format, signal) { reportCalls++; reportRequests.push({ id, format }); return loadReport(id, format, signal); },
     };
+    if (name === './services/foregroundRefresh') return { subscribeForegroundRefresh: () => () => {} };
     if (name === 'lucide-react') return new Proxy({}, { get: (_, icon) => icon });
     return {};
   } });
@@ -772,8 +800,8 @@ test('Ranking quick-add filters position and existing ranks, supports keyboard/r
   const other = { ...player, id: '456', name: 'Another Runner' }, receiver = { ...player, id: '789', name: 'Test Receiver', position: 'WR' };
   const code = ts.transpileModule(readFileSync(new URL('../src/GamewireRankings.tsx', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const context = vm.createContext({ exports: {}, AbortController, Error, setTimeout, clearTimeout, window: { setTimeout, clearTimeout,
-    confirm() { confirms++; return confirmDiscard; } }, require(name) {
+  const context = vm.createContext({ exports: {}, AbortController, Error, Event, setTimeout, clearTimeout, window: { setTimeout, clearTimeout,
+    confirm() { confirms++; return confirmDiscard; }, dispatchEvent() { return true; } }, require(name) {
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name === 'react') return { useEffect() {}, useRef(initial) { return refs[refIndex++] ??= { current: initial }; },
       useState(initial) { const i = stateIndex++; if (!(i in state)) state[i] = initial; return [state[i], (next) => { state[i] = next; }]; } };

@@ -3,7 +3,7 @@ import { array, normalize, numeric, object, pickBlurb, text } from '../_shared/g
 import type { Candidate } from '../_shared/gamewaire.ts';
 import { defensiveStandings, publicJSON } from '../_shared/gamewaireSources.ts';
 import { feedDefensiveStandings } from '../_shared/apiSportsBotInputs.ts';
-import { applyBotEditorial, botLogRows, botMatchup, buildBotReport, readBotPositions, readBotRoster, readBotWeek } from '../_shared/gamewireBot.ts';
+import { applyBotEditorial, botLogRows, botMatchup, buildBotReport, currentBotWeek, readBotPositions, readBotRoster, readBotWeek } from '../_shared/gamewireBot.ts';
 import { collectBotProjections, collectReceivingDefenses } from '../_shared/gamewireBotProjections.ts';
 import { observedLineComparison } from '../_shared/gamewireBotIntelligence.ts';
 import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
@@ -88,8 +88,18 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         }
       }
     };
-    const board = (await cached('nfl:week:v1', 60_000, () => criticalFeed('scoreboard', 'Current NFL week'))).data;
-    const week = readBotWeek(board);
+    const defaultBoard = (await cached('nfl:week:v1', 60_000, () => criticalFeed('scoreboard', 'Current NFL week'))).data;
+    const reported = readBotWeek(defaultBoard);
+    const weekTarget = currentBotWeek(defaultBoard, new Date());
+    let board = defaultBoard;
+    let week = weekTarget;
+    if (weekTarget.week !== reported.week) {
+      board = (await cached(`nfl:week:v1:${weekTarget.season}:${weekTarget.seasonType}:${weekTarget.week}`, 60_000,
+        () => criticalFeed(`scoreboard?week=${weekTarget.week}&seasontype=${weekTarget.seasonType}&dates=${weekTarget.season}`, `NFL week ${weekTarget.week}`))).data;
+      week = readBotWeek(board);
+      if (week.season !== weekTarget.season || week.week !== weekTarget.week || week.seasonType !== weekTarget.seasonType)
+        throw new Error('NFL schedule did not match the current GameWire week. Retry the bot.');
+    }
     const directory = await cached<BotDirectory>(`nfl:directory:v2:${week.season}`, 15 * 60_000, async () => {
       const raw = object(await criticalFeed('teams?limit=100', 'NFL team directory'));
       const league = object(array(object(array(raw.sports)[0]).leagues)[0]);

@@ -1,4 +1,5 @@
 import { array, normalize, numeric, object, text } from './gamewaire.ts';
+import { resolveCurrentNFLWeek } from './nflWeek.ts';
 import type { BotProjection } from './gamewireBotProjections.ts';
 import type { observedLineComparison } from './gamewireBotIntelligence.ts';
 import type { LearningAdjustment } from './gamewireLearning.ts';
@@ -38,6 +39,13 @@ export function readBotWeek(value: unknown): BotWeek {
   if (!season || !week || ![1, 2, 3].includes(seasonType ?? 0) || season < 2000 || week < 1 || week > 22)
     throw new Error('ESPN did not provide a valid current NFL season/week. Retry the bot.');
   return { season, week, seasonType: seasonType! };
+}
+export function currentBotWeek(value: unknown, now = new Date()): BotWeek {
+  const reported = readBotWeek(value);
+  if (reported.seasonType !== 2) return reported;
+  const week = resolveCurrentNFLWeek(value, now);
+  if (!week || week < 1 || week > 18) return reported;
+  return { ...reported, week };
 }
 export function readBotRoster(value: unknown, team: { id: string; name: string; abbr: string }): BotPlayer[] {
   const data = object(value);

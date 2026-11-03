@@ -45,7 +45,8 @@ export default function GamewireRankings() {
     try {
       const saved = await saveBotRankings({ ...scope, playerIds: entries.map((entry) => entry.playerId) }, request.signal);
       if (request.signal.aborted) return;
-      setDirty(false); setNotice(`Published ${saved.playerIds.length} ${scope.position} rankings for Week ${scope.week}. Refresh a player outlook to use the new list.`);
+      setDirty(false); setNotice(`Published ${saved.playerIds.length} ${scope.position} rankings for Week ${scope.week}. Player Lab outlooks now use this list; you can keep editing and republish.`);
+      window.dispatchEvent(new Event('gamewire-editorial-updated'));
     } catch (cause) { setError(request.signal.aborted ? 'Publishing timed out. Reload to verify whether it completed; your draft is retained.' : failure(cause)); }
     finally { window.clearTimeout(timeout); if (controller.current === request) setBusy(false); }
   };
@@ -66,7 +67,7 @@ export default function GamewireRankings() {
   }}>
     <summary>Admin · Weekly top-30 player rankings</summary>
     {open && <div>
-      <p>Publish your weekly position order for Player Lab Start/Sit guidance and a bounded editorial adjustment to estimates. Lists are separate for each scoring format. You may publish fewer than 30; unlisted players are not automatically Sit.</p>
+      <p>Publish your weekly position order for Player Lab Start/Sit guidance and a bounded editorial adjustment to estimates. Lists are separate for each scoring format. You may publish fewer than 30; unlisted players are not automatically Sit. After you publish, keep editing and republish to update Player Lab.</p>
       {directory?.warnings.map((warning) => <p key={warning} className="feed-warning">{warning}</p>)}
       {!scope && !busy && <button onClick={() => void load()}>Load ranking editor</button>}
       {scope && <fieldset disabled={busy}><legend>Weekly ranking list · {scope.season}</legend>

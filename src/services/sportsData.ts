@@ -3,6 +3,7 @@ import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
 import { fetchStaticSports, readSportsDatabase } from './sportsDatabase.ts';
 import { apiSportsBoxScore, fetchLiveFeedGameDetails, fetchNFLPlayerGameLogFeed, fetchNFLRosterFeed, fetchNFLSeasonAveragesFeed, withLiveFeed } from './liveFeed.ts';
+import { resolveCurrentNFLWeek } from '../../supabase/functions/_shared/nflWeek.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -438,32 +439,7 @@ export async function fetchNFLNotificationGame(eventId: string, signal?: AbortSi
 }
 
 export function getCurrentNFLWeek(payload: unknown, now = new Date()): number | null {
-  const scoreboard = asObject(payload);
-  const reportedWeek = Number(asObject(scoreboard.week).number) || null;
-  if (Number(asObject(scoreboard.season).type) !== 2) return reportedWeek;
-  const calendar = asArray(asObject(asArray(scoreboard.leagues)[0]).calendar).map(asObject);
-  const regularSeason = calendar.find((entry) => text(entry.value) === '2');
-  const easternDate = (date: Date) => {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
-      hourCycle: 'h23',
-    }).formatToParts(date);
-    const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((entry) => entry.type === type)?.value);
-    return new Date(Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'), part('second')));
-  };
-  const easternNow = easternDate(now).getTime();
-  const weeks = asArray(regularSeason?.entries).map(asObject).flatMap((entry) => {
-    const start = Date.parse(text(entry.startDate));
-    const week = Number(entry.value);
-    if (!Number.isFinite(start) || !Number.isInteger(week) || week < 1 || week > 18) return [];
-    const rollover = easternDate(new Date(start));
-    rollover.setUTCDate(rollover.getUTCDate() - (rollover.getUTCDay() - 2 + 7) % 7);
-    rollover.setUTCHours(12, 0, 0, 0);
-    return [{ week, rollover: rollover.getTime() }];
-  });
-  return weeks.filter((entry) => entry.rollover <= easternNow)
-    .sort((first, second) => second.rollover - first.rollover)[0]?.week ?? reportedWeek;
+  return resolveCurrentNFLWeek(payload, now);
 }
 
 const SCOREBOARD_TIMEOUT_MS = 10_000;
