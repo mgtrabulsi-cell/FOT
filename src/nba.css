@@ -43,9 +43,12 @@
 .nba-table-scroll:active { cursor: grabbing; }
 .nba-scroll::-webkit-scrollbar, .nba-table-scroll::-webkit-scrollbar, .nba-chart::-webkit-scrollbar { display: none; }
 .nba-table { width: 100%; border-collapse: collapse; font: 600 16px var(--mono); color: #fff; font-variant-numeric: tabular-nums; }
-.nba-table th, .nba-table td { padding: 9px 10px; border-bottom: 1px solid #1c2a3d; text-align: center; white-space: nowrap; }
-.nba-table td { font: 600 16px var(--mono); color: #fff; }
-.nba-box td { font-weight: 400; font-variant-numeric: tabular-nums; }
+.nba-table th, .nba-table td { padding: 9px 10px; border-bottom: 1px solid #1c2a3d; text-align: center; white-space: nowrap; vertical-align: middle; }
+.nba-table td { font: 600 16px/1.2 var(--mono); color: #fff; }
+.nba-box { table-layout: fixed; }
+.nba-box td { font-weight: 400; font-variant-numeric: tabular-nums; text-align: center; }
+.nba-box th:nth-child(n+2), .nba-box td:nth-child(n+2) { width: 52px; }
+.nba-box :is(th, td):nth-child(6), .nba-box :is(th, td):nth-child(7), .nba-box :is(th, td):nth-child(8) { width: 68px; }
 .nba-table th { font-family: var(--mono); color: #bbc7d9; background: #0f1724; }
 .nba-table thead { background: #0f1724; color: #bbc7d9; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .5px; }
 .nba-table th { font-weight: 600; }
