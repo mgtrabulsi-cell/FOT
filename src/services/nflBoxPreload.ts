@@ -10,7 +10,7 @@ export async function preloadNFLLiveBoxes(games: Game[], signal: AbortSignal): P
     signal.throwIfAborted();
     await Promise.all(due.slice(start, start + 2).map(async (game) => {
       try {
-        await fetchNFLBoxScore(game.feedPath, game.eventId, signal);
+        await fetchNFLBoxScore(game.feedPath, game.eventId, signal, game);
       } catch (error) {
         if (signal.aborted) throw error;
         console.error(`Could not preload NFL box score ${game.eventId}`, error);

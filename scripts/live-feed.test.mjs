@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  decideLiveFeedPoll, liveFeedQueryDates, nflSeasonYear, normalizeNBAGames, normalizeNFLGames, readAPISportsResponse, utcDay,
+  decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, nflSeasonYear, normalizeNBAGames,
+  normalizeNFLGameDetails, normalizeNFLGames, readAPISportsResponse, utcDay,
 } from '../supabase/functions/_shared/apiSportsFeed.ts';
-import { applyLiveFeed, completedPeriodScores, fetchLiveFeed, readLiveFeedRows } from '../src/services/liveFeed.ts';
+import {
+  apiSportsBoxScore, applyLiveFeed, completedPeriodScores, fetchLiveFeed, fetchLiveFeedGameDetails, readLiveFeedRows,
+} from '../src/services/liveFeed.ts';
 
 const nflGame = (overrides = {}) => ({
   game: {
@@ -151,8 +154,17 @@ test('The live overlay replaces scores, clock and period for matched games and l
 
 test('The overlay never resurrects finished games, ignores upcoming rows and leaves unmatched games alone', () => {
   const finalGame = espnGame({ status: 'FINAL', clock: 'Final' });
-  assert.equal(applyLiveFeed([finalGame], [feedRow()])[0].liveSource, undefined, 'An ESPN final never reverts to live');
-  assert.equal(applyLiveFeed([espnGame()], [feedRow({ status: 'UPCOMING' })])[0].liveSource, undefined, 'Upcoming rows never override live data');
+  const demoted = applyLiveFeed([finalGame], [feedRow()])[0];
+  assert.equal(demoted.liveSource, undefined, 'An ESPN final never reverts to live');
+  assert.equal(demoted.providerGameId, '21632', 'The provider link is still recorded');
+  const pregame = applyLiveFeed([espnGame()], [feedRow({ status: 'UPCOMING' })])[0];
+  assert.equal(pregame.liveSource, undefined, 'Upcoming rows never override live data');
+  assert.equal(pregame.providerGameId, '21632');
+  const stale = applyLiveFeed([espnGame()], [feedRow({ fetched_at: new Date(Date.now() - 10 * 60_000).toISOString() })])[0];
+  assert.equal(stale.liveSource, undefined, 'Stale live rows never override the feed');
+  assert.equal(stale.providerGameId, '21632');
+  const oldFinal = applyLiveFeed([espnGame()], [feedRow({ status: 'FINAL', fetched_at: new Date(Date.now() - 20 * 3_600_000).toISOString(), clock: null, period: 4 })])[0];
+  assert.equal(oldFinal.status, 'FINAL', 'Final rows never go stale');
   const other = espnGame({ away: { ...espnGame().away, name: 'Dallas Cowboys' } });
   assert.equal(applyLiveFeed([other], [feedRow()])[0].liveSource, undefined, 'Different matchups never cross-contaminate');
   const farApart = applyLiveFeed([espnGame({ date: '2026-11-09T01:20:00Z' })], [feedRow()]);
@@ -190,7 +202,7 @@ test('The live feed read uses public-only credentials, filters by freshness and 
     const [request] = requests;
     assert.equal(request.pathname, '/rest/v1/live_feed_games');
     assert.equal(request.searchParams.get('sport'), 'eq.NFL');
-    assert.equal(request.searchParams.get('fetched_at'), 'gte.2026-11-02T02:57:00.000Z', 'NFL rows older than three minutes are stale');
+    assert.equal(request.searchParams.get('fetched_at'), 'gte.2026-10-31T03:00:00.000Z', 'Rows are bounded to the last two days');
     assert.deepEqual(await fetchLiveFeed('NFL', undefined, null), [], 'Unconfigured builds skip the feed');
   } finally {
     globalThis.fetch = original;
@@ -204,4 +216,140 @@ test('Live feed rows validate required fields before reaching the scoreboard', (
   const [row] = readLiveFeedRows([{ ...feedRow(), away_score: '10', away_linescore: ['x', 3] }]);
   assert.equal(row.away_score, null, 'String scores are not trusted');
   assert.deepEqual(row.away_linescore, [3], 'Only numeric linescore entries survive');
+});
+
+const detailPlayersPayload = {
+  response: [
+    { team: { id: 18, name: 'Washington Commanders' }, groups: [
+      { name: 'Passing', players: [
+        { player: { id: 25745, name: 'Jayden Daniels', image: 'https://media.api-sports.io/american-football/players/25745.png' },
+          statistics: [{ name: 'comp att', value: '16/29' }, { name: 'yards', value: '217' }, { name: 'passing touch downs', value: '1' }, { name: 'two pt', value: null }] },
+      ] },
+      { name: 'Kick Returns', players: [
+        { player: { id: 7, name: 'Luke McCaffrey', image: null },
+          statistics: [{ name: 'total', value: '2' }, { name: 'yards', value: '44' }] },
+      ] },
+      { name: 'Empty Group', players: [] },
+    ] },
+    { team: { id: 12, name: 'Philadelphia Eagles' }, groups: [
+      { name: 'Rushing', players: [
+        { player: { id: 219, name: 'Saquon Barkley', image: 'https://media.api-sports.io/american-football/players/219.png' },
+          statistics: [{ name: 'total rushes', value: '18' }, { name: 'yards', value: '88' }, { name: 'rushing touch downs', value: '1' }] },
+      ] },
+    ] },
+  ],
+};
+const detailTeamsPayload = {
+  response: [
+    { team: { id: 18, name: 'Washington Commanders' }, statistics: {
+      first_downs: { total: 16, third_down_efficiency: '5-13' }, yards: { total: 339 },
+      passing: { total: 204, comp_att: '16/29' }, posession: { total: '26:29' }, turnovers: { total: 1 },
+    } },
+    { team: { id: 12, name: 'Philadelphia Eagles' }, statistics: { yards: { total: 288 }, penalties: { total: '9-70' } } },
+  ],
+};
+const finalRow = () => ({ ...feedRow(), status: 'FINAL', period: 4, clock: null, away_score: 10, home_score: 27 });
+
+test('Game details normalize player groups and curated team stats per side without inventing values', () => {
+  const payload = normalizeNFLGameDetails(finalRow(), detailPlayersPayload, detailTeamsPayload);
+  assert.equal(payload.status, 'FINAL');
+  assert.equal(payload.home.apiSportsId, '18');
+  assert.equal(payload.away.apiSportsId, '12');
+  assert.equal(payload.home.groups.length, 2, 'Empty groups are dropped');
+  const passing = payload.home.groups[0];
+  assert.equal(passing.players[0].name, 'Jayden Daniels');
+  assert.deepEqual(passing.players[0].stats[0], { name: 'comp att', value: '16/29' });
+  assert.equal(passing.players[0].stats[3].value, null, 'Null statistics stay null, never zero');
+  assert.deepEqual(payload.home.teamStats.find((stat) => stat.name === 'Possession'), { name: 'Possession', value: '26:29' });
+  assert.deepEqual(payload.away.teamStats, [{ name: 'Total yards', value: '288' }, { name: 'Penalties', value: '9-70' }]);
+  const missingSide = normalizeNFLGameDetails({ ...finalRow(), away_name: 'Someone Else' }, detailPlayersPayload, detailTeamsPayload);
+  assert.equal(missingSide.away, null, 'Unmatched team names never cross-assign stats');
+});
+
+test('Detail polling refreshes stale live games first, snapshots finals once and respects the cap', () => {
+  const now = new Date('2026-11-02T23:00:00Z');
+  const games = [
+    { provider_game_id: 'live-stale', status: 'LIVE' },
+    { provider_game_id: 'live-fresh', status: 'LIVE' },
+    { provider_game_id: 'final-new', status: 'FINAL' },
+    { provider_game_id: 'final-done', status: 'FINAL' },
+    { provider_game_id: 'pregame', status: 'UPCOMING' },
+  ];
+  const details = [
+    { provider_game_id: 'live-stale', status: 'LIVE', fetched_at: '2026-11-02T22:50:00Z' },
+    { provider_game_id: 'live-fresh', status: 'LIVE', fetched_at: '2026-11-02T22:59:00Z' },
+    { provider_game_id: 'final-done', status: 'FINAL', fetched_at: '2026-11-02T20:00:00Z' },
+    { provider_game_id: 'final-new', status: 'LIVE', fetched_at: '2026-11-02T22:58:00Z' },
+  ];
+  assert.deepEqual(decideNFLDetailTargets(games, details, now, 6), ['live-stale', 'final-new']);
+  assert.deepEqual(decideNFLDetailTargets(games, details, now, 1), ['live-stale'], 'Budget caps apply');
+  assert.deepEqual(decideNFLDetailTargets(games, [], now, 6), ['live-stale', 'live-fresh', 'final-new', 'final-done'], 'Missing details are fetched');
+  assert.deepEqual(decideNFLDetailTargets(games, details, now, 0), [], 'No budget means no detail requests');
+});
+
+const gameDetails = (overrides = {}) => ({
+  status: 'FINAL', clock: null, period: 4,
+  away: { apiSportsId: '12', name: 'Philadelphia Eagles', teamStats: [{ name: 'Total yards', value: '288' }], groups: [
+    { name: 'Rushing', players: [{ id: '219', name: 'Saquon Barkley', image: 'https://media.api-sports.io/american-football/players/219.png',
+      stats: [{ name: 'total rushes', value: '18' }, { name: 'yards', value: '88' }, { name: 'kick return td', value: null }] }] },
+    { name: 'Kick Returns', players: [{ id: '7', name: 'Luke McCaffrey', image: null, stats: [{ name: 'total', value: '2' }] }] },
+  ] },
+  home: { apiSportsId: '18', name: 'Washington Commanders', teamStats: [], groups: [
+    { name: 'Passing', players: [{ id: '25745', name: 'Jayden Daniels', image: null,
+      stats: [{ name: 'comp att', value: '16/29' }, { name: 'rating', value: '58.9' }] }] },
+  ] },
+  fetched_at: new Date().toISOString(),
+  ...overrides,
+});
+
+test('The box score adapter keeps ESPN identity, maps category names for filters and labels stats readably', () => {
+  const game = espnGame({ status: 'FINAL', completedPeriods: [
+    { period: 1, awayScore: 10, homeScore: 3 }, { period: 2, awayScore: 10, homeScore: 13 },
+    { period: 3, awayScore: 10, homeScore: 16 }, { period: 4, awayScore: 10, homeScore: 27 },
+  ] });
+  const box = apiSportsBoxScore(gameDetails(), game);
+  assert.equal(box.source, 'api-sports');
+  assert.equal(box.eventId, '401', 'ESPN event IDs are preserved for snapshots and navigation');
+  assert.equal(box.isFinal, true);
+  assert.equal(box.status, 'Final');
+  const [away, home] = box.teams;
+  assert.equal(away.id, '21', 'ESPN team IDs are preserved');
+  assert.equal(away.record, '6-2', 'ESPN records are preserved');
+  assert.deepEqual(away.linescores, ['10', '0', '0', '0'], 'Linescores derive from cumulative period scores');
+  assert.equal(away.categories[0].name, 'rushing');
+  assert.equal(away.categories[1].name, 'kickReturns', 'Category names align with the Special Teams filter');
+  assert.deepEqual(away.categories[0].labels, ['CAR', 'YDS'], 'All-null columns are dropped');
+  assert.deepEqual(away.categories[0].athletes[0].stats, ['18', '88']);
+  assert.equal(away.categories[0].athletes[0].shortName, 'S. Barkley');
+  assert.deepEqual(home.categories[0].labels, ['C/ATT', 'RTG']);
+  const live = apiSportsBoxScore(gameDetails({ status: 'LIVE', clock: '4:12', period: 3 }), espnGame());
+  assert.equal(live.isLive, true);
+  assert.equal(live.status, 'Q3 · 4:12');
+  assert.equal(apiSportsBoxScore(gameDetails({ status: 'UPCOMING' }), game), null, 'Pregame details never render a box');
+  assert.equal(apiSportsBoxScore(gameDetails({ home: null }), game), null, 'A missing side falls back to the data feed');
+});
+
+test('Game detail reads validate payloads and reject stale live details but trust finals forever', async () => {
+  const original = globalThis.fetch;
+  let payload;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.headers.apikey, 'public-test-key');
+    assert.equal(new URL(url).searchParams.get('provider_game_id'), 'eq.21632');
+    return Response.json(payload);
+  };
+  const config = { url: 'https://gamewire.test', key: 'public-test-key' };
+  try {
+    payload = [{ status: 'FINAL', fetched_at: '2026-11-02T04:00:00Z', payload: gameDetails() }];
+    const finals = await fetchLiveFeedGameDetails('NFL', '21632', undefined, config, Date.parse('2026-11-03T04:00:00Z'));
+    assert.equal(finals.status, 'FINAL', 'Day-old finals are still served');
+    payload = [{ status: 'LIVE', fetched_at: '2026-11-03T03:50:00Z', payload: gameDetails({ status: 'LIVE' }) }];
+    assert.equal(await fetchLiveFeedGameDetails('NFL', '21632', undefined, config, Date.parse('2026-11-03T04:00:00Z')), null, 'Ten-minute-old live stats are stale');
+    payload = [];
+    assert.equal(await fetchLiveFeedGameDetails('NFL', '21632', undefined, config, Date.parse('2026-11-03T04:00:00Z')), null, 'Missing rows fall back');
+    payload = [{ status: 'FINAL', fetched_at: 'garbage', payload: gameDetails() }];
+    assert.equal(await fetchLiveFeedGameDetails('NFL', '21632', undefined, config, Date.parse('2026-11-03T04:00:00Z')), null, 'Malformed rows fall back');
+    assert.equal(await fetchLiveFeedGameDetails('NFL', '21632', undefined, null), null, 'Unconfigured builds skip the feed');
+  } finally {
+    globalThis.fetch = original;
+  }
 });

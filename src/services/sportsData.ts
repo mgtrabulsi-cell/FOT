@@ -2,7 +2,7 @@ import { detailsSnapshotKey, readRenderSnapshot, saveRenderSnapshot, teamSnapsho
 import { readNFLSituation } from './nflSituation.ts';
 import type { NFLSituation } from './nflSituation.ts';
 import { fetchStaticSports, readSportsDatabase } from './sportsDatabase.ts';
-import { withLiveFeed } from './liveFeed.ts';
+import { apiSportsBoxScore, fetchLiveFeedGameDetails, withLiveFeed } from './liveFeed.ts';
 
 export type Sport = 'Basketball' | 'Football' | 'Soccer' | 'Hockey';
 export type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
@@ -121,6 +121,7 @@ export type Game = {
   nbaMarket?: NFLMarket;
   sharedSavedAt?: string;
   liveSource?: 'api-sports';
+  providerGameId?: string;
 };
 
 export type NFLRecentGame = {
@@ -1650,6 +1651,7 @@ export type NFLBoxScoreData = {
   isFinal: boolean;
   venue?: string;
   teams: [NFLBoxScoreTeam, NFLBoxScoreTeam] | [];
+  source?: 'api-sports';
 };
 
 function cleanCategoryTitle(name: string, rawText: string): string {
@@ -1672,7 +1674,22 @@ export async function fetchNFLBoxScore(
   feedPath: string,
   eventId: string,
   signal?: AbortSignal,
+  game?: Game,
 ): Promise<NFLBoxScoreData> {
+  // API-Sports is the primary stats provider when the game is linked to the live feed.
+  if (game?.providerGameId && game.league === 'NFL' && game.eventId === eventId) {
+    try {
+      const details = await fetchLiveFeedGameDetails('NFL', game.providerGameId, signal);
+      const fromFeed = details ? apiSportsBoxScore(details, game) : null;
+      if (fromFeed && fromFeed.teams.length) {
+        if (!signal?.aborted) saveRenderSnapshot('box', `${feedPath}:${eventId}`, fromFeed);
+        return fromFeed;
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn('API-Sports box score is unavailable; using the data feed', error);
+    }
+  }
   const response = await fetch(`${apiBase}/${feedPath}/summary?event=${encodeURIComponent(eventId)}`, {
     signal,
     headers: { 'Accept': 'application/json' },

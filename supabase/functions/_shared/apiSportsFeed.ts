@@ -165,3 +165,121 @@ export function nflSeasonYear(now: Date): number {
   const year = Number(date.slice(0, 4)), month = Number(date.slice(5, 7));
   return month >= 3 ? year : year - 1;
 }
+
+// --- Per-game details (player box stats + team statistics) ---
+
+export type NFLGameDetailPlayer = { id: string; name: string; image: string | null; stats: Array<{ name: string; value: string | null }> };
+export type NFLGameDetailTeam = {
+  apiSportsId: string;
+  name: string;
+  groups: Array<{ name: string; players: NFLGameDetailPlayer[] }>;
+  teamStats: Array<{ name: string; value: string }>;
+};
+export type NFLGameDetailPayload = {
+  status: LiveFeedStatus;
+  clock: string | null;
+  period: number | null;
+  away: NFLGameDetailTeam | null;
+  home: NFLGameDetailTeam | null;
+};
+
+const teamStatLabels: Array<{ path: [string, string]; label: string }> = [
+  { path: ['first_downs', 'total'], label: 'First downs' },
+  { path: ['first_downs', 'third_down_efficiency'], label: '3rd down efficiency' },
+  { path: ['first_downs', 'fourth_down_efficiency'], label: '4th down efficiency' },
+  { path: ['plays', 'total'], label: 'Total plays' },
+  { path: ['yards', 'total'], label: 'Total yards' },
+  { path: ['yards', 'yards_per_play'], label: 'Yards per play' },
+  { path: ['yards', 'total_drives'], label: 'Total drives' },
+  { path: ['passing', 'total'], label: 'Passing yards' },
+  { path: ['passing', 'comp_att'], label: 'Comp–Att' },
+  { path: ['passing', 'yards_per_pass'], label: 'Yards per pass' },
+  { path: ['passing', 'sacks_yards_lost'], label: 'Sacks–yards lost' },
+  { path: ['rushings', 'total'], label: 'Rushing yards' },
+  { path: ['rushings', 'attempts'], label: 'Rushing attempts' },
+  { path: ['rushings', 'yards_per_rush'], label: 'Yards per rush' },
+  { path: ['red_zone', 'made_att'], label: 'Red zone (made–att)' },
+  { path: ['penalties', 'total'], label: 'Penalties' },
+  { path: ['turnovers', 'total'], label: 'Turnovers' },
+  { path: ['turnovers', 'lost_fumbles'], label: 'Fumbles lost' },
+  { path: ['turnovers', 'interceptions'], label: 'Interceptions thrown' },
+  { path: ['posession', 'total'], label: 'Possession' },
+  { path: ['sacks', 'total'], label: 'Sacks' },
+  { path: ['interceptions', 'total'], label: 'Interceptions' },
+];
+
+function detailTeam(side: unknown): { id: string; name: string } {
+  const team = record(record(side).team);
+  return { id: text(team.id), name: text(team.name) };
+}
+
+export function normalizeNFLGameDetails(
+  game: Pick<LiveFeedGameRow, 'status' | 'clock' | 'period' | 'away_name' | 'home_name'>,
+  playersPayload: unknown,
+  teamsPayload: unknown,
+): NFLGameDetailPayload {
+  const playerEntries = readAPISportsResponse(playersPayload);
+  const statsEntries = readAPISportsResponse(teamsPayload);
+  const teams = new Map<string, NFLGameDetailTeam>();
+  for (const entry of playerEntries) {
+    const { id, name } = detailTeam(entry);
+    if (!id || !name) continue;
+    const groups = (Array.isArray(record(entry).groups) ? record(entry).groups as unknown[] : []).flatMap((groupValue) => {
+      const group = record(groupValue);
+      const groupName = text(group.name);
+      const players = (Array.isArray(group.players) ? group.players : []).flatMap((playerValue): NFLGameDetailPlayer[] => {
+        const player = record(playerValue);
+        const identity = record(player.player);
+        const playerId = text(identity.id), playerName = text(identity.name);
+        if (!playerId || !playerName) return [];
+        const stats = (Array.isArray(player.statistics) ? player.statistics : []).map((statValue) => {
+          const stat = record(statValue);
+          return { name: text(stat.name), value: stat.value === null || stat.value === undefined ? null : text(stat.value) };
+        }).filter((stat) => stat.name);
+        return [{ id: playerId, name: playerName, image: text(identity.image) || null, stats }];
+      });
+      return groupName && players.length ? [{ name: groupName, players }] : [];
+    });
+    teams.set(name, { apiSportsId: id, name, groups, teamStats: [] });
+  }
+  for (const entry of statsEntries) {
+    const { name } = detailTeam(entry);
+    const team = teams.get(name);
+    if (!team) continue;
+    const statistics = record(record(entry).statistics);
+    team.teamStats = teamStatLabels.flatMap(({ path, label }) => {
+      const value = record(statistics[path[0]])[path[1]];
+      return value === null || value === undefined || text(value) === '' ? [] : [{ name: label, value: text(value) }];
+    });
+  }
+  return {
+    status: game.status, clock: game.clock, period: game.period,
+    away: teams.get(game.away_name) ?? null,
+    home: teams.get(game.home_name) ?? null,
+  };
+}
+
+// Live games refresh their box stats about every three minutes; finals get one
+// closing snapshot. Each target costs two API-Sports requests.
+export function decideNFLDetailTargets(
+  games: Array<Pick<LiveFeedGameRow, 'provider_game_id' | 'status'>>,
+  details: Array<{ provider_game_id: string; status: string; fetched_at: string }>,
+  now: Date,
+  maxTargets: number,
+): string[] {
+  if (maxTargets <= 0) return [];
+  const byId = new Map(details.map((detail) => [detail.provider_game_id, detail]));
+  const live: Array<{ id: string; age: number }> = [];
+  const finals: string[] = [];
+  for (const game of games) {
+    const detail = byId.get(game.provider_game_id);
+    if (game.status === 'LIVE') {
+      const age = detail ? now.getTime() - Date.parse(detail.fetched_at) : Number.POSITIVE_INFINITY;
+      if (!Number.isFinite(age) || age >= 150_000) live.push({ id: game.provider_game_id, age });
+    } else if (game.status === 'FINAL' && (!detail || detail.status !== 'FINAL')) {
+      finals.push(game.provider_game_id);
+    }
+  }
+  live.sort((first, second) => second.age - first.age);
+  return [...live.map((game) => game.id), ...finals].slice(0, maxTargets);
+}

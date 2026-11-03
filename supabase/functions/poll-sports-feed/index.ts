@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
-  decideLiveFeedPoll, liveFeedQueryDates, nflSeasonYear, normalizeNBAGames, normalizeNFLGames, utcDay,
+  decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, liveFeedRequestBudget, nflSeasonYear,
+  normalizeNBAGames, normalizeNFLGameDetails, normalizeNFLGames, utcDay,
   type LiveFeedSport,
 } from '../_shared/apiSportsFeed.ts';
 
@@ -41,13 +42,42 @@ export async function pollSportsFeed(admin: SupabaseClient, apiKey: string, now 
         if (saved.error) throw saved.error;
       }
       const used = (state.data && state.data.day === utcDay(now) ? state.data.requests_used : 0) + urls.length;
+      let detailCount = 0;
+      if (sport === 'NFL') {
+        const details = await admin.from('live_feed_game_details').select('provider_game_id,status,fetched_at').eq('sport', sport);
+        if (details.error) throw details.error;
+        const budgetLeft = Math.floor((liveFeedRequestBudget.NFL - used) / 2);
+        const targets = decideNFLDetailTargets(unique, details.data ?? [], now, Math.min(6, budgetLeft));
+        for (const target of targets) {
+          const game = unique.find((row) => row.provider_game_id === target);
+          if (!game) continue;
+          try {
+            const [players, teams] = await Promise.all([
+              apiSports(`https://v1.american-football.api-sports.io/games/statistics/players?id=${target}`, apiKey),
+              apiSports(`https://v1.american-football.api-sports.io/games/statistics/teams?id=${target}`, apiKey),
+            ]);
+            detailCount += 2;
+            const payload = normalizeNFLGameDetails(game, players, teams);
+            if (!payload.away?.groups.length && !payload.home?.groups.length) continue;
+            const savedDetail = await admin.from('live_feed_game_details').upsert({
+              sport, provider_game_id: target, status: game.status, payload, fetched_at: now.toISOString(),
+            }, { onConflict: 'sport,provider_game_id' });
+            if (savedDetail.error) throw savedDetail.error;
+          } catch (cause) {
+            console.error(`NFL game detail poll failed for ${target}`, cause);
+          }
+        }
+        const prunedDetails = await admin.from('live_feed_game_details').delete().eq('sport', sport)
+          .lt('fetched_at', new Date(now.getTime() - 4 * 86_400_000).toISOString());
+        if (prunedDetails.error) throw prunedDetails.error;
+      }
       const savedState = await admin.from('live_feed_state')
-        .upsert({ sport, day: utcDay(now), requests_used: used, last_polled_at: fetchedAt }, { onConflict: 'sport' });
+        .upsert({ sport, day: utcDay(now), requests_used: used + detailCount, last_polled_at: now.toISOString() }, { onConflict: 'sport' });
       if (savedState.error) throw savedState.error;
       const pruned = await admin.from('live_feed_games').delete().eq('sport', sport)
         .lt('start_time', new Date(now.getTime() - 3 * 86_400_000).toISOString());
       if (pruned.error) throw pruned.error;
-      summary[sport] = { polled: true, games: unique.length, requestsToday: used };
+      summary[sport] = { polled: true, games: unique.length, details: detailCount / 2, requestsToday: used + detailCount };
     } catch (cause) {
       console.error(`${sport} live feed poll failed`, cause);
       summary[sport] = { polled: false, error: cause instanceof Error ? cause.message : String(cause) };

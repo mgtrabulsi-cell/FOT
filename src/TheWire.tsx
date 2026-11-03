@@ -423,6 +423,8 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
   const eventId = selectedGame?.eventId;
   const feedPath = selectedGame?.feedPath;
   const seasonYear = selectedGame?.seasonYear;
+  const selectedGameRef = useRef(selectedGame);
+  selectedGameRef.current = selectedGame;
   const isUpcoming = selectedGame?.status === 'UPCOMING';
   const categoryFilters = ['All', 'Offense', 'Defense', 'Special Teams'];
   const activeCategoryFilter = isUpcoming ? 'All' : categoryFilter;
@@ -526,7 +528,8 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
         setFailed(false);
       }
       try {
-        const data = await fetchNFLBoxScore(feedPath, eventId, controller.signal);
+        const current_game = selectedGameRef.current;
+        const data = await fetchNFLBoxScore(feedPath, eventId, controller.signal, current_game?.eventId === eventId ? current_game : undefined);
         if (current) {
           setBoxScore(data);
           setFailed(false);
@@ -1332,6 +1335,9 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               </div>
             )}
           </div>
+          {subTab === 'boxscore' && !isUpcoming && boxScore?.source === 'api-sports' && (
+            <p className="feed-source" role="status">Player stats provided by API-Sports.</p>
+          )}
           {isUpcoming && subTab === 'boxscore' && (
             <div className="wire-stat-mode wire-subtabs" role="group" aria-label="Player season statistics display">
               <button aria-pressed={playerStatMode === 'total'} className={playerStatMode === 'total' ? 'active' : ''} onClick={() => setPlayerStatMode('total')}>Total stats</button>

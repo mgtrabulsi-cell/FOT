@@ -69,7 +69,7 @@ export async function saveWeekSnapshot(games: Game[], signal: AbortSignal): Prom
       const failuresBefore = failures.length;
       try {
         const teams = [game.away, game.home];
-        const box = await fetchNFLBoxScore(game.feedPath, game.eventId, signal);
+        const box = await fetchNFLBoxScore(game.feedPath, game.eventId, signal, game);
         collectOfflineImages(box, images);
         const details = await fetchNFLGameDetails(game.feedPath, game.eventId, game.seasonYear, teams, signal);
         collectOfflineImages(details, images);

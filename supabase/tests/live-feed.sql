@@ -5,9 +5,22 @@ on conflict (sport,provider_game_id) do nothing;
 insert into public.live_feed_state(sport,day,requests_used,last_polled_at)
 values ('NFL',current_date,2,now())
 on conflict (sport) do nothing;
+insert into public.live_feed_game_details(sport,provider_game_id,status,payload)
+values ('NFL','test-game','LIVE','{"status":"LIVE"}')
+on conflict (sport,provider_game_id) do nothing;
 set local role anon;
 select provider_game_id from public.live_feed_games where provider_game_id='test-game';
 select sport from public.live_feed_state where sport='NFL';
+select provider_game_id from public.live_feed_game_details where provider_game_id='test-game';
+do $$
+begin
+  begin
+    insert into public.live_feed_game_details(sport,provider_game_id,status,payload)
+    values ('NFL','forbidden-detail','LIVE','{}');
+    raise exception 'Anonymous game detail writes must be denied';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
 do $$
 begin
   begin

@@ -54,7 +54,7 @@ final class OfflineStore {
         URL url = new URL(address);
         boolean allowed = image
             ? url.getHost().equals("a.espncdn.com") || (samePublicOrigin(url) && (url.getPath().startsWith("/storage/v1/object/public/livewire-photos/") || url.getPath().startsWith("/storage/v1/render/image/public/livewire-photos/")))
-            : ESPN.contains(url.getHost()) || (samePublicOrigin(url) && url.getPath().matches("/rest/v1/(livewire_posts|matchup_boards|live_feed_games)"));
+            : ESPN.contains(url.getHost()) || (samePublicOrigin(url) && url.getPath().matches("/rest/v1/(livewire_posts|matchup_boards|live_feed_games|live_feed_game_details)"));
         if (!url.getProtocol().equals("https") || url.getUserInfo() != null || !allowed) throw new IOException("Only public sports data can be saved");
     }
     private String hash(String value) throws Exception {
