@@ -1,6 +1,5 @@
 import OfflineImage from './OfflineImage';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { playerInitials } from './services/playerInitials';
 import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
@@ -1469,7 +1468,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                         {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{category.labels.map((_, index) => <col key={index} />)}</colgroup>}
                         <thead role="rowgroup">
                           <tr role="row">
-                            <th className="wire-col-athlete" scope="col" role="columnheader">Athlete</th>
+                            <th className="wire-col-athlete" scope="col" role="columnheader">Player</th>
                             {category.labels.map((lbl, idx) => (
                               <th key={idx} className={`wire-col-data${!lbl ? ' wire-empty-stat' : ''}`} aria-hidden={!lbl || undefined} scope="col" role="columnheader">{lbl}</th>
                             ))}
@@ -1482,9 +1481,6 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
                             <tr key={athlete.id} role="row">
                               <td className="wire-col-athlete" role="cell">
                                 <div className="wire-athlete-cell">
-                                  <span className="wire-athlete-avatar">
-                                    {playerInitials(athlete.name)}
-                                  </span>
                                   {player && currentPlayerAverages && activeGameTeam ? (
                                     <button
                                       className="wire-athlete-meta wire-player-card-button"
