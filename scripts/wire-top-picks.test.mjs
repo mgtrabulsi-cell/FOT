@@ -14,6 +14,7 @@ function render(reports, props, orders = [], leans = []) {
     if (name === 'react') return { useEffect() {}, useState: () => [states[slot++], () => {}] };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === './Gamewaire') return { PickCard: 'PickCard' };
+    if (name === './ActiveAngleBets') return { default: 'ActiveAngleBets' };
     if (name === './services/gamewaireOrder') return { bestBetLabels, orderedTopPicks, publishedSelections, wirePickLimit };
     return {};
   } });
@@ -41,12 +42,14 @@ test('Wire shows exactly three mobile / five desktop picks, matching only unfini
     assert.deepEqual(displayed.map((card) => card.props.pick.key), ['0', '2', '1', '3', '4'].slice(0, desktop ? 5 : 3));
   }
   assert.ok(nodes.some((node) => node.type === 'a' && node.props.href === '#gamewaire'));
+  assert.equal(nodes.filter((node) => node.type === 'ActiveAngleBets').length, 0);
   assert.equal(render([], { sport: 'NBA', games: [] }).filter((node) => node.type === 'PickCard').length, 0);
+  assert.equal(render([], { sport: 'NBA', userId: 'member', desktop: true, games: [] }).filter((node) => node.type === 'ActiveAngleBets').length, 1);
   assert.doesNotMatch(source, /engineRequest|loadEngineHistory|gamewaire_runs/);
   assert.match(source, /gamewaire_team_leans/);
 });
 test('Wire includes published leans in the shared order and limit, deduplicates Top Pick keys and excludes finished games', () => {
-  const pick = { key: 'top', start: '2026-10-28T23:00:00Z', sport: 'NBA', market: 'h2h', probability: 0.6,
+  const pick = { key: 'top', start: '2026-10-28T23:00:00Z', sport: 'NBA', market: 'player_points', probability: 0.6,
     identifiers: { espnEventId: 'live' } };
   const lean = { ...pick, key: 'lean' };
   const leans = [lean, pick, { ...lean, key: 'final', identifiers: { espnEventId: 'final' } }].map((pick) => ({ team_lean: { pick } }));

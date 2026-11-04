@@ -1,64 +1,28 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { newManualParlayLeg, newParlayGraphic, parlayGraphicError, parlayLegLabel, parlayMarketOptions, parlayMarkets } from './services/parlayGraphic';
-import type { ParlayGraphic, ParlayLeg, ParlaySport } from './services/parlayGraphic';
-import { loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
+import type { ParlayGraphic, ParlayLeg } from './services/parlayGraphic';
+import BestBetSubjectPicker from './BestBetSubjectPicker';
 import { readGraphicPhoto } from './services/graphicPhoto';
-import type { ParlayPlayer, ParlayTeam } from './services/parlayRoster';
 import { renderParlayGraphic } from './services/parlayGraphicImage';
 import './parlayGraphic.css';
 
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'The parlay builder could not complete this request. Retry.';
 export default function ParlayGraphicBuilder({ value, onChange }: { value: ParlayGraphic | null; onChange: (value: ParlayGraphic | null) => void }) {
-  const [sport, setSport] = useState<ParlaySport>('NBA'), [type, setType] = useState<'player' | 'spread' | 'moneyline'>('player');
-  const [entry, setEntry] = useState<'roster' | 'manual'>('roster');
   const sportListId = useId();
-  const [teams, setTeams] = useState<ParlayTeam[]>([]), [season, setSeason] = useState(0), [teamId, setTeamId] = useState('');
-  const [players, setPlayers] = useState<ParlayPlayer[]>([]), [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false), [error, setError] = useState(''), [warning, setWarning] = useState('');
-  const [retry, setRetry] = useState(0), [preview, setPreview] = useState(''), [rendering, setRendering] = useState(false);
+  const [preview, setPreview] = useState(''), [rendering, setRendering] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const imageUrl = useRef('');
   const latest = useRef(value);
   latest.current = value;
-  const enabled = !!value;
   useEffect(() => () => { if (imageUrl.current) URL.revokeObjectURL(imageUrl.current); }, []);
   useEffect(() => {
     setPreview(''); setPreviewError('');
     if (imageUrl.current) { URL.revokeObjectURL(imageUrl.current); imageUrl.current = ''; }
   }, [value]);
-  useEffect(() => {
-    if (!enabled || entry !== 'roster') { setLoading(false); return; }
-    const controller = new AbortController();
-    setLoading(true); setError(''); setWarning(''); setTeams([]); setTeamId(''); setPlayers([]);
-    void loadParlayTeams(sport, controller.signal).then(({ data, warning }) => {
-      if (!controller.signal.aborted) { setTeams(data.teams); setSeason(data.season); setWarning(warning); }
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(message(cause)); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [enabled, entry, sport, retry]);
-  useEffect(() => {
-    setPlayers([]); setQuery('');
-    if (!enabled || entry !== 'roster' || !teamId || !season || type !== 'player') return;
-    const controller = new AbortController(); setLoading(true); setError('');
-    void loadParlayPlayers(sport, teamId, season, controller.signal).then(({ data, warning }) => {
-      if (!controller.signal.aborted) { setPlayers(data.players); setWarning(warning); }
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(message(cause)); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [enabled, entry, sport, teamId, season, type]);
   if (!value) return <div className="parlay-add-on"><button type="button" onClick={() => onChange(newParlayGraphic())}>Add parlay graphic</button>
-    <p>Build a branded parlay with NBA/NFL roster picks or manually entered legs from any sport.</p></div>;
+    <p>Build a branded parlay from one player / team picker, or type a name for any other sport.</p></div>;
   const update = (patch: Partial<ParlayGraphic>) => onChange({ ...value, ...patch });
   const editLeg = (id: string, patch: Partial<ParlayLeg>) => update({ legs: value.legs.map((leg) => leg.id === id ? { ...leg, ...patch } : leg) });
-  const team = teams.find((item) => item.id === teamId);
-  const addLeg = (player?: ParlayPlayer) => {
-    if (!team || value.legs.length >= 8) return;
-    // Name and colors only — photos are attached manually per leg.
-    update({ legs: [...value.legs, { id: crypto.randomUUID(), sport, type,
-      subject: { id: player?.id ?? team.id, name: player?.name ?? team.name, image: '',
-        teamId: team.id, teamName: team.name, teamLogo: '', color: team.color },
-      market: type === 'player' ? parlayMarkets[sport][0] : '', side: 'At least', line: '' }] });
-  };
   const buildPreview = async () => {
     setRendering(true); setPreviewError('');
     try {
@@ -71,7 +35,7 @@ export default function ParlayGraphicBuilder({ value, onChange }: { value: Parla
   };
   return <section className="parlay-builder" aria-label="Parlay graphic builder">
     <header><span className="eyebrow">THE ANGLE / GRAPHIC STUDIO</span><h3>Build your parlay</h3>
-      <p>Mix any sports, players, teams, fighters, and games. Use NBA/NFL roster picks or enter other sports manually. Two to eight legs; one tracked parlay. Lines and odds are your own editorial inputs, not live quotes. Verify availability.</p>
+      <p>Mix any sports, players, teams, fighters, and games from one player / team picker. Two to eight legs; one tracked parlay. Lines and odds are your own editorial inputs, not live quotes. Verify availability.</p>
       {new Set(value.legs.map((leg) => leg.sport)).size > 1 && <p className="parlay-warning">For mixed-sport result tracking, choose Combo in the Angle's Matchup selector above.</p>}</header>
     <fieldset disabled={rendering}><legend>Graphic details</legend><div className="parlay-fields">
       <label>Graphic title<select value={value.title} onChange={(e) => update({ title: e.target.value as ParlayGraphic['title'] })}>
@@ -80,26 +44,20 @@ export default function ParlayGraphicBuilder({ value, onChange }: { value: Parla
       <label className="parlay-wide">Matchup / slate label (optional)<input maxLength={100} placeholder="76ers @ Pacers / 7:10 PM ET" value={value.subtitle} onChange={(e) => update({ subtitle: e.target.value })} /></label>
     </div><label className="parlay-checkbox"><input type="checkbox" checked={value.images} onChange={(e) => update({ images: e.target.checked })} />Include attached photos</label>
     <small>Combined odds are never calculated from individual legs. Verify the actual sportsbook price. Photos are never auto-filled; attach your own artwork per leg or turn off images for a name-only graphic that renders offline.</small></fieldset>
-    <fieldset disabled={rendering || value.legs.length >= 8}><legend>Add a leg · {value.legs.length}/8</legend>
-      <div className="parlay-fields"><label className="parlay-wide">Entry method<select value={entry} onChange={(e) => setEntry(e.target.value as 'roster' | 'manual')}>
-        <option value="roster">NBA / NFL roster picker</option><option value="manual">Manual entry / any sport</option></select></label></div>
-      {entry === 'manual' ? <><p>Add a team, player, fighter, or matchup from NHL, soccer, UFC, college football, or any other sport. Enter the complete selection exactly as intended; no live data or images are added.</p>
-        <button type="button" onClick={() => update({ legs: [...value.legs, newManualParlayLeg()] })}>Add manual leg</button></> : <>
-      <div className="parlay-fields">
-        <label>League<select value={sport} onChange={(e) => { setSport(e.target.value as ParlaySport); setTeamId(''); }}><option>NBA</option><option>NFL</option></select></label>
-        <label>Leg type<select value={type} onChange={(e) => setType(e.target.value as typeof type)}><option value="player">Player prop</option><option value="spread">Team spread</option><option value="moneyline">Team moneyline</option></select></label>
-        <label className="parlay-wide">Team<select value={teamId} onChange={(e) => setTeamId(e.target.value)}><option value="">Select a team</option>
-          {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
-      </div>
-      {loading && <p role="status">Loading {sport} teams / players...</p>}
-      {warning && <p role="status" className="parlay-warning">{warning}</p>}
-      {error && <p role="alert" className="feed-warning">{error} <button type="button" onClick={() => setRetry((v) => v + 1)}>Retry player picker</button></p>}
-      {type === 'player' && teamId && <><label>Find a player on {team?.name}<input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name or position" /></label>
-        <div className="parlay-player-list" aria-label="Available players">{players.filter((p) => `${p.name} ${p.position}`.toLowerCase().includes(query.toLowerCase())).map((player) => <button key={player.id} type="button" onClick={() => addLeg(player)}>
-          <strong>{player.name}</strong><small>{player.position} / {team?.abbr} · Add +</small></button>)}</div>
-        {!loading && !error && !players.filter((p) => `${p.name} ${p.position}`.toLowerCase().includes(query.toLowerCase())).length && <p>No players match this search.</p>}</>}
-      {type !== 'player' && <button type="button" disabled={!team} onClick={() => addLeg()}>Add {team?.name ?? 'team'} {type === 'spread' ? 'spread' : 'moneyline'}</button>}
-      </>}
+    <fieldset disabled={rendering || value.legs.length >= 8}><legend>Add player / team name · {value.legs.length}/8</legend>
+      <BestBetSubjectPicker sport={value.legs.at(-1)?.sport ?? 'NFL'} onChoose={(league, participant) => {
+        if (!participant || value.legs.length >= 8) return;
+        const roster = league === 'NBA' || league === 'NFL';
+        const player = participant.type === 'player';
+        update({ legs: [...value.legs, { id: crypto.randomUUID(), sport: league,
+          type: roster ? (player ? 'player' : 'moneyline') : 'custom',
+          subject: { id: participant.subject.id, name: participant.subject.name, image: participant.subject.image,
+            teamId: participant.subject.teamId, teamName: participant.subject.teamName, teamLogo: participant.subject.teamLogo,
+            color: participant.subject.color },
+          market: roster && player ? parlayMarkets[league === 'NBA' ? 'NBA' : 'NFL'][0] : '', side: 'At least', line: '' }] });
+      }}>
+        <button type="button" onClick={() => update({ legs: [...value.legs, newManualParlayLeg()] })}>Add a typed name instead</button>
+      </BestBetSubjectPicker>
     </fieldset>
     <datalist id={sportListId}>{['NHL', 'Soccer', 'UFC', 'College Football', 'College Basketball', 'MLB', 'WNBA', 'Tennis', 'Golf', 'Boxing'].map((name) => <option key={name} value={name} />)}</datalist>
     <ol className="parlay-leg-list">{value.legs.map((leg, index) => <li key={leg.id}>

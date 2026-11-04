@@ -136,6 +136,8 @@ test('Angle feeds use pinned-then-newest ordering, with an explicitly linked sto
   const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
   assert.match(source, /\.\.\.\(visibleLinked \? \[visibleLinked\] : \[\]\),\s*\.\.\.orderedAngleFeed\(feedStories/);
   assert.match(source, /row\.id !== visibleLinked\?\.id/);
+  assert.match(source, /scrollIntoView/);
+  assert.doesNotMatch(source, /All angles|Team matchups/);
 });
 
 test('Multiline parlay legs survive save/read as one pick, one grade and one record entry', () => {

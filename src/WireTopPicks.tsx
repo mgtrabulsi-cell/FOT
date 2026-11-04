@@ -7,6 +7,7 @@ import type { Game } from './services/sportsData';
 import { supabase } from './services/supabaseClient';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
+import ActiveAngleBets from './ActiveAngleBets';
 
 export default function WireTopPicks({ games, sport, userId, desktop }: { games: Game[]; sport: Sport; userId?: string; desktop: boolean }) {
   const [reports, setReports] = useState<PublishedGame[]>([]);
@@ -59,8 +60,11 @@ export default function WireTopPicks({ games, sport, userId, desktop }: { games:
     {!userId ? <p>Sign in to view published GamewAIre picks.</p> : <>
       {error && <p role="alert" className="feed-warning">{error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
       {!loaded && !error && <p role="status">Loading published picks and leans…</p>}
-      {loaded && !picks.length && <p>No published picks or leans for the unfinished games on this scoreboard.</p>}
-      <div className="gai-picks">{picks.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} lean={pick.isGameLean} bestBet={bestBets.get(pick.key)} />)}</div>
+      {loaded && !picks.length && <>
+        <p>No official GamewAIre posts for this scoreboard. Active Angle bets:</p>
+        <ActiveAngleBets active revision={`wire:${sport}:${eventIds}`} userId={userId} defaultOpen />
+      </>}
+      {!!picks.length && <div className="gai-picks">{picks.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} lean={pick.isGameLean} bestBet={bestBets.get(pick.key)} />)}</div>}
     </>}
     <a className="wire-picks-link" href="#gamewaire">Open GamewAIre</a>
     <p className="gai-note">Published selections only. Estimates are unvalidated, not guarantees or betting recommendations.</p>

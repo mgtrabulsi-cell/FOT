@@ -166,6 +166,8 @@ test('Manual builder restores account-owned drafts and synchronously saves edits
   state.length = 0; tree = render();
   assert.equal(find(tree, node => node.type === 'fieldset').props.disabled, true);
   assert.equal(saved.get('gamewire:best-bet-draft:v1:owner'), 'invalid json', 'Invalid drafts are never silently overwritten');
+  assert.doesNotMatch(readFileSync(new URL('../src/BestBetGraphicBuilder.tsx', import.meta.url), 'utf8'), /<label>Sport/);
+  assert.doesNotMatch(readFileSync(new URL('../src/ParlayGraphicBuilder.tsx', import.meta.url), 'utf8'), /Entry method|NBA \/ NFL roster picker/);
 });
 test('Best Bet roster picker loads only on opening and stores verified player/team snapshots with explicit retry errors', async () => {
   const states = [], effects = [], dependencies = [], calls = [], selections = []; let index = 0, effectIndex = 0, failed = false;
@@ -199,11 +201,11 @@ test('Best Bet roster picker loads only on opening and stores verified player/te
   render(); await flush(); tree = render();
   tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Test Player').props.onClick();
   assert.equal(selections[0][0], 'NFL'); assert.equal(selections[0][1].type, 'player');
-  assert.equal(selections[0][1].subject.image, player.image); assert.equal(selections[0][1].subject.teamLogo, team.logo);
+  assert.equal(selections[0][1].subject.image, ''); assert.equal(selections[0][1].subject.teamLogo, '');
   assert.equal(render().find(node => node.type === 'details').props.open, false, 'Selection closes the picker so bet fields are easy to reach');
   tree.find(node => node.type === 'select' && node.props.value === 'player').props.onChange({ target: { value: 'team' } });
   tree = render(); tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Use ').props.onClick();
-  assert.equal(selections[1][1].type, 'team'); assert.equal(selections[1][1].subject.image, team.logo);
+  assert.equal(selections[1][1].type, 'team'); assert.equal(selections[1][1].subject.image, '');
   tree.find(node => node.type === 'select' && node.props.value === 'NFL').props.onChange({ target: { value: 'NHL' } });
   tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
   render(); await flush(); tree = render();
@@ -228,5 +230,5 @@ test('Best Bet roster picker loads only on opening and stores verified player/te
   tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
   render(); await flush(); tree = render();
   assert.ok(tree.some(node => node.props?.role === 'alert'));
-  assert.ok(tree.some(node => node.type === 'button' && node.props.children === 'Retry image search'));
+  assert.ok(tree.some(node => node.type === 'button' && node.props.children === 'Retry name search'));
 });

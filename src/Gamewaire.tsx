@@ -382,12 +382,11 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <small>Compare real prices and model estimates. Verified data. No promise of profit.</small>
         <button type="button" className="gai-latest-link" onClick={openPublishedPicks}>View published picks <ArrowRight size={19} aria-hidden="true" /></button></div>
       <div className="gai-stadium-brand" aria-hidden="true">
-        <svg viewBox="260 115 1016 770" fill="none">
-          <image href="/gamewire-mark.png" width="1536" height="1024" />
-          <path className="gai-stadium-pulse" d="M496 585 668 596 691 558 722 631 769 408 783 757 839 555 865 605 1038 584"
-            stroke="#fff1f4" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" pathLength="100" />
-        </svg>
-        <span className="gamewaire-name">Gamew<strong>AI</strong>re <small><i /> LIVE INTELLIGENCE</small></span>
+        <div className="gai-stadium-mark">
+          <img className="gai-stadium-base" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" />
+          <img className="gai-stadium-pulse-glow" src={`${import.meta.env.BASE_URL}gamewire-pulse.png`} alt="" />
+          <img className="gai-stadium-pulse-sweep" src={`${import.meta.env.BASE_URL}gamewire-pulse.png`} alt="" />
+        </div>
       </div>
       <div className="gai-hero-features" aria-label="Analysis features">
         <div><b>01</b><span>Sportsbook<br />lines &amp; prices</span></div>

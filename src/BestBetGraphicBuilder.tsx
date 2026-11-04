@@ -49,7 +49,6 @@ export default function BestBetGraphicBuilder({ userId }: { userId: string }) {
       {value.entries.map((row, index) => <fieldset key={row.id}><legend>Straight bet {index + 1}</legend>
         <BestBetSubjectPicker sport={row.sport} value={row.participant} onChoose={(sport, participant) => edit(row.id, { ...(participant ? { sport } : {}), participant })}>
         <div className="parlay-fields">
-        <label>Sport<input maxLength={20} placeholder="NFL, NBA, NHL..." value={row.sport} onChange={event => edit(row.id, { sport: event.target.value, participant: undefined })} /></label>
         <label>American odds (optional)<input maxLength={12} placeholder="-110" value={row.odds} onChange={event => edit(row.id, { odds: event.target.value })} /></label>
         <label className="parlay-wide">{row.participant ? `Bet for ${row.participant.subject.name}` : 'Bet / selection'}<textarea maxLength={200}
           placeholder={row.participant ? 'Over 60.5 receiving yards / Moneyline / Spread -3.5' : 'Player / team, side, exact line and stat'}

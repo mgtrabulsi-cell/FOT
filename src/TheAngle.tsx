@@ -116,7 +116,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftRetry, setDraftRetry] = useState(0);
   const [restoreRetry, setRestoreRetry] = useState(0);
-  const [kind, setKind] = useState<'all' | 'player' | 'team'>('all');
   const [newsFilter, setNewsFilter] = useState<NewsType[]>([]);
   const [leadGroup, setLeadGroup] = useState<typeof angleLeadGroups[number]>('Birthdays');
   const [suggestions, setSuggestions] = useState<AngleSuggestion[]>([]);
@@ -401,9 +400,8 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   }
   const visibleLinked = linkedReady === storyId && linkedStory?.id === storyId ? linkedStory : null;
   const restoringWeek = (!season || !week) && !!savedFeed;
-  const feedStories = rows.filter((row) => visible && angleVisibleInWeek(row, restoringWeek ? savedFeed.season : season, restoringWeek ? savedFeed.week : week) && row.id !== visibleLinked?.id && row.status === 'published' && (news
-    ? !newsFilter.length || (row.news_types ?? []).some((type) => newsFilter.includes(type))
-    : kind === 'all' || row.kind === kind));
+  const feedStories = rows.filter((row) => visible && angleVisibleInWeek(row, restoringWeek ? savedFeed.season : season, restoringWeek ? savedFeed.week : week) && row.id !== visibleLinked?.id && row.status === 'published' && (!news
+    || !newsFilter.length || (row.news_types ?? []).some((type) => newsFilter.includes(type))));
   const published = [
     ...(visibleLinked ? [visibleLinked] : []),
     ...orderedAngleFeed(feedStories.filter((row) => row.id !== visibleLinked?.id)),
@@ -415,6 +413,9 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     if (!pinnedId || autoExpandedPin.current === pinnedId) return;
     autoExpandedPin.current = pinnedId;
     setExpandedPosts((previous) => previous.includes(pinnedId) ? previous : [pinnedId, ...previous]);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`angle-${pinnedId}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
   }, [pinnedId]);
   const togglePin = async (angle: Angle) => {
     if (!supabase || busy) return;
@@ -483,7 +484,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   </label>;
   return <section className="angle-panel" hidden={!visible} aria-label={news ? 'Fantasy News' : 'The Angle'}>
     {visible && admin && !news && user && <BestBetGraphicBuilder key={user.id} userId={user.id} />}
-    {!news && <ActiveAngleBets active={visible} revision={rows.map((row) => `${row.id}:${row.revision}`).join('|')} />}
+    {!news && <ActiveAngleBets active={visible} revision={rows.map((row) => `${row.id}:${row.revision}`).join('|')} userId={user?.id} />}
     {visible && admin && <div className="angle-admin-bar">
       <button className="angle-create-button" disabled={busy || !draftReady || draftRestoreFailed || (!form && (!season || !week))} onClick={() => { if (form) editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else if (season && week) openEditor(newAngle(weeklyGames[0], season, week, section)); }}><Plus size={16} aria-hidden="true" />{form ? 'Continue draft' : news ? 'Create news' : 'Create an angle'}</button>
       {form && <button type="button" className="angle-create-button" disabled={busy} onClick={() => void discardDraft()}>Discard draft</button>}
@@ -605,12 +606,12 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {storyId && linkedError && <p className="feed-warning" role="alert">{linkedError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></p>}
     {storyId && !linkedError && linkedReady !== storyId && <p role="status">Loading your linked storyline...</p>}
     {storyId && linkedReady === storyId && !linkedStory && <p role="status">This storyline is no longer published. You can browse the current week's storylines below.</p>}
-    {news ? <div className="angle-filters livewire-theme-filters" role="group" aria-label="Filter Fantasy News">
+    {news && <div className="angle-filters livewire-theme-filters" role="group" aria-label="Filter Fantasy News">
       <button aria-pressed={!newsFilter.length} onClick={() => setNewsFilter([])}>All news</button>
       {newsTypes.map((type) => <button key={type.value} aria-pressed={newsFilter.includes(type.value)} onClick={() => setNewsFilter((current) => current.includes(type.value) ? current.filter((value) => value !== type.value) : [...current, type.value])}><span className={`wire-primetime-tag tag-${type.color}`}>{type.label}</span></button>)}
-    </div> : <div className="angle-filters" role="group" aria-label="Filter published angles">{(['all', 'player', 'team'] as const).map((value) => <button key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All angles' : value === 'player' ? 'Players' : 'Team matchups'}</button>)}</div>}
+    </div>}
     {restoringWeek && <p className="nfl-data-note" role="status">Showing saved posts from Week {savedFeed.week}. Updating the selected week in the background.</p>}
-    {(!season || !week) && !savedFeed ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : rows.some((row) => row.status === 'published') ? 'No published angles match this filter.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
+    {(!season || !week) && !savedFeed ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     {admin && visible && <XPublishingStatus />}
     <div className={`angle-cards${news ? '' : ' angle-cards-collapsible'}`} ref={readObserver.root}>{published.map((angle) => <article className={`angle-card${news ? '' : ' angle-card-collapsible'}${angle.pinned_at ? ' angle-card-pinned' : ''}`} id={`angle-${angle.id}`} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
       {!news && (admin
