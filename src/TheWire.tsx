@@ -843,7 +843,8 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
       const upcoming = game.status === 'UPCOMING';
       const intl = internationalVenue(game);
       return (
-        <li key={game.id}>
+        <li key={game.id} className="notification-game-card">
+          <NotificationBell />
           <button
             type="button"
             data-game-id={game.id}
@@ -1498,3 +1499,4 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
     </div>
   );
 }
+import NotificationBell from './NotificationBell';

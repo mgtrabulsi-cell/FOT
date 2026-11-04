@@ -412,7 +412,8 @@ export default function NBAExperience({ mode, games, previousGames = [], status,
     {!nbaGames.length && status === 'ready' && <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Use the date arrows or Today to pick another day.</span></div>}
     {mode === 'wire' && !showingDetails && !!nbaGames.length && <div className="wire-board" ref={boardRef}>
       <header className="wire-board-header"><span className="eyebrow">NBA GAMES · SELECT A MATCHUP</span></header>
-      <ol className="wire-board-list">{visibleGames.map((item) => <li key={item.id}>
+      <ol className="wire-board-list">{visibleGames.map((item) => <li key={item.id} className="notification-game-card">
+        <NotificationBell />
         <div className={`wire-board-card nba-board-card${item.status === 'LIVE' ? ' is-live' : ''}`}>
           <span className="wire-board-status">{item.status === 'LIVE' ? <><span className="live-pill"><i />LIVE</span><small>{item.period} {item.clock}</small></> : item.status === 'FINAL' ? <span className="wire-board-final">FINAL</span> : <><small>{gameDate(item.date, true)}</small>{item.nbaMarket?.spread != null && <small className="wire-board-spread">Spread <b>{item.home.abbr} {item.nbaMarket.spread > 0 ? '+' : ''}{item.nbaMarket.spread}</b></small>}</>}</span>
           <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className={`wire-board-team${item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? ' is-loser' : ''}`} key={side.id}>
@@ -448,3 +449,4 @@ export default function NBAExperience({ mode, games, previousGames = [], status,
     {profile && season !== undefined && <PlayerProfile key={`${profile.player.id}:${season}`} {...profile} season={season} favorites={favorites} toggle={onToggleFavorite} close={() => setProfile(null)} />}
   </section>;
 }
+import NotificationBell from './NotificationBell';

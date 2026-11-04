@@ -63,6 +63,9 @@ test('Welcome uses a modal and never requests permission before an explicit enab
   const app = setup();
   assert.equal(app.element.open, true);
   assert.equal(app.calls.length, 0);
+  assert.match(source, /new posts, score updates, player updates/);
+  assert.match(source, /then choose Allow/);
+  assert.equal(app.nodes().find((node) => node.type === 'button' && node.props.children === 'Turn on notifications').props.disabled, false);
   await app.click('Turn on notifications');
   assert.equal(app.calls[0][0], 'enable');
   assert.equal(app.calls[0][1], 'new-user');
@@ -77,7 +80,7 @@ test('Not now saves the dismissal without enabling push; unsupported devices exp
   await app.click('Not now');
   assert.deepEqual(app.calls.map((call) => call[0]), ['save']);
   const unsupported = setup({ supported: false });
-  assert.equal(unsupported.nodes().some((node) => node.props?.children === 'Turn on notifications'), false);
+  assert.equal(unsupported.nodes().find((node) => node.type === 'button' && node.props.children === 'Turn on notifications').props.disabled, true);
   await unsupported.click('Continue');
   assert.deepEqual(unsupported.calls.map((call) => call[0]), ['save']);
 });

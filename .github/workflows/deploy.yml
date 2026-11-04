@@ -40,7 +40,7 @@ jobs:
       - name: Test GamewAIre analyses and scheduling
         run: node --test scripts/gamewaire*.test.mjs
       - name: Test foreground score refresh
-        run: node --test scripts/foreground-refresh.test.mjs scripts/site-opens*.test.mjs scripts/post-viewers.test.mjs scripts/notification-onboarding.test.mjs
+        run: node --test scripts/foreground-refresh.test.mjs scripts/site-opens*.test.mjs scripts/post-viewers.test.mjs scripts/notification-onboarding.test.mjs scripts/notification-bell.test.mjs
       - name: Test NBA scores, stats and Locker Room
         run: node --test scripts/nba-*.test.mjs scripts/locker-room-scores.test.mjs
       - name: Test NBA notification dispatcher

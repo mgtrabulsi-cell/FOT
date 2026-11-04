@@ -39,7 +39,7 @@ export async function enablePushNotifications(userId: string, notifyScores: bool
   if (!supportsPushNotifications()) throw new Error('Push notifications are not supported in this browser.');
   if (!vapidPublicKey) throw new Error('Push notifications are not configured for this site yet.');
 
-  const permission = await Notification.requestPermission();
+  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
   if (permission !== 'granted') throw new Error('Allow notifications in your browser to continue.');
 
   const registration = await navigator.serviceWorker.ready;

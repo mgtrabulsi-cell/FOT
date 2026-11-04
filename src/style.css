@@ -567,6 +567,10 @@ span.angle-pin-button { cursor: default; }
 .notification-onboarding::backdrop { background: rgb(0 0 0 / 75%); }
 .notification-onboarding h2 { margin-top: 0; }
 .notification-onboarding p { font-size: 14px; line-height: 1.6; }
+.notification-benefits { padding-left: 20px; font-size: 14px; line-height: 1.6; }
+.notification-benefits li + li { margin-top: 8px; }
+.notification-onboarding .angle-actions { display: flex; flex-direction: column; }
+.notification-onboarding button.auth-submit { background: #e5eaf3; color: #101a29; font-weight: 700; }
 .notification-onboarding button { min-height: 44px; padding: 10px 14px; border: 1px solid #526b90; border-radius: 6px; background: #202e43; color: #e5eaf3; cursor: pointer; }
 .notification-onboarding button:disabled { opacity: .6; cursor: wait; }
 .notification-onboarding button:focus-visible { outline: 2px solid #9db9df; outline-offset: 3px; }
@@ -1790,3 +1794,12 @@ td:first-child { color: #828c84; }
 .results-panel .gai-results-download > button { justify-self: start; }
 .results-panel .gai-results-download small { color: var(--muted); line-height: 1.5; }
 .results-panel .gai-results-download img { display: block; width: min(100%, 380px); height: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; }
+.notification-game-card { position: relative; }
+.notification-game-card > .notification-bell-control { position: absolute; top: 5px; right: 6px; z-index: 2; }
+.notification-game-card .wire-board-status { padding-right: 44px; }
+.notification-bell-control { position: relative; }
+.notification-bell { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid #526b90; border-radius: 50%; background: #101a29; color: #e5eaf3; cursor: pointer; }
+.notification-bell:disabled { opacity: .6; cursor: wait; }
+.notification-bell:focus-visible { outline: 2px solid #9db9df; outline-offset: 2px; }
+.notification-bell-message { position: absolute; top: 48px; right: 0; width: min(280px, 75vw); padding: 12px; background: #101a29; color: #e5eaf3; border: 1px solid #526b90; border-radius: 8px; z-index: 20; font-size: 13px; }
+.notification-bell-message p { margin: 0 0 8px; }

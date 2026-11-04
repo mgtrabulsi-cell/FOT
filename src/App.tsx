@@ -1266,6 +1266,7 @@ function App() {
             </>}
           </div>
           <div className="heading-actions">
+            {view === 'Analyst' && <NotificationBell />}
             {view !== 'Profile' && view !== 'Gamewaire' && (view !== 'Analyst' || !!sessionUser) && (
               <>
                 {(view !== 'Wire' || displayedFeedFailure) && <span className={`feed-status${displayedFeedFailure ? ' feed-status-warning' : ''}`}>
@@ -1403,3 +1404,4 @@ function App() {
 }
 
 export default App;
+import NotificationBell from './NotificationBell';
