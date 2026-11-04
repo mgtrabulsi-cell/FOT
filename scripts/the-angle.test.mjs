@@ -125,6 +125,13 @@ test('Newest publications lead regardless of pending picks or later edits, witho
   assert.deepEqual(newestAnglesFirst([]), []);
 });
 
+test('Pinning an angle is a pin-only update and keeps the pin control 24px', () => {
+  const sql = readFileSync(new URL('../supabase/angle-pin.sql', import.meta.url), 'utf8');
+  assert.match(sql, /pinned_at is distinct from old\.pinned_at/);
+  assert.match(sql, /to_jsonb\(new\) - 'pinned_at' - 'updated_at'/);
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.angle-panel \.angle-pin-button \{ min-height: 24px/);
+});
 test('Angle feeds use pinned-then-newest ordering, with an explicitly linked story still leading', () => {
   const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
   assert.match(source, /\.\.\.\(visibleLinked \? \[visibleLinked\] : \[\]\),\s*\.\.\.orderedAngleFeed\(feedStories/);

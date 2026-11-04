@@ -48,8 +48,9 @@ export function WeeklyTracker({ report }: { report: BotReport }) {
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, [report.player.id, report.season, report.format, report.checkedAt, retry]);
   const week = history?.weeks.find(row => row.event_id === selected) ?? history?.weeks[0];
+  const settled = Boolean(week?.settled_at);
   const labels: Record<string, string> = { player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions' };
-  const markets = week ? [...new Set([...week.projections.map(row => row.market), ...Object.keys(week.actuals ?? {})])] : [];
+  const markets = week ? [...new Set([...week.projections.map(row => row.market), ...(settled ? Object.keys(week.actuals ?? {}) : [])])] : [];
   return <section className="gwb-weekly-tracker" aria-label={`${report.player.name} weekly projections and actual stats`}>
     <div className="gwb-weekly-heading"><h5>GamewAIre weekly tracker</h5>
       <button type="button" aria-expanded={past} onClick={() => setPast(value => !value)}>{past ? 'Hide past weeks' : 'Past Weeks'}</button></div>
@@ -62,11 +63,11 @@ export function WeeklyTracker({ report }: { report: BotReport }) {
     {error && <p role="alert" className="gwb-warning">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry weekly history</button></p>}
     {history?.issues.map(issue => <p key={issue} className="gwb-warning" role="status">{issue} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry stats</button></p>)}
     {week && <><p><b>Week {week.week} · {week.season}</b> · vs. {week.opponent}</p>
-      {markets.length > 0 && <div className="gwb-week-table"><table><thead><tr><th scope="col">Stat</th><th scope="col">GamewAIre estimate</th><th scope="col">Actual · Final</th></tr></thead>
+      {markets.length > 0 && <div className="gwb-week-table"><table><thead><tr><th scope="col">Stat</th><th scope="col">GamewAIre estimate</th>{settled && <th scope="col">Actual · Final</th>}</tr></thead>
         <tbody>{markets.map(market => <tr key={market}><th scope="row">{labels[market] ?? market}</th>
           <td>{week.projections.find(stat => stat.market === market)?.estimate ?? 'Not recorded'}</td>
-          <td>{week.actuals?.[market] ?? (week.settled_at ? 'Not reported' : 'Awaiting final')}</td></tr>)}</tbody></table></div>}
-      <p className="gwb-muted">{week.forecast_at ? `Pregame forecast saved ${stamp(week.forecast_at)}. Locked at kickoff; actuals use verified final ESPN box scores.` : 'No forecast was saved before this game. We do not recreate old projections with hindsight.'}</p>
+          {settled && <td>{week.actuals?.[market] ?? 'Not reported'}</td>}</tr>)}</tbody></table></div>}
+      <p className="gwb-muted">{week.forecast_at ? `Pregame forecast saved ${stamp(week.forecast_at)}. Locked at kickoff${settled ? '; actuals use verified final ESPN box scores.' : '.'}` : 'No forecast was saved before this game. We do not recreate old projections with hindsight.'}</p>
       {week.projections.some(stat => stat.learning?.active) && <p className="gwb-muted">Includes a bounded adjustment validated against later settled games. Accuracy is not guaranteed.</p>}
     </>}
     {!loading && !error && !week && <p className="gwb-muted">No saved forecasts for this season yet. Verified pregame estimates are archived when a player is analyzed.</p>}
@@ -81,7 +82,7 @@ function PropLab({ report }: { report: BotReport }) {
         {projection.basis === 'current-season' && projection.estimate !== null && <small className="gwb-muted">Current-season fallback · {projection.playerGames} recorded games · Available role limits applied</small>}
         {projection.limitedData && projection.estimate !== null && <small className="gwb-muted">Limited-data estimate · {projection.playerGames} player / {projection.defenseGames} opponent games</small>}
         {projection.role && <small className="gwb-muted">{projection.role.source === 'depth-chart' ? `ESPN depth chart · ${report.player.position} depth ${projection.role.rank}` : `Recent usage rank ${projection.role.rank} at ${report.player.position} · Not a confirmed depth chart`}</small>}
-        {projection.defenseRank != null && <small className="gwb-muted">Opponent {report.player.position} yardage allowance · #{projection.defenseRank} of 32 (1 = fewest)</small>}
+        {projection.defenseRank != null && <small className="gwb-muted">Opponent {report.player.position} yardage allowance · #{projection.defenseRank} of 32</small>}
         {projection.evidence && <small className="gwb-muted">Matchup: {projection.evidence.matchup} · Forecast confidence: uncalibrated
           {projection.evidence.usage ? ` · ${projection.evidence.usage.trend} ${projection.evidence.usage.label.toLowerCase()}` : ''}</small>}
         <p>{projection.explanation}</p></div>)}</>}

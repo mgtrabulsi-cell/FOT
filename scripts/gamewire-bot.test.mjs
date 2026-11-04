@@ -387,6 +387,9 @@ test('Player analysis validates reports, is available to members and has no chat
   assert.doesNotMatch(page, /status\?\.canAnalyze && <GamewireBot/);
   const ui = readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8');
   assert.match(ui, /aria-expanded=/); assert.match(ui, /Search-only player analysis/); assert.match(ui, /role="alert"/);
+  assert.doesNotMatch(ui, /1 = fewest/);
+  assert.match(ui, /const settled = Boolean\(week\?\.settled_at\)/);
+  assert.match(ui, /\{settled && <th scope="col">Actual · Final<\/th>\}/);
   assert.match(ui, /controller\.current\?\.abort/);
   assert.doesNotMatch(ui, /gwb-compose|gwb-question|gwb-followups|botTopic|setMessages|setQuestion/);
 });
