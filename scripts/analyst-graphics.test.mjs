@@ -6,7 +6,7 @@ import ts from 'typescript';
 import { angleSportRecords } from '../src/services/theAngle.ts';
 import { isParlaySubject } from '../src/services/parlayGraphic.ts';
 import * as jsxRuntime from 'react/jsx-runtime';
-const compile = path => ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'),
+const compile = path => ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8').replaceAll('import.meta.env.BASE_URL', JSON.stringify('/')),
   { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const recordContext = vm.createContext({ exports: {}, require: name => name.includes('theAngle') ? { angleSportRecords } : {} });
 vm.runInContext(compile('../src/services/analystResultsGraphic.ts'), recordContext);
@@ -32,18 +32,28 @@ test('Empty records show no invented top sports or win rate; Combo is not a spor
   assert.equal(sections.length, 1); assert.equal(sections[0].wins, 2);
   assert.equal(recordSections([])[0].hitRate, null);
 });
-function renderer({ noBlob = false, imageError = false } = {}) {
+function renderer({ noBlob = false, imageError = false, stadiumError = false } = {}) {
   const texts = [], lines = [], images = [], crops = [], fills = [];
-  const ctx = new Proxy({ measureText: text => ({ width: text.length * (parseFloat(ctx.font.split(' ')[1]) || 20) * .5 }),
-    fillText: (text, x, y) => texts.push({ text, x, y }), moveTo: (...point) => lines.push(point),
+  const ctx = new Proxy({ measureText: text => {
+    const size = Number(/([\d.]+)px/.exec(ctx.font)?.[1]) || 20, width = text.length * size * .5;
+    return { width, actualBoundingBoxLeft: ctx.textAlign === 'center' ? width / 2 : 0,
+      actualBoundingBoxRight: ctx.textAlign === 'center' ? width / 2 : width,
+      actualBoundingBoxAscent: size * .75, actualBoundingBoxDescent: size * .2 };
+  },
+    fillText: (text, x, y) => texts.push({ text, x, y, font: ctx.font, bounds: ctx.measureText(text) }), moveTo: (...point) => lines.push(point),
     drawImage: (...args) => images.push(args), fillRect: (...args) => fills.push(args),
-    createLinearGradient: () => ({ addColorStop() {} }) }, { get: (target, key) => key in target ? target[key] : () => {} });
+    createLinearGradient: () => ({ addColorStop() {} }), createRadialGradient: () => ({ addColorStop() {} }) }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(noBlob ? null : new Blob(['png'], { type: 'image/png' })) };
-  const context = vm.createContext({ exports: {}, crypto, Blob, Error, document: { createElement: () => canvas },
-    require: name => name.endsWith('/parlayGraphic') ? { isParlaySubject } : name.endsWith('/parlayGraphicImage') ? {
+  let style;
+  const context = vm.createContext({ exports: {}, crypto, Blob, Error, setTimeout, clearTimeout,
+    Image: class { naturalWidth = 1024; naturalHeight = 1536; set src(value) { if (value) { if (stadiumError) this.onerror(); else this.onload(); } } },
+    document: { createElement: () => canvas, fonts: { load: async () => [{}], check: () => true } },
+    require: name => name.endsWith('/betGraphicStyle') ? style : name.endsWith('/parlayGraphic') ? { isParlaySubject } : name.endsWith('/parlayGraphicImage') ? {
       loadGraphicImage: async url => { if (imageError) throw new Error('Image could not load'); return { url, naturalWidth: 300, naturalHeight: 200 }; },
       drawGraphicPortrait: (...args) => crops.push(args),
     } : ({ loadGamewireGraphicAssets: async () => ({ naturalWidth: 1536, naturalHeight: 1024 }) }) });
+  vm.runInContext(compile('../src/services/betGraphicStyle.ts'), context);
+  style = context.exports;
   vm.runInContext(compile('../src/services/bestBetGraphic.ts'), context);
   return { ...context.exports, texts, lines, canvas, images, crops, fills };
 }
@@ -69,7 +79,7 @@ test('Legacy drafts restore with images enabled; selected image snapshots are va
   for (const invalid of [{ ...participant, type: 'other' }, { ...participant, subject: { ...participant.subject, image: 'javascript:bad' } }])
     assert.throws(() => r.readBestBetGraphic({ ...draft, entries: [{ ...draft.entries[0], participant: invalid }] }), /invalid/);
 });
-test('One to three straight exports shrink to their pick count with larger text, while every count stays in bounds', async () => {
+test('One to eight straight exports use identical 150px rows and count-sized canvases without clipping', async () => {
   for (let count = 1; count <= 8; count++) {
     const r = renderer(), draft = { title: 'BEST BETS', subtitle: '', entries: Array.from({ length: count }, (_, i) => ({
       id: String(i), sport: 'NFL', selection: `Straight ${i} Over 60 receiving yards`, odds: '-110', result: 'pending',
@@ -78,51 +88,106 @@ test('One to three straight exports shrink to their pick count with larger text,
     assert.equal(r.canvas.height, r.bestBetGraphicHeight(count) * 2);
     if (count <= 3) assert.ok(r.canvas.height < 2700);
     assert.ok(r.texts.every(row => row.y > 0 && row.y < r.canvas.height / 2));
-    assert.equal(r.fills.filter(args => args[0] === 70 && args[2] === 940 && args[3] === 2).length, count - 1, 'Visible divider between every pair of straights');
+    assert.equal(r.texts.filter(row => row.text.startsWith('Straight ')).length, count);
+    for (let i = 0; i < count; i++) {
+      const selection = r.texts.find(row => row.text.startsWith(`Straight ${i}`));
+      assert.equal(selection.x, 252);
+      assert.equal(selection.y, 315 + i * 150);
+      const odds = r.texts.filter(row => row.text === '-110')[i];
+      assert.equal(odds.x, 994);
+      assert.equal(odds.y, 335 + i * 150);
+    }
   }
 });
-test('Player photos use the shared portrait crop, team logos stay contained, and image failures are explicit', async () => {
+test('Missing stadium art blocks export explicitly and the original background is precached for offline graphics', async () => {
+  const r = renderer({ stadiumError: true }), draft = r.newBestBetGraphic();
+  draft.entries[0].selection = 'Over 50 yards';
+  await assert.rejects(r.renderBestBetGraphic(draft), /stadium background could not load/);
+  assert.match(readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8'), /'bet-stadium-night\.png'/);
+});
+test('Best Bet exports never load player photos or team logos, including legacy drafts', async () => {
   const r = renderer(), draft = { title: 'BEST BETS', subtitle: '', entries: [
     { id: '1', sport: 'NFL', selection: 'Over 60 receiving yards', odds: '-110', result: 'pending', participant },
     { id: '2', sport: 'NFL', selection: 'Moneyline', odds: '+150', result: 'pending', participant: { ...participant, type: 'team' } },
   ] };
   await r.renderBestBetGraphic(draft);
-  assert.equal(r.crops.length, 1);
-  assert.equal(r.images.length, 3, 'Brand logo, team badge and contained team subject');
-  assert.ok(r.texts.some(row => row.text.includes('Player / NFL')));
-  await assert.rejects(renderer({ imageError: true }).renderBestBetGraphic(draft), /Image could not load/);
+  assert.equal(r.crops.length, 0);
+  assert.equal(r.images.length, 2, 'Only the stadium background and GameWire brand are drawn');
+  assert.ok(r.texts.some(row => row.text === 'Player'));
+  await renderer({ imageError: true }).renderBestBetGraphic(draft);
   const textOnly = renderer({ imageError: true });
   await textOnly.renderBestBetGraphic({ ...draft, images: false });
-  assert.equal(textOnly.crops.length, 0); assert.equal(textOnly.images.length, 1);
+  assert.equal(textOnly.crops.length, 0); assert.equal(textOnly.images.length, 2);
 });
-test('Eight portrait rows keep two-line selections above their dividers and outside the result marks', async () => {
+test('Best Bet matches the brand-style font with lighter medium-bold names and selections', async () => {
+  const r = renderer();
+  await r.renderBestBetGraphic({ title: 'BEST BETS', subtitle: 'Tonight', entries: [
+    { id: '1', sport: 'NBA', selection: 'Over 25.5 points', odds: '-110', result: 'pending', participant },
+  ] });
+  assert.match(r.texts.find(row => row.text === 'BEST BETS').font, /^italic 700 .*"DM Sans"/);
+  assert.match(r.texts.find(row => row.text === 'GAME').font, /^italic 700 .*"DM Sans"/);
+  assert.match(r.texts.find(row => row.text === 'Player').font, /^italic 600 .*"DM Sans"/);
+  assert.match(r.texts.find(row => row.text === 'Over 25.5 points').font, /^italic 600 .*"DM Sans"/);
+  assert.match(r.texts.find(row => row.text === 'Tonight').font, /^italic 600 .*"DM Sans"/);
+});
+test('Both banner titles are optically centered inside the same compact inset frame', async () => {
+  for (const title of ['BEST BETS', 'PARLAY']) {
+    const r = renderer(), draft = r.newBestBetGraphic();
+    draft.title = title; draft.entries[0].selection = 'Over 25.5 points';
+    await r.renderBestBetGraphic(draft);
+    const label = r.texts.find(row => row.text === title), bounds = label.bounds;
+    const left = label.x - bounds.actualBoundingBoxLeft, right = label.x + bounds.actualBoundingBoxRight;
+    const top = label.y - bounds.actualBoundingBoxAscent, bottom = label.y + bounds.actualBoundingBoxDescent;
+    assert.equal((left + right) / 2, 847.5);
+    assert.ok(Math.abs((top + bottom) / 2 - 84) < .001);
+    assert.ok(left > 697 && right < 998, 'Lettering stays within the angled frame');
+    assert.ok(top > 40 && bottom < 128);
+  }
+});
+test('League captions and row sport labels are centered; default caption contains only leagues', async () => {
+  const r = renderer(), draft = r.newBestBetGraphic();
+  draft.entries = ['NBA', 'NFL'].map((sport, index) => ({
+    id: String(index), sport, selection: 'Over 25.5 points', odds: '', result: 'pending',
+  }));
+  await r.renderBestBetGraphic(draft);
+  const caption = r.texts.find(row => row.text === 'NBA / NFL');
+  assert.equal(caption.x, 540);
+  assert.ok(Math.abs(caption.y + (caption.bounds.actualBoundingBoxDescent - caption.bounds.actualBoundingBoxAscent) / 2 - 205) < .001);
+  for (let index = 0; index < 2; index++) {
+    const label = r.texts.find(row => row.text === draft.entries[index].sport);
+    assert.equal(label.x, 140);
+    assert.ok(Math.abs(label.y + (label.bounds.actualBoundingBoxDescent - label.bounds.actualBoundingBoxAscent) / 2 - (325 + 150 * index)) < .001);
+  }
+  assert.ok(!r.texts.some(row => /demonstration picks/i.test(row.text)));
+});
+test('Eight name-only rows keep two-line selections above their dividers and outside result marks', async () => {
   const r = renderer(), draft = { title: 'BEST BETS', subtitle: '', entries: Array.from({ length: 8 }, (_, i) => ({
     id: String(i), sport: 'NFL', selection: `Pick${i} over receiving yards plus rushing yards against the opponent this week with exact line 125.5`,
     odds: '-110', result: 'pending', participant,
   })) };
   await r.renderBestBetGraphic(draft);
   for (let i = 0; i < 8; i++) {
-    const first = r.texts.findIndex(row => row.text.includes(`Pick${i}`)), top = 318 + i * 97.5;
+    const first = r.texts.findIndex(row => row.text.includes(`Pick${i}`)), top = 250 + i * 150;
     const firstLine = r.texts[first], secondLine = r.texts[first + 1];
-    assert.ok(firstLine.x >= 74 + 57.5 + 24);
-    assert.ok(firstLine.y > top && firstLine.y < top + 77.5);
-    assert.ok(secondLine.y > firstLine.y && secondLine.y < top + 77.5);
+    assert.equal(firstLine.x, 252);
+    assert.ok(firstLine.y > top + 55 && firstLine.y < top + 130);
+    assert.ok(secondLine.y > firstLine.y && secondLine.y < top + 130);
   }
 });
 test('Best Bet export fits eight independent straights, distinguishes pending from settled and exports high resolution', async () => {
   const r = renderer(), draft = { title: 'NFL BEST BETS', subtitle: 'Week 9 / Sunday 1 PM ET',
     entries: Array.from({ length: 8 }, (_, i) => ({ id: String(i), sport: 'NFL', selection: `Player ${i} Over 60 receiving yards`, odds: '-110', result: i === 0 ? 'hit' : i === 1 ? 'miss' : 'pending' })) };
   assert.equal((await r.renderBestBetGraphic(draft)).type, 'image/png');
-  assert.equal(r.canvas.width, 2160); assert.equal(r.canvas.height, 2700);
+  assert.equal(r.canvas.width, 2160); assert.equal(r.canvas.height, 3280);
   assert.ok(r.texts.some(row => row.text === '1 / 2 STRAIGHTS HIT'));
-  assert.ok(r.texts.every(row => row.y > 0 && row.y <= 1325));
+  assert.ok(r.texts.every(row => row.y > 0 && row.y < 1640));
   for (let i = 0; i < 8; i++) {
     const row = r.texts.find(row => row.text.includes(`Player ${i}`));
-    assert.ok(row.y >= 318 + i * 97.5 && row.y < 318 + (i + 1) * 97.5 - 8);
+    assert.ok(row.y >= 250 + i * 150 && row.y < 250 + (i + 1) * 150);
   }
-  assert.equal(r.lines.length, 3, 'Only settled rows draw result marks');
   const pending = renderer(); await pending.renderBestBetGraphic({ ...draft, entries: draft.entries.map(row => ({ ...row, result: 'pending' })) });
-  assert.equal(pending.lines.length, 0);
+  assert.equal(r.texts.filter(row => row.text === 'HIT' || row.text === 'MISS').length, 2);
+  assert.equal(pending.texts.filter(row => row.text === 'HIT' || row.text === 'MISS').length, 0);
   assert.ok(pending.texts.some(row => row.text === '8 BEST BETS'));
   assert.ok(!pending.texts.some(row => /STRAIGHTS HIT/.test(row.text)));
   await assert.rejects(renderer({ noBlob: true }).renderBestBetGraphic(draft), /could not export/);

@@ -7,8 +7,8 @@ import type { BestBetSubject } from './services/bestBetGraphic';
 import { readGraphicPhoto } from './services/graphicPhoto';
 
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Player / team names could not load. Retry.';
-export default function BestBetSubjectPicker({ sport, value, onChoose, children }: {
-  sport: string; value?: BestBetSubject; onChoose: (sport: RosterSport, value?: BestBetSubject) => void; children?: ReactNode;
+export default function BestBetSubjectPicker({ sport, value, onChoose, children, allowPhotos = true }: {
+  sport: string; value?: BestBetSubject; onChoose: (sport: RosterSport, value?: BestBetSubject) => void; children?: ReactNode; allowPhotos?: boolean;
 }) {
   const [open, setOpen] = useState(false), [league, setLeague] = useState<RosterSport>(isRosterSport(sport) ? sport : 'NFL');
   const [teams, setTeams] = useState<ParlayTeam[]>([]), [season, setSeason] = useState(0), [teamId, setTeamId] = useState('');
@@ -47,21 +47,21 @@ export default function BestBetSubjectPicker({ sport, value, onChoose, children 
   };
   return <div className="best-bet-participant">
     {value && <div className="best-bet-subject">
-      {value.subject.image && <img src={value.subject.image} alt="" />}
+      {allowPhotos && value.subject.image && <img src={value.subject.image} alt="" />}
       <strong>{value.subject.name}</strong>
-      {!value.subject.image && <small>No photo attached. Use Add photo to insert your own artwork; nothing is auto-filled.</small>}
-      <label className="best-bet-photo">{value.subject.image ? 'Replace photo' : 'Add photo'}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => {
+      {allowPhotos && !value.subject.image && <small>No photo attached. Use Add photo to insert your own artwork; nothing is auto-filled.</small>}
+      {allowPhotos && <label className="best-bet-photo">{value.subject.image ? 'Replace photo' : 'Add photo'}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => {
         const file = event.target.files?.[0];
         event.target.value = '';
         if (!file) return;
         void readGraphicPhoto(file).then(photo => onChoose(league, { ...value, subject: { ...value.subject, image: photo } }))
           .catch(cause => window.alert(cause instanceof Error ? cause.message : 'The photo could not be added. Choose another image.'));
-      }} /></label>
-      {value.subject.image && <button type="button" onClick={() => onChoose(league, { ...value, subject: { ...value.subject, image: '' } })}>Remove photo</button>}
+      }} /></label>}
+      {allowPhotos && value.subject.image && <button type="button" onClick={() => onChoose(league, { ...value, subject: { ...value.subject, image: '' } })}>Remove photo</button>}
       <button type="button" onClick={() => onChoose(league, undefined)}>Remove player / team</button>
     </div>}
     <details open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{value ? 'Change' : 'Add'} player / team name</summary>
-      <p>Choose NBA, NFL or NHL players / teams, or UEFA Champions League teams. This fills the name and card colors only; attach your own photo with Add photo. Your bet text stays editable below.</p>
+      <p>Choose NBA, NFL or NHL players / teams, or UEFA Champions League teams. This fills the name and card colors only.{allowPhotos ? ' Attach your own photo with Add photo.' : ' This template does not include photos.'} Your bet text stays editable below.</p>
       <div className="parlay-fields">
         <label>League<select value={league} onChange={event => {
           if (isRosterSport(event.target.value)) {

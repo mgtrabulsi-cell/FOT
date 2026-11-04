@@ -74,14 +74,14 @@ test('Manual legs support any sport, free-text selections, draft restoration and
   assert.throws(() => readParlayGraphic({ ...g, legs: [{ ...custom, sport: 'x'.repeat(33) }] }), /invalid/);
   assert.throws(() => readParlayGraphic({ ...g, legs: [{ ...custom, type: 'player' }] }), /invalid/);
 });
-test('Manual selections render offline with readable initials and exact selection text', async () => {
+test('Manual selections render with sport labels and exact selection text', async () => {
   const r = renderer(), manual = newManualParlayLeg();
   const g = { ...newParlayGraphic(), legs: [
     { ...manual, sport: 'College Football', subject: { ...manual.subject, name: 'Ohio State', teamName: 'vs Michigan' }, market: 'Spread -6.5' },
     { ...newManualParlayLeg(), sport: 'UFC', subject: { ...manual.subject, name: 'Test Fighter' }, market: 'Win by submission' },
   ] };
   await r.render(g);
-  for (const text of ['OS', 'TF', 'Ohio State', 'SPREAD -6.5', 'WIN BY SUBMISSION', 'College Football  /  vs Michigan', 'UFC  /  MANUAL SELECTION']) assert.ok(r.texts.includes(text), text);
+  for (const text of ['COLLEGE', 'FOOTBALL', 'UFC', 'Ohio State', 'Spread -6.5', 'Win by submission']) assert.ok(r.texts.includes(text), text);
 });
 test('Angle serialization retains the editable template and generated attachment pointer', () => {
   const g = { ...graphic(), image_path: 'author/parlay.png' };
@@ -97,16 +97,34 @@ test('Angle serialization retains the editable template and generated attachment
 function renderer() {
   const source = readFileSync(new URL('../src/services/parlayGraphicImage.ts', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const texts = [];
-  const ctx = new Proxy({ measureText: (text) => ({ width: text.length * 12 }), fillText: (text) => texts.push(text),
-    createLinearGradient: () => ({ addColorStop() {} }) }, { get: (target, key) => key in target ? target[key] : () => {} });
+  const texts = [], typography = [];
+  const ctx = new Proxy({ measureText: (text) => ({ width: text.length * (Number(/([\d.]+)px/.exec(ctx.font)?.[1]) || 24) * .5 }), fillText: (text) => {
+    texts.push(text); typography.push({ text, font: ctx.font, ink: ctx.fillStyle });
+  },
+    createLinearGradient: () => ({ stops: [], addColorStop(offset, color) { this.stops.push([offset, color]); } }), createRadialGradient: () => ({ addColorStop() {} }) }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: (callback) => callback(new Blob(['png'], { type: 'image/png' })) };
+  let style;
   const context = vm.createContext({ exports: {}, Blob, Map, Promise, setTimeout, clearTimeout,
-    document: { createElement: () => canvas }, Image: class { constructor() { throw new Error('Offline mode cannot fetch images'); } },
-    require: () => ({ parlayGraphicError, parlayLegLabel }) });
+    document: { createElement: () => canvas, fonts: { load: async () => [{}], check: () => true } }, Image: class { naturalWidth = 1024; naturalHeight = 1536; set src(value) { if (value) this.onload(); } },
+    require: name => name.endsWith('/betGraphicStyle') ? style : ({ parlayGraphicError, parlayLegLabel, loadGamewireGraphicAssets: async () => ({ naturalWidth: 1536, naturalHeight: 1024 }) }) });
+  const styleSource = readFileSync(new URL('../src/services/betGraphicStyle.ts', import.meta.url), 'utf8').replaceAll('import.meta.env.BASE_URL', JSON.stringify('/'));
+  vm.runInContext(ts.transpileModule(styleSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context);
+  style = context.exports;
   vm.runInContext(code, context);
-  return { render: context.exports.renderParlayGraphic, crop: context.exports.parlayPortraitCrop, canvas, texts };
+  return { render: context.exports.renderParlayGraphic, crop: context.exports.parlayPortraitCrop, canvas, texts, typography };
 }
+test('Parlay matches Best Bet with lighter slanted text and bright metallic white, preserving the red WIRE brand', async () => {
+  const r = renderer();
+  await r.render({ ...graphic(), images: false });
+  assert.ok(r.typography.length > 10);
+  for (const row of r.typography) {
+    const heading = ['GAME', 'WIRE', 'PARLAY'].includes(row.text);
+    assert.match(row.font, heading ? /^italic 700 .*"DM Sans"/ : /^italic 600 .*"DM Sans"/, row.text);
+    const colors = row.ink.stops.map(([, color]) => color);
+    assert.ok(colors.includes(row.text === 'WIRE' ? '#9e0c18' : '#ffffff'), row.text);
+    if (row.text !== 'WIRE') assert.ok(colors.includes('#c5d0df'), row.text);
+  }
+});
 test('Portrait framing trims transparent padding and fills the circle with a square head-and-shoulders crop', () => {
   const { crop } = renderer();
   for (const [width, height, bounds] of [[350, 254, [70, 30, 280, 250]], [600, 436, [100, 60, 500, 430]]]) {
@@ -129,9 +147,9 @@ test('Name-only renderer works offline, expands for eight legs and prints every 
     g.legs = Array.from({ length: count }, (_, i) => leg({ subject: { ...subject, id: String(i), name: `Player ${i}` } }));
     await r.render(g);
     assert.equal(r.canvas.width, 1080);
-    assert.ok(r.canvas.height >= 1350);
+    assert.equal(r.canvas.height, 440 + count * 150);
     for (let i = 0; i < count; i++) assert.ok(r.texts.includes(`Player ${i}`));
-    assert.ok(r.texts.includes('20+ POINTS'));
+    assert.ok(r.texts.includes('20+ Points'));
     assert.ok(!r.texts.some((t) => /^\+\d+$/.test(t)));
   }
 });

@@ -44,10 +44,9 @@ export default function BestBetGraphicBuilder({ userId }: { userId: string }) {
         <label>Title<input maxLength={48} value={value.title} onChange={event => update({ ...value, title: event.target.value })} /></label>
         <label>Slate / date / time (optional)<input maxLength={100} placeholder="NFL Week 9 / Sunday / 1 PM ET" value={value.subtitle} onChange={event => update({ ...value, subtitle: event.target.value })} /></label>
       </div>
-      <label className="parlay-checkbox"><input type="checkbox" checked={value.images !== false} onChange={event => update({ ...value, images: event.target.checked })} />Include selected player faces and team logos</label>
-      <small>Choose images per straight below. Turn off images for a text-only export without portrait requests.</small>
+      <small>Electric-blue, name-only cards using GameWire fonts. No player faces, photos, or team logos appear in Best Bet exports.</small>
       {value.entries.map((row, index) => <fieldset key={row.id}><legend>Straight bet {index + 1}</legend>
-        <BestBetSubjectPicker sport={row.sport} value={row.participant} onChoose={(sport, participant) => edit(row.id, { ...(participant ? { sport } : {}), participant })}>
+        <BestBetSubjectPicker sport={row.sport} value={row.participant} allowPhotos={false} onChoose={(sport, participant) => edit(row.id, { ...(participant ? { sport } : {}), participant })}>
         <div className="parlay-fields">
         <label>American odds (optional)<input maxLength={12} placeholder="-110" value={row.odds} onChange={event => edit(row.id, { odds: event.target.value })} /></label>
         <label className="parlay-wide">{row.participant ? `Bet for ${row.participant.subject.name}` : 'Bet / selection'}<textarea maxLength={200}
