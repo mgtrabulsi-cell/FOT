@@ -25,6 +25,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"].\/services\/teamComparisonRanks.ts['"]/g, `from '${new URL('../src/services/teamComparisonRanks.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/playerInitials['"]/g, `from '${new URL('../src/services/playerInitials.ts', import.meta.url)}'`)
   .replace(/import OfflineImage from ['"].\/OfflineImage['"];/, 'const OfflineImage = () => null;')
+  .replace(/import NotificationBell from ['"].\/NotificationBell['"];/, 'const NotificationBell = () => null;')
   .replace(/import TeamAbbrMark from ['"].\/TeamAbbrMark['"];/, 'const TeamAbbrMark = () => null;')
   .replace(/import \{ useSwipeBack \} from ['"].\/useSwipeBack['"];/, 'const useSwipeBack = () => ({ current: null });')
   .replace(/import \{ ScoreTicker \} from ['"].\/ScoreTicker.tsx['"];/, 'const ScoreTicker = ({ value }) => value;')
