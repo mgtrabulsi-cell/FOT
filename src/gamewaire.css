@@ -317,10 +317,8 @@
 .gai-published-date::-webkit-calendar-picker-indicator { opacity: 1; cursor: pointer; min-width: 22px; min-height: 22px; padding: 5px; background-color: #163d5c; border-radius: 5px; }
 .gai-home-hero {
   min-height: 220px; padding: clamp(18px, 2vw, 28px); grid-template-columns: minmax(0, 1fr);
-  background: radial-gradient(ellipse at 72% -10%, #69829b44, transparent 38%),
-    radial-gradient(ellipse at 105% 50%, #41546955, transparent 44%),
-    radial-gradient(ellipse at 50% 100%, #283e5544, transparent 48%),
-    linear-gradient(110deg, #060d19 30%, #101d2c 65%, #050b14);
+  background: linear-gradient(90deg, #020812eb 0%, #020812b3 48%, #02081240 100%),
+    url('/bet-stadium-night.png') center 82% / cover no-repeat, #030b13;
 }
 .gai-home-hero::after { inset: auto 0 0; width: 100%; height: 35%; transform: none; border: 0; background: linear-gradient(0deg, #030b13, transparent); }
 .gai-home-hero .gai-hero-copy { max-width: min(58%, 610px); }
@@ -328,27 +326,6 @@
 .gai-home-hero .gai-hero-copy p { display: block; font-style: italic; font-size: 19px; color: #c4cfde; }
 .gai-home-hero .gai-hero-copy small { display: block; margin-top: 10px; }
 .gai-panel .gai-latest-link { display: inline-flex; align-items: center; gap: 14px; margin-top: 18px; padding: 12px 20px; background: #c51938; border-color: #ff3657; color: #fff; font-weight: 700; }
-.gai-stadium-brand { position: absolute; right: 0; top: 0; width: 48%; height: 100%; pointer-events: none; z-index: 1; opacity: .58; }
-.gai-stadium-mark { position: absolute; inset: 0; }
-.gai-stadium-base, .gai-stadium-pulse-glow, .gai-stadium-pulse-sweep { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; user-select: none; }
-.gai-stadium-base {
-  mix-blend-mode: lighten; opacity: .82;
-  -webkit-mask-image: radial-gradient(ellipse 62% 58% at 58% 46%, #000 42%, transparent 78%);
-  mask-image: radial-gradient(ellipse 62% 58% at 58% 46%, #000 42%, transparent 78%);
-}
-.gai-stadium-pulse-glow { mix-blend-mode: screen; filter: blur(8px) saturate(1.15) brightness(1.1); opacity: .14; animation: splash-beat 1.4s ease-in-out infinite; }
-.gai-stadium-pulse-sweep {
-  mix-blend-mode: screen; opacity: .45; filter: brightness(1.35) saturate(1.2);
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 38%, #000 50%, transparent 62%, transparent 100%);
-  mask-image: linear-gradient(90deg, transparent 0%, transparent 38%, #000 50%, transparent 62%, transparent 100%);
-  -webkit-mask-size: 280% 100%; mask-size: 280% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-  animation: splash-sweep 2.4s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .gai-stadium-pulse-glow, .gai-stadium-pulse-sweep { animation: none; }
-  .gai-stadium-pulse-glow { opacity: .2; }
-  .gai-stadium-pulse-sweep { display: none; }
-}
 .gai-home-hero .gai-hero-features { display: grid; width: 100%; max-width: 58%; padding: 10px 0; }
 .gai-home-hero .gai-hero-features b { display: none; }
 .gai-home-hero .gai-hero-features span { font-size: 12px; }
@@ -383,7 +360,6 @@
   .gai-home-hero { min-height: 210px; padding: 18px; }
   .gai-home-hero h2 { font-size: clamp(26px, 6vw, 36px); max-width: 100%; }
   .gai-home-hero .gai-hero-copy { max-width: 100%; }
-  .gai-stadium-brand { right: -10%; top: 8%; width: 78%; height: 92%; opacity: .32; }
   .gai-home-hero .gai-hero-copy p { font-size: 15px; }
   .gai-home-hero .gai-hero-features { display: none; }
   .gai-panel .gai-record-card { gap: 7px 12px; padding: 12px; }

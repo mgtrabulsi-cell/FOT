@@ -381,13 +381,6 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <p>Data. Matchups. A clearer view.</p>
         <small>Compare real prices and model estimates. Verified data. No promise of profit.</small>
         <button type="button" className="gai-latest-link" onClick={openPublishedPicks}>View published picks <ArrowRight size={19} aria-hidden="true" /></button></div>
-      <div className="gai-stadium-brand" aria-hidden="true">
-        <div className="gai-stadium-mark">
-          <img className="gai-stadium-base" src={`${import.meta.env.BASE_URL}gamewire-mark.png`} alt="" />
-          <img className="gai-stadium-pulse-glow" src={`${import.meta.env.BASE_URL}gamewire-pulse.png`} alt="" />
-          <img className="gai-stadium-pulse-sweep" src={`${import.meta.env.BASE_URL}gamewire-pulse.png`} alt="" />
-        </div>
-      </div>
       <div className="gai-hero-features" aria-label="Analysis features">
         <div><b>01</b><span>Sportsbook<br />lines &amp; prices</span></div>
         <div><b>02</b><span>Statistical<br />analysis</span></div>

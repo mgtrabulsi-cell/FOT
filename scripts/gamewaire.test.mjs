@@ -658,7 +658,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(empty, /GameWire player analysis/);
   assert.match(empty, /Admin weekly ranking editor/);
   assert.match(empty, /Download results graphic/);
-  assert.match(empty, /class="gai-stadium-brand" aria-hidden="true"/, 'Decorative stadium branding does not add a second page heading');
+  assert.doesNotMatch(empty, /gai-stadium-/, 'The stadium background has no logo, pulse or artificial floodlight overlays');
   assert.match(empty, /ANALYSIS ENGINE/);
   assert.match(empty, /class="gai-dashboard"/);
   assert.match(empty, /aria-label="Game filters"/);
@@ -757,6 +757,8 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(css, /\.gai-dashboard \{ grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /font-size: 16px/);
   assert.match(css, /\.gai-hero-features b \{ display: none; \}/);
+  assert.match(css, /url\('\/bet-stadium-night\.png'\)/);
+  assert.doesNotMatch(css, /gai-stadium-|gai-wire-travel/);
   assert.match(css, /grid-template-columns: minmax\(0, 1fr\) 94px/);
   const pickSummary = admin.slice(admin.indexOf('<summary class="gai-pick-summary"'), admin.indexOf('</summary>', admin.indexOf('<summary class="gai-pick-summary"')));
   assert.doesNotMatch(pickSummary, /<input|<button/, 'The expandable pick is separate from the admin publication checkbox');
