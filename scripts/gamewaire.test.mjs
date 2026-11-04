@@ -597,7 +597,8 @@ test('GamewAIre navigation is ordered correctly and AI styling is bold red witho
 });
 
 test('GamewAIre renders provider setup, real reports and complete metrics without fabricated empty-state picks', async () => {
-  const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
+  const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8')
+    .replaceAll('import.meta.env.BASE_URL', JSON.stringify('/'));
   const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
     .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
     .replace(/import GamewaireBestBetsDownload from [^;]+;/, 'const GamewaireBestBetsDownload=()=>"Download Instagram Best Bets";')
@@ -1319,6 +1320,7 @@ test('Team-only evidence never fetches player rosters or player game logs', asyn
 });
 for (const sport of ['NBA', 'NFL']) test(`${sport} review buttons publish freely, refresh only team markets, and request players only explicitly`, async () => {
   const source = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8')
+    .replaceAll('import.meta.env.BASE_URL', JSON.stringify('/'))
     .replace('function ReviewGameLean(', 'export function ReviewGameLean(');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const calls = [], refreshed = [];
