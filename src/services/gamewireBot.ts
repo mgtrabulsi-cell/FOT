@@ -114,9 +114,24 @@ function validDirectory(value: unknown): value is BotDirectory {
  return list(row.players, validPlayer) && Number.isInteger(row.season) && Number.isInteger(row.week)
    && Number.isInteger(row.seasonType) && typeof row.checkedAt === 'string' && list(row.warnings, (item) => typeof item === 'string');
 }
+const directorySnapshotKey = 'gamewire-bot-directory-v1';
+export function readDirectorySnapshot(): BotDirectory | null {
+ try {
+  const storage = globalThis.localStorage;
+  const raw = storage?.getItem(directorySnapshotKey);
+  if (!raw) return null;
+  const parsed: unknown = JSON.parse(raw);
+  return validDirectory(parsed) ? parsed : null;
+ } catch { return null; }
+}
+export function writeDirectorySnapshot(directory: BotDirectory) {
+ try { globalThis.localStorage?.setItem(directorySnapshotKey, JSON.stringify(directory)); }
+ catch { /* Private mode or quota should not block search. */ }
+}
 export async function loadBotDirectory(signal: AbortSignal) {
  const data = await request<unknown>({ action: 'directory' }, signal);
  if (!validDirectory(data)) throw new Error('The Bot returned an invalid NFL directory. Retry player search.');
+ writeDirectorySnapshot(data);
  return data;
 }
 export async function loadBotReport(playerId: string, format: BotFormat, signal: AbortSignal) {

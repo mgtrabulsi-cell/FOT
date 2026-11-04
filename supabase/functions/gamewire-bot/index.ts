@@ -73,6 +73,20 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       if (written.error) throw new Error('Could not save the verified bot response. Retry rather than use an untracked snapshot.');
       return { data, cached: false };
     };
+    const waitUntil = (task: Promise<unknown>) => {
+      const runtime = (globalThis as typeof globalThis & { EdgeRuntime?: { waitUntil?: (work: Promise<unknown>) => void } }).EdgeRuntime;
+      if (typeof runtime?.waitUntil === 'function') runtime.waitUntil(task);
+      else void task;
+    };
+    const writeCache = async (key: string, data: unknown, milliseconds: number) => {
+      const written = await admin.from('gamewire_bot_cache').upsert({ cache_key: key, payload: data, expires_at: new Date(Date.now() + milliseconds).toISOString() });
+      if (written.error) throw new Error('Could not save the verified bot response. Retry rather than use an untracked snapshot.');
+    };
+    const directoryLooksValid = (value: unknown): value is BotDirectory => {
+      const row = object(value);
+      return Array.isArray(row.players) && row.players.length > 0 && Number.isInteger(row.season) && Number.isInteger(row.week)
+        && Number.isInteger(row.seasonType);
+    };
     const feedWarnings: string[] = [];
     const criticalFeed = async (path: string, label: string) => {
       try { return await publicJSON(`${site}/${path}`, fetcher); }
@@ -100,7 +114,9 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       if (week.season !== weekTarget.season || week.week !== weekTarget.week || week.seasonType !== weekTarget.seasonType)
         throw new Error('NFL schedule did not match the current GameWire week. Retry the bot.');
     }
-    const directory = await cached<BotDirectory>(`nfl:directory:v2:${week.season}`, 15 * 60_000, async () => {
+    const directoryKey = `nfl:directory:v2:${week.season}`;
+    const directoryTtl = 12 * 60 * 60_000;
+    const loadDirectoryPayload = async (): Promise<BotDirectory> => {
       const raw = object(await criticalFeed('teams?limit=100', 'NFL team directory'));
       const league = object(array(object(array(raw.sports)[0]).leagues)[0]);
       const teams = array(league.teams).map((row) => {
@@ -108,7 +124,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       });
       if (teams.length !== 32 || teams.some((team) => !/^\d{1,2}$/.test(team.id) || !team.name || !team.abbr)) throw new Error('The NFL team directory is incomplete.');
       const players: BotDirectory['players'] = [], positions: Record<string, string> = {}, warnings: string[] = [];
-      for (let start = 0; start < teams.length; start += 8) await Promise.all(teams.slice(start, start + 8).map(async (team) => {
+      for (let start = 0; start < teams.length; start += 16) await Promise.all(teams.slice(start, start + 16).map(async (team) => {
         try {
           const roster = await criticalFeed(`teams/${team.id}/roster?season=${week.season}`, `${team.abbr} roster`);
           players.push(...readBotRoster(roster, team)); Object.assign(positions, readBotPositions(roster));
@@ -121,7 +137,27 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       if (!players.length) throw new Error('No verified NFL players could be loaded. Retry search.');
       return { ...week, players: [...new Map(players.map((row) => [row.id, row])).values()].sort((a, b) => a.name.localeCompare(b.name)),
         positions, warnings: [...warnings, ...feedWarnings], checkedAt: new Date().toISOString() };
-    });
+    };
+    const savedDirectory = await admin.from('gamewire_bot_cache').select('payload, expires_at').eq('cache_key', directoryKey).maybeSingle();
+    if (savedDirectory.error) throw new Error('Could not read the verified bot cache.');
+    const savedDirectoryRow = savedDirectory.data as { payload?: unknown; expires_at?: string } | null;
+    const savedDirectoryPayload = savedDirectoryRow?.payload;
+    const directoryFresh = !!savedDirectoryRow?.expires_at && Date.parse(savedDirectoryRow.expires_at) > Date.now();
+    let directory: { data: BotDirectory; cached: boolean };
+    if (directoryLooksValid(savedDirectoryPayload)) {
+      directory = { data: savedDirectoryPayload, cached: true };
+      if (!directoryFresh) waitUntil((async () => {
+        try {
+          if (!await claim()) return;
+          await writeCache(directoryKey, await loadDirectoryPayload(), directoryTtl);
+        } catch (cause) { console.error('Bot directory background refresh failed', cause); }
+      })());
+    } else {
+      if (!await claim()) throw new Error('Player analysis refresh limit reached (60 per account per hour). Cached breakdowns remain available; retry after the hour changes.');
+      const data = await loadDirectoryPayload();
+      await writeCache(directoryKey, data, directoryTtl);
+      directory = { data, cached: false };
+    }
     if (input.action === 'directory') return json({ ...directory.data, ...week, warnings: [...new Set([...directory.data.warnings, ...feedWarnings])], cached: directory.cached, mode: 'verified-preview', aiEnabled: false });
     if (editingRankings) {
       const scope = rankingScope(input);

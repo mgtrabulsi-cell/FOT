@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ArrowLeftRight, ArrowUp, BarChart3, Bot, BrainCircuit, ChevronDown, RefreshCw, Search, Send, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
-import { loadBotDirectory, loadBotHistory, loadBotReport } from './services/gamewireBot';
+import { loadBotDirectory, loadBotHistory, loadBotReport, readDirectorySnapshot } from './services/gamewireBot';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import type { BotDirectory, BotFormat, BotPlayer, BotReport, PlayerWeekHistory } from './services/gamewireBot';
 import './gamewire-bot.css';
@@ -121,7 +121,7 @@ function Breakdown({ report, onClear, busy }: { report: BotReport; onClear: () =
 }
 function Method({ report }: { report: BotReport }) {
   return <details className="gwb-method"><summary>Sources &amp; how this analysis works</summary>
-      <p>Data checked {stamp(report.checkedAt)}. Workload snapshots may be cached for five minutes; player search for fifteen minutes. Regular-season appearances only.</p>
+      <p>Data checked {stamp(report.checkedAt)}. Workload snapshots may be cached for five minutes; player search is reused for twelve hours and can start from a saved list on this device. Regular-season appearances only.</p>
       <p>Without published editorial guidance: Start requires QB 25+ pass attempts; RB 15+ touches; WR 7+ targets (8 in standard); TE 5+ targets (6 in standard). Flex: RB 8+ touches, WR 4+ targets, TE 3+ targets. Lower usage indicates Sit; fewer than three appearances, a 21-day data gap or uncertain availability indicates Monitor. Published weekly graphics use their Must Start/Must Sit verdict. A matching top-12 QB/TE or top-24 RB/WR ranking plus Start-level workload also supports Must Start.</p>
       <p>Yardage and reception estimates use current-season completed games only, including individual box-score stats when player logs or position-group samples are incomplete. If recent matchup data cannot be verified, a labeled current-season completed-game average with available role limits supplies the estimate. Up to 18 completed games per team are checked for season context. Prior seasons are not used. One or two samples and older workload are labeled limited-data. ESPN depth-chart order, or clearly labeled recent usage when unavailable, caps backup opportunity without treating usage as a confirmed starting role. Verified bottom-four WR/TE yardage defenses can support a wider upside cap only with at least six measured opportunity samples and no material recent volume decline. The rank itself adds no multiplier; scoring-defense rank never triggers it. Matching weekly rankings contribute up to +/-5% as separately identified editorial context. No verified current-season production means no supportable numeric estimate. These are experimental estimates, not calibrated predictions or sportsbook lines. Missing data is never invented.</p>
       <p>The existing estimate is preserved as the foundation. The evidence layer blends 60% available season / 40% recent positional allowance, replacing rather than repeating the existing allowance contribution. Comparable-defense residuals require at least three same-team, similar-volume games with verified pre-kickoff defensive samples, are shrunk and capped at +/-5%, and exclude direct-opponent/contender samples already used. Usage trends are descriptive, not an extra multiplier. Yardage defensive rank never boosts reception counts. No current odds feed or calibrated probability model is connected.</p>
@@ -239,21 +239,24 @@ function MobileComparison({ reports, players, onClear, busy }: { reports: [BotRe
   </div>;
 }
 export default function GamewireBot() {
-  const [open, setOpen] = useState(false), [directory, setDirectory] = useState<BotDirectory | null>(null);
+  const [open, setOpen] = useState(false), [directory, setDirectory] = useState<BotDirectory | null>(() => readDirectorySnapshot());
   const [search, setSearch] = useState(''), [format, setFormat] = useState<BotFormat>('ppr'), [selected, setSelected] = useState<BotPlayer | null>(null);
   const [report, setReport] = useState<BotReport | null>(null);
   const [busy, setBusy] = useState<'directory' | 'report' | null>(null), [error, setError] = useState('');
   const [comparing, setComparing] = useState(false), [activeSlot, setActiveSlot] = useState<PlayerSlot>(0);
   const [secondPlayer, setSecondPlayer] = useState<BotPlayer | null>(null), [secondReport, setSecondReport] = useState<BotReport | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const directoryController = useRef<AbortController | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const lastAttempt = useRef<'directory' | 'report'>('directory');
   const lastReports = useRef<OutlookRequest[]>([]);
   const analysisPanel = useRef<HTMLDivElement | null>(null);
   const scrollToAnalysis = useRef(false);
+  const warmedDirectory = useRef(false);
   const busyRef = useRef(busy); busyRef.current = busy;
   const openRef = useRef(open); openRef.current = open;
   const comparingRef = useRef(comparing); comparingRef.current = comparing;
+  const directoryRef = useRef(directory); directoryRef.current = directory;
   useEffect(() => {
     if (!busy && scrollToAnalysis.current && (report || secondReport)) {
       const frame = window.requestAnimationFrame(() => {
@@ -270,13 +273,22 @@ export default function GamewireBot() {
       return () => window.cancelAnimationFrame(frame);
     }
   }, [busy, report, secondReport]);
-  useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
-  async function loadPlayers() {
-    controller.current?.abort(); const next = new AbortController(); controller.current = next;
-    const timer = window.setTimeout(() => next.abort(), 70_000); lastAttempt.current = 'directory'; setBusy('directory'); setError('');
+  useEffect(() => () => {
+    controller.current?.abort(); controller.current = null;
+    directoryController.current?.abort(); directoryController.current = null;
+  }, []);
+  async function loadPlayers(options?: { silent?: boolean }) {
+    const keepSearch = Boolean(options?.silent && directoryRef.current);
+    directoryController.current?.abort(); const next = new AbortController(); directoryController.current = next;
+    const timer = window.setTimeout(() => next.abort(), keepSearch ? 25_000 : 70_000); lastAttempt.current = 'directory';
+    if (keepSearch) { if (busyRef.current === 'directory') setBusy(null); }
+    else { setBusy('directory'); setError(''); }
     try { const data = await loadBotDirectory(next.signal); if (!next.signal.aborted) setDirectory(data); }
-    catch (cause) { if (controller.current === next) setError(next.signal.aborted ? 'Player search timed out. Retry loading the NFL directory.' : cause instanceof Error ? cause.message : 'Player search failed. Retry.'); }
-    finally { window.clearTimeout(timer); if (controller.current === next) setBusy(null); }
+    catch (cause) {
+      if (directoryController.current === next && !keepSearch)
+        setError(next.signal.aborted ? 'Player search timed out. Retry loading the NFL directory.' : cause instanceof Error ? cause.message : 'Player search failed. Retry.');
+    }
+    finally { window.clearTimeout(timer); if (directoryController.current === next && !keepSearch) setBusy(null); }
   }
   async function loadOutlooks(requests: OutlookRequest[], nextFormat = format) {
     controller.current?.abort(); const next = new AbortController(); controller.current = next;
@@ -307,7 +319,10 @@ export default function GamewireBot() {
   }
   useEffect(() => {
     if (!open) return;
-    return subscribeForegroundRefresh(() => { if (!busyRef.current) void loadPlayers(); });
+    return subscribeForegroundRefresh(() => {
+      if (busyRef.current === 'report') return;
+      void loadPlayers({ silent: Boolean(directoryRef.current) });
+    });
   }, [open]);
   useEffect(() => {
     if (!open || busy || !directory?.week) return;
@@ -344,8 +359,15 @@ export default function GamewireBot() {
     && (!comparing || player.id !== (activeSlot === 0 ? secondPlayer : selected)?.id)).slice(0, 10) ?? [] : [];
   function openBot() {
     setOpen(true);
-    if (!directory && !busy) void loadPlayers();
+    if (!directory && !busy) {
+      warmedDirectory.current = true;
+      void loadPlayers();
+    } else if (directory && !warmedDirectory.current && busy !== 'report') {
+      warmedDirectory.current = true;
+      void loadPlayers({ silent: true });
+    }
   }
+  const searchLocked = busy === 'report' || (busy === 'directory' && !directory);
   return <section className="gwb" aria-label="GamewAIre player analysis">
     <header className="gwb-hero">
       <div className="gwb-hero-main">
@@ -369,7 +391,7 @@ export default function GamewireBot() {
         </div>
         <form className="gwb-hero-search" onSubmit={(event) => {
           event.preventDefault(); openBot();
-          if (matches.length === 1 && !busy) void analyze(matches[0]);
+          if (matches.length === 1 && !searchLocked) void analyze(matches[0]);
           else searchInput.current?.focus();
         }}>
           <Search size={22} aria-hidden="true" /><label className="gwb-sr-only" htmlFor="gwb-player-search">Find an NFL player</label>
@@ -379,11 +401,11 @@ export default function GamewireBot() {
           {search && <button type="button" disabled={busy === 'report'} aria-label="Clear player search" onClick={() => {
             setSearch(''); searchInput.current?.focus();
           }}><X size={18} aria-hidden="true" /></button>}
-          <button type="submit" disabled={!!busy} aria-label="Search NFL players"><Send size={23} aria-hidden="true" /></button>
+          <button type="submit" disabled={searchLocked} aria-label="Search NFL players"><Send size={23} aria-hidden="true" /></button>
         </form>
         {open && query.length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL players">
-          {busy === 'directory' && <p role="status">Loading verified NFL players...</p>}
-          {matches.map((player) => <button key={player.id} disabled={!!busy} onClick={() => { void analyze(player); }}><span>{player.name}</span><small>{player.teamAbbr} · {player.position}</small><ArrowUp size={15} aria-hidden="true" /></button>)}
+          {busy === 'directory' && !directory && <p role="status">Loading verified NFL players...</p>}
+          {matches.map((player) => <button key={player.id} disabled={searchLocked} onClick={() => { void analyze(player); }}><span>{player.name}</span><small>{player.teamAbbr} · {player.position}</small><ArrowUp size={15} aria-hidden="true" /></button>)}
           {!matches.length && directory && <p>No matching player in the loaded rosters. Try a surname or refresh search.</p>}
         </div>}
       </div>
@@ -422,7 +444,7 @@ export default function GamewireBot() {
       </div>}
       {comparing && <p className="gwb-muted" role="status">Search above for Player {activeSlot + 1} · {formats.find((row) => row.value === format)?.label} scoring.</p>}
       {directory?.warnings.map((warning) => <p className="gwb-warning" key={warning}>{warning}</p>)}
-      {busy && <p className="gwb-loading" role="status"><Sparkles size={16} aria-hidden="true" />{busy === 'directory' ? 'Loading verified NFL rosters. The first search can take a moment...' : 'Checking weekly player outlooks...'}</p>}
+      {busy && <p className="gwb-loading" role="status"><Sparkles size={16} aria-hidden="true" />{busy === 'directory' ? (directory ? 'Updating verified NFL rosters...' : 'Loading verified NFL rosters. The first search can take a moment...') : 'Checking weekly player outlooks...'}</p>}
       {error && <div className="gwb-error" role="alert"><p>{error}</p><button disabled={!!busy} onClick={() => {
         if (lastAttempt.current === 'report' && lastReports.current.length) void loadOutlooks(lastReports.current.filter(({ slot }) => comparing || slot === 0));
         else void loadPlayers();

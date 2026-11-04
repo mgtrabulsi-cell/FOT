@@ -123,9 +123,9 @@ test('Missing weekly games, kickoff lock, postseason and transferred player iden
 
 const endpointCode = ts.transpileModule(readFileSync(new URL('../supabase/functions/gamewire-bot/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], forecastRows = [], finalSummary = null, upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false, scoreboard = board, weekBoards = {} } = {}) {
+function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, expiredDirectory = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], forecastRows = [], finalSummary = null, upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false, scoreboard = board, weekBoards = {} } = {}) {
   const calls = [], writes = [], rpcs = [], queries = [], cache = new Map(), expires = new Date(now + 3600000).toISOString();
-  if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expires });
+  if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expiredDirectory ? new Date(now - 1000).toISOString() : expires });
   const client = {
     auth: { getUser: async () => ({ data: { user: user ? { id: allowed ? 'owner' : 'member', is_anonymous: anonymous } : null }, error: null }) },
     rpc: async (name, args) => { rpcs.push(name); if (name === 'gamewire_bot_save_rankings') { writes.push(name); return { data: new Date(now).toISOString(), error: null }; }
@@ -167,7 +167,9 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     if (href.includes('/roster')) return Response.json(roster);
     throw new Error(`Unexpected upstream: ${href}`);
   };
+  const background = [];
   const context = vm.createContext({ exports: {}, Error, Response, Request, URL, AbortSignal, console: { error() {} },
+    EdgeRuntime: { waitUntil(task) { background.push(task); } },
     Date: class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } },
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
@@ -182,7 +184,7 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
     },
   });
   vm.runInContext(endpointCode, context);
-  return { calls, writes, rpcs, queries, cache,
+  return { calls, writes, rpcs, queries, cache, background,
     run: (body = { action: 'breakdown', playerId: '123', format: 'ppr' }, auth = true) => context.exports.handleGamewireBot(new Request('https://test/bot', {
       method: 'POST', headers: auth ? { Authorization: 'Bearer fixture' } : {}, body: JSON.stringify(body),
     }), env, fetcher) };
@@ -338,6 +340,14 @@ test('Cold player search loads the real NFL roster directory, with no odds reque
   assert.equal(data.week, 8); assert.equal(data.aiEnabled, false);
   assert.ok(api.writes.every((table) => table === 'gamewire_bot_cache'));
 });
+test('Expired player directory is returned immediately and roster rebuild waits for background refresh', async () => {
+  const api = endpoint({ expiredDirectory: true }), response = await api.run({ action: 'directory' }), data = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(data.players.length, 1);
+  assert.equal(data.cached, true);
+  assert.equal(api.calls.filter((href) => href.includes('/roster')).length, 0);
+  assert.equal(api.background.length, 1);
+});
 test('A primary week-feed failure can use ESPN’s equivalent public host, with explicit provenance', async () => {
   const api = endpoint({ primaryWeekFail: true });
   const response = await api.run({ action: 'directory' }), data = await response.json();
@@ -381,7 +391,7 @@ test('Player analysis validates reports, is available to members and has no chat
   assert.doesNotMatch(ui, /gwb-compose|gwb-question|gwb-followups|botTopic|setMessages|setQuestion/);
 });
 
-function botWelcomeHarness({ directoryError = false, players = [player], loadReport = (id, format) => ({ ...report({ format }), player: players.find((row) => row.id === id) }) } = {}) {
+function botWelcomeHarness({ directoryError = false, players = [player], snapshot = false, loadReport = (id, format) => ({ ...report({ format }), player: players.find((row) => row.id === id) }) } = {}) {
   const state = [], refs = [], effects = [], scrolls = [];
   const reportRequests = [], timers = new Map();
   let stateIndex = 0, refIndex = 0, directoryCalls = 0, reportCalls = 0;
@@ -409,6 +419,8 @@ function botWelcomeHarness({ directoryError = false, players = [player], loadRep
       useEffect(callback) { effects.push(callback); },
     };
     if (name === './services/gamewireBot') return {
+      readDirectorySnapshot: () => snapshot ? { players, warnings: [], week: 8, season: 2026, seasonType: 2, checkedAt: new Date(now).toISOString() } : null,
+      writeDirectorySnapshot() {},
       async loadBotDirectory() { directoryCalls++; if (directoryError) throw new Error('Roster feed unavailable'); return { players, warnings: [], week: 8, season: 2026, seasonType: 2 }; },
       async loadBotReport(id, format, signal) { reportCalls++; reportRequests.push({ id, format }); return loadReport(id, format, signal); },
     };
@@ -484,6 +496,17 @@ test('Matching players sit directly below search, before scoring and comparison 
   assert.equal(children[formIndex + 1].props.id, 'gwb-player-results');
   assert.equal(ui.find(ui.byClass(tree, 'gwb-panel'), (node) => node.props?.id === 'gwb-player-results'), undefined);
   assert.equal(ui.find(children[formIndex + 1], (node) => node.type === 'button').props.children[0].props.children, player.name);
+});
+test('Saved player directory lets search run before the roster refresh finishes', async () => {
+  const ui = botWelcomeHarness({ snapshot: true });
+  let tree = ui.render();
+  ui.find(tree, (node) => node.props?.id === 'gwb-player-search').props.onChange({ target: { value: 'Test Runner' } });
+  tree = ui.render();
+  const results = ui.byClass(tree, 'gwb-search-results');
+  assert.equal(ui.find(results, (node) => node.type === 'button').props.children[0].props.children, player.name);
+  assert.equal(ui.find(results, (node) => node.type === 'button').props.disabled, false);
+  assert.equal(ui.find(results, (node) => node.props?.role === 'status'), undefined);
+  assert.equal(ui.counts().directoryCalls, 1, 'a saved list still warms in the background without blocking search');
 });
 test('Player search opens the lab, analyzes a unique match and keeps the report when closed', async () => {
   const ui = botWelcomeHarness();
