@@ -308,3 +308,23 @@
 @media (max-width: 360px) {
   .sports-theme .nba-box :is(th, td):nth-child(n+2) { font-size: 10px; }
 }
+@media (min-width: 761px) and (max-width: 1599px) {
+  .sports-theme .the-wire-container { gap: 10px; }
+  .sports-theme .wire-controls, .sports-theme .wire-game-wheel { gap: 6px; }
+  .sports-theme .wire-wheel-strip { gap: 6px; padding: 2px 2px 4px; }
+  .sports-theme .wire-wheel-card { min-width: 124px; gap: 1px; }
+  .sports-theme .nba-detail-navigation { margin: 6px 0; }
+  .sports-theme .nba-wheel-heading { margin: 6px 3px 4px; }
+  .sports-theme .nba-wheel-heading strong { font-size: 14px; }
+  .sports-theme .nba-wheel-heading span { font-size: 12px; }
+  .sports-theme .nba-game-wheel { gap: 8px; padding: 4px 3px 6px; }
+  .sports-theme .nba-game-wheel::-webkit-scrollbar { height: 6px; }
+  .sports-theme .nba-game-wheel button.nba-game-option { flex-basis: 185px; padding: 10px; gap: 5px; }
+  .sports-theme .nba-game-wheel button.is-selected { padding: 9px; }
+  .sports-theme .nba-game-option > small { font-size: 12px; }
+  .sports-theme .nba-game-option > span b { font-size: 15px; }
+  .sports-theme .nba-game-option > span strong { font-size: 20px; }
+  .sports-theme .nba-game-option .team-mark { width: 28px; height: 28px; font-size: 9px; }
+  .sports-theme .nba-wheel-selection { padding-top: 4px; font-size: 11px; }
+  .sports-theme .nba-matchup.matchup-scoreboard { margin-top: 6px; }
+}

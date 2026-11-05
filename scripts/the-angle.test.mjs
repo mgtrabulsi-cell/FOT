@@ -139,6 +139,44 @@ test('Angle feeds use pinned-then-newest ordering, with an explicitly linked sto
   assert.match(source, /scrollIntoView/);
   assert.doesNotMatch(source, /All angles|Team matchups/);
 });
+test('Pinned posts expand and align on every Angle visit, without stealing linked-story or draft focus', () => {
+  const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
+  const code = ts.transpileModule(source.slice(source.indexOf('const autoExpandedPin ='), source.indexOf('const togglePin =')),
+    { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const run = new Function('useRef', 'useEffect', 'visible', 'pinnedId', 'storyId', 'editingPin', 'setExpandedPosts', 'window', 'document', code);
+  const ref = { current: null }, frames = new Map(), scrolls = [];
+  let deps, cleanup, expanded = [], nextFrame = 0, reduced = false;
+  const useEffect = (effect, next) => {
+    if (deps && next.every((value, i) => value === deps[i])) return;
+    cleanup?.(); deps = next; cleanup = effect();
+  };
+  const browser = { requestAnimationFrame: fn => { frames.set(++nextFrame, fn); return nextFrame; },
+    cancelAnimationFrame: id => frames.delete(id), matchMedia: () => ({ matches: reduced }) };
+  const document = { getElementById: id => ({ scrollIntoView: options => scrolls.push({ id, ...options }) }) };
+  const render = ({ visible = true, pin = 'pinned', story = null, editing = false } = {}) =>
+    run(() => ref, useEffect, visible, pin, story, editing, next => { expanded = next(expanded); }, browser, document);
+  const flush = () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn()); };
+  render({ visible: false }); flush();
+  assert.equal(scrolls.length, 0);
+  render(); flush();
+  assert.deepEqual(expanded, ['pinned']);
+  assert.deepEqual(scrolls[0], { id: 'angle-pinned', block: 'start', behavior: 'smooth' });
+  render(); flush();
+  assert.equal(scrolls.length, 1, 'Same-visit refreshes do not move the reader');
+  render({ visible: false });
+  render(); flush();
+  assert.equal(scrolls.length, 2, 'Reopening the same pinned post scrolls again');
+  render({ visible: false });
+  render({ story: 'linked' }); flush();
+  render({ editing: true }); flush();
+  assert.equal(scrolls.length, 2, 'Deep links and drafts keep their intended focus');
+  reduced = true;
+  render(); flush();
+  assert.equal(scrolls.at(-1).behavior, 'instant');
+  render({ pin: 'replacement' });
+  render({ visible: false }); flush();
+  assert.equal(scrolls.length, 3, 'Leaving cancels pending scrolls');
+});
 
 test('Multiline parlay legs survive save/read as one pick, one grade and one record entry', () => {
   const text = 'Pacers ML\nSpurs +5.5\nRockets team total over 110.5';

@@ -407,16 +407,19 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     ...orderedAngleFeed(feedStories.filter((row) => row.id !== visibleLinked?.id)),
   ];
   const pinnedId = news ? null : published.find((angle) => angle.pinned_at)?.id ?? null;
+  const editingPin = !!form || !!importedDraft;
   const autoExpandedPin = useRef<string | null>(null);
   useEffect(() => {
-    // The pinned post opens automatically once per pin so readers land on it expanded.
-    if (!pinnedId || autoExpandedPin.current === pinnedId) return;
+    if (!visible) { autoExpandedPin.current = null; return; }
+    if (!pinnedId || storyId || editingPin || autoExpandedPin.current === pinnedId) return;
     autoExpandedPin.current = pinnedId;
     setExpandedPosts((previous) => previous.includes(pinnedId) ? previous : [pinnedId, ...previous]);
-    window.requestAnimationFrame(() => {
-      document.getElementById(`angle-${pinnedId}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`angle-${pinnedId}`)?.scrollIntoView({ block: 'start',
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     });
-  }, [pinnedId]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [visible, pinnedId, storyId, editingPin]);
   const togglePin = async (angle: Angle) => {
     if (!supabase || busy) return;
     setBusy(true); setActionError('');

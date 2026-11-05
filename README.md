@@ -18,6 +18,10 @@ Automatic matchup-pick cards use a separate rank badge, aligned team/matchup tex
 
 Opening an NFL/NBA Wire game removes the GamewAIre sidebar/mobile picks dropdown until returning to the game list. On phones, the game wheel is a compact abbreviation-and-score strip without large team tiles or the extra selection footer; desktop cards retain their larger layout. Opening a game scrolls its detail navigation into view so the compact wheel and main scoreboard are near the top.
 
+Laptop widths (761–1599px) use moderately smaller game-wheel cards and tighter navigation/scoreboard spacing. Mobile sizing and the larger wide-desktop treatment remain unchanged.
+
+Each time The Angle is opened, its pinned post expands and scrolls to the top with a small safe-area-aware inset. Background refreshes do not repeatedly pull readers back to the pin. Explicitly linked stories and active/imported drafts take precedence, and reduced-motion preferences disable the smooth scroll.
+
 Mobile NBA player box scores size columns to the table viewport so 3PT is the final visible statistic in the initial view. Full player names, player-detail links and favorites remain available, with horizontal scrolling for steals and the remaining statistics. Desktop table sizing is unchanged.
 
 GamewAIre pick breakdowns share a selection heading, verified matchup/statistical narrative, model-versus-sportsbook probability comparison, and **GamewAIre Verdict** across pick cards, automatic scoreboard/sidebar selections, published bot props, and graphic exports. Prices are explicitly saved prices, not current quotes; probability edges are percentage points and exclude pushes when present. Missing efficiency, offensive-yardage or turnover data is never invented or described as a model input. The NBA matchup wheel uses larger high-contrast status/team/score text, an explicit viewing state, and a visible horizontal scrollbar; drag, swipe and keyboard selection remain available.

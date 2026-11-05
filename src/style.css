@@ -534,7 +534,7 @@ button { color: inherit; }
 .angle-pin-button:hover { color: #e5edf8; border-color: #5b708e; }
 .angle-pin-button.is-pinned { color: #ffb84d; border-color: #7a5b2b; background: #1d1810; }
 span.angle-pin-button { cursor: default; }
-.angle-card-pinned { border-color: #7a5b2b; scroll-margin-top: 88px; }
+.angle-card-pinned { border-color: #7a5b2b; scroll-margin-top: max(12px, env(safe-area-inset-top)); }
 .angle-card-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #a9bfdf; font: 10px var(--mono); }
 .angle-card h3 { margin: 0; font: 600 clamp(22px, 2.5vw, 26px)/1.35 var(--display); }
 .angle-card p { margin: 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
