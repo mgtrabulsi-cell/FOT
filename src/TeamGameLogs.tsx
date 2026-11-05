@@ -12,15 +12,17 @@ import type { FavoriteTarget, Game, NFLSkillPlayer, Team } from './services/spor
 
 type Props = {
   league: TeamLogLeague;
+  initialTeam?: Team;
+  initialSeason?: number;
   favorites: FavoriteTarget[];
   onToggleFavorite: (favorite: FavoriteTarget) => void;
   onOpenPlayer: (player: NFLSkillPlayer, team: Team) => void;
 };
 const phases = { 1: 'Preseason', 2: 'Regular season', 3: 'Playoffs' } as const;
 
-export default function TeamGameLogs({ league, favorites, onToggleFavorite, onOpenPlayer }: Props) {
-  const [team, setTeam] = useState<Team | null>(null);
-  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
+export default function TeamGameLogs({ league, initialTeam, initialSeason, favorites, onToggleFavorite, onOpenPlayer }: Props) {
+  const [team, setTeam] = useState<Team | null>(initialTeam ?? null);
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(initialSeason ?? null);
   const [game, setGame] = useState<Game | null>(null);
   const [search, setSearch] = useState('');
   const [directoryRetry, setDirectoryRetry] = useState(0), [gamesRetry, setGamesRetry] = useState(0);
@@ -37,6 +39,12 @@ export default function TeamGameLogs({ league, favorites, onToggleFavorite, onOp
   const season = selectedSeason ?? directory.data?.season;
   const key = team && season ? teamLogKey(league, team.id, season) : '';
   const entries = schedule.key === key ? schedule.entries : readRenderSnapshot('teamGameLog', key)?.entries ?? [];
+  const openTeamLog = (nextTeam: Team, nextSeason: number) => {
+    returnGame.current = null;
+    setTeam(nextTeam);
+    setSelectedSeason(nextSeason);
+    setGame(null);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -76,10 +84,10 @@ export default function TeamGameLogs({ league, favorites, onToggleFavorite, onOp
     <h2>{team?.name} · {teamSeasonLabel(league, game.seasonYear)}</h2>
     {league === 'NBA' ? <NBAExperience mode="wire" heading="Box score" games={[game]} status="ready" query="" favorites={favorites}
       onToggleFavorite={onToggleFavorite} onRetry={() => setGamesRetry(value => value + 1)}
-      initialGameId={game.id} openGameId={game.id} onBackToGames={() => setGame(null)} backLabel="Team game log" />
+      initialGameId={game.id} openGameId={game.id} onBackToGames={() => setGame(null)} backLabel="Team game log" onOpenTeamLog={openTeamLog} />
       : <TheWire games={[game]} query="" favorites={favorites} featuredFavoriteTeamId={team?.id ?? null}
         onToggleFavorite={onToggleFavorite} onOpenPlayer={onOpenPlayer} initialGameId={game.id} openGameId={game.id}
-        onBackToGames={() => setGame(null)} backLabel="Team game log" gameListLabel="NFL · SELECTED GAME" />}
+        onBackToGames={() => setGame(null)} backLabel="Team game log" gameListLabel="NFL · SELECTED GAME" onOpenTeamLog={openTeamLog} />}
   </div>;
 
   return <div className="team-game-logs" ref={root} tabIndex={-1}>
@@ -89,7 +97,7 @@ export default function TeamGameLogs({ league, favorites, onToggleFavorite, onOp
       <button type="button" className="wire-back-button" onClick={() => setTeam(null)}><ChevronLeft size={16} aria-hidden="true" />All {league} teams</button>
       <header className="team-log-heading"><TeamAbbrMark large abbr={team.abbr} name={team.name} color={team.color} /><div><span className="eyebrow">{league} TEAM GAME LOG</span><h2>{team.name}</h2></div>
         <label>Season<select aria-label={`${league} team game-log season`} value={season ?? ''} onChange={event => setSelectedSeason(Number(event.target.value))}>
-          {directory.data && Array.from({ length: directory.data.season - 2001 }, (_, index) => directory.data!.season - index).map(year =>
+          {season && Array.from({ length: Math.max(directory.data?.season ?? season, season) - 2001 }, (_, index) => Math.max(directory.data?.season ?? season, season) - index).map(year =>
             <option key={year} value={year}>{teamSeasonLabel(league, year)}</option>)}
         </select></label>
       </header>

@@ -490,6 +490,7 @@ function App() {
   const [storyOpenKey, setStoryOpenKey] = useState(0);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
   const [statHubMode, setStatHubMode] = useState<'Players' | 'Teams'>('Players');
+  const [teamLogTarget, setTeamLogTarget] = useState<{ league: 'NFL' | 'NBA'; team: Team; season: number } | null>(null);
   const teamLogsOpen = view === 'Players' && statHubMode === 'Teams';
   const [sportLeague, setSportLeague] = useState<'NFL' | 'NBA'>('NFL');
   const [selectedNBADate, setSelectedNBADate] = useState(nbaCalendarDate);
@@ -1215,6 +1216,14 @@ function App() {
     setView('Players');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  const openTeamGameLog = (league: 'NFL' | 'NBA', team: Team, season: number) => {
+    setTeamLogTarget({ league, team, season });
+    setSportLeague(league);
+    setWirePlayerCard(null);
+    setStatHubMode('Teams');
+    setView('Players');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const openWireTab = () => {
     const auto = findFeaturedNFLGame(games, topNFLFavoriteTeamId(favorites));
     if (auto) {
@@ -1384,7 +1393,7 @@ function App() {
           <WireWithPicks games={nbaGames} sport="NBA" userId={authUser?.id}>
           {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
           {wireTeams.notice && <p className="nfl-data-note" role="status">{wireTeams.notice}</p>}
-          <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setStatHubMode('Players'); setView('Players'); }} />
+          <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setStatHubMode('Players'); setView('Players'); }} onOpenTeamLog={(team, season) => openTeamGameLog('NBA', team, season)} />
           </WireWithPicks>
         ) : view === 'Wire' ? (
           <WireWithPicks games={games} sport="NFL" userId={authUser?.id}>
@@ -1406,15 +1415,16 @@ function App() {
             openGameId={notificationEventId ? `NFL:${notificationEventId}` : null}
             onSelectGame={setSelectedGameId}
             onOpenStatHub={openGamePlayers}
+            onOpenTeamLog={(team, season) => openTeamGameLog('NFL', team, season)}
             onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })}
           />}
           </WireWithPicks>
         ) : view === 'Den' ? (
           <TheDen league={sportLeague} activityDate={selectedNBADate} favorites={favorites.filter((favorite) => favorite.feedPath === (sportLeague === 'NBA' ? 'basketball/nba' : 'football/nfl'))} games={sportLeague === 'NBA' ? nbaGames : lockerRoomReady ? games : []} items={denHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={denHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={denHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={denHistory.loading} historyError={denHistory.error} signedIn={!!authUser} onRetryHistory={denHistory.retry} livePlayerGames={sportLeague === 'NBA' ? nbaGames.filter((game) => game.status === 'LIVE').length : livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
         ) : view === 'Players' ? (
-          statHubMode === 'Teams' ? <TeamGameLogs key={sportLeague} league={sportLeague} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })} />
+          statHubMode === 'Teams' ? <TeamGameLogs key={`${sportLeague}:${teamLogTarget?.league === sportLeague ? `${teamLogTarget.team.id}:${teamLogTarget.season}` : ''}`} league={sportLeague} initialTeam={teamLogTarget?.league === sportLeague ? teamLogTarget.team : undefined} initialSeason={teamLogTarget?.league === sportLeague ? teamLogTarget.season : undefined} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })} />
           : sportLeague === 'NBA'
-            ? <NBAExperience mode="stats" games={nbaGames} status={nbaStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} onSelectGame={setNBASelectedGameId} />
+            ? <NBAExperience mode="stats" games={nbaGames} status={nbaStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} onSelectGame={setNBASelectedGameId} onOpenTeamLog={(team, season) => openTeamGameLog('NBA', team, season)} />
             : <NFLPlayersDirectory games={games} scoreboardStatus={scoreboardStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
         ) : null}
         {(view === 'Wire' || view === 'Players') && wirePlayerCard && <NFLPlayerMiniWindow

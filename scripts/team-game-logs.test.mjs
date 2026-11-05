@@ -108,7 +108,7 @@ test('requests three phases on demand and scopes cache by team, league and seaso
   await assert.rejects(s.api.fetchTeamGameLog('NBA', '1', 2025, controller.signal, true), /abort/i);
 });
 
-for (const league of ['NBA', 'NFL']) test(`${league} navigation opens historical box score and returns to selected season`, async () => {
+for (const league of ['NBA', 'NFL']) for (const direct of [false, true]) test(`${league} ${direct ? 'direct team link' : 'directory'} opens historical box score and returns to selected season`, async () => {
   const s = service(), team = readTeam({ team: away });
   const entries = s.api.parseTeamGameLog(payload(), league, '1', 2025, 2);
   const slots = [], effects = [], requests = [];
@@ -136,7 +136,7 @@ for (const league of ['NBA', 'NFL']) test(`${league} navigation opens historical
   });
   vm.runInContext(compile('../src/TeamGameLogs.tsx', true), context);
   const render = async () => {
-    cursor = 0; tree = context.exports.default({ league, favorites: [], onToggleFavorite() {}, onOpenPlayer() {} });
+    cursor = 0; tree = context.exports.default({ league, ...(direct ? { initialTeam: team, initialSeason: 2024 } : {}), favorites: [], onToggleFavorite() {}, onOpenPlayer() {} });
     effects.splice(0).forEach(fn => fn()); await Promise.resolve();
   };
   const nodes = () => {
@@ -146,8 +146,13 @@ for (const league of ['NBA', 'NFL']) test(`${league} navigation opens historical
     visit(tree); return found;
   };
   await render(); await render();
-  assert.equal(requests.length, 0, 'No schedules loaded before team selection');
-  nodes().find(n => n.type === 'button').props.onClick();
+  if (direct) {
+    assert.equal(requests.at(-1)[1], team.id);
+    assert.equal(requests.at(-1)[2], 2024);
+  } else {
+    assert.equal(requests.length, 0, 'No schedules loaded before team selection');
+    nodes().find(n => n.type === 'button').props.onClick();
+  }
   await render(); await render();
   nodes().find(n => n.type === 'select').props.onChange({ target: { value: '2024' } });
   await render(); await render();
@@ -157,8 +162,14 @@ for (const league of ['NBA', 'NFL']) test(`${league} navigation opens historical
   const box = nodes().find(n => n.type === (league === 'NBA' ? './NBAExperience' : './TheWire'));
   assert.equal(box.props.openGameId, entries[0].game.id);
   assert.equal(box.props.backLabel, 'Team game log');
+  assert.equal(typeof box.props.onOpenTeamLog, 'function');
   box.props.onBackToGames(); await render();
   assert.equal(nodes().find(n => n.type === 'select').props.value, 2024);
+  nodes().find(n => n.props?.['data-team-log-game']).props.onClick(); await render();
+  nodes().find(n => n.type === (league === 'NBA' ? './NBAExperience' : './TheWire')).props.onOpenTeamLog(readTeam({ team: home }), 2025);
+  await render(); await render();
+  assert.equal(requests.at(-1)[1], '2');
+  assert.equal(nodes().find(n => n.type === 'select').props.value, 2025);
   nodes().find(n => n.props?.className === 'wire-back-button').props.onClick(); await render();
   assert.ok(nodes().some(n => n.props?.className === 'team-log-directory'));
 });

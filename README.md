@@ -6,6 +6,8 @@ Stat Hub's **Team Game Logs** tab supports NBA and NFL teams. Choose a team and 
 
 The Wire marks selected teams with a compact red, white-lettered **GamewAIre Pick** badge. The breakdown control remains below each selected matchup.
 
+Select either team's underlined name in an opened NFL or NBA matchup to jump directly to its game log for that matchup's season. Box-score team selectors still switch the displayed team as before. Historical matchup names also open the corresponding team's log without losing the season.
+
 NBA and NFL scoreboard cards on The Wire share card spacing and typography. NBA controls do not override the shared 44px circular notification bell, and NBA footer links do not add extra card height.
 
 Site interface copy uses provider-neutral data labels (including "Loading data...") rather than naming the feed provider. Feed URLs, source links, caching, and refresh behavior are unchanged.

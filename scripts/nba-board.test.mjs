@@ -24,6 +24,20 @@ const home = { id: '2', name: 'Boston Celtics', abbr: 'BOS', score: 99, record: 
 const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league: 'NBA', seasonYear: 2027,
   date: '2026-10-23T23:00:00Z', status: 'LIVE', period: 'Q4', clock: '1:00', away, home, venue: 'Arena' };
 
+test('NBA matchup team names open the matching team log and season without changing box-score tabs', () => {
+  const app = setup();
+  const opened = [];
+  app.props.onOpenTeamLog = (team, season) => opened.push([team.id, season]);
+  app.nodes().find(node => node.props?.['data-game-id']).props.onClick();
+  app.render();
+  const links = app.nodes().filter(node => node.props?.className === 'team-game-log-link');
+  assert.equal(links.length, 2);
+  links.forEach(link => link.props.onClick());
+  assert.deepEqual(opened, [[away.id, 2027], [home.id, 2027]]);
+  assert.ok(app.nodes().some(node => node.props?.['aria-label'] === 'Box score team'));
+  app.unmount();
+});
+
 function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = {}) {
   let cursor = 0, changed = false, tree;
   const slots = [], effects = [], requests = [], timers = new Map();

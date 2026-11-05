@@ -1343,6 +1343,9 @@ td:first-child { color: #828c84; }
 .wire-board-team-name b:has(.wire-team-pick-note) { flex-wrap: wrap; row-gap: 2px; overflow: visible; white-space: normal; }
 .wire-team-pick-note { max-width: 100%; padding: 3px 5px; border: 1px solid #e8414f; border-radius: 3px; background: #c62836; color: #fff; font: 800 9px/1.2 var(--display); letter-spacing: .3px; text-transform: uppercase; white-space: normal; }
 .team-game-logs { display: grid; gap: 16px; min-width: 0; }
+.wire-matchup-team-details button.team-game-log-link, .nba-experience button.team-game-log-link { min-height: 44px; max-width: 100%; padding: 2px 0; border: 0; border-radius: 2px; background: transparent; color: inherit; font: inherit; text-align: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: #7089ab; text-underline-offset: 4px; }
+.wire-matchup-team-details button.team-game-log-link:hover, .nba-experience button.team-game-log-link:hover { background: transparent; color: #fff; text-decoration-color: #f27780; }
+.team-game-log-link:focus-visible { outline: 2px solid #f27780; outline-offset: 3px; }
 .team-game-logs:focus { outline: none; }
 .team-game-logs > .wire-back-button { justify-self: start; }
 .team-log-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }

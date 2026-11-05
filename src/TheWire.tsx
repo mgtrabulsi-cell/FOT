@@ -49,6 +49,7 @@ type TheWireProps = {
   openGameId?: string | null;
   onSelectGame?: (gameId: string) => void;
   onOpenStatHub?: (game: Game) => void;
+  onOpenTeamLog?: (team: Team, season: number) => void;
   onBackToGames?: () => void;
   backLabel?: string;
   gameListLabel?: string;
@@ -278,7 +279,7 @@ function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
   );
 }
 
-export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onBackToGames, backLabel = 'All games', gameListLabel = 'NFL GAMES · THIS WEEK', onOpenPlayer, now }: TheWireProps) {
+export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenTeamLog, onBackToGames, backLabel = 'All games', gameListLabel = 'NFL GAMES · THIS WEEK', onOpenPlayer, now }: TheWireProps) {
   const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
   const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
@@ -1082,7 +1083,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 </div>
                 <div className="wire-matchup-team-details">
                   <b>{selectedGame.away.abbr}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.away.id && <span className="possession-football" role="img" aria-label={`${selectedGame.away.name} has possession`}>🏈</span>}</b>
-                  <h2>{selectedGame.away.name}</h2>
+                  <h2>{onOpenTeamLog ? <button type="button" className="team-game-log-link" aria-label={`View ${selectedGame.away.name} game log`} onClick={() => onOpenTeamLog(selectedGame.away, selectedGame.seasonYear)}>{selectedGame.away.name}</button> : selectedGame.away.name}</h2>
                   <small>{selectedGame.away.record || 'Away'}</small>
                 </div>
                 <div className="wire-matchup-score">
@@ -1145,7 +1146,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 </div>
                 <div className="wire-matchup-team-details text-right">
                   <b>{selectedGame.home.abbr}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.home.id && <span className="possession-football" role="img" aria-label={`${selectedGame.home.name} has possession`}>🏈</span>}</b>
-                  <h2>{selectedGame.home.name}</h2>
+                  <h2>{onOpenTeamLog ? <button type="button" className="team-game-log-link" aria-label={`View ${selectedGame.home.name} game log`} onClick={() => onOpenTeamLog(selectedGame.home, selectedGame.seasonYear)}>{selectedGame.home.name}</button> : selectedGame.home.name}</h2>
                   <small>{selectedGame.home.record || 'Home'}</small>
                 </div>
                 <div className="wire-matchup-mark-wrapper">

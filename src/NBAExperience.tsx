@@ -29,6 +29,7 @@ type Props = {
   onToggleFavorite: (favorite: FavoriteTarget) => void;
   onRetry: () => void;
   onOpenStatHub?: (gameId: string) => void;
+  onOpenTeamLog?: (team: Team, season: number) => void;
   initialGameId?: string | null;
   openGameId?: string | null;
   onSelectGame?: (id: string) => void;
@@ -346,7 +347,7 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
   </dialog>;
 }
 
-export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, openGameId, onSelectGame, onBackToGames, backLabel = 'All games', heading = 'The Wire' }: Props) {
+export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, onOpenTeamLog, initialGameId, openGameId, onSelectGame, onBackToGames, backLabel = 'All games', heading = 'The Wire' }: Props) {
   const [lastStatHub] = useState(readLastNBAStatHub);
   useEffect(() => { if (mode === 'stats' && lastStatHub) saveLastNBAStatHub(lastStatHub); }, [mode, lastStatHub]);
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
@@ -446,7 +447,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
       <small>{item.status === 'LIVE' ? `LIVE · ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'FINAL' : gameDate(item.date, true)}</small>
       {[item.away, item.home].map((side) => <span className={item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? 'is-loser' : undefined} key={side.id}><TeamAbbrMark abbr={side.abbr} color={side.color} name={side.name} /><b>{side.abbr}</b><strong>{item.status === 'UPCOMING' ? '—' : side.score}</strong></span>)}
     </button>)}</ScrollRow>{!visibleGames.length && <p>No matchups match your search. Player searches apply to the roster below.</p>}</>}
-    {game && showingDetails && <><div className="nba-matchup"><div className={awayLost ? 'is-loser' : undefined}><TeamAbbrMark large abbr={game.away.abbr} color={game.away.color} name={game.away.name} /><strong>{game.away.name}</strong><BackToBackBadge game={game} team={game.away} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.away)} favorites={favorites} toggle={onToggleFavorite} /></div><div className="nba-score" aria-live="polite"><b>{upcoming ? 'vs' : <><span className={awayLost ? 'is-loser' : undefined}>{awayScore}</span>{' – '}<span className={homeLost ? 'is-loser' : undefined}>{homeScore}</span></>}</b><small>{finalScore ? 'FINAL' : upcoming ? gameDate(game.date, true) :     `${liveScore?.period || game.period} · ${liveScore?.clock || game.clock}`}</small></div><div className={homeLost ? 'is-loser' : undefined}><TeamAbbrMark large abbr={game.home.abbr} color={game.home.color} name={game.home.name} /><strong>{game.home.name}</strong><BackToBackBadge game={game} team={game.home} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.home)} favorites={favorites} toggle={onToggleFavorite} /></div></div>
+    {game && showingDetails && <><div className="nba-matchup"><div className={awayLost ? 'is-loser' : undefined}><TeamAbbrMark large abbr={game.away.abbr} color={game.away.color} name={game.away.name} /><strong>{onOpenTeamLog ? <button type="button" className="team-game-log-link" aria-label={`View ${game.away.name} game log`} onClick={() => onOpenTeamLog(game.away, game.seasonYear)}>{game.away.name}</button> : game.away.name}</strong><BackToBackBadge game={game} team={game.away} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.away)} favorites={favorites} toggle={onToggleFavorite} /></div><div className="nba-score" aria-live="polite"><b>{upcoming ? 'vs' : <><span className={awayLost ? 'is-loser' : undefined}>{awayScore}</span>{' – '}<span className={homeLost ? 'is-loser' : undefined}>{homeScore}</span></>}</b><small>{finalScore ? 'FINAL' : upcoming ? gameDate(game.date, true) :     `${liveScore?.period || game.period} · ${liveScore?.clock || game.clock}`}</small></div><div className={homeLost ? 'is-loser' : undefined}><TeamAbbrMark large abbr={game.home.abbr} color={game.home.color} name={game.home.name} /><strong>{onOpenTeamLog ? <button type="button" className="team-game-log-link" aria-label={`View ${game.home.name} game log`} onClick={() => onOpenTeamLog(game.home, game.seasonYear)}>{game.home.name}</button> : game.home.name}</strong><BackToBackBadge game={game} team={game.home} previousGames={previousGames} /><FavoriteButton target={nbaTeamFavorite(game.home)} favorites={favorites} toggle={onToggleFavorite} /></div></div>
       {upcoming && game.nbaMarket?.spread != null && <div className="wire-spread-badge" aria-label="Pregame spread"><span>Spread</span><b>{game.home.abbr} {game.nbaMarket.spread > 0 ? `+${game.nbaMarket.spread}` : game.nbaMarket.spread}</b></div>}
       {game.venue && <p className="nba-note">{game.venue}</p>}
     </>}
