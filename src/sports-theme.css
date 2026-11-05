@@ -1,0 +1,182 @@
+.sports-theme {
+  --paper: #102137;
+  --line: #345d80;
+  --ink: #dce6f2;
+  --muted: #b6c8dd;
+  --accent: #73cfff;
+  --sports-blue: #19baff;
+  --sports-red: #ff4058;
+  --sports-border: #31638b;
+  --sports-glass: linear-gradient(180deg, #ffffff0d, #ffffff00 42%), linear-gradient(115deg, #142c47, #081526 75%);
+  background-color: #050e1b;
+  background-image: linear-gradient(136deg, transparent 10%, #0879db12 10.1%, transparent 10.7%, transparent 82%, #ea244916 82.1%, transparent 84%), radial-gradient(ellipse at 0 25%, #006fd326, transparent 55%), radial-gradient(#277db445 .7px, transparent .8px);
+  background-size: 100% 100%, 100% 100%, 18px 18px;
+}
+.sports-theme .topbar {
+  background: linear-gradient(128deg, transparent 58%, #0877d31a 58.2%, transparent 64%), linear-gradient(90deg, #09182b, #040b16 75%, #231022);
+  border-bottom-color: #198fd2;
+  box-shadow: 0 1px 14px #009dff35;
+}
+.sports-theme .primary-nav button.active::after { background: #19baff; box-shadow: 0 0 12px #00aaff; }
+.sports-theme .league-banner button { background: var(--sports-glass); border-color: #37648c; color: #e8f4ff; box-shadow: inset 0 1px #ffffff18; }
+.sports-theme .league-banner button[aria-pressed=true] {
+  background: linear-gradient(175deg, #42caff, #0067d5 58%, #00468c);
+  border-color: #63d8ff;
+  color: #fff;
+  box-shadow: inset 0 1px 3px #ffffff80, 0 0 15px #008dff45;
+}
+.sports-theme .wire-board-day-title { display: flex; align-items: center; gap: 12px; border-bottom-color: #1687c5; color: #f3f9ff; font-style: italic; }
+.sports-theme .wire-board-day-title::before { content: ''; flex: 0 0 25px; height: 18px; transform: skewX(-30deg); background: repeating-linear-gradient(90deg, #16aeff 0 5px, transparent 5px 9px); }
+.sports-theme .wire-board-counts, .sports-theme .wire-board-status small, .sports-theme .wire-board-team-name small { color: #b1cce5; }
+.sports-theme .wire-board-card, .sports-theme .nba-wire button.nba-board-open {
+  border-color: #345b7e;
+  border-left: 3px solid #229cde;
+  background: var(--sports-glass);
+  box-shadow: inset 0 1px #ffffff12, 0 4px 16px #00000030;
+}
+.sports-theme .wire-board-card:hover, .sports-theme .nba-wire button.nba-board-open:hover {
+  border-color: #52bfff;
+  background: linear-gradient(115deg, #1a3b5c, #0b1c30 80%);
+  box-shadow: inset 0 1px #ffffff22, 0 0 15px #008dff26;
+}
+.sports-theme .wire-board-card.is-live { border-left-color: #ff4058; border-top-color: #ac4560; box-shadow: inset 0 1px #ffffff12, 0 0 14px #ff20401a; }
+.sports-theme .wire-board-footer { border-top-color: #2e5679; }
+.sports-theme .wire-board-open { color: #5bceff; }
+.sports-theme .wire-board-card .team-mark, .sports-theme .wire-hero-banner .team-mark, .sports-theme .nba-matchup .team-mark {
+  background: linear-gradient(155deg, #ffffff35, transparent 50%), linear-gradient(145deg, color-mix(in srgb, var(--team-color) 85%, #153b62), color-mix(in srgb, var(--team-color) 55%, #020b19));
+  border-color: color-mix(in srgb, var(--team-color) 65%, #a9dfff);
+  box-shadow: inset 0 1px 3px #ffffff45, 0 2px 9px #00000055;
+}
+.sports-theme .wire-hero-banner, .sports-theme .nba-matchup {
+  border-color: #328dd1;
+  border-radius: 12px 4px;
+  background: linear-gradient(118deg, #ff224225, transparent 35%, transparent 68%, #008bff30), linear-gradient(180deg, #152b43, #071323 65%);
+  box-shadow: inset 0 1px #c5eaff35, inset 3px 0 #f43c5b, inset -3px 0 #14b8ff, 0 0 20px #007bdb26;
+}
+.sports-theme .wire-matchup-score, .sports-theme .nba-score b { text-shadow: none; font-weight: 500; }
+.sports-theme .wire-matchup-team-details small, .sports-theme .wire-venue-line { color: #b0c9e2; }
+.sports-theme .wire-wheel-card, .sports-theme .nba-game-wheel button.nba-game-option { background: var(--sports-glass); border-color: #365e80; box-shadow: inset 0 1px #ffffff18; }
+.sports-theme .wire-wheel-card.selected, .sports-theme .nba-game-wheel button.is-selected { border-color: #42caff; box-shadow: inset 0 -2px #19baff, 0 0 12px #008dff35; }
+.sports-theme .wire-back-button, .sports-theme .wire-stathub-link, .sports-theme .nba-detail-navigation button { border-color: #43779d; background: var(--sports-glass); color: #d7efff; box-shadow: inset 0 1px #ffffff26; }
+.sports-theme .wire-subtabs button, .sports-theme .wire-category-filters button, .sports-theme .nba-experience .nba-segments > button {
+  background: linear-gradient(180deg, #ffffff15, transparent 48%), linear-gradient(180deg, #172c45, #081526);
+  border-color: #43779d;
+  border-radius: 7px 3px;
+  color: #d5eaff;
+  box-shadow: inset 0 1px 2px #ffffff22;
+}
+.sports-theme .wire-subtabs button.active, .sports-theme .nba-segments:not(.nba-team-toggle) > button[aria-pressed=true] {
+  border-color: #ff5165;
+  background: linear-gradient(180deg, #ff466b24, transparent 55%), linear-gradient(110deg, #351329, #101c32);
+  color: #fff;
+  box-shadow: inset 0 1px #ffbac340, inset 0 -2px #ff4058, 0 0 10px #ff294535;
+}
+.sports-theme .wire-category-filters button.active { background: linear-gradient(180deg, #0864a9, #113455); border-color: #39beff; color: #fff; box-shadow: inset 0 -2px #21bcff; }
+.sports-theme .wire-team-half, .sports-theme .nba-experience .nba-team-toggle button {
+  border-radius: 12px 3px;
+  border-color: color-mix(in srgb, var(--team-bar-color) 65%, #93cfff);
+  background: linear-gradient(170deg, #ffffff26, transparent 45%), linear-gradient(110deg, color-mix(in srgb, var(--team-bar-color) 48%, #071728), #0a1626);
+  color: #f0f7ff;
+  box-shadow: inset 0 1px #ffffff40, 0 3px 10px #00000045;
+}
+.sports-theme .wire-team-half.active, .sports-theme .nba-team-toggle button[aria-pressed=true] {
+  border-color: #57d2ff;
+  background: linear-gradient(170deg, #ffffff38, transparent 45%), linear-gradient(110deg, color-mix(in srgb, var(--team-bar-color) 60%, #006ab6), #0b2848);
+  box-shadow: inset 0 1px #d4f4ff75, inset 0 -2px #16bdff, 0 0 15px #008dff50;
+  color: #fff;
+}
+.sports-theme .wire-category-card, .sports-theme .wire-comparison-card, .sports-theme .nba-table-scroll {
+  border-color: #277fbb;
+  border-radius: 10px 4px;
+  background: #081423;
+  box-shadow: 0 0 12px #008dff1a;
+}
+.sports-theme .wire-category-header, .sports-theme .wire-comparison-header { background: linear-gradient(180deg, #154f7b, #0a263f); border-bottom-color: #37aef1; box-shadow: inset 0 1px #a5e5ff45; }
+.sports-theme .wire-stat-table th, .sports-theme .wire-linescore-table th, .sports-theme .nba-table th {
+  background: linear-gradient(180deg, #155482, #0b2947);
+  color: #e8f6ff;
+  border-bottom-color: #2b79a9;
+}
+.sports-theme .nba-box tr.nba-box-group th { background: linear-gradient(180deg, #1766a1, #0c345b); border-top-color: #32bbff; border-bottom-color: #2274a5; color: #fff; }
+.sports-theme .wire-stat-table td, .sports-theme .nba-table td { border-bottom-color: #183854; }
+.sports-theme .wire-stat-table tbody tr:nth-child(even) td, .sports-theme .nba-table tbody tr:nth-child(even) td { background: #0c1c2e; }
+.sports-theme .wire-stat-table td.wire-col-athlete, .sports-theme .nba-box th[scope=row] { background: #10233a; }
+.sports-theme .wire-stat-table tr:hover td, .sports-theme .nba-box tbody tr:hover > * { background: #153655; }
+.sports-theme .wire-latest-play { border-color: #288ec9; border-left-color: #ff4058; background: linear-gradient(115deg, #153754, #081523 75%); box-shadow: inset 0 1px #a5e5ff28, 0 0 14px #008dff20; }
+.sports-theme .wire-latest-play.is-scoring { border-color: #bf9b35; border-left-color: #ffd34d; background: linear-gradient(115deg, #42341b, #081523 75%); }
+.sports-theme .wire-game-pick { border-color: #365d84; background: linear-gradient(120deg, #15273d, #0a1424); }
+.sports-theme :is(.wire-board-card, .wire-back-button, .wire-stathub-link, .wire-subtabs button, .wire-category-filters button, .wire-team-half, .nba-segments button):focus-visible { outline: 2px solid #8ce2ff; outline-offset: 3px; }
+
+.sports-theme .wire-board-team-name b,
+.sports-theme .wire-matchup-team-details h2,
+.sports-theme .wire-team-half-name,
+.sports-theme .nba-matchup > div > strong,
+.sports-theme .wire-athlete-name,
+.sports-theme .nba-box-identity .nba-player-link {
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-shadow: none;
+}
+.sports-theme .wire-board-team:not(.is-loser) .wire-board-team-name b,
+.sports-theme .wire-matchup-team:not(.is-loser) .wire-matchup-team-details h2,
+.sports-theme .nba-matchup > div:not(.is-loser) > strong,
+.sports-theme .wire-athlete-name,
+.sports-theme .nba-box-identity .nba-player-link { color: #dce6f2; }
+.sports-theme .wire-board-score, .sports-theme .wire-board-status { font-weight: 500; }
+.sports-theme .wire-board-day-title { font-weight: 500; color: #dce6f2; }
+.sports-theme .wire-board-team-name small, .sports-theme .wire-board-status small { font-weight: 400; color: #b6c8dd; }
+.sports-theme .wire-athlete-name, .sports-theme .nba-box-identity .nba-player-link { font-size: 15px; line-height: 1.4; }
+.sports-theme .wire-subtabs button, .sports-theme .nba-experience .nba-segments > button { font-weight: 500; }
+
+.sports-theme :is(.angle-card, .angle-active-bets, .angle-editor, .angle-draft, .livewire-composer, .results-records, .den-favorites, .den-timeline, .den-empty-main, .profile-hero, .account-setting, .gai-record-overview, .gai-form, .gai-outline, .wire-top-picks, .gwb) {
+  border-color: var(--sports-border);
+  border-radius: 12px 4px;
+  background: var(--sports-glass);
+  box-shadow: inset 0 1px #bdeaff26, 0 4px 18px #00000030;
+}
+.sports-theme .angle-card-pinned { border-color: #b59148; }
+.sports-theme .gai-panel .gai-pick { border-color: #345d80; background: var(--sports-glass); box-shadow: inset 0 1px #bdeaff20; }
+.sports-theme .angle-heading, .sports-theme .den-timeline-heading, .sports-theme .panel-heading, .sports-theme .gai-section-heading { border-bottom: 1px solid #28628b; padding-bottom: 12px; }
+.sports-theme :is(.angle-heading, .den-timeline-heading, .panel-heading, .gai-section-heading) h2 { color: #dce6f2; font-weight: 500; }
+.sports-theme .angle-card h3, .sports-theme .angle-card .angle-subject { color: #dce6f2; font-weight: 500; }
+.sports-theme .angle-card p, .sports-theme .den-feed-content p, .sports-theme .gai-reason { color: #c8d6e7; }
+.sports-theme :is(.den-favorite, .den-play-item, .den-feed-item, .gai-results-stats > div, .gai-record-card, .team-log-directory button, .team-game-row) { border-color: #345d80; background: linear-gradient(135deg, #162e48, #0b192a); box-shadow: inset 0 1px #ffffff12; }
+.sports-theme .den-week-summary { color: #b6c8dd; }
+.sports-theme .player-mode-tabs { gap: 8px; padding-bottom: 8px; border-bottom-color: #28628b; }
+.sports-theme .player-mode-tabs button,
+.sports-theme .gai-panel .gai-section-tabs button,
+.sports-theme .gai-view-switch button,
+.sports-theme .den-position-filter button,
+.sports-theme .livewire-theme-filters button {
+  min-height: 44px;
+  padding: 9px 14px;
+  border: 1px solid #43779d;
+  border-radius: 7px 3px;
+  background: var(--sports-glass);
+  color: #c6dbef;
+  box-shadow: inset 0 1px #ffffff26;
+  font-weight: 500;
+}
+.sports-theme .player-mode-tabs button.active,
+.sports-theme .gai-panel .gai-section-tabs button[aria-selected=true],
+.sports-theme .gai-view-switch button[aria-pressed=true],
+.sports-theme .den-position-filter button[aria-pressed=true],
+.sports-theme .livewire-theme-filters button[aria-pressed=true] {
+  border-color: #43bfff;
+  background: linear-gradient(175deg, #166da7, #103456);
+  color: #edf7ff;
+  box-shadow: inset 0 1px #c5efff40, inset 0 -2px #19baff, 0 0 10px #008dff25;
+}
+.sports-theme :is(.player-mode-tabs, .gai-section-tabs, .gai-view-switch, .den-position-filter, .livewire-theme-filters) button:focus-visible { outline: 2px solid #8ce2ff; outline-offset: 3px; }
+.sports-theme .gai-section-tabs { border-color: #345d80; background: #0a192a; }
+.sports-theme .gai-hero { border-color: #328dd1; box-shadow: inset 0 1px #bdeaff35, inset 3px 0 #f43c5b, inset -3px 0 #14b8ff, 0 0 18px #007bdb26; }
+.sports-theme .gwb-hero-footer, .sports-theme .gai-table th { background: linear-gradient(180deg, #154f7b, #0a263f); border-color: #3386b6; }
+.sports-theme .gai-table td { border-bottom-color: #294861; }
+.sports-theme .gai-table tbody tr:nth-child(even) { background: #10233a; }
+.sports-theme .angle-counterpoint, .sports-theme .den-player-live { border-color: #345d80; background: #10233a; }
+.sports-theme .livewire-post { border-top-color: #345d80; }
+@media (max-width: 760px) {
+  .sports-theme .player-mode-tabs { flex-wrap: wrap; gap: 6px; }
+  .sports-theme .player-mode-tabs button { padding: 9px 10px; }
+}

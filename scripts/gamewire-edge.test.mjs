@@ -7,6 +7,26 @@ import { rankWireTeams, wireAnalysisNotice } from '../src/services/wireTeamPicks
 import { scoreboardBreakdown } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 
 const now = Date.parse('2026-11-04T18:00:00Z');
+test('broadcast styling covers the app shell and shares static, logo-free NFL/NBA treatments', () => {
+  const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(main, /import '\.\/sports-theme\.css'/);
+  assert.match(app, /className="app-shell sports-theme"/);
+  assert.match(css, /\.sports-theme \.wire-hero-banner, \.sports-theme \.nba-matchup/);
+  assert.match(css, /\.sports-theme \.wire-team-half, \.sports-theme \.nba-experience \.nba-team-toggle button/);
+  assert.match(css, /\.sports-theme \.wire-stat-table th, \.sports-theme \.wire-linescore-table th, \.sports-theme \.nba-table th/);
+  assert.match(css, /:focus-visible \{ outline: 2px solid #8ce2ff/);
+  assert.doesNotMatch(css, /url\(|animation:|@keyframes|clip-path|pointer-events:\s*none/);
+});
+test('shared theme includes Angle, GamewAIre and Locker Room while keeping Wire typography lighter', () => {
+  const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
+  for (const selector of ['.angle-card', '.gai-panel .gai-pick', '.den-favorites', '.profile-hero', '.results-records', '.livewire-composer'])
+    assert.ok(css.includes(selector), `${selector} has a themed treatment`);
+  assert.match(css, /\.sports-theme \.wire-board-team-name b,[\s\S]*?font-family: 'DM Sans', 'Segoe UI', sans-serif;\s*font-weight: 500/);
+  assert.match(css, /\.sports-theme \.wire-matchup-score, \.sports-theme \.nba-score b \{ text-shadow: none; font-weight: 500;/);
+  assert.match(css, /\.sports-theme \.wire-board-team:not\(\.is-loser\)/);
+});
 const observations = Array.from({ length: 10 }, (_, index) => ({
   eventId: String(index), date: new Date(now - (index + 1) * 86400000).toISOString(), value: index, opportunity: 12,
 }));

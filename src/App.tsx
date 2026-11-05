@@ -1244,7 +1244,7 @@ function App() {
   if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell sports-theme">
       {authUser && !authLoading && online && <NotificationOnboarding key={authUser.id} user={authUser} />}
       <header className="topbar">
         <a className="brand" href="#wire" onClick={openWireTab}>

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import OfflineStatus from './OfflineStatus';
 import './style.css';
+import './sports-theme.css';
 import { initializeNativeOffline, nativeApp } from './services/nativeOffline';
 import { initializeWebOffline } from './services/webOffline';
 

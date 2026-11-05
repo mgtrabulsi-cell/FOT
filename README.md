@@ -6,6 +6,8 @@ Stat Hub's **Team Game Logs** tab supports NBA and NFL teams. Choose a team and 
 
 The Wire marks selected teams with a compact red, white-lettered **GamewAIre Pick** badge. The breakdown control remains below each selected matchup.
 
+The main app uses a shared broadcast-style navy, electric-blue and red theme across The Wire, Stat Hub, The Angle/Analyst Desk, GamewAIre, Locker Room and account/results panels: glossy abbreviation tiles, illuminated panel edges, beveled controls and blue table headings. The Wire uses medium-weight, uncondensed team/player names and softer off-white text without score-text glow for readability. Team selectors retain team-color shading, with a bright blue selected edge. Shine is static (no flashing animation), keyboard focus remains outlined, and no provider logos or player photos are introduced. Published graphic canvases and the wet-stadium GamewAIre banner retain their own artwork.
+
 Select either team's underlined name in an opened NFL or NBA matchup to jump directly to its game log for that matchup's season. Box-score team selectors still switch the displayed team as before. Historical matchup names also open the corresponding team's log without losing the season.
 
 NBA and NFL scoreboard cards on The Wire share card spacing and typography. NBA controls do not override the shared 44px circular notification bell, and NBA footer links do not add extra card height.
