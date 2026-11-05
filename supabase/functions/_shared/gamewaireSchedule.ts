@@ -1,4 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import { modelVersion } from './gamewaire.ts';
 import type { Sport } from './gamewaire.ts';
 
 export type ScheduleEvent = { id: string; sport: Sport; home: string; away: string; start: string };
@@ -16,6 +17,13 @@ export function scheduleWindow(sport: Sport, date: string) {
   if (sport === 'NFL') last.setUTCDate(last.getUTCDate() + 6);
   return { first: date, last: last.toISOString().slice(0, 10) };
 }
+export function scheduledNFLDate(clock: { date: string; hour: number }) {
+  const tuesday = new Date(`${clock.date}T12:00:00Z`);
+  const weekday = tuesday.getUTCDay();
+  tuesday.setUTCDate(tuesday.getUTCDate() - (weekday - 2 + 7) % 7 - (weekday === 2 && clock.hour < 12 ? 7 : 0));
+  tuesday.setUTCDate(tuesday.getUTCDate() + 2);
+  return tuesday.toISOString().slice(0, 10);
+}
 export function scheduleEvents(events: ScheduleEvent[], sport: Sport, date: string, now: number) {
   const window = scheduleWindow(sport, date);
   return events.filter((event) => {
@@ -26,22 +34,23 @@ export function scheduleEvents(events: ScheduleEvent[], sport: Sport, date: stri
 export async function planScheduledAnalyses(admin: SupabaseClient, listEvents: (sport: Sport) => Promise<ScheduleEvent[]>,
   _fetcher: typeof fetch = fetch, now = Date.now()) {
   const clock = easternClock(now);
-  if (clock.hour !== 1) return;
-  const sports: Sport[] = clock.weekday === 'Thu' ? ['NBA', 'NFL'] : ['NBA'];
+  if (clock.hour < 1) return;
+  const sports: Sport[] = ['NBA', 'NFL'];
   for (const sport of sports) {
-    const note = `Every upcoming ${sport} game ${sport === 'NFL' ? 'Thursday through Wednesday' : 'today'}. Moneyline/spread only; private until reviewed and published.`;
-    const existing = await admin.from('gamewaire_schedule_batches').select('id,note').eq('sport', sport).eq('game_date', clock.date).maybeSingle();
+    const date = sport === 'NFL' ? scheduledNFLDate(clock) : clock.date;
+    const note = `Every upcoming ${sport} game ${sport === 'NFL' ? 'Thursday through Wednesday (Tuesday noon week rollover)' : 'today'}. Moneyline/spread only; full reports stay private, qualifying summaries may appear on The Wire.`;
+    const existing = await admin.from('gamewaire_schedule_batches').select('id,model_version').eq('sport', sport).eq('game_date', date).maybeSingle();
     if (existing.error) throw new Error('Could not read the scheduled analysis plan.');
-    if (existing.data && (sport !== 'NFL' || existing.data.note === note)) continue;
+    if (existing.data?.model_version === modelVersion) continue;
     let games: Array<ScheduleEvent & { selection_note: string }> = [], error: string | null = null;
     try {
-      const events = scheduleEvents(await listEvents(sport), sport, clock.date, now);
+      const events = scheduleEvents(await listEvents(sport), sport, date, now);
       games = events.map((event) => ({ ...event, selection_note: note }));
     } catch (cause) {
       error = cause instanceof Error ? cause.message : 'Scheduled game selection failed.';
       console.error('GamewAIre schedule planning failed', sport, error);
     }
-    const saved = await admin.rpc('gamewaire_schedule_plan', { target_sport: sport, target_date: clock.date,
+    const saved = await admin.rpc('gamewaire_schedule_plan', { target_sport: sport, target_date: date, target_model: modelVersion,
       games: games.map((game) => ({ event_id: game.id, event_start: game.start, matchup: `${game.away} @ ${game.home}`, selection_note: game.selection_note })),
       problem: error, plan_note: note });
     if (saved.error) throw new Error(`Could not save the ${sport} schedule: ${saved.error.message}`);

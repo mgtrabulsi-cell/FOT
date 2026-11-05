@@ -1375,11 +1375,13 @@ function App() {
         ) : view === 'Wire' && sportLeague === 'NBA' ? (
           <WireWithPicks games={nbaGames} sport="NBA" userId={authUser?.id}>
           {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
+          {wireTeams.notice && <p className="nfl-data-note" role="status">{wireTeams.notice}</p>}
           <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
           </WireWithPicks>
         ) : view === 'Wire' ? (
           <WireWithPicks games={games} sport="NFL" userId={authUser?.id}>
           {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
+          {wireTeams.notice && <p className="nfl-data-note" role="status">{wireTeams.notice}</p>}
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}
           {notificationEventId && !notificationGame && !notificationGameError && <p role="status">Loading your notification matchup...</p>}
           {(!notificationEventId || notificationGame?.eventId === notificationEventId) && <TheWire

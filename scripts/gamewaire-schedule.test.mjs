@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { easternClock, scheduleWindow, scheduleEvents, planScheduledAnalyses } from '../supabase/functions/_shared/gamewaireSchedule.ts';
+import { easternClock, scheduledNFLDate, scheduleWindow, scheduleEvents, planScheduledAnalyses } from '../supabase/functions/_shared/gamewaireSchedule.ts';
+import { modelVersion } from '../supabase/functions/_shared/gamewaire.ts';
 
 const now = Date.parse('2026-10-29T05:00:00Z');
 const game = (id, home, away, start = '2026-10-29T23:00:00Z', sport = 'NBA') => ({ id, home, away, start, sport });
@@ -33,7 +34,7 @@ function planner() {
     from() {
       const filter = {};
       return { select() { return this; }, eq(key, value) { filter[key] = value; return this; },
-        async maybeSingle() { const saved = batches.get(`${filter.sport}:${filter.game_date}`); return { data: saved ? { id: 'existing', note: saved.plan_note } : null, error: null }; } };
+        async maybeSingle() { const saved = batches.get(`${filter.sport}:${filter.game_date}`); return { data: saved ? { id: 'existing', model_version: saved.target_model } : null, error: null }; } };
     },
     async rpc(name, args) {
       calls.push({ name, args });
@@ -42,7 +43,7 @@ function planner() {
     },
   } };
 }
-test('NBA plans daily and NFL plans weekly on Thursday, once without standings requests', async () => {
+test('NBA plans daily and NFL plans weekly, once per model without standings requests', async () => {
   const fixture = planner(), fetches = [], listed = [];
   const list = async (sport) => { listed.push(sport); return Array.from({ length: sport === 'NBA' ? 15 : 1 }, (_, index) =>
     game(`event-${index}`, 'A', 'B', '2026-10-29T23:00:00Z', sport)); };
@@ -57,15 +58,37 @@ test('NBA plans daily and NFL plans weekly on Thursday, once without standings r
   assert.equal(fixture.calls[0].args.games.length, 15, 'All NBA games, not a three-game shortlist');
   assert.equal(fixture.calls[1].args.games.length, 1);
   assert.ok(fixture.calls.every(({ args }) => args.problem === null));
-  assert.ok(fixture.calls.every(({ args }) => /Moneyline\/spread only; private/.test(args.plan_note)));
+  assert.ok(fixture.calls.every(({ args }) => /Moneyline\/spread only; full reports stay private/.test(args.plan_note)));
+  assert.ok(fixture.calls.every(({ args }) => args.target_model === modelVersion));
   await planScheduledAnalyses(fixture.db, list, fetcher, now + 60_000);
   assert.equal(listed.length, 2);
   assert.equal(fixture.calls.length, 2, 'Repeated/DST double-hour ticks cannot create another batch');
   await planScheduledAnalyses(fixture.db, list, fetcher, Date.parse('2026-10-30T05:00:00Z'));
   assert.equal(listed.at(-1), 'NBA');
-  assert.equal(listed.length, 3, 'Only NBA plans on Friday');
+  assert.equal(listed.length, 3, 'The same NFL week is not planned twice');
   await planScheduledAnalyses(fixture.db, list, fetcher, Date.parse('2026-10-30T06:00:00Z'));
-  assert.equal(listed.length, 3, 'Outside Eastern 1 AM no new batches are planned');
+  assert.equal(listed.length, 3, 'Catch-up ticks do not duplicate current-model batches');
+});
+test('NFL plans the visible next week on Tuesday noon, including Wednesday evenings and DST changes', () => {
+  for (const [time, date] of [
+    ['2026-11-03T16:59:00Z', '2026-10-29'], ['2026-11-03T17:00:00Z', '2026-11-05'],
+    ['2026-11-05T00:55:00Z', '2026-11-05'], ['2026-11-09T23:00:00Z', '2026-11-05'],
+    ['2026-07-07T15:59:00Z', '2026-07-02'], ['2026-07-07T16:00:00Z', '2026-07-09'],
+  ]) assert.equal(scheduledNFLDate(easternClock(Date.parse(time))), date, time);
+});
+test('An upgrade catches up both sports after hours without revisiting started games or requeueing the same model', async () => {
+  const fixture = planner(), time = Date.parse('2026-11-05T00:55:00Z');
+  fixture.batches.set('NBA:2026-11-04', { target_model: 'empirical-baseline-v8' });
+  const events = [
+    game('started', 'A', 'B', '2026-11-05T00:00:00Z'),
+    game('nba', 'A', 'B', '2026-11-05T03:00:00Z'),
+    game('nfl', 'A', 'B', '2026-11-06T01:15:00Z', 'NFL'),
+  ];
+  await planScheduledAnalyses(fixture.db, async () => events, fetch, time);
+  assert.deepEqual(fixture.calls.map(call => [call.args.target_sport, call.args.target_date, call.args.games.map(game => game.event_id)]),
+    [['NBA', '2026-11-04', ['nba']], ['NFL', '2026-11-05', ['nfl']]]);
+  await planScheduledAnalyses(fixture.db, async () => { throw new Error('Already planned'); }, fetch, time + 60000);
+  assert.equal(fixture.calls.length, 2);
 });
 test('Planning failures are saved explicitly with no arbitrary fallback; empty days cost no odds analysis', async () => {
   const fixture = planner();

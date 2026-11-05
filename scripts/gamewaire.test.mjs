@@ -962,7 +962,7 @@ const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/ind
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
-  scoreboardRows = [], scoreboardError = null,
+  scoreboardRows = [], scoreboardError = null, scoreboardJobs = [], scoreboardJobsError = null,
   settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
@@ -987,8 +987,8 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: table === 'gamewaire_runs' && builder.columns?.includes('event_start,payload,status')
-          ? scoreboardRows.slice(builder.first, builder.last + 1) : table === 'gamewaire_picks' ? [] : null,
-          error: table === 'gamewaire_runs' ? scoreboardError : null }).then(resolve),
+          ? scoreboardRows.slice(builder.first, builder.last + 1) : table === 'gamewaire_schedule_jobs' ? scoreboardJobs : table === 'gamewaire_picks' ? [] : null,
+          error: table === 'gamewaire_runs' ? scoreboardError : table === 'gamewaire_schedule_jobs' ? scoreboardJobsError : null }).then(resolve),
       };
       return builder;
     },
@@ -1044,7 +1044,7 @@ test('Member scoreboard shortlist ranks every saved matchup, exposes only three 
   assert.deepEqual(api.fetches, []);
   assert.deepEqual(api.writes, []);
   assert.deepEqual(api.rpc, []);
-  assert.ok(api.tables.every(table => table === 'gamewaire_runs'));
+  assert.ok(api.tables.every(table => ['gamewaire_runs', 'gamewaire_schedule_jobs'].includes(table)));
   const failed = { ...rows[3], payload: { error: 'Provider unavailable' }, status: 'provider_error' };
   const refreshed = endpoint({ role: 'member', scoreboardRows: [failed, ...rows] });
   const fewer = await refreshed.run({ action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' });
@@ -1057,7 +1057,7 @@ test('Scoreboard summaries paginate saved reports, reject invalid slate scopes a
   const valid = { action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' };
   const response = await api.run(valid);
   assert.deepEqual((await response.json()).picks, []);
-  assert.equal(api.tables.length, 2);
+  assert.equal(api.tables.filter(table => table === 'gamewaire_runs').length, 2);
   for (const patch of [{ firstDate: 'invalid' }, { firstDate: '2026-02-30' }, { lastDate: '2026-10-29' },
     { sport: 'NFL', lastDate: '2026-11-04' }, { sport: 'MLB' }]) {
     assert.equal((await api.run({ ...valid, ...patch })).status, 400);
@@ -1065,6 +1065,19 @@ test('Scoreboard summaries paginate saved reports, reject invalid slate scopes a
   assert.equal((await api.run(valid, false)).status, 401);
   const broken = endpoint({ role: 'member', scoreboardError: { message: 'Unavailable' } });
   assert.equal((await broken.run(valid)).status, 502);
+  const progress = endpoint({ role: 'member', scoreboardJobs: [
+    { event_id: 'a', event_start: quote.start, status: 'pending' },
+    { event_id: 'b', event_start: quote.start, status: 'running' },
+    { event_id: 'b', event_start: quote.start, status: 'running' },
+    { event_id: 'c', event_start: quote.start, status: 'failed' },
+    { event_id: 'other-day', event_start: '2026-10-29T23:00:00Z', status: 'pending' },
+  ] });
+  const coverage = await (await progress.run(valid)).json();
+  assert.equal(coverage.pendingGames, 2);
+  assert.equal(coverage.failedGames, 1);
+  assert.equal(coverage.analyzedGames, 0);
+  const unavailable = endpoint({ role: 'member', scoreboardJobsError: { message: 'Progress unavailable' } });
+  assert.equal((await unavailable.run(valid)).status, 502);
 });
 test('Full NFL analysis upgrades inherited lean-only settings before cache and provider requests while explicit lean refresh stays cheap', async () => {
   const leanSettings = { ...engine.defaultSettings, markets: ['h2h', 'spreads'] };

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { forecastDistribution, distributionAtLine } from '../supabase/functions/_shared/gamewireBotIntelligence.ts';
 import { fairAmericanOdds, valueClassification, empiricalQuantile, modelVersion } from '../supabase/functions/_shared/gamewaire.ts';
-import { rankWireTeams } from '../src/services/wireTeamPicks.ts';
+import { rankWireTeams, wireAnalysisNotice } from '../src/services/wireTeamPicks.ts';
 
 const now = Date.parse('2026-11-04T18:00:00Z');
 const observations = Array.from({ length: 10 }, (_, index) => ({
@@ -53,6 +53,13 @@ const picks = games.map((game, index) => ({
   identifiers: { espnEventId: game.eventId }, updatedAt: new Date(now - 60000).toISOString(), dataAt: new Date(now).toISOString(),
   american: -110, edge: .1, ev: .2, conservativeEV: .05 + index / 100, quality: .9, sampleSize: 20, noVig: .5,
 }));
+test('Missing upgraded analyses are pending information, not a misleading zero-of-total error or forced picks', () => {
+  assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 15, failedGames: 0 }, games), /analyzing 15 queued matchups/);
+  assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 0 }, games), /waiting for scheduled matchup analysis/);
+  assert.equal(wireAnalysisNotice({ analyzedGames: 4, pendingGames: 0, failedGames: 0 }, games), '');
+  assert.equal(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 1 }, games), '');
+  assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 0 }, games.map(game => ({ ...game, status: 'FINAL' }))), /not created retroactively/);
+});
 test('Scoreboards select at most three distinct qualifying games without record-based or Watch fillers', () => {
   const result = rankWireTeams(games, picks, now);
   assert.equal(Object.keys(result).length, 3);

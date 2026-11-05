@@ -141,6 +141,12 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         return json({ error: 'Choose one NBA night or one NFL week.' }, 400);
       const start = new Date(Date.parse(first) - 86400000).toISOString();
       const end = new Date(Date.parse(last) + 2 * 86400000).toISOString();
+      const inSlate = (start: string) => {
+        const timestamp = Date.parse(start);
+        if (!Number.isFinite(timestamp)) return false;
+        const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp));
+        return day >= first && day <= last;
+      };
       type SavedScore = { event_id: string; event_start: string; status: string; payload: { modelVersion?: string; teamLean?: TeamLean } };
       const latest = new Map<string, SavedScore>();
       for (let offset = 0; ; offset += 500) {
@@ -149,10 +155,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
           .order('created_at', { ascending: false }).order('id').range(offset, offset + 499).returns<SavedScore[]>();
         if (saved.error) throw new Error('Could not load matchup scores for the scoreboard.');
         for (const row of saved.data) {
-          const timestamp = Date.parse(row.event_start);
-          if (!Number.isFinite(timestamp)) continue;
-          const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp));
-          if (day < first || day > last || row.status === 'in_progress' || latest.has(row.event_id)) continue;
+          if (!inSlate(row.event_start) || row.status === 'in_progress' || latest.has(row.event_id)) continue;
           latest.set(row.event_id, row);
         }
         if (saved.data.length < 500) break;
@@ -161,7 +164,15 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         const lean = row.payload?.teamLean;
         return row.payload?.modelVersion === modelVersion && lean?.qualifies === true ? [lean.pick] : [];
       });
+      const jobs = await admin.from('gamewaire_schedule_jobs')
+        .select('event_id,event_start,status,gamewaire_schedule_batches!inner(model_version)')
+        .eq('sport', body.sport).eq('gamewaire_schedule_batches.model_version', modelVersion)
+        .gte('event_start', start).lt('event_start', end)
+        .returns<Array<{ event_id: string; event_start: string; status: string }>>();
+      if (jobs.error) throw new Error('Could not load scoreboard analysis progress.');
+      const countJobs = (statuses: string[]) => new Set(jobs.data.filter(job => inSlate(job.event_start) && statuses.includes(job.status)).map(job => job.event_id)).size;
       return json({ picks: scoreboardPicks(candidates), analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
+        pendingGames: countJobs(['pending', 'running']), failedGames: countJobs(['failed']),
         note: 'Ranked across saved matchup analyses. Games without a qualifying model result receive no label. No paid odds refresh or post publication is triggered.' });
     }
     if (!canAnalyze) return json({ error: 'GamewAIre management is restricted to the designated account.' }, 403);
