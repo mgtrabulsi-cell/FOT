@@ -8,8 +8,9 @@ import { supabase } from './services/supabaseClient';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
 import ActiveAngleBets from './ActiveAngleBets';
+import type { WireTeamPicks } from './services/wireTeamPicks';
 
-export default function WireTopPicks({ games, sport, userId, desktop }: { games: Game[]; sport: Sport; userId?: string; desktop: boolean }) {
+export default function WireTopPicks({ games, sport, userId, desktop, teamPicks = {} }: { games: Game[]; sport: Sport; userId?: string; desktop: boolean; teamPicks?: WireTeamPicks }) {
   const [reports, setReports] = useState<PublishedGame[]>([]);
   const [loaded, setLoaded] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const [orders, setOrders] = useState<PickOrder[]>([]);
@@ -54,10 +55,25 @@ export default function WireTopPicks({ games, sport, userId, desktop }: { games:
   const picks = orderedTopPicks(publishedSelections(reports, leans).filter((pick) =>
     !!pick.identifiers?.espnEventId && activeIds.has(pick.identifiers.espnEventId)), orders).slice(0, wirePickLimit(desktop));
   const bestBets = bestBetLabels(picks);
+  const automatic = userId ? [...new Map(Object.values(teamPicks)
+    .filter(pick => games.some(game => game.eventId === pick.eventId))
+    .map(pick => [pick.eventId, pick])).values()].sort((a, b) => a.rank - b.rank).slice(0, 3) : [];
   return <aside className="gai-panel wire-top-picks" aria-label="GamewAIre Top Picks and Game Leans">
-    <header><span className="eyebrow">PUBLISHED PICKS · {sport}</span>
+    <header><span className="eyebrow">MATCHUP PICKS · {sport}</span>
       <h2><span className="gamewaire-name">Gamew<strong>AI</strong>re</span></h2><h3>Top Picks &amp; Game Leans</h3></header>
     {!userId ? <p>Sign in to view published GamewAIre picks.</p> : <>
+      <section className="wire-auto-picks" aria-label="Automatic GamewAIre matchup picks">
+        <h3>Automatic matchup picks</h3>
+        <p className="gai-note">The same ranked selections marked beside teams on The Wire.</p>
+        {automatic.length ? automatic.map(pick => {
+          const game = games.find(game => game.eventId === pick.eventId)!;
+          return <details className="wire-game-pick wire-auto-pick" key={pick.eventId}>
+            <summary><span className="wire-auto-rank">#{pick.rank}</span><b>{pick.team}</b><small>{game.away.abbr} at {game.home.abbr} · {game.status === 'FINAL' ? 'Final' : game.status === 'LIVE' ? 'Live' : new Date(game.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small><span className="wire-breakdown-cue">View breakdown</span></summary>
+            <div><GamewaireBreakdown text={pick.reason} /></div>
+          </details>;
+        }) : <p className="gai-note">No qualifying automatic picks are available for this slate yet.</p>}
+      </section>
+      <h3 className="wire-published-heading">Published picks &amp; leans</h3>
       {error && <p role="alert" className="feed-warning">{error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
       {!loaded && !error && <p role="status">Loading published picks and leans…</p>}
       {loaded && !picks.length && <>
@@ -67,6 +83,7 @@ export default function WireTopPicks({ games, sport, userId, desktop }: { games:
       {!!picks.length && <div className="gai-picks">{picks.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} lean={pick.isGameLean} bestBet={bestBets.get(pick.key)} />)}</div>}
     </>}
     <a className="wire-picks-link" href="#gamewaire">Open GamewAIre</a>
-    <p className="gai-note">Published selections only. Estimates are unvalidated, not guarantees or betting recommendations.</p>
+    <p className="gai-note">Automatic picks are saved pregame selections, not live prices. Estimates are unvalidated, not guarantees or betting recommendations.</p>
   </aside>;
 }
+import GamewaireBreakdown from './GamewaireBreakdown';

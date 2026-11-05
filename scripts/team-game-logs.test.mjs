@@ -54,6 +54,28 @@ test('completed games normalize score objects, sort, deduplicate and preserve ze
   assert.equal(api.teamLogResult(entries[0].game, '1'), 'L');
   assert.equal(api.teamLogResult(entries[1].game, '1'), 'W');
 });
+test('historical and cached games recover team colors by ID without changing scores or mutating saved games', () => {
+  const { api } = service();
+  for (const league of ['NBA', 'NFL']) {
+    const historical = event();
+    for (const row of historical.competitions[0].competitors) {
+      row.team = { ...row.team };
+      delete row.team.color;
+    }
+    const original = api.parseTeamGameLog(payload([historical]), league, '1', 2025, 2)[0].game;
+    const before = JSON.stringify(original);
+    const corrected = api.teamLogGameColors(original, [
+      { ...readTeam({ team: away }), color: '#c8102e' }, { ...readTeam({ team: home }), color: '#007a33' },
+    ]);
+    assert.equal(corrected.away.color, '#c8102e');
+    assert.equal(corrected.home.color, '#007a33');
+    assert.equal(corrected.away.score, original.away.score);
+    assert.equal(corrected.home.score, original.home.score);
+    assert.equal(JSON.stringify(original), before);
+    assert.equal(api.teamLogGameColors(corrected, []).away.color, '#c8102e');
+    assert.equal(api.teamLogGameColors(corrected, [{ id: '1', color: 'invalid' }]).away.color, '#c8102e');
+  }
+});
 test('exclude live, future and canceled games; never invent missing scores or identities', () => {
   const { api } = service();
   for (const change of [
@@ -128,7 +150,7 @@ for (const league of ['NBA', 'NFL']) for (const direct of [false, true]) test(`$
       if (name === './OfflineStatus') return { useOnlineStatus: () => true };
       if (name === './services/renderSnapshots') return { readRenderSnapshot: () => null };
       if (name === './services/teamGameLogs') return { ...s.api,
-        fetchTeamLogDirectory: async () => ({ teams: [team], season: 2025 }),
+        fetchTeamLogDirectory: async () => ({ teams: [team, readTeam({ team: home })], season: 2025 }),
         fetchTeamGameLog: async (...args) => { requests.push(args); return entries; },
       };
       return { default: name, ChevronLeft: 'left', ChevronRight: 'right' };
@@ -161,6 +183,8 @@ for (const league of ['NBA', 'NFL']) for (const direct of [false, true]) test(`$
   await render();
   const box = nodes().find(n => n.type === (league === 'NBA' ? './NBAExperience' : './TheWire'));
   assert.equal(box.props.openGameId, entries[0].game.id);
+  assert.equal(box.props.games[0].away.color, team.color);
+  assert.equal(box.props.games[0].home.color, `#${home.color}`);
   assert.equal(box.props.backLabel, 'Team game log');
   assert.equal(typeof box.props.onOpenTeamLog, 'function');
   box.props.onBackToGames(); await render();

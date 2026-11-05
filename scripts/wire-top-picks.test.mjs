@@ -14,6 +14,12 @@ function render(reports, props, orders = [], leans = []) {
     if (name === 'react') return { useEffect() {}, useState: () => [states[slot++], () => {}] };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === './Gamewaire') return { PickCard: 'PickCard' };
+    if (name === './GamewaireBreakdown') {
+      const component = vm.createContext({ exports: {}, require: () => ({ jsx, jsxs: jsx }) });
+      vm.runInContext(ts.transpileModule(readFileSync(new URL('../src/GamewaireBreakdown.tsx', import.meta.url), 'utf8'),
+        { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, component);
+      return component.exports;
+    }
     if (name === './ActiveAngleBets') return { default: 'ActiveAngleBets' };
     if (name === './services/gamewaireOrder') return { bestBetLabels, orderedTopPicks, publishedSelections, wirePickLimit };
     return {};
@@ -21,9 +27,25 @@ function render(reports, props, orders = [], leans = []) {
   vm.runInContext(code, context);
   const tree = context.exports.default(props);
   const nodes = (node) => !node || typeof node !== 'object' ? [] : Array.isArray(node)
-    ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
+    ? node.flatMap(nodes) : typeof node.type === 'function' ? nodes(node.type(node.props)) : [node, ...nodes(node.props?.children)];
   return nodes(tree);
 }
+test('Wire sidebar lists the automatic scoreboard picks by rank with their full breakdowns, separately from published picks', () => {
+  const games = [{ eventId: 'live', status: 'LIVE', date: '2026-11-04T23:00:00Z', away: { abbr: 'ATL' }, home: { abbr: 'BOS' } },
+    { eventId: 'final', status: 'FINAL', date: '2026-11-04T22:00:00Z', away: { abbr: 'NY' }, home: { abbr: 'DET' } }];
+  const first = { eventId: 'live', team: 'Boston Celtics', rank: 1, reason: 'Scoring comparison.\n\nRecent form.' };
+  const second = { eventId: 'final', team: 'New York Knicks', rank: 2, reason: 'Defensive comparison.' };
+  const teamPicks = { a: second, b: first, duplicate: first, other: { ...first, eventId: 'other' } };
+  const nodes = render([], { games, sport: 'NBA', userId: 'member', desktop: true, teamPicks });
+  const cards = nodes.filter(node => node.props?.className === 'wire-game-pick wire-auto-pick');
+  assert.equal(cards.length, 2, 'Includes saved picks for live and final games without duplicates or unrelated games');
+  const names = cards.map(card => card.props.children[0].props.children[1].props.children);
+  assert.deepEqual(names, ['Boston Celtics', 'New York Knicks']);
+  const paragraphs = nodes.filter(node => node.type === 'p').map(node => node.props.children);
+  assert.ok(paragraphs.includes('Scoring comparison.'));
+  assert.ok(paragraphs.includes('Recent form.'));
+  assert.equal(render([], { games, sport: 'NBA', desktop: true, teamPicks }).filter(node => node.props?.className === 'wire-game-pick wire-auto-pick').length, 0);
+});
 test('Wire shows exactly three mobile / five desktop picks, matching only unfinished games and saved order', () => {
   const picks = Array.from({ length: 6 }, (_, index) => ({
     key: String(index), start: '2026-10-27T23:00:00Z', sport: 'NBA', market: 'h2h', probability: 0.6 + index / 100, ev: 0.1,
@@ -76,6 +98,7 @@ test('Mobile Top Picks start collapsed, mount only on expansion and unmount on c
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
   } }).outputText;
   for (const desktop of [false, true]) {
+    const teamPicks = { 'live:1': { eventId: 'live', team: 'Boston Celtics', rank: 1, reason: 'Saved matchup explanation.' } };
     const state = [desktop, false];
     let slot = 0;
     const jsx = (type, props) => ({ type, props });
@@ -86,13 +109,14 @@ test('Mobile Top Picks start collapsed, mount only on expansion and unmount on c
       return {};
     } });
     vm.runInContext(compiled, context);
-    const render = () => { slot = 0; return context.exports.default({ children: 'Scores', games: [], sport: 'NBA' }); };
+    const render = () => { slot = 0; return context.exports.default({ children: 'Scores', games: [], sport: 'NBA', teamPicks }); };
     const nodes = (node) => !node || typeof node !== 'object' ? [] : Array.isArray(node)
       ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
     let tree = nodes(render());
     assert.equal(tree.filter((node) => node.type === 'WireTopPicks').length, desktop ? 1 : 0);
     if (desktop) {
       assert.equal(tree.find((node) => node.type === 'WireTopPicks').props.desktop, true);
+      assert.equal(tree.find((node) => node.type === 'WireTopPicks').props.teamPicks, teamPicks);
       assert.equal(tree.filter((node) => node.type === 'details').length, 0);
       continue;
     }
@@ -102,6 +126,7 @@ test('Mobile Top Picks start collapsed, mount only on expansion and unmount on c
     tree = nodes(render());
     assert.equal(tree.filter((node) => node.type === 'WireTopPicks').length, 1);
     assert.equal(tree.find((node) => node.type === 'WireTopPicks').props.desktop, false);
+    assert.equal(tree.find((node) => node.type === 'WireTopPicks').props.teamPicks, teamPicks);
     assert.ok(tree.findIndex((node) => node.type === 'summary') < tree.findIndex((node) => node.props?.className === 'wire-score-content'));
     disclosure.props.onToggle({ currentTarget: { open: false } });
     assert.equal(nodes(render()).filter((node) => node.type === 'WireTopPicks').length, 0);

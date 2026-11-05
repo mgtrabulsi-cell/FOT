@@ -1,4 +1,5 @@
-import { pickBlurb, probabilityGrade } from '../../supabase/functions/_shared/gamewaire.ts';
+import { probabilityGrade } from '../../supabase/functions/_shared/gamewaire.ts';
+import { pickBreakdown } from '../../supabase/functions/_shared/gamewaireNarrative.ts';
 import { bestBetLabels } from './gamewaireOrder';
 import type { publishedSelections } from './gamewaireOrder';
 import { gamewaireMarketLabels, gamewairePickTitle } from './gamewairePresentation';
@@ -40,7 +41,7 @@ export async function renderGamewairePickGraphics(picks: GraphicPick[], instagra
     const cards = picks.slice(offset, offset + step).map((pick, index) => {
       const title = wrap(gamewairePickTitle(pick), '700 42px Oswald', 884);
       const matchup = wrap(`${pick.away} @ ${pick.home}`, '400 26px "DM Sans"', 884);
-      const reason = wrap(pickBlurb(pick), reasonFont, 840);
+      const reason = wrap(pickBreakdown(pick), reasonFont, 840);
       return { pick, rank: offset + index + 1, title, matchup, reason, height: 330 + title.length * 52 + matchup.length * 36 + reason.length * reasonLineHeight };
     });
     const header = instagram ? 216 : 104;

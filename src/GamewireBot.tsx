@@ -98,7 +98,7 @@ function PropLab({ report }: { report: BotReport }) {
           <p>No verified current sportsbook price is connected here. Projection only, not a confirmed betting value selection.</p>
         </details>}
         </div>)}</>}
-    {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><div className="gwb-published-brand"><span className="gamewaire-name">Gamew<strong>AI</strong>re</span><small>PUBLISHED TOP PICK</small></div><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><p>{prop.breakdown}</p>
+    {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><div className="gwb-published-brand"><span className="gamewaire-name">Gamew<strong>AI</strong>re</span><small>PUBLISHED TOP PICK</small></div><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><GamewaireBreakdown text={prop.breakdown} />
       {prop.comparison && <p>{prop.comparison.assessment} · Difference {prop.comparison.difference > 0 ? '+' : ''}{prop.comparison.difference}.
         {prop.comparison.games > 0 ? ` Recorded games: ${prop.comparison.over} over / ${prop.comparison.under} under / ${prop.comparison.pushes} pushes (${prop.comparison.games} samples; ${prop.comparison.observedOverRate}% observed over, ${prop.comparison.observedUnderRate}% under).` : ' No verified hit-rate sample.'}
         {' '}Historical counts, not forecast probabilities. Saved line only, not a current market edge.</p>}
@@ -486,3 +486,4 @@ export default function GamewireBot() {
     </div>}
   </section>;
 }
+import GamewaireBreakdown from './GamewaireBreakdown';

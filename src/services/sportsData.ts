@@ -364,6 +364,15 @@ function readMarket(raw: unknown): NFLMarket | undefined {
   };
 }
 
+export function isHalftime(period = '', clock = '') {
+  return /halftime|half time|^HT$/i.test(period.trim()) || /halftime|half time|^HT$/i.test(clock.trim())
+    || (period === 'Q2' && /^(?:0(?::00)?(?:\.0+)?)$/.test(clock.trim()));
+}
+
+export function gameClockLabel(period = '', clock = '') {
+  return isHalftime(period, clock) ? 'Halftime' : [period, clock].filter(Boolean).join(' ');
+}
+
 export function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | null {
   const event = asObject(eventValue);
   const competition = asObject(asArray(event.competitions)[0]);
@@ -410,7 +419,7 @@ export function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): 
     sport: feed.sport,
     league: feed.league,
     status: statusValue,
-    period: periodLabel,
+    period: state === 'in' && /HALFTIME|half time/i.test(`${text(statusType.name)} ${shortDetail}`) ? 'Halftime' : periodLabel,
     clock: clockValue,
     date: text(event.date),
     venue: text(asObject(competition.venue).fullName, text(asObject(event.venue).fullName, 'Venue TBA')),

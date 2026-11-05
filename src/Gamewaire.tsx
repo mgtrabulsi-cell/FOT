@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Activity, ArrowRight, BarChart3, Bot, Crosshair, Layers, Star } from 'lucide-react';
 import { isSavedGamePastReview, loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
-import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, pickBlurb } from './services/gamewaire';
+import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks } from './services/gamewaire';
+import { pickBreakdown } from '../supabase/functions/_shared/gamewaireNarrative.ts';
+import GamewaireBreakdown from './GamewaireBreakdown';
 import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
 import { nbaCalendarDate } from './services/sportsData';
 import { loadPublishedNFLWeek } from './services/gamewairePublishedWeek';
@@ -70,7 +72,7 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
     {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="gai-note">Saved price · refresh analysis before using a changed line.</p>}
     </div>
     <section className="gai-reason" aria-label={`Analysis behind ${title}`}>
-      {pickBlurb(pick).split('\n\n').map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+      <GamewaireBreakdown text={pickBreakdown(pick)} />
     </section>
     {technical && <details className="gai-evidence"><summary>Admin stats &amp; source observations</summary>
     {pick.baseline && <p>{pick.baseline} Previous full-season average: {pick.previousSeasonAverage?.toFixed(1) ?? 'Unavailable'}.</p>}
@@ -428,7 +430,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           <span className={`gai-probability-badge${publishedPicks[0].probability >= .5 ? ' is-positive' : ''}`}
             aria-label={`Estimated probability grade ${probabilityGrade(publishedPicks[0].probability)}`}>
             {probabilityGrade(publishedPicks[0].probability)}</span>
-          <p className="gai-featured-reason">{pickBlurb(publishedPicks[0])}</p>
+          <div className="gai-featured-reason"><GamewaireBreakdown text={pickBreakdown(publishedPicks[0])} /></div>
         </article>
         : <p className="gai-note">No published picks for these filters yet. Choose another league, week or date below.</p>}
     </section>}

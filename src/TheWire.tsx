@@ -23,6 +23,7 @@ import {
   getPrimetimeFullTitle,
   getPrimetimeLabel,
   isPrimetimeGame,
+  gameClockLabel,
 } from './services/sportsData';
 import { getInterfaceScale } from './uiScale';
 import { usePublicDataRevision } from './usePublicDataRevision';
@@ -851,7 +852,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
       const intl = internationalVenue(game);
       const pick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
       return (
-        <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : ''}`}>
+        <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : final ? ' is-final-game' : ''}`}>
           <NotificationBell />
           <button
             type="button"
@@ -867,7 +868,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
               ) : (
                 <span>{formatGameTime(game)}</span>
               )}
-              {live && (game.period || game.clock) && <small>{game.period} {game.clock}</small>}
+              {live && (game.period || game.clock) && <small>{gameClockLabel(game.period, game.clock)}</small>}
             </span>
             <span className="wire-board-teams">
               {[game.away, game.home].map((team, index) => {
@@ -901,7 +902,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
           </button>
           {pick && <details className="wire-game-pick">
             <summary><span>GamewAIre Pick #{pick.rank} breakdown</span><b>{pick.team}</b></summary>
-            <div>{pick.reason.split('\n\n').map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
+            <div><GamewaireBreakdown text={pick.reason} /></div>
           </details>}
         </li>
       );
@@ -1017,7 +1018,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                       ) : (
                         <span>{formatGameTime(game)}</span>
                       )}
-                      {live && <small className="wire-wheel-clock">{game.clock}</small>}
+                      {live && <small className="wire-wheel-clock">{gameClockLabel(game.period, game.clock)}</small>}
                     </div>
                     <div className="wire-wheel-teams">
                       <div className={`wire-wheel-row${game.status === 'FINAL' && game.away.score < game.home.score ? ' is-loser' : ''}`}>
@@ -1068,7 +1069,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
 
           {/* Main Game Header Banner */}
           <section className="wire-hero-banner">
-            <div className="wire-matchup-grid">
+            <div className="wire-matchup-grid matchup-scoreboard">
               {/* Away Team */}
               <div className={`wire-matchup-team wire-team-left${awayLost ? ' is-loser' : ''}`}>
                 <div className="wire-matchup-mark-wrapper">
@@ -1086,64 +1087,25 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                   <h2>{onOpenTeamLog ? <button type="button" className="team-game-log-link" aria-label={`View ${selectedGame.away.name} game log`} onClick={() => onOpenTeamLog(selectedGame.away, selectedGame.seasonYear)}>{selectedGame.away.name}</button> : selectedGame.away.name}</h2>
                   <small>{selectedGame.away.record || 'Away'}</small>
                 </div>
-                <div className="wire-matchup-score">
-                  {selectedGame.status === 'UPCOMING' ? '–' : <ScoreTicker value={awayBoxTeam?.score ?? selectedGame.away.score} gameKey={`${selectedGame.id}:away`} />}
-                </div>
               </div>
 
               {/* Center Game State */}
               <div className="wire-matchup-center">
-                {selectedIntl ? (
-                  <span className="wire-primetime-pill pill-intl">
-                    <CountryFlag country={selectedIntl.country} /> International Series · {selectedIntl.city ?? selectedIntl.country}
-                  </span>
-                ) : selectedPrimetime && (
-                  <span className={`wire-primetime-pill pill-${selectedPrimetime.toLowerCase()}`}>
-                    <Tv size={12} /> {getPrimetimeFullTitle(selectedPrimetime)}
-                  </span>
-                )}
+                <div className="wire-matchup-score" aria-live="polite">
+                  {selectedGame.status === 'UPCOMING' ? 'vs' : <><span className={awayLost ? 'is-loser' : undefined}><ScoreTicker value={awayBoxTeam?.score ?? selectedGame.away.score} gameKey={`${selectedGame.id}:away`} /></span>{' – '}<span className={homeLost ? 'is-loser' : undefined}><ScoreTicker value={homeBoxTeam?.score ?? selectedGame.home.score} gameKey={`${selectedGame.id}:home`} /></span></>}
+                </div>
                 <span className={`wire-status-pill${isLive ? ' is-live' : ''}`}>
                   {isLive && <i />}
                   {isLive
-                    ? `${boxScore?.clock || selectedGame.clock || 'Live'}`
+                    ? gameClockLabel(selectedGame.period, selectedGame.clock) === 'Halftime' ? 'Halftime' : gameClockLabel(selectedGame.period, boxScore?.clock || selectedGame.clock)
                     : selectedGame.status === 'FINAL'
                       ? 'FINAL'
                       : formatGameTime(selectedGame)}
                 </span>
-                {isLive && (
-                  <p className="nfl-field-position">{nflFieldPosition(selectedGame.situation)}</p>
-                )}
-                {isLive && (
-                  <span className="wire-live-notice">
-                    <Activity size={12} /> Live box score · polls every 15s
-                  </span>
-                )}
-                {selectedGame.status === 'UPCOMING' && selectedGame.nflMarket?.spread != null && (
-                  <div className="wire-spread-badge">
-                    <span>Spread</span>
-                    <b>{selectedGame.home.abbr} {selectedGame.nflMarket.spread > 0 ? `+${selectedGame.nflMarket.spread}` : selectedGame.nflMarket.spread}</b>
-                  </div>
-                )}
-                <div className="wire-venue-line">
-                  <MapPin size={13} />
-                  <span>{boxScore?.venue || selectedGame.venue || 'NFL Stadium'}</span>
-                </div>
-                {onOpenStatHub && (
-                  <button
-                    className="wire-stathub-link"
-                    onClick={() => onOpenStatHub(selectedGame)}
-                    title="Open in Stat Hub"
-                  >
-                    Open in Stat Hub <ChevronRight size={14} />
-                  </button>
-                )}
               </div>
 
               {/* Home Team */}
               <div className={`wire-matchup-team wire-team-right${homeLost ? ' is-loser' : ''}`}>
-                <div className="wire-matchup-score">
-                  {selectedGame.status === 'UPCOMING' ? '–' : <ScoreTicker value={homeBoxTeam?.score ?? selectedGame.home.score} gameKey={`${selectedGame.id}:home`} />}
-                </div>
                 <div className="wire-matchup-team-details text-right">
                   <b>{selectedGame.home.abbr}{isLive && selectedGame.situation?.possessionTeamId === selectedGame.home.id && <span className="possession-football" role="img" aria-label={`${selectedGame.home.name} has possession`}>🏈</span>}</b>
                   <h2>{onOpenTeamLog ? <button type="button" className="team-game-log-link" aria-label={`View ${selectedGame.home.name} game log`} onClick={() => onOpenTeamLog(selectedGame.home, selectedGame.seasonYear)}>{selectedGame.home.name}</button> : selectedGame.home.name}</h2>
@@ -1162,6 +1124,15 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
               </div>
             </div>
 
+            <div className="wire-matchup-meta">
+              {selectedIntl ? <span className="wire-primetime-pill pill-intl"><CountryFlag country={selectedIntl.country} /> International Series · {selectedIntl.city ?? selectedIntl.country}</span>
+                : selectedPrimetime && <span className={`wire-primetime-pill pill-${selectedPrimetime.toLowerCase()}`}><Tv size={12} /> {getPrimetimeFullTitle(selectedPrimetime)}</span>}
+              <span className="wire-venue-line"><MapPin size={13} />{boxScore?.venue || selectedGame.venue || 'NFL Stadium'}</span>
+              {isLive && gameClockLabel(selectedGame.period, selectedGame.clock) !== 'Halftime' && <span className="nfl-field-position">{nflFieldPosition(selectedGame.situation)}</span>}
+              {isLive && <span className="wire-live-notice"><Activity size={12} /> Live box score · polls every 15s</span>}
+              {selectedGame.status === 'UPCOMING' && selectedGame.nflMarket?.spread != null && <div className="wire-spread-badge"><span>Spread</span><b>{selectedGame.home.abbr} {selectedGame.nflMarket.spread > 0 ? `+${selectedGame.nflMarket.spread}` : selectedGame.nflMarket.spread}</b></div>}
+              {onOpenStatHub && <button className="wire-stathub-link" onClick={() => onOpenStatHub(selectedGame)} title="Open in Stat Hub">Open in Stat Hub <ChevronRight size={14} /></button>}
+            </div>
             {isLive && selectedGame.situation?.lastPlay && (
               <LatestPlay play={selectedGame.situation.lastPlay} game={selectedGame} />
             )}
@@ -1513,3 +1484,4 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   );
 }
 import NotificationBell from './NotificationBell';
+import GamewaireBreakdown from './GamewaireBreakdown';

@@ -6,6 +6,13 @@ import { fetchStaticSports } from './sportsDatabase.ts';
 export type TeamLogLeague = 'NBA' | 'NFL';
 export type TeamLogEntry = { game: Game; seasonType: 1 | 2 | 3 };
 export type TeamLogDirectory = { teams: Team[]; season: number };
+export function teamLogGameColors(game: Game, teams: Team[]): Game {
+  const colored = (team: Team) => {
+    const color = teams.find(item => item.id === team.id)?.color;
+    return color && /^#?[a-f\d]{6}$/i.test(color) ? { ...team, color } : team;
+  };
+  return { ...game, away: colored(game.away), home: colored(game.home) };
+}
 const base = 'https://site.api.espn.com/apis/site/v2/sports';
 const path = (league: TeamLogLeague) => league === 'NBA' ? 'basketball/nba' : 'football/nfl';
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};

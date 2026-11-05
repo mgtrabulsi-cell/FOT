@@ -5,7 +5,7 @@ import TheWire from './TheWire';
 import NBAExperience from './NBAExperience';
 import { useSwipeBack } from './useSwipeBack';
 import { useOnlineStatus } from './OfflineStatus';
-import { fetchTeamGameLog, fetchTeamLogDirectory, teamLogKey, teamLogResult, teamSeasonLabel } from './services/teamGameLogs';
+import { fetchTeamGameLog, fetchTeamLogDirectory, teamLogGameColors, teamLogKey, teamLogResult, teamSeasonLabel } from './services/teamGameLogs';
 import type { TeamLogDirectory, TeamLogEntry, TeamLogLeague } from './services/teamGameLogs';
 import { readRenderSnapshot } from './services/renderSnapshots';
 import type { FavoriteTarget, Game, NFLSkillPlayer, Team } from './services/sportsData';
@@ -38,7 +38,10 @@ export default function TeamGameLogs({ league, initialTeam, initialSeason, favor
   const root = useSwipeBack<HTMLDivElement>(back, !!team && (!game || league === 'NBA'));
   const season = selectedSeason ?? directory.data?.season;
   const key = team && season ? teamLogKey(league, team.id, season) : '';
-  const entries = schedule.key === key ? schedule.entries : readRenderSnapshot('teamGameLog', key)?.entries ?? [];
+  const colorTeams = [...directory.data?.teams ?? [], ...(initialTeam ? [initialTeam] : [])];
+  const entries = (schedule.key === key ? schedule.entries : readRenderSnapshot('teamGameLog', key)?.entries ?? [])
+    .map(entry => ({ ...entry, game: teamLogGameColors(entry.game, colorTeams) }));
+  const selectedGame = game ? teamLogGameColors(game, colorTeams) : null;
   const openTeamLog = (nextTeam: Team, nextSeason: number) => {
     returnGame.current = null;
     setTeam(nextTeam);
@@ -80,13 +83,13 @@ export default function TeamGameLogs({ league, initialTeam, initialSeason, favor
     } else root.current?.focus();
   }, [team?.id, game?.id, season, root]);
 
-  if (game) return <div className="team-game-logs" ref={root} tabIndex={-1}>
-    <h2>{team?.name} · {teamSeasonLabel(league, game.seasonYear)}</h2>
-    {league === 'NBA' ? <NBAExperience mode="wire" heading="Box score" games={[game]} status="ready" query="" favorites={favorites}
+  if (selectedGame) return <div className="team-game-logs" ref={root} tabIndex={-1}>
+    <h2>{team?.name} · {teamSeasonLabel(league, selectedGame.seasonYear)}</h2>
+    {league === 'NBA' ? <NBAExperience mode="wire" heading="Box score" games={[selectedGame]} status="ready" query="" favorites={favorites}
       onToggleFavorite={onToggleFavorite} onRetry={() => setGamesRetry(value => value + 1)}
-      initialGameId={game.id} openGameId={game.id} onBackToGames={() => setGame(null)} backLabel="Team game log" onOpenTeamLog={openTeamLog} />
-      : <TheWire games={[game]} query="" favorites={favorites} featuredFavoriteTeamId={team?.id ?? null}
-        onToggleFavorite={onToggleFavorite} onOpenPlayer={onOpenPlayer} initialGameId={game.id} openGameId={game.id}
+      initialGameId={selectedGame.id} openGameId={selectedGame.id} onBackToGames={() => setGame(null)} backLabel="Team game log" onOpenTeamLog={openTeamLog} />
+      : <TheWire games={[selectedGame]} query="" favorites={favorites} featuredFavoriteTeamId={team?.id ?? null}
+        onToggleFavorite={onToggleFavorite} onOpenPlayer={onOpenPlayer} initialGameId={selectedGame.id} openGameId={selectedGame.id}
         onBackToGames={() => setGame(null)} backLabel="Team game log" gameListLabel="NFL · SELECTED GAME" onOpenTeamLog={openTeamLog} />}
   </div>;
 
@@ -95,7 +98,7 @@ export default function TeamGameLogs({ league, initialTeam, initialSeason, favor
     {directory.error && <p className="feed-warning" role="alert">{directory.error} {directory.data && 'Showing saved teams.'} <button type="button" onClick={() => setDirectoryRetry(value => value + 1)}>Retry teams</button></p>}
     {team ? <>
       <button type="button" className="wire-back-button" onClick={() => setTeam(null)}><ChevronLeft size={16} aria-hidden="true" />All {league} teams</button>
-      <header className="team-log-heading"><TeamAbbrMark large abbr={team.abbr} name={team.name} color={team.color} /><div><span className="eyebrow">{league} TEAM GAME LOG</span><h2>{team.name}</h2></div>
+      <header className="team-log-heading"><TeamAbbrMark large abbr={team.abbr} name={team.name} color={colorTeams.find(item => item.id === team.id)?.color ?? team.color} /><div><span className="eyebrow">{league} TEAM GAME LOG</span><h2>{team.name}</h2></div>
         <label>Season<select aria-label={`${league} team game-log season`} value={season ?? ''} onChange={event => setSelectedSeason(Number(event.target.value))}>
           {season && Array.from({ length: Math.max(directory.data?.season ?? season, season) - 2001 }, (_, index) => Math.max(directory.data?.season ?? season, season) - index).map(year =>
             <option key={year} value={year}>{teamSeasonLabel(league, year)}</option>)}

@@ -1848,14 +1848,14 @@ td:first-child { color: #828c84; }
 .notification-bell:focus-visible { outline: 2px solid #9db9df; outline-offset: 2px; }
 .notification-bell-message { position: absolute; top: 48px; right: 0; width: min(280px, 75vw); padding: 12px; background: #101a29; color: #e5eaf3; border: 1px solid #526b90; border-radius: 8px; z-index: 20; font-size: 13px; }
 .notification-bell-message p { margin: 0 0 8px; }
-.notification-game-card.is-live-game > .wire-board-card { grid-template-columns: 76px 44px minmax(0, 1fr); grid-template-areas: "status bell teams" "footer footer footer"; column-gap: 8px; }
-.notification-game-card.is-live-game .wire-board-status { padding-right: 0; }
-.notification-game-card.is-live-game > .notification-bell-control { top: 24px; left: 99px; right: auto; }
-.notification-game-card.is-live-game .notification-bell { border: 0; border-radius: 0; background: radial-gradient(circle, #101a29 14px, #526b90 14px, #526b90 15px, transparent 15px); }
-.notification-game-card.is-live-game .notification-bell svg { width: 14px; height: 14px; }
-.notification-game-card.is-live-game .notification-bell-message { left: -88px; right: auto; width: min(280px, calc(100vw - 64px)); }
+.notification-game-card:is(.is-live-game, .is-final-game) > .wire-board-card { grid-template-columns: 76px 44px minmax(0, 1fr); grid-template-areas: "status bell teams" "footer footer footer"; column-gap: 8px; }
+.notification-game-card:is(.is-live-game, .is-final-game) .wire-board-status { padding-right: 0; }
+.notification-game-card:is(.is-live-game, .is-final-game) > .notification-bell-control { top: 24px; left: 99px; right: auto; }
+.notification-game-card:is(.is-live-game, .is-final-game) .notification-bell { border: 0; border-radius: 0; background: radial-gradient(circle, #101a29 14px, #526b90 14px, #526b90 15px, transparent 15px); }
+.notification-game-card:is(.is-live-game, .is-final-game) .notification-bell svg { width: 14px; height: 14px; }
+.notification-game-card:is(.is-live-game, .is-final-game) .notification-bell-message { left: -88px; right: auto; width: min(280px, calc(100vw - 64px)); }
 @media (max-width: 640px) {
-  .notification-game-card.is-live-game > .wire-board-card { grid-template-columns: 54px 44px minmax(0, 1fr); column-gap: 4px; }
-  .notification-game-card.is-live-game > .notification-bell-control { top: 22px; left: 69px; }
-  .notification-game-card.is-live-game .notification-bell-message { left: -58px; }
+  .notification-game-card:is(.is-live-game, .is-final-game) > .wire-board-card { grid-template-columns: 54px 44px minmax(0, 1fr); column-gap: 4px; }
+  .notification-game-card:is(.is-live-game, .is-final-game) > .notification-bell-control { top: 22px; left: 69px; }
+  .notification-game-card:is(.is-live-game, .is-final-game) .notification-bell-message { left: -58px; }
 }

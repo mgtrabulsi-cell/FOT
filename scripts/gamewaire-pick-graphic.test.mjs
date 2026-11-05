@@ -3,7 +3,8 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { pickBlurb, probabilityGrade } from '../supabase/functions/_shared/gamewaire.ts';
+import { probabilityGrade } from '../supabase/functions/_shared/gamewaire.ts';
+import { pickBreakdown } from '../supabase/functions/_shared/gamewaireNarrative.ts';
 import { bestBetLabels, instagramBestBets } from '../src/services/gamewaireOrder.ts';
 import * as presentation from '../src/services/gamewairePresentation.ts';
 
@@ -27,7 +28,7 @@ function fixture({ noFonts = false, noContext = false, noBlob = false } = {}) {
     require(name) {
       if (name.includes('gamewairePresentation')) return presentation;
       if (name.includes('gamewaireOrder')) return { bestBetLabels };
-      return { pickBlurb, probabilityGrade };
+      return { pickBreakdown, probabilityGrade };
     },
   });
   vm.runInContext(code, context);
@@ -48,7 +49,7 @@ test('Five published picks become three PNG attachments with every pick and comp
   assert.match(combined, /BEST BET \/ #1 Top Pick/);
   for (const pick of picks) {
     assert.ok(combined.includes(presentation.gamewairePickTitle(pick)));
-    assert.ok(combined.includes(pickBlurb(pick)), 'Full reasoning is drawn, never shortened to one sentence');
+    for (const paragraph of pickBreakdown(pick).split('\n\n')) assert.ok(combined.includes(paragraph), 'Full reasoning is drawn, never shortened to one sentence');
   }
   assert.doesNotMatch(combined, /Stretch|PRIVATE|ROI|EV|units/);
   assert.match(combined, /Saved analysis/);
@@ -65,8 +66,8 @@ test('A Game Lean graphic keeps both reasoning paragraphs and category branding'
   await f.render([lean]);
   const text = f.canvases[0].texts.map((row) => row.text).filter(Boolean).join(' ');
   assert.match(text, /BEST BET \/ #1 Game Lean/);
-  for (const paragraph of pickBlurb(lean).split('\n\n')) assert.ok(text.includes(paragraph));
-  assert.match(text, /We're taking Home \+3.5 to cover/);
+  for (const paragraph of pickBreakdown(lean).split('\n\n')) assert.ok(text.includes(paragraph));
+  assert.match(text, /GamewAIre Verdict: Home \+3.5/);
 });
 test('Graphics fail explicitly for empty selections, missing fonts, missing canvas and failed PNG exports', async () => {
   await assert.rejects(fixture().render([]), /one to five/);
@@ -103,7 +104,7 @@ test('Instagram exports six dated sport-specific 4:5 slides with full reasoning,
   assert.match(text, /'s BEST BETS/); assert.match(text, /NBA \/ 10\/29 \/ 2026/);
   assert.match(text, /CONTINUED/);
   const reasoning = f.canvases.flatMap((canvas) => canvas.texts.filter((row) => row.x === 106).map((row) => row.text)).filter(Boolean).join(' ');
-  for (const pick of six) for (const paragraph of pickBlurb(pick).split('\n\n'))
+  for (const pick of six) for (const paragraph of pickBreakdown(pick).split('\n\n'))
     assert.ok(reasoning.includes(paragraph), 'Every reasoning paragraph is retained across the slides');
   for (const canvas of f.canvases) {
     assert.ok(canvas.texts.every((row) => row.y > 0 && row.y < 1350));

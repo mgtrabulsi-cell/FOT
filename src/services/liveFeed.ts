@@ -2,6 +2,7 @@
 // overlays fresh scores, clocks and game states onto ESPN-shaped scoreboard games.
 // ESPN remains the enrichment source and the automatic fallback when rows are stale.
 import type { Game, GameStatus } from './sportsData.ts';
+import { isHalftime } from './sportsData.ts';
 
 export type LiveFeedRow = {
   provider_game_id: string;
@@ -140,7 +141,9 @@ export function applyLiveFeed(games: Game[], rows: LiveFeedRow[], now = Date.now
       status: row.status,
       away: { ...game.away, score: row.away_score ?? game.away.score },
       home: { ...game.home, score: row.home_score ?? game.home.score },
-      period: live && row.period && row.period > 0 ? periodLabel(row.period) : game.period,
+      period: live && row.period && row.period > 0
+        ? isHalftime(periodLabel(row.period), row.clock ?? '') ? 'Halftime' : periodLabel(row.period)
+        : game.period,
       clock: live ? row.clock ?? game.clock : row.status === 'FINAL' && game.status !== 'FINAL' ? 'Final' : game.clock,
       completedPeriods: periods.length ? periods : game.completedPeriods,
       situation: row.status === 'FINAL' ? undefined : game.situation,

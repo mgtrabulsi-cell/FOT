@@ -138,6 +138,14 @@ const espnGame = (overrides = {}) => ({
   ...overrides,
 });
 
+test('live overlay preserves halftime for explicit breaks and zero second-quarter clocks', () => {
+  for (const clock of ['Halftime', 'HT', '0.0', '0:00']) {
+    const [game] = applyLiveFeed([espnGame()], [feedRow({ period: 2, clock })]);
+    assert.equal(game.period, 'Halftime');
+  }
+  assert.equal(applyLiveFeed([espnGame()], [feedRow({ period: 3, clock: '0:00' })])[0].period, 'Q3');
+});
+
 test('The live overlay replaces scores, clock and period for matched games and labels the provider', () => {
   const [game] = applyLiveFeed([espnGame()], [feedRow()]);
   assert.equal(game.liveSource, 'api-sports');

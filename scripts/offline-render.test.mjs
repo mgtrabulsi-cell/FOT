@@ -12,9 +12,14 @@ import { detailsSnapshotKey, readGameDetailsSnapshot, readRenderSnapshot, saveRe
 import { rankTeamAverages, teamComparisonMetrics } from '../src/services/teamComparisonRanks.ts';
 
 const source = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
+const breakdownCode = ts.transpileModule(readFileSync(new URL('../src/GamewaireBreakdown.tsx', import.meta.url), 'utf8'),
+  { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
+  .replace(/from ["']react\/jsx-runtime["']/g, `from '${import.meta.resolve('react/jsx-runtime')}'`);
+const breakdownURL = `data:text/javascript;base64,${Buffer.from(breakdownCode).toString('base64')}`;
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX },
 }).outputText
+  .replace(/from ['"]\.\/GamewaireBreakdown['"]/g, `from '${breakdownURL}'`)
   .replace(/from ['"]react['"]/g, `from '${import.meta.resolve('react')}'`)
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)

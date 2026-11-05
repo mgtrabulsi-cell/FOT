@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import * as jsxRuntime from 'react/jsx-runtime';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
+import * as narrative from '../supabase/functions/_shared/gamewaireNarrative.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as bot from '../supabase/functions/_shared/gamewireBot.ts';
 import * as rankingTools from '../supabase/functions/_shared/gamewireRankings.ts';
@@ -180,6 +181,7 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
       if (name.includes('gamewireBotIntelligence')) return intelligenceTools;
       if (name.includes('gamewireBot')) return bot;
       if (name.includes('gamewaireSources')) return sources;
+      if (name.includes('gamewaireNarrative')) return narrative;
       return engine;
     },
   });

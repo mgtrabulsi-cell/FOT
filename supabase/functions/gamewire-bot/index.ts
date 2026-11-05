@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { array, normalize, numeric, object, pickBlurb, text } from '../_shared/gamewaire.ts';
+import { array, normalize, numeric, object, text } from '../_shared/gamewaire.ts';
+import { pickBreakdown } from '../_shared/gamewaireNarrative.ts';
 import type { Candidate } from '../_shared/gamewaire.ts';
 import { defensiveStandings, publicJSON } from '../_shared/gamewaireSources.ts';
 import { feedDefensiveStandings } from '../_shared/apiSportsBotInputs.ts';
@@ -283,7 +284,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
           || !text(pick.book) || !Number.isFinite(Date.parse(text(pick.updatedAt)))) throw new Error('Published player prop data is incomplete.');
         const projection = report.projections.find((projection) => projection.market === text(pick.market));
         props.push({ selection: `${pick.subject} ${pick.side} ${pick.line} ${propLabels[text(pick.market)]}`,
-          american: Number(pick.american), book: text(pick.book), savedAt: text(pick.updatedAt), breakdown: pickBlurb(raw as Candidate),
+          american: Number(pick.american), book: text(pick.book), savedAt: text(pick.updatedAt), breakdown: pickBreakdown(raw as Candidate),
           ...(projection?.distribution ? { modeled: distributionAtLine(projection.distribution, Number(pick.line)) } : {}),
           ...(projection?.estimate != null && projection.evidence ? { comparison: { market: projection.market,
             ...observedLineComparison(projection.estimate, Number(pick.line), projection.evidence.observations) } } : {}) });

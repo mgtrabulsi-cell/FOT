@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { nbaPreviousGame } from '../src/services/nbaBackToBack.ts';
-import { nbaCalendarDate } from '../src/services/sportsData.ts';
+import { gameClockLabel, nbaCalendarDate } from '../src/services/sportsData.ts';
 import { nbaLiveScore } from '../src/services/nbaLiveScore.ts';
 import { saveNBASummary } from '../src/services/nbaPreload.ts';
 
@@ -23,6 +23,15 @@ const away = { id: '1', name: 'Atlanta Hawks', abbr: 'ATL', score: 100, record: 
 const home = { id: '2', name: 'Boston Celtics', abbr: 'BOS', score: 99, record: '0-1' };
 const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league: 'NBA', seasonYear: 2027,
   date: '2026-10-23T23:00:00Z', status: 'LIVE', period: 'Q4', clock: '1:00', away, home, venue: 'Arena' };
+test('NBA finished games keep the left-side notification layout and visible final scores', () => {
+  const app = setup();
+  app.props.games = [{ ...game, status: 'FINAL' }];
+  app.render();
+  assert.ok(app.nodes().some(node => node.props?.className === 'notification-game-card is-final-game'));
+  const scores = app.nodes().filter(node => node.props?.className === 'wire-board-score').map(node => node.props.children);
+  assert.deepEqual(scores, [100, 99]);
+  app.unmount();
+});
 
 test('NBA matchup team names open the matching team log and season without changing box-score tabs', () => {
   const app = setup();
@@ -36,6 +45,18 @@ test('NBA matchup team names open the matching team log and season without chang
   assert.deepEqual(opened, [[away.id, 2027], [home.id, 2027]]);
   assert.ok(app.nodes().some(node => node.props?.['aria-label'] === 'Box score team'));
   app.unmount();
+});
+test('NBA halftime is readable on board, wheel and opened-game scoreboard for zero-clock and explicit provider breaks', () => {
+  for (const [period, clock] of [['Q2', '0.0'], ['Q2', '0:00'], ['Halftime', '0:00']]) {
+    const app = setup();
+    app.props.games = [{ ...game, period, clock }];
+    app.render();
+    assert.ok(JSON.stringify(app.nodes().find(node => node.props?.className === 'wire-board-status')).includes('Halftime'));
+    app.nodes().find(node => node.props?.['data-game-id']).props.onClick(); app.render();
+    assert.ok(JSON.stringify(app.nodes().find(node => node.props?.className === 'nba-game-wheel')).includes('Halftime'));
+    assert.ok(JSON.stringify(app.nodes().find(node => node.props?.className === 'nba-score matchup-score')).includes('Halftime'));
+    app.unmount();
+  }
 });
 
 function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = {}) {
@@ -93,7 +114,7 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       if (name === './services/nbaData') return data;
       if (name === './services/nbaBackToBack') return { nbaPreviousGame };
       if (name === './services/nbaLiveScore') return { nbaLiveScore };
-      if (name === './services/sportsData') return { nbaCalendarDate };
+      if (name === './services/sportsData') return { nbaCalendarDate, gameClockLabel };
       if (name === './services/renderSnapshots') return {
         readLastNBAStatHub: () => snapshots.get('nbaStatHub:last') ?? null,
         saveLastNBAStatHub: (value) => {
@@ -182,7 +203,7 @@ test('Opening live NBA details shows current Wire scores immediately with saved 
   let resolve;
   const app = setup('wire', new Map([[`nbaSummary:basketball/nba:${game.eventId}:${game.seasonYear}`, saved]]), undefined,
     { fetchNBASummary: () => new Promise((done) => { resolve = done; }) });
-  const score = () => app.nodes().find((node) => node.props?.className === 'nba-score');
+  const score = () => app.nodes().find((node) => node.props?.className === 'nba-score matchup-score');
   app.nodes().find((node) => node.props?.['data-game-id']).props.onClick(); app.render();
   assert.ok(JSON.stringify(score()).includes('100'), 'Current board score appears before the summary resolves');
   assert.ok(JSON.stringify(score()).includes('Q4'));
@@ -428,9 +449,9 @@ test('NBA dims only final losers on the board, wheel, names and individual score
     if (expectedLoser) assert.equal(boardLosers[0].props.children[2].props.children, expectedLoser === away.id ? awayScore : homeScore);
     app.nodes().find((node) => node.props?.['data-game-id']).props.onClick();
     app.render(); await app.settle();
-    const matchup = app.nodes().find((node) => node.props?.className === 'nba-matchup');
-    assert.equal(matchup.props.children[0].props.className === 'is-loser', expectedLoser === away.id);
-    assert.equal(matchup.props.children[2].props.className === 'is-loser', expectedLoser === home.id);
+    const matchup = app.nodes().find((node) => node.props?.className === 'nba-matchup matchup-scoreboard');
+    assert.equal(matchup.props.children[0].props.className.includes('is-loser'), expectedLoser === away.id);
+    assert.equal(matchup.props.children[2].props.className.includes('is-loser'), expectedLoser === home.id);
     const scoreSpans = app.nodes().filter((node) => node.type === 'span' && typeof node.props.children === 'number' && node.props.className === 'is-loser');
     assert.equal(scoreSpans.length, expectedLoser ? 1 : 0, 'Only the losing half of the combined score is muted');
     const wheel = app.nodes().find((node) => node.props?.className?.startsWith('nba-game-option'));
@@ -441,9 +462,9 @@ test('NBA dims only final losers on the board, wheel, names and individual score
   app.data.fetchNBASummary = async () => ({ status: 'post', awayScore: 110, homeScore: 112, teams: [], plays: [] });
   app.nodes().find((node) => node.props?.['data-game-id']).props.onClick();
   app.render(); await app.settle();
-  const matchup = app.nodes().find((node) => node.props?.className === 'nba-matchup');
-  assert.equal(matchup.props.children[0].props.className, 'is-loser', 'New final summary overrides older live scoreboard scores');
-  assert.notEqual(matchup.props.children[2].props.className, 'is-loser');
+  const matchup = app.nodes().find((node) => node.props?.className === 'nba-matchup matchup-scoreboard');
+  assert.ok(matchup.props.children[0].props.className.includes('is-loser'), 'New final summary overrides older live scoreboard scores');
+  assert.equal(matchup.props.children[2].props.className.includes('is-loser'), false);
   app.unmount();
 });
 
@@ -453,13 +474,13 @@ test('NBA Wire starts as an NFL-style vertical board and requests full details o
   const board = () => app.nodes().find((node) => node.props?.className === 'wire-board');
   assert.ok(board(), 'Returning to Wire starts at the board even with a remembered selection');
   assert.equal(app.requests.length, 0);
-  assert.equal(app.nodes().some((node) => node.props?.className === 'nba-matchup'), false);
+  assert.equal(app.nodes().some((node) => node.props?.className === 'nba-matchup matchup-scoreboard'), false);
   const card = app.nodes().find((node) => node.props?.['data-game-id'] === game.id);
   assert.match(card.props['aria-label'], /Atlanta Hawks at Boston Celtics, live Q4 1:00/);
   card.props.onClick(); app.render(); await app.settle();
   assert.deepEqual(app.requests, ['401']);
   assert.equal(board(), undefined);
-  assert.ok(app.nodes().find((node) => node.props?.className === 'nba-matchup'));
+  assert.ok(app.nodes().find((node) => node.props?.className === 'nba-matchup matchup-scoreboard'));
   assert.equal(app.nodes().filter((node) => node.type?.name === 'PlayerBox').length, 1);
   assert.equal(app.nodes().find((node) => node.type?.name === 'PlayerBox').props.team.id, away.id);
   app.nodes().find((node) => node.props?.className === 'nba-segments nba-team-toggle').props.children[1].props.onClick();
@@ -484,7 +505,7 @@ test('NBA push deep link opens the requested box once the date schedule arrives 
   app.props.games = [game];
   app.render();
   await app.settle();
-  assert.ok(app.nodes().some((node) => node.props?.className === 'nba-matchup'));
+  assert.ok(app.nodes().some((node) => node.props?.className === 'nba-matchup matchup-scoreboard'));
   assert.ok(app.requests.includes(game.eventId));
   app.nodes().find((node) => node.type === 'button' && Array.isArray(node.props.children) && node.props.children.includes('All games')).props.onClick();
   app.render();
@@ -532,7 +553,7 @@ test('NBA Stat Hub navigation sits beside All games above the scoreboard and ope
   const button = navigation.props.children[1];
   assert.equal(button.props.className, 'nba-open-stats');
   assert.equal(app.nodes().filter((node) => node.props?.className === 'nba-open-stats').length, 1);
-  assert.ok(app.nodes().indexOf(navigation) < app.nodes().findIndex((node) => node.props?.className === 'nba-matchup'));
+  assert.ok(app.nodes().indexOf(navigation) < app.nodes().findIndex((node) => node.props?.className === 'nba-matchup matchup-scoreboard'));
   button.props.onClick();
   assert.equal(opened, game.id);
   app.unmount();
@@ -717,7 +738,7 @@ test('NBA Stat Hub matches NFL wheel markup and shows both matchup teams without
   const wheel = app.nodes().find((node) => node.props?.className === 'nfl-game-wheel-tabs');
   assert.equal(wheel.props.selected, game.id);
   assert.equal(wheel.props.options[0].label, 'ATL @ BOS');
-  assert.equal(app.nodes().some((node) => node.props?.className === 'nba-matchup'), false);
+  assert.equal(app.nodes().some((node) => node.props?.className === 'nba-matchup matchup-scoreboard'), false);
   const directory = app.nodes().find((node) => node.type?.name === 'NBADirectory');
   assert.deepEqual(Array.from(directory.props.teams, (team) => team.id), [away.id, home.id]);
   assert.equal(directory.props.live, true);

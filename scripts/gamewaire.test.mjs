@@ -598,9 +598,15 @@ test('GamewAIre navigation is ordered correctly and AI styling is bold red witho
 });
 
 test('GamewAIre renders provider setup, real reports and complete metrics without fabricated empty-state picks', async () => {
+  const breakdownComponent = ts.transpileModule(readFileSync(new URL('../src/GamewaireBreakdown.tsx', import.meta.url), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
+    .replace(/from ["']react\/jsx-runtime["']/g, `from '${import.meta.resolve('react/jsx-runtime')}'`);
+  const breakdownURL = `data:text/javascript;base64,${Buffer.from(breakdownComponent).toString('base64')}`;
   const raw = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8')
     .replaceAll('import.meta.env.BASE_URL', JSON.stringify('/'));
   const component = ts.transpileModule(raw.replace('function Settlement(', 'export function Settlement('), { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
+    .replace(/from ['"]\.\.\/supabase\/functions\/_shared\/gamewaireNarrative\.ts['"]/g, `from '${new URL('../supabase/functions/_shared/gamewaireNarrative.ts', import.meta.url)}'`)
+    .replace(/from ['"]\.\/GamewaireBreakdown['"]/g, `from '${breakdownURL}'`)
     .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
     .replace(/import GamewaireBestBetsDownload from [^;]+;/, 'const GamewaireBestBetsDownload=()=>"Download Instagram Best Bets";')
     .replace(/import GamewireBot from [^;]+;/, 'const GamewireBot=()=>"GameWire player analysis";')
