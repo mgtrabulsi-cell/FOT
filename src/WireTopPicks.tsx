@@ -68,7 +68,7 @@ export default function WireTopPicks({ games, sport, userId, desktop, teamPicks 
         {automatic.length ? automatic.map(pick => {
           const game = games.find(game => game.eventId === pick.eventId)!;
           return <details className="wire-game-pick wire-auto-pick" key={pick.eventId}>
-            <summary><span className="wire-auto-rank">#{pick.rank}</span><b>{pick.team}</b><small>{game.away.abbr} at {game.home.abbr} · {game.status === 'FINAL' ? 'Final' : game.status === 'LIVE' ? 'Live' : new Date(game.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small><span className="wire-breakdown-cue">View breakdown</span></summary>
+            <summary><span className="wire-auto-rank">#{pick.rank}</span><b>{pick.team}</b><small>{game.away.abbr} at {game.home.abbr} · {game.status === 'FINAL' ? 'Final' : game.status === 'LIVE' ? 'Live' : new Date(game.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small><span className="wire-breakdown-cue"><span className="wire-breakdown-closed">View breakdown</span><span className="wire-breakdown-open">Hide breakdown</span></span></summary>
             <div><GamewaireBreakdown text={pick.reason} /></div>
           </details>;
         }) : <p className="gai-note">No qualifying automatic picks are available for this slate yet.</p>}

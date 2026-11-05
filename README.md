@@ -14,6 +14,8 @@ Opened-game scoreboards use a compact blue/red framed matchup strip with a cente
 
 Live and finished scoreboard cards keep the compact notification bell between the status and team tiles, leaving final scores unobstructed. Historical NBA/NFL game logs restore abbreviation-tile colors from the league team directory by team ID, including previously cached schedules with missing feed colors, without altering historical scores.
 
+Automatic matchup-pick cards use a separate rank badge, aligned team/matchup text, and a full-width View/Hide breakdown row. Native disclosure controls retain keyboard access and visible focus.
+
 GamewAIre pick breakdowns share a selection heading, verified matchup/statistical narrative, model-versus-sportsbook probability comparison, and **GamewAIre Verdict** across pick cards, automatic scoreboard/sidebar selections, published bot props, and graphic exports. Prices are explicitly saved prices, not current quotes; probability edges are percentage points and exclude pushes when present. Missing efficiency, offensive-yardage or turnover data is never invented or described as a model input. The NBA matchup wheel uses larger high-contrast status/team/score text, an explicit viewing state, and a visible horizontal scrollbar; drag, swipe and keyboard selection remain available.
 
 NBA and NFL scoreboard cards on The Wire share card spacing and typography. NBA controls do not override the shared 44px circular notification bell, and NBA footer links do not add extra card height.

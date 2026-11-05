@@ -41,6 +41,8 @@ test('Wire sidebar lists the automatic scoreboard picks by rank with their full 
   assert.equal(cards.length, 2, 'Includes saved picks for live and final games without duplicates or unrelated games');
   const names = cards.map(card => card.props.children[0].props.children[1].props.children);
   assert.deepEqual(names, ['Boston Celtics', 'New York Knicks']);
+  assert.equal(nodes.filter(node => node.props?.className === 'wire-breakdown-closed').length, 2);
+  assert.equal(nodes.filter(node => node.props?.className === 'wire-breakdown-open').length, 2);
   const paragraphs = nodes.filter(node => node.type === 'p').map(node => node.props.children);
   assert.ok(paragraphs.includes('Scoring comparison.'));
   assert.ok(paragraphs.includes('Recent form.'));
