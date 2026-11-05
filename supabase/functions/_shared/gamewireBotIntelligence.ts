@@ -1,6 +1,7 @@
 export type ProjectionObservation = { eventId: string; date: string; value: number; opportunity: number | null };
 export type ComparableObservation = ProjectionObservation & { allowance: number; defenseGames: number };
 export type ProjectionEvidence = {
+  form?: { last5: number | null; last10: number | null; last20: number | null; season: number | null };
   foundation: number | null;
   independent: number | null;
   editorialAdjustment: number;
@@ -14,6 +15,33 @@ export type ProjectionEvidence = {
   risks: string[];
   edge: string;
 };
+export type ForecastDistribution = {
+  method: 'empirical-residual'; calibrated: false; samples: number; expected: number; median: number; p25: number; p75: number;
+  outcomes: number[];
+};
+export function forecastDistribution(estimate: number | null, observations: ProjectionObservation[], count: boolean): ForecastDistribution | null {
+  if (estimate === null) return null;
+  if (!Number.isFinite(estimate) || observations.some(row => !row.eventId || !Number.isFinite(row.value) || !Number.isFinite(Date.parse(row.date))
+    || count && (!Number.isInteger(row.value) || row.value < 0)))
+    throw new Error('Forecast distributions require finite estimates and dated observations.');
+  const unique = [...new Map(observations.map(row => [row.eventId, row])).values()];
+  if (unique.length < 8) return null;
+  const baseline = mean(unique.map(row => row.value));
+  const outcomes = unique.map(row => {
+    const adjusted = estimate + row.value - baseline;
+    return count ? Math.max(0, Math.round(adjusted)) : Math.round(adjusted * 10) / 10;
+  });
+  return { method: 'empirical-residual', calibrated: false, samples: outcomes.length, outcomes,
+    expected: round(mean(outcomes)), median: round(quantile(outcomes, .5)), p25: round(quantile(outcomes, .25)), p75: round(quantile(outcomes, .75)) };
+}
+export function distributionAtLine(distribution: ForecastDistribution, line: number) {
+  if (!Number.isFinite(line) || line < 0 || !distribution.outcomes.length || distribution.outcomes.some(value => !Number.isFinite(value)))
+    throw new Error('Distribution comparisons require a valid line and finite modeled outcomes.');
+  const over = distribution.outcomes.filter(value => value > line).length;
+  const under = distribution.outcomes.filter(value => value < line).length;
+  return { over: over / distribution.outcomes.length, under: under / distribution.outcomes.length,
+    push: (distribution.outcomes.length - over - under) / distribution.outcomes.length };
+}
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -87,6 +115,9 @@ export function projectionIntelligence(input: {
   const independent = raw === null ? null : Math.max(0, scaleBaseline !== null && matchupReady
     ? clamp(raw, scaleBaseline * (limited ? .85 : .75), scaleBaseline * (limited ? 1.15 : input.upsideCap ?? 1.25)) : raw);
   const evidence: ProjectionEvidence = {
+    form: { last5: values.length ? round(mean(values.slice(0, 5))) : null,
+      last10: values.length ? round(mean(values.slice(0, 10))) : null,
+      last20: values.length ? round(mean(values.slice(0, 20))) : null, season: values.length ? round(mean(values)) : null },
     foundation, independent: independent === null ? null : round(independent), editorialAdjustment: 0, matchup,
     defense: recentAllowance === null || seasonAllowance === null ? null : { recent: round(recentAllowance), season: round(seasonAllowance), games: input.defenseGames,
       opportunityAverage: input.defenseOpportunityAverage == null ? null : round(input.defenseOpportunityAverage),

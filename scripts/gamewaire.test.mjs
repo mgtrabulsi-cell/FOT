@@ -9,6 +9,7 @@ import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as pickLearningTools from '../supabase/functions/_shared/gamewirePickLearning.ts';
 import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
+import * as scoreboard from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import { completedSavedGames, isSavedGamePastReview, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
 
 const now = Date.parse('2026-10-27T18:00:00Z');
@@ -338,7 +339,7 @@ test('Matchup history uses verified opponent matches only and never counts prior
   assert.doesNotMatch(engine.pickBlurb({ ...pick, samples: pick.samples.slice(1) }), /recorded current-season meeting/);
 });
 
-test('Top Picks rank by probability bands before value, moneyline preference and verified player usage', () => {
+test('Top Picks rank conservative value before probability, with deterministic ties', () => {
   const base = evaluate().picks[0];
   const candidate = (key, probability, extra = {}) => ({ ...base, key, probability, ...extra });
   const picks = [
@@ -349,7 +350,7 @@ test('Top Picks rank by probability bands before value, moneyline preference and
     candidate('lower-usage', 0.739, { rotation: { label: 'Core rotation', minutes: 32, involvement: 14 } }),
   ];
   assert.deepEqual(engine.rankTopPicks(picks).map((pick) => pick.key),
-    ['highest', 'moneyline', 'high-usage', 'lower-usage', 'famous-lower-band']);
+    ['moneyline', 'famous-lower-band', 'high-usage', 'lower-usage', 'highest']);
   assert.equal(picks[0].key, 'famous-lower-band', 'Ranking does not mutate saved reports');
   for (const a of picks) for (const b of picks) {
     const forward = engine.rankTopPicks([a, b]), backward = engine.rankTopPicks([b, a]);
@@ -363,8 +364,8 @@ test('Top Picks rank by probability bands before value, moneyline preference and
   ]);
   const result = engine.evaluate(q, data, settings, now, 8);
   assert.equal(result.picks.length, 2);
-  assert.equal(result.picks[0].key, 'high-probability', 'Generation selects highest hit probability, not highest payout/EV');
-  assert.ok(result.picks[0].conservativeEV < result.picks[1].conservativeEV);
+  assert.equal(result.picks[0].key, 'high-payout', 'Generation prioritizes conservative expected value, not raw hit probability');
+  assert.ok(result.picks[0].conservativeEV > result.picks[1].conservativeEV);
   const ml = { ...quote, key: 'unqualified-ml', market: 'h2h', side: 'Boston Celtics', line: null, american: -10000 };
   assert.equal(engine.evaluate([ml], new Map([[ml.key, evidence]]), { ...settings, markets: ['h2h'] }, now).picks.length, 0,
     'Moneyline focus never bypasses value thresholds');
@@ -961,6 +962,7 @@ const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/ind
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
+  scoreboardRows = [], scoreboardError = null,
   settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
@@ -973,7 +975,8 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       tables.push(table);
       const builder = {
         select: (columns) => { builder.columns = columns; return builder; }, eq: () => builder, order: () => builder, limit: () => builder, lt: () => builder,
-        gt: () => builder, in: () => builder, or: () => builder, range: () => builder,
+        gt: () => builder, gte: () => builder, in: () => builder, or: () => builder,
+        range: (first, last) => { builder.first = first; builder.last = last; return builder; }, returns: () => builder,
         update: (value) => { writes.push({ table, value }); return builder; }, insert: (value) => { builder.value = value; return builder; },
         upsert: () => builder,
         delete: () => builder,
@@ -983,7 +986,9 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
           : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } }
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
-        then: (resolve) => Promise.resolve({ data: table === 'gamewaire_picks' ? [] : null, error: null }).then(resolve),
+        then: (resolve) => Promise.resolve({ data: table === 'gamewaire_runs' && builder.columns?.includes('event_start,payload,status')
+          ? scoreboardRows.slice(builder.first, builder.last + 1) : table === 'gamewaire_picks' ? [] : null,
+          error: table === 'gamewaire_runs' ? scoreboardError : null }).then(resolve),
       };
       return builder;
     },
@@ -1004,6 +1009,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       if (name.startsWith('npm:')) return { createClient: () => client };
       if (name.includes('gamewirePickLearning')) return pickLearningTools;
       if (name.includes('gamewaireSchedule')) return { ...schedule, planScheduledAnalyses: async () => {} };
+      if (name.includes('gamewaireScoreboard')) return scoreboard;
       if (name.includes('gamewaireSources')) return { ...sources, resolveMatchup: async () => ({}), collectEvidence: async (quotes) => ({
         evidence: new Map(quotes.map((q) => [q.key, evidence])), warnings: [], coverage: {},
       }) };
@@ -1019,6 +1025,47 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer fixture' } : {}) }, body: JSON.stringify(body),
   }), env, customFetcher), exports: context.exports };
 }
+test('Member scoreboard shortlist ranks every saved matchup, exposes only three summaries, and never publishes or requests odds', async () => {
+  const base = evaluate().picks[0];
+  const rows = Array.from({ length: 5 }, (_, index) => {
+    const pick = { ...base, key: `team-${index}`, market: 'h2h', subject: quote.home,
+      identifiers: { espnEventId: `espn-${index}` }, conservativeEV: .1 + index / 100, samples: [], risks: ['Uncalibrated'] };
+    return { event_id: `provider-${index}`, event_start: quote.start, status: 'completed',
+      payload: { modelVersion: engine.modelVersion, teamLean: { pick, qualifies: index !== 4 } } };
+  });
+  const api = endpoint({ role: 'member', scoreboardRows: rows });
+  const response = await api.run({ action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.analyzedGames, 5);
+  assert.deepEqual(body.picks.map(pick => pick.eventId), ['espn-3', 'espn-2', 'espn-1']);
+  assert.deepEqual(Object.keys(body.picks[0]).sort(), ['eventId', 'label', 'rank', 'reason', 'savedAt', 'start', 'team']);
+  assert.match(body.picks[0].reason, /saved pregame selection/);
+  assert.deepEqual(api.fetches, []);
+  assert.deepEqual(api.writes, []);
+  assert.deepEqual(api.rpc, []);
+  assert.ok(api.tables.every(table => table === 'gamewaire_runs'));
+  const failed = { ...rows[3], payload: { error: 'Provider unavailable' }, status: 'provider_error' };
+  const refreshed = endpoint({ role: 'member', scoreboardRows: [failed, ...rows] });
+  const fewer = await refreshed.run({ action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' });
+  assert.ok(!(await fewer.json()).picks.some(pick => pick.eventId === 'espn-3'), 'A failed latest attempt cannot resurrect an older qualifying report');
+});
+test('Scoreboard summaries paginate saved reports, reject invalid slate scopes and report storage failures', async () => {
+  const rows = Array.from({ length: 501 }, (_, index) => ({ event_id: String(index), event_start: quote.start,
+    status: 'no_qualifying', payload: { modelVersion: engine.modelVersion } }));
+  const api = endpoint({ role: 'member', scoreboardRows: rows });
+  const valid = { action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' };
+  const response = await api.run(valid);
+  assert.deepEqual((await response.json()).picks, []);
+  assert.equal(api.tables.length, 2);
+  for (const patch of [{ firstDate: 'invalid' }, { firstDate: '2026-02-30' }, { lastDate: '2026-10-29' },
+    { sport: 'NFL', lastDate: '2026-11-04' }, { sport: 'MLB' }]) {
+    assert.equal((await api.run({ ...valid, ...patch })).status, 400);
+  }
+  assert.equal((await api.run(valid, false)).status, 401);
+  const broken = endpoint({ role: 'member', scoreboardError: { message: 'Unavailable' } });
+  assert.equal((await broken.run(valid)).status, 502);
+});
 test('Full NFL analysis upgrades inherited lean-only settings before cache and provider requests while explicit lean refresh stays cheap', async () => {
   const leanSettings = { ...engine.defaultSettings, markets: ['h2h', 'spreads'] };
   const full = engine.fullAnalysisSettings(leanSettings, 'NFL');
@@ -1297,9 +1344,9 @@ test('NFL full analysis gets three verified player props from short current logs
     }
     return Response.json({ events: [] });
   });
-  const result = engine.evaluate(qs, data.evidence, { ...engine.defaultSettings, markets: ['player_receptions'], minEdge: 1 }, time, 8, 3);
+  const result = engine.evaluate(qs, data.evidence, { ...engine.defaultSettings, markets: ['player_receptions'], minEdge: 0 }, time, 8, 3);
   assert.equal(result.picks.length, 3);
-  assert.equal(result.stretchKeys.length, 3);
+  assert.equal(result.stretchKeys.length, 0);
   for (const pick of result.picks) {
     assert.equal(pick.samples.length, 8);
     assert.equal(pick.samples.filter((row) => row.season === 2026).length, 6);

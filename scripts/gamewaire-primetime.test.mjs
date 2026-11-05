@@ -9,19 +9,17 @@ const quotes = Array.from({ length: 10 }, (_, i) => ({ key: `player-${i}`, event
   home: 'Home', away: 'Away', market: 'player_reception_yds', subject: `Player ${i}`, side: 'Over', line: 40.5,
   american: -110, noVig: 0.5, book: 'Book', updatedAt: new Date(now).toISOString() }));
 const evidence = new Map(quotes.map((q) => [q.key, { eligible: true, quality: 0.8, fetchedAt: new Date(now).toISOString(), risks: [],
-  samples: Array.from({ length: 8 }, (_, i) => ({ value: i < 4 ? 60 : 20, date: new Date(now - (4 + i * 7) * 86400000).toISOString() })) }]));
+  samples: Array.from({ length: 8 }, (_, i) => ({ value: 60, date: new Date(now - (4 + i * 7) * 86400000).toISOString() })) }]));
 test('Primetime detection uses Eastern weekday and 7 PM cutoff across DST, not UTC date', () => {
   for (const date of [start, '2026-11-02T01:20:00Z', '2026-11-03T01:20:00Z', '2026-12-04T00:00:00Z']) assert.equal(isNFLPrimetime(date), true, date);
   for (const date of ['2026-11-01T18:00:00Z', '2026-11-01T23:59:00Z', '2026-10-31T00:15:00Z', 'invalid']) assert.equal(isNFLPrimetime(date), false, date);
 });
-test('Primetime pool supplies eight distinct verified props plus a team lean, with private Stretch labels', () => {
+test('Primetime never forces eight props or a team pick when value screens fail', () => {
   const team = { ...quotes[0], key: 'team', subject: 'Home', side: 'Home', market: 'h2h', line: null };
   const data = new Map([...evidence, [team.key, evidence.get(quotes[0].key)]]);
   const result = evaluate([...quotes, team], data, { ...defaultSettings, markets: ['player_reception_yds'], minEdge: 1 }, now, 9, 8);
-  assert.equal(result.picks.filter((q) => q.market.startsWith('player_')).length, 8);
-  assert.equal(new Set(result.picks.filter((q) => q.market.startsWith('player_')).map((q) => q.subject)).size, 8);
-  assert.equal(result.picks.length, 9);
-  assert.equal(result.stretchKeys.length, 9);
+  assert.equal(result.picks.length, 0);
+  assert.equal(result.stretchKeys.length, 0);
   assert.ok(result.picks.every((q) => !('stretch' in q)));
   const limited = evaluate(quotes.slice(0, 5), evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8);
   assert.equal(limited.picks.length, 5);
@@ -48,12 +46,12 @@ test('NBA and NFL prop odds stop at -200 for normal and Stretch candidates witho
       samples: Array.from({ length: 12 }, (_, i) => ({ value: 80, date: new Date(now - (1 + i) * 86400000).toISOString() })) }]));
     const result = evaluate([...pool, team], data, { ...defaultSettings, markets: ['player_reception_yds'], minEdge, minEV: 0 }, now, 9, 8);
     const props = result.picks.filter((q) => q.market.startsWith('player_'));
-    assert.deepEqual(props.map((q) => q.american).sort((a, b) => a - b), prices.slice(3));
+    assert.deepEqual(props.map((q) => q.american).sort((a, b) => a - b), minEdge === 1 ? [] : prices.slice(3));
     assert.equal(result.rejected.filter((q) => /-200 or better/.test(q.reason)).length, 3);
     assert.equal(result.teamLean.pick.american, -400);
     if (minEdge === 1) assert.ok(props.every((q) => result.stretchKeys.includes(q.key)));
     const duplicate = evaluate([...pool, { ...pool[3], american: -250, book: 'Worse book' }], data,
-      { ...defaultSettings, markets: ['player_reception_yds'], minEdge: 1 }, now, 9, 8);
+      { ...defaultSettings, markets: ['player_reception_yds'], minEdge: 0 }, now, 9, 8);
     assert.equal(duplicate.picks.find((q) => q.key === pool[3].key).american, -200);
   }
 });
@@ -76,7 +74,7 @@ test('Opponent yardage weakness breaks probability-band ties without changing pr
   const weak = { ...base, key: 'z', opponents: [{ ...opponent, yardage: { receiving: { perGame: 280, rank: 30 } } }] };
   const strong = { ...base, key: 'a', opponents: [{ ...opponent, yardage: { receiving: { perGame: 180, rank: 3 } } }] };
   assert.equal(rankTopPicks([strong, weak])[0].key, 'z');
-  assert.equal(rankTopPicks([{ ...strong, probability: base.probability + 0.02 }, weak])[0].key, 'a');
+  assert.equal(rankTopPicks([{ ...strong, probability: base.probability + 0.02 }, weak])[0].key, 'z', 'Raw probability does not override value and matchup evidence');
   assert.equal(rankTopPicks([{ ...strong, side: 'Under' }, { ...weak, side: 'Under' }])[0].key, 'a');
   assert.equal(weak.probability, base.probability);
   assert.match(pickBlurb(weak), /280\.0 receiving yards per game/);

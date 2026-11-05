@@ -1,11 +1,12 @@
 import { array, normalize, numeric, object, text } from './gamewaire.ts';
 import { resolveCurrentNFLWeek } from './nflWeek.ts';
 import type { BotProjection } from './gamewireBotProjections.ts';
-import type { observedLineComparison } from './gamewireBotIntelligence.ts';
+import type { observedLineComparison, distributionAtLine } from './gamewireBotIntelligence.ts';
 import type { LearningAdjustment } from './gamewireLearning.ts';
 
 export type BotFormat = 'ppr' | 'half' | 'standard';
-export type ForecastStat = { market: string; label: string; estimate: number; base: number; learning?: LearningAdjustment };
+export type ForecastStat = { market: string; label: string; estimate: number; base: number; learning?: LearningAdjustment;
+  distribution?: BotProjection['distribution']; defenseRank?: number | null; matchup?: string };
 export type PlayerForecast = {
   id: string; player_id: string; team_id: string; position: string; season: number; week: number; format: string;
   event_id: string; event_start: string; opponent: string; model_version: string; forecast_at: string;
@@ -18,6 +19,7 @@ export type BotDirectory = BotWeek & { players: BotPlayer[]; positions: Record<s
 export type BotMatchup = { eventId: string; start: string; opponentId: string; opponent: string; home: boolean; state: 'pre' | 'in' | 'post' };
 export type BotStat = { label: string; average: number; games: number };
 export type BotProp = { selection: string; american: number; book: string; savedAt: string; breakdown: string;
+  modeled?: ReturnType<typeof distributionAtLine>;
   comparison?: ReturnType<typeof observedLineComparison> & { market: string } };
 export type BotEditorial = {
   graphics: Array<{ id: string; kind: 'start' | 'sit'; reason: string; updatedAt: string }>;
@@ -190,16 +192,7 @@ export function applyBotEditorial(report: BotReport, graphicRows: unknown, ranki
   const next = { ...report, editorial: { graphics, ranking }, warnings: [...report.warnings] };
   if (!report.eligibleForGuidance) return next;
   if (ranking) {
-    const factor = 1.05 - (ranking.rank - 1) * .1 / 29;
-    next.projections = report.projections.map((projection) => {
-      if (projection.estimate === null) return projection;
-      const scale = projection.unit === 'receptions' ? 10 : 1;
-      const estimate = Math.round(projection.estimate * factor * scale) / scale;
-      return { ...projection, estimate, yards: projection.unit === 'yards' ? estimate : null,
-        ...(projection.evidence ? { evidence: { ...projection.evidence, editorialAdjustment: Math.round((estimate - projection.estimate) * scale) / scale } } : {}),
-        explanation: `${projection.explanation} Weekly GameWire ranking also factors in.` };
-    });
-    next.warnings.push('Published weekly rankings add an editorial adjustment of up to +/-5% to available estimates; rankings do not supply missing production or establish a depth-chart role.');
+    next.warnings.push('Published weekly rankings remain editorial lineup context only; they do not change independent statistical projections or establish a depth-chart role.');
   }
   const rankText = ranking ? `GameWire's Week ${report.week} ${report.format === 'ppr' ? 'PPR' : report.format === 'half' ? 'half-PPR' : 'standard'} list ranks ${report.player.name} ${ranking.position}${ranking.rank}.` : '';
   if (new Set(graphics.map((row) => row.kind)).size > 1) {

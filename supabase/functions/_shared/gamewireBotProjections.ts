@@ -1,11 +1,12 @@
 import { array, numeric, object, text } from './gamewaire.ts';
 import { botLogRows } from './gamewireBot.ts';
 import type { BotDirectory, BotMatchup, BotPlayer } from './gamewireBot.ts';
-import { projectionIntelligence } from './gamewireBotIntelligence.ts';
+import { projectionIntelligence, forecastDistribution } from './gamewireBotIntelligence.ts';
 import type { ProjectionEvidence, ProjectionObservation, ComparableObservation } from './gamewireBotIntelligence.ts';
 import type { LearningAdjustment } from './gamewireLearning.ts';
 
 export type BotProjection = {
+  distribution?: ReturnType<typeof forecastDistribution>;
   market: string; label: string; estimate: number | null; unit: 'yards' | 'receptions'; baseline: number | null; playerGames: number;
   yards: number | null; // Kept for older clients during the frontend rollout.
   defenseAverage: number | null; defenseGames: number; share: number | null;
@@ -371,6 +372,7 @@ export async function collectBotProjections(player: BotPlayer, matchup: BotMatch
     const direction = matchupEffect > 0 ? 'lifts' : matchupEffect < 0 ? 'tempers' : 'supports';
     return { market: metric.market, label: metric.label, estimate, unit, yards: unit === 'yards' ? estimate : null,
       baseline: baseline === null ? null : round(baseline), playerGames: values.length, role, defenseRank, limitedData, basis, evidence: intelligence.evidence,
+      distribution: !limitedData && ready ? forecastDistribution(estimate, metricRows, unit === 'receptions') : null,
       defenseAverage: defenseAverage === null ? null : round(defenseAverage), defenseGames: allowed.length, share: share === null ? null : round(share * 100),
       historyAverage: historyAverage === null ? null : round(historyAverage), historyGames: h2h.length,
       contenderAverage: contenderAverage === null ? null : round(contenderAverage), contenderGames: competitive.length,

@@ -2,11 +2,12 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { array, numeric, object, text } from './gamewaire.ts';
 import { publicJSON } from './gamewaireSources.ts';
 import { completedPlayerMetric } from './gamewireBotProjections.ts';
+import { forecastDistribution } from './gamewireBotIntelligence.ts';
 import type { BotReport, ForecastStat, PlayerForecast, PlayerWeekHistory } from './gamewireBot.ts';
 import { adjustedPrediction, learnAdjustment } from './gamewireLearning.ts';
 import type { LearningSample } from './gamewireLearning.ts';
 
-export const playerProjectionVersion = 'player-intelligence-v1';
+export const playerProjectionVersion = 'player-intelligence-v2';
 const metrics: Record<string, { category: string; column: string }> = {
   player_pass_yds: { category: 'passing', column: 'passingYards' },
   player_rush_yds: { category: 'rushing', column: 'rushingYards' },
@@ -88,8 +89,12 @@ export async function archivePlayerForecast(admin: SupabaseClient, report: BotRe
     projection.estimate = estimate;
     projection.yards = projection.unit === 'yards' ? estimate : null;
     projection.learning = { ...learning, sampleIds: [] };
+    if (projection.distribution && projection.evidence) {
+      projection.distribution = forecastDistribution(estimate, projection.evidence.observations, projection.unit === 'receptions');
+    }
     if (learning.active) projection.explanation += ` Bounded settled-result correction ${Math.round((learning.adjustment - 1) * 100)}%, validated on ${learning.validationGames} later games.`;
-    projections.push({ market: projection.market, label: projection.label, estimate, base, learning });
+    projections.push({ market: projection.market, label: projection.label, estimate, base, learning,
+      distribution: projection.distribution, defenseRank: projection.defenseRank, matchup: projection.evidence?.matchup });
   }
   if (!projections.length) return;
   const archived = await admin.rpc('gamewire_save_forecast', { forecast: {

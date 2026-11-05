@@ -1,7 +1,7 @@
 import { adjustedPickProbability, pickLearningKey } from './gamewireLearning.ts';
 import type { LearningAdjustment } from './gamewireLearning.ts';
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'empirical-baseline-v8';
+export const modelVersion = 'evidence-value-v9';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -50,6 +50,10 @@ export type Evidence = {
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
+  valueClass?: 'ELITE VALUE' | 'A VALUE' | 'B VALUE' | 'WATCH' | 'NO PLAY';
+  fairAmerican?: number | null;
+  noVigEdge?: number | null;
+  median?: number; lowerQuartile?: number; upperQuartile?: number; last20?: number;
   learning?: LearningAdjustment & { baseModelVersion: string; baseConditional: number };
   modelVersion: string; probability: number; pushProbability: number; implied: number;
   edge: number; ev: number; conservativeEV: number; projection: number;
@@ -63,6 +67,23 @@ export type Candidate = Quote & {
   teamForm?: TeamForm;
   matchupForm?: MatchupForm[];
 };
+export function valueClassification(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
+  if (![pick.edge, pick.ev, pick.conservativeEV, pick.quality].every(Number.isFinite) || pick.quality < .75) return 'NO PLAY' as const;
+  if (pick.edge < .03 || pick.ev < .05 || pick.conservativeEV <= 0) return 'WATCH' as const;
+  if (pick.quality >= .9 && pick.edge >= .1 && pick.conservativeEV >= .1) return 'ELITE VALUE' as const;
+  if (pick.quality >= .8 && pick.edge >= .05 && pick.conservativeEV >= .03) return 'A VALUE' as const;
+  return 'B VALUE' as const;
+}
+export function fairAmericanOdds(conditional: number) {
+  if (!Number.isFinite(conditional) || conditional <= 0 || conditional >= 1) return null;
+  return Math.round(conditional >= .5 ? -100 * conditional / (1 - conditional) : 100 * (1 - conditional) / conditional);
+}
+export function empiricalQuantile(values: number[], fraction: number) {
+  if (!values.length || values.some(value => !Number.isFinite(value)) || !Number.isFinite(fraction) || fraction < 0 || fraction > 1)
+    throw new Error('Quantiles require finite observations and a fraction between zero and one.');
+  const sorted = [...values].sort((a, b) => a - b), position = (sorted.length - 1) * fraction, lower = Math.floor(position);
+  return sorted[lower] + (sorted[Math.ceil(position)] - sorted[lower]) * (position - lower);
+}
 export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
 export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; stretchKeys?: string[] };
 export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
@@ -246,7 +267,8 @@ export function pickBlurb(pick: Candidate) {
   return [...sentences.slice(0, 4), `${takeaway.slice(0, -1)}${caveat}${recentAgainst ? '; recent production is a counterpoint, not supporting evidence' : ''}${player ? '; sportsbook lines may vary' : ''}.`].join(' ');
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
-  return [...picks].sort((a, b) => Math.floor(b.probability * 100) - Math.floor(a.probability * 100)
+  return [...picks].sort((a, b) => b.conservativeEV - a.conservativeEV
+    || b.ev - a.ev || b.edge - a.edge || b.quality - a.quality
     || Number(b.market === 'h2h') - Number(a.market === 'h2h')
     || matchupPreference(b) - matchupPreference(a)
     || (b.rotation?.involvement ?? 0) - (a.rotation?.involvement ?? 0)
@@ -347,7 +369,6 @@ const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0)
 export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 | 9 = 4, minimumPlayerPicks: 0 | 3 | 8 = 0,
   learning: Map<string, LearningAdjustment> = new Map()): Evaluation {
   const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [], teamOptions: TeamLean[] = [];
-  const stretchOptions: Candidate[] = [];
   const best = new Map<string, Quote>();
   for (const quote of quotes) {
     if (!Number.isFinite(Date.parse(quote.updatedAt)) || !Number.isFinite(Date.parse(quote.start))
@@ -415,7 +436,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const implied = impliedProbability(quote.american);
     const edge = conditional - implied, ev = expectedValue(probability, push, quote.american);
     const conservativeEV = expectedValue(conservative, push, quote.american);
-    const qualifies = edge >= settings.minEdge && ev >= settings.minEV && conservativeEV > 0;
+    const qualifies = edge >= Math.max(.03, settings.minEdge) && ev >= Math.max(.05, settings.minEV) && conservativeEV > 0;
     const projection = values.reduce((sum, value, i) => sum + value * weights[i], 0);
     const facts = [
       `${quote.subject}: ${quote.side}${quote.line === null ? '' : ` ${quote.line}`} at ${quote.american > 0 ? '+' : ''}${quote.american} (${quote.book}).`,
@@ -425,6 +446,10 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     ];
     if (adjustment?.active) facts.push(`A bounded ${((conditional - baseConditional) * 100).toFixed(1)} percentage-point settled-result correction passed chronological validation on ${adjustment.validationGames} later games. This does not establish universal calibration or guarantee future improvement.`);
     const candidate: Candidate = { ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,
+      valueClass: valueClassification({ edge, ev, conservativeEV, quality: data.quality }),
+      fairAmerican: fairAmericanOdds(conditional), noVigEdge: conditional - quote.noVig,
+      median: empiricalQuantile(values, .5), lowerQuartile: empiricalQuantile(values, .25), upperQuartile: empiricalQuantile(values, .75),
+      last20: mean(current.slice(0, 20).map(row => row.value)),
       ...(adjustment ? { learning: { ...adjustment, baseModelVersion: modelVersion, baseConditional },
         ...(adjustment.active ? { modelVersion: `${modelVersion}+wf1:${adjustment.adjustment}:${adjustment.through}` } : {}) } : {}),
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
@@ -434,7 +459,6 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
       reason: qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
     if (!qualifies) {
-      if (quote.market.startsWith('player_')) stretchOptions.push(candidate);
       reject('Exact price fails edge, EV or conservative uncertainty threshold.'); continue;
     }
     candidates.push(candidate);
@@ -454,9 +478,8 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (picks.length === limit) break;
   }
   const teamLean = [...teamOptions].sort((a, b) => Number(b.qualifies) - Number(a.qualifies)
-    || Math.floor(b.pick.probability * 100) - Math.floor(a.pick.probability * 100)
-    || matchupPreference(b.pick) - matchupPreference(a.pick) || b.pick.probability - a.pick.probability
-    || b.pick.ev - a.pick.ev || a.pick.key.localeCompare(b.pick.key))[0];
+    || b.pick.conservativeEV - a.pick.conservativeEV || b.pick.ev - a.pick.ev || b.pick.edge - a.pick.edge
+    || b.pick.quality - a.pick.quality || a.pick.key.localeCompare(b.pick.key))[0];
   if (teamLean?.qualifies && !picks.some((pick) => pick.key === teamLean.pick.key)) {
     const existing = picks.findIndex((pick) => !pick.market.startsWith('player_'));
     const displaced = existing >= 0 ? picks.splice(existing, 1)[0] : picks.length >= limit ? picks.pop() : undefined;
@@ -465,29 +488,9 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (previouslyRejected >= 0) rejected.splice(previouslyRejected, 1);
     picks.push(teamLean.pick);
   }
-  const stretchKeys: string[] = [];
-  if (minimumPlayerPicks && teamLean && !picks.some((pick) => !pick.market.startsWith('player_'))) {
-    if (picks.length >= limit) {
-      const displaced = picks.pop()!;
-      rejected.push({ key: displaced.key, reason: 'Excluded to reserve a verified game-lean slot.' });
-    }
-    picks.push(teamLean.pick);
-    if (!teamLean.qualifies) stretchKeys.push(teamLean.pick.key);
-    const index = rejected.findIndex((row) => row.key === teamLean.pick.key);
-    if (index >= 0) rejected.splice(index, 1);
-  }
-  const playerSubjects = new Set(picks.filter((pick) => pick.market.startsWith('player_')).map((pick) => normalize(pick.subject)));
-  for (const candidate of minimumPlayerPicks ? rankTopPicks(stretchOptions) : []) {
-    if (playerSubjects.size >= minimumPlayerPicks) break;
-    const identity = normalize(candidate.subject);
-    if (playerSubjects.has(identity)) continue;
-    picks.push(candidate); playerSubjects.add(identity); stretchKeys.push(candidate.key);
-    const index = rejected.findIndex((row) => row.key === candidate.key);
-    if (index >= 0) rejected.splice(index, 1);
-  }
   return { status: picks.length ? 'completed' : !best.size && rejected.some((row) => row.reason.startsWith('Stale')) ? 'stale_odds'
     : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks: rankTopPicks(picks), rejected, teamLean,
-    ...(minimumPlayerPicks ? { stretchKeys } : {}) };
+    ...(minimumPlayerPicks ? { stretchKeys: [] } : {}) };
 }
 export type Settled = { probability: number; pushProbability: number; american: number; result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closingAmerican?: number | null; withdrawn?: boolean };
 export function performance(rows: Settled[]) {

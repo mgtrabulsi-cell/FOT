@@ -1,11 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isNFLPrimetime, markets, modelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
-import type { Candidate, Quote, Sport } from '../_shared/gamewaire.ts';
+import type { Candidate, Quote, Sport, TeamLean } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses } from '../_shared/gamewaireSchedule.ts';
 import type { ScheduledJob } from '../_shared/gamewaireSchedule.ts';
 import { loadPickLearning } from '../_shared/gamewirePickLearning.ts';
+import { scoreboardPicks } from '../_shared/gamewaireScoreboard.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -130,6 +131,39 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       canAnalyze = permission.data === true;
     }
     if (body.action === 'status') return json({ canAnalyze, oddsReady: !!oddsKey, aiReady: !!aiKey, model: modelVersion, experimental: true });
+    if (body.action === 'scoreboardPicks') {
+      if (cron || (body.sport !== 'NBA' && body.sport !== 'NFL')) return json({ error: 'Choose NFL or NBA scoreboard picks.' }, 400);
+      const first = text(body.firstDate), last = text(body.lastDate);
+      const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date))
+        && new Date(date).toISOString().slice(0, 10) === date;
+      const span = Date.parse(last) - Date.parse(first);
+      if (!validDate(first) || !validDate(last) || span < 0 || span > (body.sport === 'NBA' ? 0 : 6 * 86400000))
+        return json({ error: 'Choose one NBA night or one NFL week.' }, 400);
+      const start = new Date(Date.parse(first) - 86400000).toISOString();
+      const end = new Date(Date.parse(last) + 2 * 86400000).toISOString();
+      type SavedScore = { event_id: string; event_start: string; status: string; payload: { modelVersion?: string; teamLean?: TeamLean } };
+      const latest = new Map<string, SavedScore>();
+      for (let offset = 0; ; offset += 500) {
+        const saved = await admin.from('gamewaire_runs').select('event_id,event_start,payload,status,created_at')
+          .eq('sport', body.sport).gte('event_start', start).lt('event_start', end)
+          .order('created_at', { ascending: false }).order('id').range(offset, offset + 499).returns<SavedScore[]>();
+        if (saved.error) throw new Error('Could not load matchup scores for the scoreboard.');
+        for (const row of saved.data) {
+          const timestamp = Date.parse(row.event_start);
+          if (!Number.isFinite(timestamp)) continue;
+          const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp));
+          if (day < first || day > last || row.status === 'in_progress' || latest.has(row.event_id)) continue;
+          latest.set(row.event_id, row);
+        }
+        if (saved.data.length < 500) break;
+      }
+      const candidates = [...latest.values()].flatMap(row => {
+        const lean = row.payload?.teamLean;
+        return row.payload?.modelVersion === modelVersion && lean?.qualifies === true ? [lean.pick] : [];
+      });
+      return json({ picks: scoreboardPicks(candidates), analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
+        note: 'Ranked across saved matchup analyses. Games without a qualifying model result receive no label. No paid odds refresh or post publication is triggered.' });
+    }
     if (!canAnalyze) return json({ error: 'GamewAIre management is restricted to the designated account.' }, 403);
     if (body.action === 'report') {
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId)) return json({ error: 'Choose a saved report.' }, 400);

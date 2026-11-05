@@ -11,6 +11,14 @@ import { saveNBASummary } from '../src/services/nbaPreload.ts';
 const code = ts.transpileModule(readFileSync(new URL('../src/NBAExperience.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
+
+test('NBA Wire uses shared scoreboard sizing and notification bell styling', () => {
+  const css = readFileSync(new URL('../src/nba.css', import.meta.url), 'utf8');
+  assert.match(css, /\.nba-wire \{ padding: 0; \}/);
+  assert.doesNotMatch(css, /\.nba-experience button(?:,|:hover|:focus-visible)/);
+  assert.match(css, /button:not\(\.notification-bell\)/);
+  assert.match(css, /button\.nba-board-open \{[^}]*min-height: 0;/);
+});
 const away = { id: '1', name: 'Atlanta Hawks', abbr: 'ATL', score: 100, record: '1-0' };
 const home = { id: '2', name: 'Boston Celtics', abbr: 'BOS', score: 99, record: '0-1' };
 const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league: 'NBA', seasonYear: 2027,
@@ -133,6 +141,19 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
     unmount() { slots.forEach((slot) => slot?.cleanup?.()); },
   };
 }
+
+test('NBA scoreboard offers a native clickable pick breakdown separate from game navigation', () => {
+  const ui = setup();
+  ui.props.teamPicks = { [`${game.eventId}:${home.id}`]: { rank: 1, label: 'GamewAIre Pick', team: home.name, savedAt: game.date, reason: 'Verified saved matchup explanation' } };
+  ui.render();
+  const badge = ui.nodes().find(node => node.type === 'details' && node.props?.className === 'wire-game-pick');
+  assert.ok(badge);
+  assert.match(JSON.stringify(badge), /GamewAIre Pick #/);
+  assert.match(JSON.stringify(badge), /Boston Celtics/);
+  assert.match(JSON.stringify(badge), /Verified saved matchup explanation/);
+  assert.ok(ui.nodes().some(node => node.type === 'li' && node.props?.className === 'notification-game-card is-live-game'));
+  assert.ok(ui.nodes().some(node => node.type === 'button' && node.props?.['data-game-id'] === game.id));
+});
 
 test('Opening live NBA details shows current Wire scores immediately with saved stats, then accepts newer summary scores without regressing', async () => {
   const saved = { eventId: game.eventId, status: 'in', period: 'Q3', clock: '5:00', awayScore: 80, homeScore: 79,

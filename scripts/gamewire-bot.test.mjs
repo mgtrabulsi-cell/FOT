@@ -290,12 +290,12 @@ test('Saved-line differences use final projections without anchoring the indepen
   const api = endpoint({ projections: [projection], rankings: [{ ...ranking, rank: 1 }], pubs: [{ picks: [pick, { ...pick, line: 90 }] }] });
   const response = await api.run(), data = await response.json();
   assert.equal(response.status, 200);
-  assert.equal(data.report.projections[0].estimate, 79);
+  assert.equal(data.report.projections[0].estimate, 75);
   assert.equal(data.report.projections[0].evidence.foundation, 75);
   assert.equal(data.report.projections[0].evidence.independent, 75);
-  assert.equal(data.report.projections[0].evidence.editorialAdjustment, 4);
-  assert.equal(data.report.props[0].comparison.difference, 19);
-  assert.equal(data.report.props[1].comparison.difference, -11);
+  assert.equal(data.report.projections[0].evidence.editorialAdjustment, 0);
+  assert.equal(data.report.props[0].comparison.difference, 15);
+  assert.equal(data.report.props[1].comparison.difference, -15);
   assert.equal(data.report.props[0].comparison.pushes, 1);
   assert.equal(data.report.props[0].comparison.observedOverRate, 66.67);
   assert.match(data.report.propNote, /not current sportsbook prices/);
@@ -742,7 +742,7 @@ test('Estimate cards show receptions with catch units and concise blurbs without
   const propLab = ui.find(rendered, (node) => node.type?.name === 'PropLab');
   const card = ui.byClass(ui.renderChild(propLab), 'gwb-projection');
   assert.equal(card.props.children.filter(Boolean).length, 2);
-  assert.equal(card.props.children.at(-1).props.children, projection.explanation);
+  assert.ok(card.props.children.some(node => node?.props?.children === projection.explanation));
   assert.deepEqual(card.props.children[0].props.children[1].props.children.props.children[0], 4.8);
   assert.match(JSON.stringify(card.props.children[0].props.children[1].props.children.props.children[1].props.children), /catches/);
 });
@@ -910,12 +910,12 @@ test('Pasted ranks require exact identity, flag ambiguity and preserve line orde
   assert.equal(rankingTools.matchRankingPaste('Test Runner', [player], 'WR')[0].playerId, '');
   assert.throws(() => rankingTools.matchRankingPaste(Array(31).fill('Test Runner').join('\n'), [player], 'RB'), /1 to 30/);
 });
-test('Fresh matching rankings adjust estimates within five percent without mutating cached data or filling missing metrics', () => {
+test('Editorial rankings never alter independent estimates or fill missing metrics', () => {
   const base = { ...report(), projections: [{ estimate: 100, yards: 100, unit: 'yards', explanation: 'Matchup context.' }, { estimate: 4, yards: null, unit: 'receptions', explanation: 'Catches.' }, { estimate: null, yards: null }] };
   const top = bot.applyBotEditorial(base, [], [{ ...ranking, rank: 1 }]);
   const low = bot.applyBotEditorial(base, [], [{ ...ranking, rank: 30 }]);
-  assert.equal(top.projections[0].estimate, 105); assert.equal(low.projections[0].estimate, 95);
-  assert.equal(top.projections[1].estimate, 4.2); assert.equal(top.projections[1].yards, null);
+  assert.equal(top.projections[0].estimate, 100); assert.equal(low.projections[0].estimate, 100);
+  assert.equal(top.projections[1].estimate, 4); assert.equal(top.projections[1].yards, null);
   assert.equal(top.projections[2].estimate, null); assert.equal(base.projections[0].estimate, 100);
   assert.equal(bot.applyBotEditorial({ ...base, eligibleForGuidance: false }, [], [{ ...ranking, rank: 1 }]).projections[0].estimate, 100);
   assert.equal(bot.applyBotEditorial(base, [], [{ ...ranking, scoring_format: 'standard' }]).projections[0].estimate, 100);

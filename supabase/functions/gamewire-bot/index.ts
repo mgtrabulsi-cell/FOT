@@ -5,7 +5,7 @@ import { defensiveStandings, publicJSON } from '../_shared/gamewaireSources.ts';
 import { feedDefensiveStandings } from '../_shared/apiSportsBotInputs.ts';
 import { applyBotEditorial, botLogRows, botMatchup, buildBotReport, currentBotWeek, readBotPositions, readBotRoster, readBotWeek } from '../_shared/gamewireBot.ts';
 import { collectBotProjections, collectReceivingDefenses } from '../_shared/gamewireBotProjections.ts';
-import { observedLineComparison } from '../_shared/gamewireBotIntelligence.ts';
+import { observedLineComparison, distributionAtLine } from '../_shared/gamewireBotIntelligence.ts';
 import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
 import { archivePlayerForecast, finalPlayerStats, loadPlayerHistory, settleForecasts } from '../_shared/gamewireForecasts.ts';
@@ -202,7 +202,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       }
       return json(history);
     }
-    const cacheKey = `nfl:breakdown:v8:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
+    const cacheKey = `nfl:breakdown:v9:${week.season}:${week.week}:${week.seasonType}:${player.teamId}:${player.id}:${format}:${matchup?.eventId ?? 'no-game'}:${matchup?.state ?? 'none'}:${matchup?.start ?? ''}`;
     const result = await cached<BotReport>(cacheKey, (report) => report.dataIssues.length ? 30_000 : 5 * 60_000, async () => {
       const [roster, logs] = await Promise.allSettled([
         criticalFeed(`teams/${player.teamId}/roster?season=${week.season}`, 'Current player roster'),
@@ -284,6 +284,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         const projection = report.projections.find((projection) => projection.market === text(pick.market));
         props.push({ selection: `${pick.subject} ${pick.side} ${pick.line} ${propLabels[text(pick.market)]}`,
           american: Number(pick.american), book: text(pick.book), savedAt: text(pick.updatedAt), breakdown: pickBlurb(raw as Candidate),
+          ...(projection?.distribution ? { modeled: distributionAtLine(projection.distribution, Number(pick.line)) } : {}),
           ...(projection?.estimate != null && projection.evidence ? { comparison: { market: projection.market,
             ...observedLineComparison(projection.estimate, Number(pick.line), projection.evidence.observations) } } : {}) });
       }

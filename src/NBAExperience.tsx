@@ -17,7 +17,9 @@ import {
 import type { NBABoxTeam, NBAPlay, NBAPlayer, NBAPlayerStatKey, NBAStats, NBATeamStat } from './services/nbaData';
 import './nba.css';
 
+import type { WireTeamPicks } from './services/wireTeamPicks';
 type Props = {
+  teamPicks?: WireTeamPicks;
   mode: 'wire' | 'stats';
   games: Game[];
   previousGames?: Game[];
@@ -341,7 +343,7 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
   </dialog>;
 }
 
-export default function NBAExperience({ mode, games, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, openGameId, onSelectGame }: Props) {
+export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, openGameId, onSelectGame }: Props) {
   const [lastStatHub] = useState(readLastNBAStatHub);
   useEffect(() => { if (mode === 'stats' && lastStatHub) saveLastNBAStatHub(lastStatHub); }, [mode, lastStatHub]);
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
@@ -412,17 +414,25 @@ export default function NBAExperience({ mode, games, previousGames = [], status,
     {!nbaGames.length && status === 'ready' && <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Use the date arrows or Today to pick another day.</span></div>}
     {mode === 'wire' && !showingDetails && !!nbaGames.length && <div className="wire-board" ref={boardRef}>
       <header className="wire-board-header"><span className="eyebrow">NBA GAMES · SELECT A MATCHUP</span></header>
-      <ol className="wire-board-list">{visibleGames.map((item) => <li key={item.id} className="notification-game-card">
+      <ol className="wire-board-list">{visibleGames.map((item) => <li key={item.id} className={`notification-game-card${item.status === 'LIVE' ? ' is-live-game' : ''}`}>
         <NotificationBell />
         <div className={`wire-board-card nba-board-card${item.status === 'LIVE' ? ' is-live' : ''}`}>
-          <span className="wire-board-status">{item.status === 'LIVE' ? <><span className="live-pill"><i />LIVE</span><small>{item.period} {item.clock}</small></> : item.status === 'FINAL' ? <span className="wire-board-final">FINAL</span> : <><small>{gameDate(item.date, true)}</small>{item.nbaMarket?.spread != null && <small className="wire-board-spread">Spread <b>{item.home.abbr} {item.nbaMarket.spread > 0 ? '+' : ''}{item.nbaMarket.spread}</b></small>}</>}</span>
+          <span className="wire-board-status">{item.status === 'LIVE' ? <><span className="live-pill"><i /> LIVE</span><small>{item.period} {item.clock}</small></> : item.status === 'FINAL' ? <span className="wire-board-final">FINAL</span> : <><span>{gameDate(item.date, true)}</span>{item.nbaMarket?.spread != null && <small className="wire-board-spread">Spread <b>{item.home.abbr} {item.nbaMarket.spread > 0 ? '+' : ''}{item.nbaMarket.spread}</b></small>}</>}</span>
           <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className={`wire-board-team${item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? ' is-loser' : ''}`} key={side.id}>
             <TeamAbbrMark className="wire-board-mark" abbr={side.abbr} color={side.color} name={side.name} />
-            <span className="wire-board-team-name"><b><span className="wire-board-team-label">{side.name}</span><BackToBackBadge game={item} team={side} previousGames={previousGames} /></b><small>{side.abbr}{side.record ? ` · ${side.record}` : ''}</small></span>
+            <span className="wire-board-team-name"><b><span className="wire-board-team-label">{side.name}</span><BackToBackBadge game={item} team={side} previousGames={previousGames} />
+            </b><small>{side.abbr}{side.record ? ` · ${side.record}` : ''}</small></span>
             <strong className="wire-board-score">{item.status === 'UPCOMING' ? '' : side.score}</strong>
           </span>)}</span>
           <span className="wire-board-footer"><span className="wire-board-meta">{item.venue}</span><button type="button" className="wire-board-open nba-board-open" data-game-id={item.id} onClick={() => selectGame(item)} aria-label={`${item.away.name} at ${item.home.name}, ${item.status === 'LIVE' ? `live ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'final' : gameDate(item.date, true)}${item.status === 'UPCOMING' && item.nbaMarket?.spread != null ? `. Spread ${item.home.abbr} ${item.nbaMarket.spread > 0 ? '+' : ''}${item.nbaMarket.spread}` : ''}. Open ${item.status === 'UPCOMING' ? 'pregame stats' : 'box score'}`}>{item.status === 'UPCOMING' ? 'Pregame stats' : 'Box score'}<ChevronRight size={14} aria-hidden="true" /></button></span>
         </div>
+        {[item.away, item.home].map(side => {
+          const pick = teamPicks[`${item.eventId}:${side.id}`];
+          return pick ? <details className="wire-game-pick" key={side.id}>
+            <summary><span>GamewAIre Pick #{pick.rank}</span><b>{pick.team}</b></summary>
+            <div><p>{pick.reason}</p><small>Saved pregame price: {new Date(pick.savedAt).toLocaleString()}</small></div>
+          </details> : null;
+        })}
       </li>)}</ol>
       {!visibleGames.length && <p role="status">No NBA games match your search.</p>}
     </div>}

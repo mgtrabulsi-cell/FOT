@@ -44,6 +44,7 @@ import { preloadNFLLiveBoxes } from './services/nflBoxPreload';
 import type { NBAPlayerStatKey } from './services/nbaData';
 import { fetchNBAScoreboard, fetchStoredNBAScoreboard, fetchStoredNFLScoreboard, nbaCalendarDate, shiftNBACalendarDate } from './services/sportsData';
 import FavorableMatchups from './FavorableMatchups';
+import { useWireTeamPicks } from './useWireTeamPicks';
 import TheAngle from './TheAngle';
 import type { AngleDraft } from './services/angleDrafts';
 import OurResults from './OurResults';
@@ -517,6 +518,17 @@ function App() {
   const sportsView = view === 'Wire' || view === 'Players' || view === 'Den';
   const warmNBA = sportsView && (!window.matchMedia('(max-width: 760px)').matches || sportLeague === 'NBA');
   useEffect(() => {
+    if (!warmNBA) return;
+    const controller = new AbortController();
+    void fetchNBAScoreboard(previousNBADate, controller.signal).catch((cause: unknown) => {
+      if (!controller.signal.aborted) {
+        console.error('Could not refresh previous NBA schedule for back-to-back notes', cause);
+        setNBAError('Back-to-back notes could not refresh. Saved notes remain available; use Refresh to retry.');
+      }
+    });
+    return () => controller.abort();
+  }, [warmNBA, previousNBADate, nbaRetry]);
+  useEffect(() => {
     const controller = new AbortController();
     let active = true;
     let refreshing = false;
@@ -665,6 +677,8 @@ function App() {
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
   const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
+  const wireTeams = useWireTeamPicks(sportLeague === 'NBA' ? nbaGames : games.filter(game => game.league === 'NFL'),
+    sportLeague === 'NBA' ? 'NBA' : 'NFL', authUser?.id, view === 'Wire');
   const [scoreboardStatus, setScoreboardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [scoreboardRetry, setScoreboardRetry] = useState(0);
   useEffect(() => subscribeForegroundRefresh(() => setScoreboardRetry((value) => value + 1)), []);
@@ -1360,14 +1374,17 @@ function App() {
           authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Guest saved browsing is available in The Wire and Stat Hub.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' && sportLeague === 'NBA' ? (
           <WireWithPicks games={nbaGames} sport="NBA" userId={authUser?.id}>
-          <NBAExperience mode="wire" games={nbaGames} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
+          {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
+          <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
           </WireWithPicks>
         ) : view === 'Wire' ? (
           <WireWithPicks games={games} sport="NFL" userId={authUser?.id}>
+          {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}
           {notificationEventId && !notificationGame && !notificationGameError && <p role="status">Loading your notification matchup...</p>}
           {(!notificationEventId || notificationGame?.eventId === notificationEventId) && <TheWire
             key={wireBoardKey}
+            teamPicks={wireTeams.badges}
             games={notificationGame && !games.some((game) => game.id === notificationGame.id) ? [notificationGame, ...games] : games}
             scoreboardStatus={scoreboardStatus}
             onRetryScoreboard={() => { setScoreboardStatus('loading'); setScoreboardRetry((value) => value + 1); }}

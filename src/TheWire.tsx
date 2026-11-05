@@ -33,7 +33,9 @@ import { ScoreTicker } from './ScoreTicker.tsx';
 import { fetchTeamComparisonRanks, teamComparisonMetrics } from './services/teamComparisonRanks.ts';
 import type { TeamComparisonRank, TeamComparisonRanks } from './services/teamComparisonRanks.ts';
 
+import type { WireTeamPicks } from './services/wireTeamPicks';
 type TheWireProps = {
+  teamPicks?: WireTeamPicks;
   games: Game[];
   /** Shown only while no games are available: loading placeholders or a retryable error instead of an empty board. */
   scoreboardStatus?: 'loading' | 'ready' | 'error';
@@ -273,7 +275,7 @@ function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
   );
 }
 
-export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer, now }: TheWireProps) {
+export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer, now }: TheWireProps) {
   const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
   const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
@@ -842,8 +844,9 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
       const final = game.status === 'FINAL';
       const upcoming = game.status === 'UPCOMING';
       const intl = internationalVenue(game);
+      const pick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
       return (
-        <li key={game.id} className="notification-game-card">
+        <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : ''}`}>
           <NotificationBell />
           <button
             type="button"
@@ -859,7 +862,7 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               ) : (
                 <span>{formatGameTime(game)}</span>
               )}
-              {live && game.clock && <small>{game.clock}</small>}
+              {live && (game.period || game.clock) && <small>{game.period} {game.clock}</small>}
             </span>
             <span className="wire-board-teams">
               {[game.away, game.home].map((team, index) => {
@@ -890,6 +893,10 @@ export default function TheWire({ games, scoreboardStatus = 'ready', onRetryScor
               </span>
             </span>
           </button>
+          {pick && <details className="wire-game-pick">
+            <summary><span>GamewAIre Pick #{pick.rank}</span><b>{pick.team}</b></summary>
+            <div><p>{pick.reason}</p><small>Saved pregame price: {new Date(pick.savedAt).toLocaleString()}</small></div>
+          </details>}
         </li>
       );
     };

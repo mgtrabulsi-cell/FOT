@@ -147,7 +147,7 @@ test('Game-pick adapter uses original pre-correction probabilities, ignores mode
 test('Weekly tracker shows estimates beside real zero stats and switches to saved past-week estimates without a dropdown', () => {
   const history = { issues: [], weeks: [
     { ...row, week: 8, event_id: 'current', actuals: { player_rush_yds: 0 }, settled_at: '2026-10-29T22:00:00Z', opponent: 'Current opponent' },
-    { ...row, week: 7, event_id: 'past', projections: [{ market: 'player_rush_yds', label: 'Rushing yards', estimate: 90, base: 90 }], actuals: { player_rush_yds: 65 }, opponent: 'Past opponent' },
+    { ...row, week: 7, event_id: 'past', projections: [{ market: 'player_rush_yds', label: 'Rushing yards', estimate: 90, base: 90 }], actuals: { player_rush_yds: 65 }, settled_at: '2026-10-22T22:00:00Z', opponent: 'Past opponent' },
   ] };
   const state = [history, '', false, 0, false, 'current']; let index = 0;
   const source = ts.transpileModule(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'),

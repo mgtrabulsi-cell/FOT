@@ -15,15 +15,15 @@ const evidence = new Map(quotes.map((quote, index) => [quote.key, {
     value: row < (index === 0 ? 28 : 16 - index) ? 30 : 10 })),
 }]));
 
-test('Full NBA and NFL analyses retain normal qualifying props then fill to three distinct players with Stretch options', () => {
+test('Full NBA and NFL analyses retain qualifying props without forced Stretch fills', () => {
   for (const sport of ['NBA', 'NFL']) {
     const inputs = quotes.map((quote) => ({ ...quote, sport }));
     const ordinary = evaluate(inputs, evidence, settings, now, 8);
     const full = evaluate(inputs, evidence, settings, now, 8, 3);
     assert.equal(full.status, 'completed');
-    assert.equal(full.picks.length, 3);
-    assert.equal(new Set(full.picks.map((pick) => pick.subject)).size, 3);
-    assert.equal(full.stretchKeys.length, 3 - ordinary.picks.length);
+    assert.equal(full.picks.length, ordinary.picks.length);
+    assert.equal(new Set(full.picks.map((pick) => pick.subject)).size, ordinary.picks.length);
+    assert.equal(full.stretchKeys.length, 0);
     for (const pick of ordinary.picks) assert.deepEqual(full.picks.find((candidate) => candidate.key === pick.key), pick);
     for (const pick of full.picks) {
       assert.equal('stretch' in pick, false, 'Public candidate JSON must not contain private label metadata');
@@ -47,32 +47,32 @@ test('Stretch fills only value failures: data quality, eligibility, odds, sample
   for (const patch of [{ noVig: null }, { updatedAt: new Date(now - 600001).toISOString() }, { start: new Date(now - 1).toISOString() }]) {
     assert.equal(evaluate(quotes.map((quote) => ({ ...quote, ...patch })), evidence, settings, now, 8, 3).picks.length, 0);
   }
-  assert.equal(evaluate(quotes, evidence, { ...settings, player: 'Player 1' }, now, 8, 3).picks.length, 1);
+  assert.equal(evaluate(quotes, evidence, { ...settings, player: 'Player 1' }, now, 8, 3).picks.length, 0);
   assert.equal(evaluate(quotes, evidence, { ...settings, direction: 'under' }, now, 8, 3).picks.length, 0);
 });
 test('Stretch never duplicates a player across markets and never adds extras when at least three players qualify', () => {
   const duplicated = quotes.map((quote) => ({ ...quote, key: `${quote.key}-second`, market: 'player_assists' }));
   const data = new Map([...evidence, ...duplicated.map((quote, index) => [quote.key, evidence.get(quotes[index].key)])]);
   const result = evaluate([...quotes, ...duplicated], data, { ...settings, markets: ['player_points', 'player_assists'] }, now, 8, 3);
-  assert.equal(result.picks.length, 3);
-  assert.equal(new Set(result.picks.map((pick) => pick.subject)).size, 3);
+  assert.equal(result.picks.length, 1);
+  assert.equal(new Set(result.picks.map((pick) => pick.subject)).size, 1);
   const strong = new Map([...evidence].map(([key]) => [key, evidence.get(quotes[0].key)]));
   const normal = evaluate(quotes, strong, settings, now, 8);
   const full = evaluate(quotes, strong, settings, now, 8, 3);
   assert.deepEqual(full.picks, normal.picks);
   assert.deepEqual(full.stretchKeys, []);
   const allStretch = evaluate(quotes, evidence, { ...settings, minEV: 1 }, now, 8, 3);
-  assert.equal(allStretch.status, 'completed');
-  assert.equal(allStretch.picks.length, 3);
-  assert.equal(allStretch.stretchKeys.length, 3);
+  assert.equal(allStretch.status, 'no_qualifying');
+  assert.equal(allStretch.picks.length, 0);
+  assert.equal(allStretch.stretchKeys.length, 0);
 });
-test('Manual full analysis includes a verified team lean as private Stretch without relaxing safety gates', () => {
+test('Unqualified team leans remain Watch context outside qualifying picks', () => {
   const team = { ...quotes[0], sport: 'NFL', key: 'team', market: 'h2h', subject: 'Home', side: 'Home', line: null };
   const data = new Map([...evidence, [team.key, evidence.get(quotes[0].key)]]);
   const options = { ...settings, minEV: 1 };
   const result = evaluate([...quotes, team], data, options, now, 8, 3);
-  assert.equal(result.picks.length, 4);
-  assert.ok(result.stretchKeys.includes(team.key));
+  assert.equal(result.picks.length, 0);
+  assert.deepEqual(result.stretchKeys, []);
   assert.equal(result.teamLean.qualifies, false);
   assert.equal(evaluate([team], data, options, now).picks.length, 0, 'Scheduled lean-only analysis does not manufacture Top Picks');
   data.set(team.key, { ...data.get(team.key), eligible: false });

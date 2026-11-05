@@ -2,9 +2,10 @@
 .nba-experience *, .nba-profile * { box-sizing: border-box; }
 .nba-experience h2, .nba-experience h3, .nba-profile h2 { margin: 0; }
 .nba-experience section { margin-top: 22px; min-width: 0; }
-.nba-experience button, .nba-profile button, .nba-experience select, .nba-profile select { font: 600 12px/1.2 'DM Sans', 'Segoe UI', sans-serif; color: #a4b7d1; border: 1px solid #293a51; border-radius: 6px; background: #131c2b; min-height: 44px; cursor: pointer; padding: 9px 18px; }
-.nba-experience button:hover, .nba-profile button:hover { border-color: #3f5573; background: #1a273b; color: #fff; }
-.nba-experience button:focus-visible, .nba-profile button:focus-visible, .nba-experience select:focus-visible, .nba-profile select:focus-visible, .nba-scroll:focus-visible, .nba-table-scroll:focus-visible { outline: 2px solid #cc2633; outline-offset: 3px; }
+.nba-experience button:not(.notification-bell), .nba-profile button, .nba-experience select, .nba-profile select { font: 600 12px/1.2 'DM Sans', 'Segoe UI', sans-serif; color: #a4b7d1; border: 1px solid #293a51; border-radius: 6px; background: #131c2b; min-height: 44px; cursor: pointer; padding: 9px 18px; }
+.nba-experience button:not(.notification-bell):hover, .nba-profile button:hover { border-color: #3f5573; background: #1a273b; color: #fff; }
+.nba-experience button:not(.notification-bell):focus-visible, .nba-profile button:focus-visible, .nba-experience select:focus-visible, .nba-profile select:focus-visible, .nba-scroll:focus-visible, .nba-table-scroll:focus-visible { outline: 2px solid #cc2633; outline-offset: 3px; }
+.nba-wire { padding: 0; }
 .nba-empty-day { display: grid; gap: 8px; margin: 12px 0 4px; padding: 18px 20px; border: 1px solid #2c3d55; border-radius: 14px; background: #111b2b; color: #e5eaf3; }
 .nba-empty-day b { font: 700 18px/1.25 var(--display, 'Teko', sans-serif); letter-spacing: .04em; }
 .nba-empty-day span { color: #bbc7d9; font: 500 14px/1.45 'DM Sans', 'Segoe UI', sans-serif; }
@@ -155,7 +156,7 @@
   .nba-box th, .nba-box td { min-width: 30px; padding: 6px 4px; font-size: 12px; }
   .nba-box th:first-child { position: sticky; left: 0; z-index: 1; width: clamp(128px, 37vw, 160px); min-width: clamp(128px, 37vw, 160px); max-width: clamp(128px, 37vw, 160px); padding: 6px 4px; box-shadow: 2px 0 #2c3d55; }
   .nba-box-identity { width: 100%; gap: 2px; }
-  .nba-experience button, .nba-profile button { min-height: 34px; padding-block: 6px; }
+  .nba-experience button:not(.notification-bell), .nba-profile button { min-height: 34px; padding-block: 6px; }
   .nba-team-toggle button { padding-block: 9px; font-size: 16px; }
   .nba-experience button.nba-favorite, .nba-profile button.nba-favorite, .nba-profile button.nba-close,
   .nba-experience .nba-box-identity .nba-favorite { width: 34px; min-width: 34px; min-height: 34px; padding: 5px; }
@@ -170,7 +171,7 @@
   .nba-filter { flex-wrap: wrap; }
 }
 .nba-board-card { position: relative; }
-.nba-experience button.nba-board-open { padding: 0; border: 0; background: none; cursor: pointer; min-height: 30px; font: 600 11px var(--mono); }
+.nba-experience button.nba-board-open { padding: 0; border: 0; background: none; color: #c7d3e4; cursor: pointer; min-height: 0; font: 600 11px var(--mono); }
 .nba-board-open::after { content: ''; position: absolute; inset: 0; border-radius: 8px; }
 .nba-experience button.nba-board-open:focus-visible { outline: none; }
 .nba-board-open:focus-visible::after { outline: 2px solid #cc2633; outline-offset: 2px; }

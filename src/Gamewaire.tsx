@@ -48,6 +48,7 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
       <span className={`gai-grade ${pick.probability >= 0.5 ? 'gai-grade-positive' : 'gai-grade-neutral'}`}>Probability grade {grade}</span>
     </div>
     <div className="gai-pick-footer">
+      {pick.valueClass && <span className="gai-tag">{pick.valueClass} · Experimental</span>}
       {lean && <span className="gai-tag">Game Lean · Not a Top Pick</span>}
       {stretch && <span className="gai-stretch">Stretch · only you</span>}
       {record?.withdrawn && <span className="gai-tag">Withdrawn · not an active selection</span>}
@@ -83,11 +84,14 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
       <div><dt>Decisive-outcome edge</dt><dd>{(pick.edge * 100).toFixed(1)} pp</dd></div>
       <div><dt>Estimated EV / 1 unit</dt><dd>{percent(pick.ev)}</dd></div>
       <div><dt>Conservative EV</dt><dd>{percent(pick.conservativeEV)}</dd></div>
+      <div><dt>Fair odds (unvalidated model)</dt><dd>{pick.fairAmerican == null ? 'Unavailable' : odds(pick.fairAmerican)}</dd></div>
+      <div><dt>No-vig edge</dt><dd>{pick.noVigEdge == null ? 'Unavailable' : `${(pick.noVigEdge * 100).toFixed(1)} pp`}</dd></div>
     </dl>
     <p>Saved model explanation: {pick.explanation}</p>
     <small>Odds: {stamp(pick.updatedAt)} · Data retrieved: {stamp(pick.dataAt)}</small>
       <p>{pick.sampleSize} underlying games · Current-season last 5: {pick.last5.toFixed(1)} · Last 10: {pick.last10.toFixed(1)} · Current-season average: {pick.seasonAverage.toFixed(1)}</p>
       <p>Data-completeness rubric: {percent(pick.quality)}. This is not a calibrated confidence or win probability.</p>
+      {pick.median !== undefined && <p>Adjusted empirical outcomes: median {pick.median.toFixed(1)} · 25th–75th percentile {pick.lowerQuartile?.toFixed(1)}–{pick.upperQuartile?.toFixed(1)} · Last 20 recorded average {pick.last20?.toFixed(1)}. Empirical sample summaries, not calibrated prediction intervals.</p>}
       <ul>{pick.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul>
       <div className="gai-table"><table><caption>Underlying prior observations</caption><thead><tr><th>Date</th><th>Season ending</th><th>Opponent</th><th>Location</th><th>Value</th><th>Minutes</th></tr></thead><tbody>
         {pick.samples.map((row, i) => <tr key={`${row.date}:${i}`}><td>{stamp(row.date)}</td><td>{row.season ?? 'Unavailable'}</td><td>{row.opponent || 'Unavailable'}</td><td>{row.location || 'Unavailable'}</td><td>{row.value}</td><td>{row.minutes ?? 'Unavailable'}</td></tr>)}
