@@ -267,3 +267,44 @@
 .sports-theme .nba-game-wheel button.is-selected { border: 2px solid #7ddcff; padding: 13px; background: linear-gradient(145deg, #205779, #173650); box-shadow: inset 0 -3px #7ddcff, 0 0 12px #008dff35; }
 .sports-theme .nba-game-wheel button.is-selected .nba-wheel-selection { color: #a7eaff; font-weight: 600; }
 .sports-theme .nba-game-wheel button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.sports-theme .wire-with-picks.is-game-open { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 760px) {
+  .sports-theme .nba-wheel-heading { display: none; }
+  .sports-theme .nba-game-wheel { gap: 6px; padding: 2px 0 6px; }
+  .sports-theme .nba-game-wheel button.nba-game-option { flex-basis: 128px; gap: 2px; padding: 6px 8px; border-radius: 7px; }
+  .sports-theme .nba-game-wheel button.is-selected { padding: 5px 7px; }
+  .sports-theme .nba-game-option > small { font-size: 10px; min-height: 14px; }
+  .sports-theme .nba-game-option > span { gap: 4px; }
+  .sports-theme .nba-game-option > span b { font-size: 12px; }
+  .sports-theme .nba-game-option > span strong { font-size: 14px; }
+  .sports-theme .nba-game-option .team-mark, .sports-theme .nba-wheel-selection { display: none; }
+  .sports-theme .the-wire-container { gap: 10px; }
+  .sports-theme .wire-controls { gap: 4px; }
+  .sports-theme .wire-game-wheel { display: grid; gap: 4px; }
+  .sports-theme .wire-game-wheel > .eyebrow, .sports-theme .wire-wheel-field-position { display: none; }
+  .sports-theme .wire-wheel-card { min-width: 116px; padding: 4px 7px; }
+  .sports-theme .wire-wheel-team-abbr { font-size: 12px; }
+  .sports-theme .wire-wheel-score { font-size: 14px; }
+  .sports-theme .the-wire-container, .sports-theme .nba-detail-navigation { scroll-margin-top: 70px; }
+}
+@media (max-width: 760px) {
+  .sports-theme .nba-box th:first-child { width: 28cqw; min-width: 28cqw; max-width: 28cqw; padding: 6px 3px; }
+  .sports-theme .nba-box :is(th, td):nth-child(n+2) { width: 8cqw; min-width: 8cqw; padding: 6px 2px; font-size: 11px; }
+  .sports-theme .nba-box :is(th, td):nth-child(6),
+  .sports-theme .nba-box :is(th, td):nth-child(7),
+  .sports-theme .nba-box :is(th, td):nth-child(8) { width: calc(40cqw / 3); min-width: calc(40cqw / 3); }
+  .sports-theme .nba-box-identity { position: relative; display: block; }
+  .sports-theme .nba-experience .nba-box-identity .nba-player-link { width: 100%; min-height: 44px; font: 500 11px/1.3 'DM Sans', 'Segoe UI', sans-serif; }
+  .sports-theme .nba-box-identity .nba-player-link > span { width: 100%; }
+  .sports-theme .nba-box-identity .nba-box-full-name { overflow-wrap: break-word; }
+  .sports-theme .nba-box-identity .nba-player-link small { min-height: 34px; padding-right: 34px; font-size: 9px; }
+  .sports-theme .nba-box-identity .nba-favorite { position: absolute; right: 0; bottom: 0; }
+  .sports-theme .nba-box tr.nba-box-group th { padding: 8px 2px; font-size: 10px; }
+  .sports-theme .nba-box tr.nba-box-group th:first-child { font-size: 10px; letter-spacing: 0; }
+  .sports-theme .nba-table-scroll:has(> .nba-box) { container-type: inline-size; scrollbar-width: thin; scrollbar-color: #69caff #172f49; }
+  .sports-theme .nba-table-scroll:has(> .nba-box)::-webkit-scrollbar { display: block; height: 6px; }
+  .sports-theme .nba-table-scroll:has(> .nba-box)::-webkit-scrollbar-thumb { background: #69caff; border-radius: 6px; }
+}
+@media (max-width: 360px) {
+  .sports-theme .nba-box :is(th, td):nth-child(n+2) { font-size: 10px; }
+}

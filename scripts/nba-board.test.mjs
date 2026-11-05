@@ -46,6 +46,19 @@ test('NBA matchup team names open the matching team log and season without chang
   assert.ok(app.nodes().some(node => node.props?.['aria-label'] === 'Box score team'));
   app.unmount();
 });
+test('NBA game views notify the picks wrapper when opening and returning to the board', () => {
+  const app = setup(), changes = [];
+  app.props.onDetailOpenChange = open => changes.push(open);
+  app.render();
+  app.nodes().find(node => node.props?.['data-game-id']).props.onClick();
+  app.render();
+  assert.equal(changes.at(-1), true);
+  const back = app.nodes().find(node => node.props?.className === 'nba-detail-navigation');
+  back.props.children[0].props.onClick();
+  app.render();
+  assert.equal(changes.at(-1), false);
+  app.unmount();
+});
 test('NBA halftime is readable on board, wheel and opened-game scoreboard for zero-clock and explicit provider breaks', () => {
   for (const [period, clock] of [['Q2', '0.0'], ['Q2', '0:00'], ['Halftime', '0:00']]) {
     const app = setup();

@@ -16,6 +16,10 @@ Live and finished scoreboard cards keep the compact notification bell between th
 
 Automatic matchup-pick cards use a separate rank badge, aligned team/matchup text, and a full-width View/Hide breakdown row. Native disclosure controls retain keyboard access and visible focus.
 
+Opening an NFL/NBA Wire game removes the GamewAIre sidebar/mobile picks dropdown until returning to the game list. On phones, the game wheel is a compact abbreviation-and-score strip without large team tiles or the extra selection footer; desktop cards retain their larger layout. Opening a game scrolls its detail navigation into view so the compact wheel and main scoreboard are near the top.
+
+Mobile NBA player box scores size columns to the table viewport so 3PT is the final visible statistic in the initial view. Full player names, player-detail links and favorites remain available, with horizontal scrolling for steals and the remaining statistics. Desktop table sizing is unchanged.
+
 GamewAIre pick breakdowns share a selection heading, verified matchup/statistical narrative, model-versus-sportsbook probability comparison, and **GamewAIre Verdict** across pick cards, automatic scoreboard/sidebar selections, published bot props, and graphic exports. Prices are explicitly saved prices, not current quotes; probability edges are percentage points and exclude pushes when present. Missing efficiency, offensive-yardage or turnover data is never invented or described as a model input. The NBA matchup wheel uses larger high-contrast status/team/score text, an explicit viewing state, and a visible horizontal scrollbar; drag, swipe and keyboard selection remain available.
 
 NBA and NFL scoreboard cards on The Wire share card spacing and typography. NBA controls do not override the shared 44px circular notification bell, and NBA footer links do not add extra card height.

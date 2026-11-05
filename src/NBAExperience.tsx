@@ -34,6 +34,7 @@ type Props = {
   openGameId?: string | null;
   onSelectGame?: (id: string) => void;
   onBackToGames?: () => void;
+  onDetailOpenChange?: (open: boolean) => void;
   backLabel?: string;
   heading?: string;
 };
@@ -347,7 +348,7 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
   </dialog>;
 }
 
-export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, onOpenTeamLog, initialGameId, openGameId, onSelectGame, onBackToGames, backLabel = 'All games', heading = 'The Wire' }: Props) {
+export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, onOpenTeamLog, initialGameId, openGameId, onSelectGame, onBackToGames, onDetailOpenChange, backLabel = 'All games', heading = 'The Wire' }: Props) {
   const [lastStatHub] = useState(readLastNBAStatHub);
   useEffect(() => { if (mode === 'stats' && lastStatHub) saveLastNBAStatHub(lastStatHub); }, [mode, lastStatHub]);
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
@@ -365,6 +366,12 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
   const [profile, setProfile] = useState<{ player: NBAPlayer; team: Team; season?: number } | null>(null);
   const game = nbaGames.find((item) => item.id === selectedId) ?? nbaGames[0];
   const showingDetails = mode === 'stats' || nbaGames.some((item) => item.id === openedGameId);
+  useEffect(() => { onDetailOpenChange?.(mode === 'wire' && showingDetails); }, [mode, showingDetails, onDetailOpenChange]);
+  useEffect(() => {
+    if (mode !== 'wire' || !showingDetails || !detailRef.current) return;
+    const frame = requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [mode, showingDetails]);
   useEffect(() => {
     if (mode !== 'wire') return;
     if (showingDetails) detailRef.current?.focus();

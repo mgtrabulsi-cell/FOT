@@ -496,6 +496,8 @@ function App() {
   const [selectedNBADate, setSelectedNBADate] = useState(nbaCalendarDate);
   const [nbaDateOverride, setNBADateOverride] = useState(false);
   const [nbaSelectedGameId, setNBASelectedGameId] = useState<string | null>(null);
+  const [nbaGameOpen, setNBAGameOpen] = useState(false);
+  const [nflGameOpen, setNFLGameOpen] = useState(false);
   const [loadedNBAGames, setNBAGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', `NBA:${nbaCalendarDate()}`)?.games ?? []);
   const [nbaGamesDate, setNBAGamesDate] = useState(nbaCalendarDate);
   const savedNBADateGames = useMemo(() => readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [], [selectedNBADate]);
@@ -1390,13 +1392,13 @@ function App() {
         {view === 'Profile' ? (
           authUser ? <ProfilePage user={authUser} onDeleted={(warnings) => { setDeletedAccount(warnings); setAuthUser(null); setFavorites([]); setScoreUpdates([]); setPlayUpdates([]); setNewsItems([]); setWirePlayerCard(null); }} onBack={() => { setView(profileReturnView); window.scrollTo({ top: 0, behavior: 'smooth' }); }} /> : !online ? <p className="feed-warning">Reconnect to view or change your account. Guest saved browsing is available in The Wire and Stat Hub.</p> : <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />
         ) : view === 'Wire' && sportLeague === 'NBA' ? (
-          <WireWithPicks games={nbaGames} sport="NBA" userId={authUser?.id} teamPicks={wireTeams.badges}>
+          <WireWithPicks games={nbaGames} sport="NBA" userId={authUser?.id} teamPicks={wireTeams.badges} gameOpen={nbaGameOpen}>
           {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
           {wireTeams.notice && <p className="nfl-data-note" role="status">{wireTeams.notice}</p>}
-          <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setStatHubMode('Players'); setView('Players'); }} onOpenTeamLog={(team, season) => openTeamGameLog('NBA', team, season)} />
+          <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onDetailOpenChange={setNBAGameOpen} onOpenStatHub={(id) => { setNBASelectedGameId(id); setStatHubMode('Players'); setView('Players'); }} onOpenTeamLog={(team, season) => openTeamGameLog('NBA', team, season)} />
           </WireWithPicks>
         ) : view === 'Wire' ? (
-          <WireWithPicks games={games} sport="NFL" userId={authUser?.id} teamPicks={wireTeams.badges}>
+          <WireWithPicks games={games} sport="NFL" userId={authUser?.id} teamPicks={wireTeams.badges} gameOpen={nflGameOpen}>
           {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
           {wireTeams.notice && <p className="nfl-data-note" role="status">{wireTeams.notice}</p>}
           {notificationEventId && notificationGameError && <div className="feed-warning" role="alert">{notificationGameError} <button onClick={() => setNotificationGameRetry((value) => value + 1)}>Retry matchup</button></div>}
@@ -1414,6 +1416,7 @@ function App() {
             initialGameId={selectedGameId}
             openGameId={notificationEventId ? `NFL:${notificationEventId}` : null}
             onSelectGame={setSelectedGameId}
+            onDetailOpenChange={setNFLGameOpen}
             onOpenStatHub={openGamePlayers}
             onOpenTeamLog={(team, season) => openTeamGameLog('NFL', team, season)}
             onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })}

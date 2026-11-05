@@ -52,6 +52,7 @@ type TheWireProps = {
   onOpenStatHub?: (game: Game) => void;
   onOpenTeamLog?: (team: Team, season: number) => void;
   onBackToGames?: () => void;
+  onDetailOpenChange?: (open: boolean) => void;
   backLabel?: string;
   gameListLabel?: string;
   onOpenPlayer: (player: NFLSkillPlayer, team: Team) => void;
@@ -280,7 +281,7 @@ function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
   );
 }
 
-export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenTeamLog, onBackToGames, backLabel = 'All games', gameListLabel = 'NFL GAMES · THIS WEEK', onOpenPlayer, now }: TheWireProps) {
+export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenTeamLog, onBackToGames, onDetailOpenChange, backLabel = 'All games', gameListLabel = 'NFL GAMES · THIS WEEK', onOpenPlayer, now }: TheWireProps) {
   const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
   const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
@@ -340,6 +341,12 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
     setDetailOpen(false);
   };
   const detailRef = useSwipeBack<HTMLDivElement>(closeGame, detailOpen);
+  useEffect(() => { onDetailOpenChange?.(detailOpen); }, [detailOpen, onDetailOpenChange]);
+  useEffect(() => {
+    if (!detailOpen || !detailRef.current) return;
+    const frame = requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [detailOpen, detailRef]);
 
   useEffect(() => {
     if (!openRequest) return;

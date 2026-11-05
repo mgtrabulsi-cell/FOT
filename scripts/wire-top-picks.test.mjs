@@ -111,11 +111,15 @@ test('Mobile Top Picks start collapsed, mount only on expansion and unmount on c
       return {};
     } });
     vm.runInContext(compiled, context);
-    const render = () => { slot = 0; return context.exports.default({ children: 'Scores', games: [], sport: 'NBA', teamPicks }); };
+    const render = (gameOpen = false) => { slot = 0; return context.exports.default({ children: 'Scores', games: [], sport: 'NBA', teamPicks, gameOpen }); };
     const nodes = (node) => !node || typeof node !== 'object' ? [] : Array.isArray(node)
       ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
     let tree = nodes(render());
     assert.equal(tree.filter((node) => node.type === 'WireTopPicks').length, desktop ? 1 : 0);
+    const opened = nodes(render(true));
+    assert.equal(opened.filter(node => node.type === 'WireTopPicks' || node.type === 'details').length, 0, 'Opened games unmount all picks panels on mobile and desktop');
+    assert.ok(opened.some(node => node.props?.className === 'wire-score-content'));
+    assert.ok(opened.some(node => node.props?.className === 'wire-with-picks is-game-open'));
     if (desktop) {
       assert.equal(tree.find((node) => node.type === 'WireTopPicks').props.desktop, true);
       assert.equal(tree.find((node) => node.type === 'WireTopPicks').props.teamPicks, teamPicks);
