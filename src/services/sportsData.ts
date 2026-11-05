@@ -255,7 +255,7 @@ function text(value: unknown, fallback = ''): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : fallback;
 }
 
-function readTeam(raw: unknown): Team {
+export function readTeam(raw: unknown): Team {
   const item = asObject(raw);
   const team = asObject(item.team);
   const record = asArray(item.records).map(asObject)[0];
@@ -364,7 +364,7 @@ function readMarket(raw: unknown): NFLMarket | undefined {
   };
 }
 
-function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | null {
+export function mapEvent(eventValue: unknown, feed: typeof scoreFeeds[number]): Game | null {
   const event = asObject(eventValue);
   const competition = asObject(asArray(event.competitions)[0]);
   const competitors = asArray(competition.competitors).map(asObject);

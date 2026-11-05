@@ -151,6 +151,13 @@ test('NBA scoreboard offers a native clickable pick breakdown separate from game
   assert.match(JSON.stringify(badge), /GamewAIre Pick #/);
   assert.match(JSON.stringify(badge), /Boston Celtics/);
   assert.match(JSON.stringify(badge), /Verified saved matchup explanation/);
+  assert.match(JSON.stringify(badge), /breakdown/);
+  assert.doesNotMatch(JSON.stringify(badge), /Saved pregame price/);
+  const notes = ui.nodes().filter(node => node.props?.className === 'wire-team-pick-note');
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].props.children, 'GamewAIre Pick');
+  const selectedName = ui.nodes().find(node => node.type === 'b' && JSON.stringify(node).includes('wire-team-pick-note'));
+  assert.match(JSON.stringify(selectedName), /Boston Celtics/);
   assert.ok(ui.nodes().some(node => node.type === 'li' && node.props?.className === 'notification-game-card is-live-game'));
   assert.ok(ui.nodes().some(node => node.type === 'button' && node.props?.['data-game-id'] === game.id));
 });

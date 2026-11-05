@@ -1041,7 +1041,8 @@ test('Member scoreboard shortlist ranks every saved matchup, exposes only three 
   assert.equal(body.upcomingAnalyzedGames, 5);
   assert.deepEqual(body.picks.map(pick => pick.eventId), ['espn-3', 'espn-2', 'espn-1']);
   assert.deepEqual(Object.keys(body.picks[0]).sort(), ['eventId', 'label', 'rank', 'reason', 'savedAt', 'start', 'team']);
-  assert.match(body.picks[0].reason, /saved pregame selection/);
+  assert.match(body.picks[0].reason, /to win outright/);
+  assert.doesNotMatch(body.picks[0].reason, /conservative expected value|uncalibrated|Saved pregame price/);
   assert.deepEqual(api.fetches, []);
   assert.deepEqual(api.writes, []);
   assert.deepEqual(api.rpc, []);

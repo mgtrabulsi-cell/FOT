@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { forecastDistribution, distributionAtLine } from '../supabase/functions/_shared/gamewireBotIntelligence.ts';
 import { fairAmericanOdds, valueClassification, empiricalQuantile, modelVersion } from '../supabase/functions/_shared/gamewaire.ts';
 import { rankWireTeams, wireAnalysisNotice } from '../src/services/wireTeamPicks.ts';
+import { scoreboardBreakdown } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 
 const now = Date.parse('2026-11-04T18:00:00Z');
 const observations = Array.from({ length: 10 }, (_, index) => ({
@@ -68,9 +69,8 @@ test('Scoreboards select at most three distinct qualifying games without record-
   assert.equal(Object.keys(result).length, 3);
   assert.equal(result['3:h3'].rank, 1);
   assert.ok(Object.values(result).every(row => row.label === 'GamewAIre Pick'));
-  assert.match(result['3:h3'].reason, /moneyline at -110 \(Saved book\)/);
-  assert.match(result['3:h3'].reason, /Role uncertainty/);
-  assert.match(result['3:h3'].reason, /not live odds/);
+  assert.match(result['3:h3'].reason, /Home 3 to win outright/);
+  assert.doesNotMatch(result['3:h3'].reason, /Saved book|Role uncertainty|conservative expected value|uncalibrated|Saved pregame price/);
   const fallback = rankWireTeams(games, [], now);
   assert.equal(Object.keys(fallback).length, 0);
   for (const patch of [{ noVig: null }, { ev: -.1 }, { sampleSize: 3 }, { updatedAt: new Date(now - 600001).toISOString() },
@@ -88,6 +88,33 @@ test('Scoreboards select at most three distinct qualifying games without record-
   assert.equal(distinct['3:a3'].rank, 1);
   assert.equal(distinct['3:h3'], undefined);
 });
+test('Scoreboard breakdowns explain a few verified statistics in readable paragraphs, not boilerplate or odds tables', () => {
+  const pick = { ...picks[0], sport: 'NFL', market: 'spreads', line: 3.5,
+    teamContext: { team: 'Home 0', season: 2026, games: 8, pointsScored: 26.4, pointsAllowed: 18.7 },
+    opponents: [{ team: 'Away 0', season: 2026, games: 8, pointsScored: 21.5, pointsAllowed: 24 }],
+    samples: [7, -3, 10, -14].map((value, index) => ({ value, date: new Date(now - (index + 1) * 7 * 86400000).toISOString() })),
+    risks: ['Experimental, uncalibrated baseline; not a promise of profit.'] };
+  const text = scoreboardBreakdown(pick);
+  assert.equal(text.split('\n\n').length, 4);
+  assert.match(text, /Home 0 \+3.5 to cover the spread/);
+  assert.match(text, /26\.4 points per game, compared with 21\.5/);
+  assert.match(text, /more productive offense/);
+  assert.match(text, /18\.7 points per game, while Away 0 allow 24\.0/);
+  assert.match(text, /stronger defensive record/);
+  assert.match(text, /won two of their last three recorded games/);
+  assert.ok(text.split(/\s+/).length < 180);
+  assert.doesNotMatch(text, /expected value|uncalibrated|promise of profit|prior games|Saved selection|Saved pregame price/);
+  const tougher = scoreboardBreakdown({ ...pick, teamContext: { ...pick.teamContext, pointsScored: 19, pointsAllowed: 28 } });
+  assert.match(tougher, /challenge for the pick rather than an offensive advantage/);
+  assert.match(tougher, /defense a concern/);
+  assert.doesNotMatch(tougher, /Home 0 have been the more productive offense|Home 0 have allowed fewer points/);
+  const missing = scoreboardBreakdown({ ...pick, opponents: [{ ...pick.opponents[0], season: 2025 }], samples: [] });
+  assert.match(missing, /not enough verified/);
+  assert.doesNotMatch(missing, /26\.4|24\.0|Recent form/);
+  const tied = scoreboardBreakdown({ ...pick, teamContext: { ...pick.teamContext, pointsScored: 21.5, pointsAllowed: 24 } });
+  assert.match(tied, /Neither team has a scoring-average advantage/);
+  assert.match(tied, /neither has an edge on this measure/);
+});
 test('Live bells reserve a shared middle column while retaining a 44px hit target', () => {
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(css, /grid-template-areas: "status bell teams" "footer footer footer"/);
@@ -97,6 +124,10 @@ test('Live bells reserve a shared middle column while retaining a 44px hit targe
   const nfl = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
   assert.match(nfl, /notification-game-card\$\{live \? ' is-live-game'/);
   assert.match(nfl, /<\/button>\s*\{pick && <details className="wire-game-pick">/);
+  assert.match(nfl, /teamPicks\[`\$\{game.eventId\}:\$\{team.id\}`\] && <span className="wire-team-pick-note">GamewAIre Pick/);
+  assert.doesNotMatch(nfl, /Saved pregame price:/);
+  assert.match(css, /\.wire-team-pick-note \{[^}]*background: #c62836;[^}]*color: #fff/);
+  assert.match(css, /b:has\(\.wire-team-pick-note\) \{ flex-wrap: wrap/);
 });
 test('B2B schedule fetch is independent of box-score preloads and keeps saved-note subscription', () => {
   const source = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');

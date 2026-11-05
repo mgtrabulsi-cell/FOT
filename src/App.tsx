@@ -37,6 +37,7 @@ import ProfilePage from './ProfilePage';
 import TheWire from './TheWire';
 import WireWithPicks from './WireWithPicks';
 import NBAExperience from './NBAExperience';
+import TeamGameLogs from './TeamGameLogs';
 const Gamewaire = lazy(() => import('./Gamewaire'));
 import DraggableTabs from './DraggableTabs';
 import { preloadNBABoxes, preloadNBADates, preloadNBAPregame } from './services/nbaPreload';
@@ -488,6 +489,8 @@ function App() {
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [storyOpenKey, setStoryOpenKey] = useState(0);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
+  const [statHubMode, setStatHubMode] = useState<'Players' | 'Teams'>('Players');
+  const teamLogsOpen = view === 'Players' && statHubMode === 'Teams';
   const [sportLeague, setSportLeague] = useState<'NFL' | 'NBA'>('NFL');
   const [selectedNBADate, setSelectedNBADate] = useState(nbaCalendarDate);
   const [nbaDateOverride, setNBADateOverride] = useState(false);
@@ -1206,6 +1209,7 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const openGamePlayers = (game: Game) => {
+    setStatHubMode('Players');
     setSportLeague(game.league === 'NBA' ? 'NBA' : 'NFL');
     setSelectedGameId(game.id);
     setView('Players');
@@ -1246,7 +1250,7 @@ function App() {
           <button className={view === 'Den' ? 'active' : ''} aria-current={view === 'Den' ? 'page' : undefined} onClick={() => setView('Den')}><Users size={20} aria-hidden="true" /><span>Locker Room</span></button>
         </PrimaryNavigation>
         <div className="topbar-right">
-          {(view === 'Wire' || view === 'Players') && (
+          {(view === 'Wire' || view === 'Players') && !teamLogsOpen && (
             <BannerSearch
               key={view}
               kind={view === 'Wire' ? 'games' : 'players'}
@@ -1281,7 +1285,7 @@ function App() {
           </div>
           <div className="heading-actions">
             {view === 'Analyst' && <NotificationBell />}
-            {view !== 'Profile' && view !== 'Gamewaire' && (view !== 'Analyst' || !!sessionUser) && (
+            {view !== 'Profile' && view !== 'Gamewaire' && !teamLogsOpen && (view !== 'Analyst' || !!sessionUser) && (
               <>
                 {(view !== 'Wire' || displayedFeedFailure) && <span className={`feed-status${displayedFeedFailure ? ' feed-status-warning' : ''}`}>
                   <i />
@@ -1304,7 +1308,7 @@ function App() {
             {(['NFL', 'NBA'] as const).map((league) => <button key={league} type="button" aria-pressed={sportLeague === league} onClick={() => {
               setSportLeague(league); setWireSearchQuery(''); setPlayerSearchQuery(''); setWirePlayerCard(null);
             }}>{league}</button>)}
-            {sportLeague === 'NBA' && <><div className="nba-date-navigation" role="group" aria-label="NBA date navigation"><label className="league-date-label" htmlFor="nba-date">NBA date (Eastern)</label><button type="button" className="nba-date-arrow" aria-label="Previous NBA day" title="Previous day" disabled={selectedNBADate <= '2000-01-01'} onClick={() => {
+            {sportLeague === 'NBA' && !teamLogsOpen && <><div className="nba-date-navigation" role="group" aria-label="NBA date navigation"><label className="league-date-label" htmlFor="nba-date">NBA date (Eastern)</label><button type="button" className="nba-date-arrow" aria-label="Previous NBA day" title="Previous day" disabled={selectedNBADate <= '2000-01-01'} onClick={() => {
               setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, -1)); setNBASelectedGameId(null);
             }}><ChevronLeft size={16} aria-hidden="true" /></button><input id="nba-date" type="date" aria-label="NBA date (Eastern)" title="NBA date (Eastern)" value={selectedNBADate} min="2000-01-01" max="2200-12-31" onChange={(event) => {
               if (!event.target.value) return;
@@ -1313,15 +1317,19 @@ function App() {
               setNBADateOverride(true); setSelectedNBADate((date) => shiftNBACalendarDate(date, 1)); setNBASelectedGameId(null);
             }}><ChevronRight size={16} aria-hidden="true" /></button></div><button type="button" onClick={() => { setNBADateOverride(false); setSelectedNBADate(nbaCalendarDate()); setNBARetry((value) => value + 1); }}>Today</button></>}
           </div>}
-          {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaStatus === 'ready' && !nbaGames.length && (
+          {!teamLogsOpen && sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaStatus === 'ready' && !nbaGames.length && (
             <div className="nba-empty-day" role="status">
               <b>No NBA games on {nbaEasternDayLabel(selectedNBADate)}.</b>
               <span>This Eastern date has no scheduled matchups. Use the date arrows or Today to pick another day.</span>
             </div>
           )}
-          {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
-          {(view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.liveSource === 'api-sports') && <p className="feed-source" role="status">Live scores and game status provided by API-Sports.</p>}
-          {sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
+          {!teamLogsOpen && (view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
+          {!teamLogsOpen && (view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.liveSource === 'api-sports') && <p className="feed-source" role="status">Live scores and game status provided by API-Sports.</p>}
+          {!teamLogsOpen && sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
+        {view === 'Players' && <div className="player-mode-tabs" role="group" aria-label="Stat Hub view">
+          <button type="button" className={statHubMode === 'Players' ? 'active' : ''} aria-pressed={statHubMode === 'Players'} onClick={() => { setStatHubMode('Players'); setWirePlayerCard(null); }}>Players</button>
+          <button type="button" className={statHubMode === 'Teams' ? 'active' : ''} aria-pressed={statHubMode === 'Teams'} onClick={() => { setStatHubMode('Teams'); setWirePlayerCard(null); }}>Team Game Logs</button>
+        </div>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}
           {authUser && <button type="button" onClick={() => { void favoritePersistence.current?.retry(); }}>Retry favorites sync</button>}
         </div>}
@@ -1376,7 +1384,7 @@ function App() {
           <WireWithPicks games={nbaGames} sport="NBA" userId={authUser?.id}>
           {wireTeams.error && <p className="feed-warning" role="status">{wireTeams.error}</p>}
           {wireTeams.notice && <p className="nfl-data-note" role="status">{wireTeams.notice}</p>}
-          <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setView('Players'); }} />
+          <NBAExperience mode="wire" games={nbaGames} teamPicks={wireTeams.badges} previousGames={previousNBAGames} status={nbaStatus} query={wireSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} openGameId={nbaNotification ? `NBA:${nbaNotification.eventId}` : null} onSelectGame={setNBASelectedGameId} onOpenStatHub={(id) => { setNBASelectedGameId(id); setStatHubMode('Players'); setView('Players'); }} />
           </WireWithPicks>
         ) : view === 'Wire' ? (
           <WireWithPicks games={games} sport="NFL" userId={authUser?.id}>
@@ -1400,22 +1408,23 @@ function App() {
             onOpenStatHub={openGamePlayers}
             onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })}
           />}
-          {wirePlayerCard && <NFLPlayerMiniWindow
-            key={wirePlayerCard.player.id}
-            player={wirePlayerCard.player}
-            team={wirePlayerCard.team}
-            isFavorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(wirePlayerCard.player, wirePlayerCard.team).key)}
-            onToggleFavorite={toggleFavorite}
-            onClose={() => setWirePlayerCard(null)}
-          />}
           </WireWithPicks>
         ) : view === 'Den' ? (
           <TheDen league={sportLeague} activityDate={selectedNBADate} favorites={favorites.filter((favorite) => favorite.feedPath === (sportLeague === 'NBA' ? 'basketball/nba' : 'football/nfl'))} games={sportLeague === 'NBA' ? nbaGames : lockerRoomReady ? games : []} items={denHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={denHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={denHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={denHistory.loading} historyError={denHistory.error} signedIn={!!authUser} onRetryHistory={denHistory.retry} livePlayerGames={sportLeague === 'NBA' ? nbaGames.filter((game) => game.status === 'LIVE').length : livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
         ) : view === 'Players' ? (
-          sportLeague === 'NBA'
+          statHubMode === 'Teams' ? <TeamGameLogs key={sportLeague} league={sportLeague} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })} />
+          : sportLeague === 'NBA'
             ? <NBAExperience mode="stats" games={nbaGames} status={nbaStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} onSelectGame={setNBASelectedGameId} />
             : <NFLPlayersDirectory games={games} scoreboardStatus={scoreboardStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />
         ) : null}
+        {(view === 'Wire' || view === 'Players') && wirePlayerCard && <NFLPlayerMiniWindow
+          key={wirePlayerCard.player.id}
+          player={wirePlayerCard.player}
+          team={wirePlayerCard.team}
+          isFavorite={favorites.some((favorite) => favorite.key === nflPlayerFavoriteTarget(wirePlayerCard.player, wirePlayerCard.team).key)}
+          onToggleFavorite={toggleFavorite}
+          onClose={() => setWirePlayerCard(null)}
+        />}
         <footer className="page-footer"><span>GAMEWIRE <i>·</i> NFL + NBA</span><span>NFL and NBA scores, player stats, and matchups.</span></footer>
       </main>
     </div>

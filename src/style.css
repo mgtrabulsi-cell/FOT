@@ -1339,14 +1339,49 @@ td:first-child { color: #828c84; }
 .wire-board-mark { width: 36px; height: 36px; border-radius: 8px; font-size: 10px; }
 .wire-board-team-name { display: grid; min-width: 0; }
 .wire-board-team-name b { display: flex; align-items: center; gap: 4px; overflow: hidden; font: 600 15px/1.25 var(--display); color: #fff; letter-spacing: .3px; white-space: nowrap; text-overflow: ellipsis; }
-.wire-board-team-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wire-board-team-label { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wire-board-team-name b:has(.wire-team-pick-note) { flex-wrap: wrap; row-gap: 2px; overflow: visible; white-space: normal; }
+.wire-team-pick-note { max-width: 100%; padding: 3px 5px; border: 1px solid #e8414f; border-radius: 3px; background: #c62836; color: #fff; font: 800 9px/1.2 var(--display); letter-spacing: .3px; text-transform: uppercase; white-space: normal; }
+.team-game-logs { display: grid; gap: 16px; min-width: 0; }
+.team-game-logs:focus { outline: none; }
+.team-game-logs > .wire-back-button { justify-self: start; }
+.team-log-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.team-log-heading h2 { margin: 4px 0 0; font: 700 24px/1.2 var(--display); }
+.team-log-heading label { display: grid; gap: 6px; margin-left: auto; font-size: 12px; color: #b7c8df; }
+.team-log-heading input, .team-log-heading select { min-height: 44px; max-width: 100%; padding: 10px 12px; border: 1px solid #425875; border-radius: 6px; background: #101a29; color: #fff; font: inherit; }
+.team-log-directory { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+.team-log-directory button { display: grid; grid-template-columns: 36px minmax(0, 1fr) 16px; align-items: center; gap: 12px; min-height: 64px; padding: 12px; border: 1px solid #354960; border-radius: 8px; background: #131d2c; color: #eef4fc; text-align: left; font: 600 14px/1.4 var(--display); cursor: pointer; }
+.team-log-directory button:hover, .team-game-row:hover { background: #1b2b42; border-color: #7089ab; }
+.team-log-directory button:focus-visible, .team-game-row:focus-visible { outline: 2px solid #f27780; outline-offset: 2px; }
+.team-log-count { margin: 0; color: #a8bbd4; font: 500 12px/1.5 var(--mono); }
+.team-log-games { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.team-game-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 32px 80px 96px; gap: 12px; align-items: center; width: 100%; min-height: 64px; padding: 12px; border: 1px solid #354960; border-radius: 8px; background: #131d2c; color: #eef4fc; text-align: left; font: 500 13px/1.4 var(--display); cursor: pointer; }
+.team-log-date { display: grid; gap: 4px; }
+.team-log-date small, .team-log-opponent > small { color: #9db1cd; font-size: 11px; }
+.team-log-opponent { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.team-log-opponent .team-mark { flex: 0 0 32px; width: 32px; height: 32px; }
+.team-log-opponent b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-log-result { font: 800 13px var(--mono); }
+.team-log-result.is-w { color: #7fdfac; }
+.team-log-result.is-l { color: #ff8e97; }
+.team-log-score { font: 700 13px var(--mono); text-align: right; white-space: nowrap; }
+.team-log-open { display: flex; align-items: center; justify-content: flex-end; gap: 2px; color: #c7d7ee; white-space: nowrap; font-size: 11px; }
+@media (max-width: 640px) {
+  .team-log-heading label { width: 100%; margin-left: 0; }
+  .team-game-row { grid-template-columns: minmax(0, 1fr) 32px 80px; grid-template-areas: "date result score" "opponent opponent open"; gap: 10px 8px; padding: 10px; }
+  .team-log-date { grid-area: date; }
+  .team-log-opponent { grid-area: opponent; }
+  .team-log-result { grid-area: result; }
+  .team-log-score { grid-area: score; }
+  .team-log-open { grid-area: open; }
+}
 .wire-game-pick { position: relative; z-index: 1; margin-top: 6px; border: 1px solid #526b90; border-radius: 8px; background: #101a29; color: #d7e9ff; }
 .wire-game-pick summary { min-height: 44px; padding: 10px 12px; cursor: pointer; font: 600 11px/1.5 var(--mono); }
 .wire-game-pick summary b { margin-left: 8px; font-weight: 500; }
 .wire-game-pick summary:focus-visible { outline: 2px solid #9db9df; outline-offset: 2px; }
 .wire-game-pick > div { padding: 0 12px 12px; font-size: 12px; line-height: 1.6; }
-.wire-game-pick p { margin: 0 0 8px; white-space: pre-line; overflow-wrap: anywhere; }
-.wire-game-pick small { color: #9bb1cf; }
+.wire-game-pick p { margin: 0 0 12px; overflow-wrap: anywhere; }
+.wire-game-pick p:last-child { margin-bottom: 0; }
 .wire-board-team-name b > :not(.wire-board-team-label) { flex: none; margin-left: 0; }
 .wire-board-team-name small { font: 500 10px var(--mono); color: #8fa4c2; }
 .wire-board-favorite { display: inline-flex; color: #fbbf24; }

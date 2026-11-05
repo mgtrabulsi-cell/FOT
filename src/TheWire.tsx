@@ -49,6 +49,9 @@ type TheWireProps = {
   openGameId?: string | null;
   onSelectGame?: (gameId: string) => void;
   onOpenStatHub?: (game: Game) => void;
+  onBackToGames?: () => void;
+  backLabel?: string;
+  gameListLabel?: string;
   onOpenPlayer: (player: NFLSkillPlayer, team: Team) => void;
   /** Fixed current time in ms (tests); otherwise the board checks the clock every minute. */
   now?: number;
@@ -275,7 +278,7 @@ function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
   );
 }
 
-export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenPlayer, now }: TheWireProps) {
+export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onBackToGames, backLabel = 'All games', gameListLabel = 'NFL GAMES · THIS WEEK', onOpenPlayer, now }: TheWireProps) {
   const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
   const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
@@ -330,6 +333,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   };
 
   const closeGame = () => {
+    if (onBackToGames) { onBackToGames(); return; }
     returnToGameRef.current = selectedGameId;
     setDetailOpen(false);
   };
@@ -874,6 +878,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                     <span className="wire-board-team-name">
                       <b>
                         <span className="wire-board-team-label">{team.name}</span>
+                        {teamPicks[`${game.eventId}:${team.id}`] && <span className="wire-team-pick-note">GamewAIre Pick</span>}
                         {isTeamFavorite(team.id, game.feedPath) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
                         {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
                       </b>
@@ -894,8 +899,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
             </span>
           </button>
           {pick && <details className="wire-game-pick">
-            <summary><span>GamewAIre Pick #{pick.rank}</span><b>{pick.team}</b></summary>
-            <div><p>{pick.reason}</p><small>Saved pregame price: {new Date(pick.savedAt).toLocaleString()}</small></div>
+            <summary><span>GamewAIre Pick #{pick.rank} breakdown</span><b>{pick.team}</b></summary>
+            <div>{pick.reason.split('\n\n').map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
           </details>}
         </li>
       );
@@ -964,13 +969,13 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   return (
     <div className="the-wire-container" ref={detailRef}>
       <button type="button" className="wire-back-button" onClick={closeGame}>
-        <ChevronLeft size={16} aria-hidden="true" /> All games
+        <ChevronLeft size={16} aria-hidden="true" /> {backLabel}
       </button>
       {/* Game Wheel */}
       <div className="wire-controls">
         {nflGames.length > 0 ? (
           <div className="wire-game-wheel" data-swipe-back-ignore>
-            <span className="eyebrow">NFL GAMES · THIS WEEK</span>
+            <span className="eyebrow">{gameListLabel}</span>
             <div
               ref={wheelRef}
               className="wire-wheel-strip"

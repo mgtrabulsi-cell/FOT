@@ -32,6 +32,9 @@ type Props = {
   initialGameId?: string | null;
   openGameId?: string | null;
   onSelectGame?: (id: string) => void;
+  onBackToGames?: () => void;
+  backLabel?: string;
+  heading?: string;
 };
 type Resource<T> = { key: string; data: T | null; loading: boolean; error: string };
 const summarySnapshots = {
@@ -343,7 +346,7 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
   </dialog>;
 }
 
-export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, openGameId, onSelectGame }: Props) {
+export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, initialGameId, openGameId, onSelectGame, onBackToGames, backLabel = 'All games', heading = 'The Wire' }: Props) {
   const [lastStatHub] = useState(readLastNBAStatHub);
   useEffect(() => { if (mode === 'stats' && lastStatHub) saveLastNBAStatHub(lastStatHub); }, [mode, lastStatHub]);
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
@@ -408,7 +411,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
     {profile && season !== undefined && <PlayerProfile key={`${profile.player.id}:${profile.season ?? season}`} {...profile} season={profile.season ?? season} favorites={favorites} toggle={onToggleFavorite} close={() => setProfile(null)} />}
   </div>;
   return <section className={`nba-experience nba-${mode}`} aria-label={mode === 'wire' ? 'NBA Wire' : 'NBA Stat Hub'}>
-    <header className="nba-heading"><div><span className="eyebrow">NBA</span><h2>The Wire</h2></div><button type="button" onClick={() => { onRetry(); summary.retry(); league.retry(); }}>Refresh</button></header>
+    <header className="nba-heading"><div><span className="eyebrow">NBA</span><h2>{heading}</h2></div><button type="button" onClick={() => { onRetry(); summary.retry(); league.retry(); }}>Refresh</button></header>
     {status === 'loading' && !nbaGames.length && <p role="status">Loading NBA games…</p>}
     {status === 'error' && <div className="nba-warning" role="status"><span>NBA scoreboard could not be refreshed.{nbaGames.length ? ' Showing the last available games.' : ''}</span><button type="button" onClick={onRetry}>Retry scoreboard</button></div>}
     {!nbaGames.length && status === 'ready' && <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Use the date arrows or Today to pick another day.</span></div>}
@@ -420,7 +423,9 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
           <span className="wire-board-status">{item.status === 'LIVE' ? <><span className="live-pill"><i /> LIVE</span><small>{item.period} {item.clock}</small></> : item.status === 'FINAL' ? <span className="wire-board-final">FINAL</span> : <><span>{gameDate(item.date, true)}</span>{item.nbaMarket?.spread != null && <small className="wire-board-spread">Spread <b>{item.home.abbr} {item.nbaMarket.spread > 0 ? '+' : ''}{item.nbaMarket.spread}</b></small>}</>}</span>
           <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className={`wire-board-team${item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? ' is-loser' : ''}`} key={side.id}>
             <TeamAbbrMark className="wire-board-mark" abbr={side.abbr} color={side.color} name={side.name} />
-            <span className="wire-board-team-name"><b><span className="wire-board-team-label">{side.name}</span><BackToBackBadge game={item} team={side} previousGames={previousGames} />
+            <span className="wire-board-team-name"><b><span className="wire-board-team-label">{side.name}</span>
+              {teamPicks[`${item.eventId}:${side.id}`] && <span className="wire-team-pick-note">GamewAIre Pick</span>}
+              <BackToBackBadge game={item} team={side} previousGames={previousGames} />
             </b><small>{side.abbr}{side.record ? ` · ${side.record}` : ''}</small></span>
             <strong className="wire-board-score">{item.status === 'UPCOMING' ? '' : side.score}</strong>
           </span>)}</span>
@@ -429,14 +434,14 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
         {[item.away, item.home].map(side => {
           const pick = teamPicks[`${item.eventId}:${side.id}`];
           return pick ? <details className="wire-game-pick" key={side.id}>
-            <summary><span>GamewAIre Pick #{pick.rank}</span><b>{pick.team}</b></summary>
-            <div><p>{pick.reason}</p><small>Saved pregame price: {new Date(pick.savedAt).toLocaleString()}</small></div>
+            <summary><span>GamewAIre Pick #{pick.rank} breakdown</span><b>{pick.team}</b></summary>
+            <div>{pick.reason.split('\n\n').map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
           </details> : null;
         })}
       </li>)}</ol>
       {!visibleGames.length && <p role="status">No NBA games match your search.</p>}
     </div>}
-    {mode === 'wire' && showingDetails && <div ref={detailRef} tabIndex={-1} className="nba-detail-navigation"><button type="button" onClick={() => { returnFocus.current = game?.id ?? null; setOpenedGameId(null); setProfile(null); }}><ChevronLeft size={16} aria-hidden="true" />All games</button>{game && onOpenStatHub && <button type="button" className="nba-open-stats" onClick={() => onOpenStatHub(game.id)}>Open matchup in Stat Hub</button>}</div>}
+    {mode === 'wire' && showingDetails && <div ref={detailRef} tabIndex={-1} className="nba-detail-navigation"><button type="button" onClick={() => { if (onBackToGames) { onBackToGames(); return; } returnFocus.current = game?.id ?? null; setOpenedGameId(null); setProfile(null); }}><ChevronLeft size={16} aria-hidden="true" />{backLabel}</button>{game && onOpenStatHub && <button type="button" className="nba-open-stats" onClick={() => onOpenStatHub(game.id)}>Open matchup in Stat Hub</button>}</div>}
     {!!nbaGames.length && showingDetails && <><ScrollRow label="NBA games · drag or scroll to choose a matchup" className="nba-game-wheel">{visibleGames.map((item) => <button type="button" key={item.id} className={`nba-game-option${game?.id === item.id ? ' is-selected' : ''}`} aria-pressed={game?.id === item.id} onClick={() => selectGame(item)}>
       <small>{item.status === 'LIVE' ? `LIVE · ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'FINAL' : gameDate(item.date, true)}</small>
       {[item.away, item.home].map((side) => <span className={item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? 'is-loser' : undefined} key={side.id}><TeamAbbrMark abbr={side.abbr} color={side.color} name={side.name} /><b>{side.abbr}</b><strong>{item.status === 'UPCOMING' ? '—' : side.score}</strong></span>)}

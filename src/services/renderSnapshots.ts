@@ -6,6 +6,7 @@ import { readMatchupPicks } from './matchupBoard.ts';
 import type { MatchupPick } from './matchupBoard.ts';
 import type { NBAPlayer, NBAPlayerProfile, NBASummary, NBATeamStat } from './nbaData.ts';
 import type { Team } from './sportsData.ts';
+import type { TeamLogDirectory, TeamLogEntry } from './teamGameLogs.ts';
 import { readAngles } from './theAngle.ts';
 import type { Angle } from './theAngle.ts';
 
@@ -20,6 +21,8 @@ type Snapshots = {
   nbaProfile: NBAPlayerProfile;
   nbaPlayerSeason: Omit<NBAPlayerProfile, 'games'>;
   nbaLeague: { teams: Team[]; season: number };
+  teamDirectory: TeamLogDirectory;
+  teamGameLog: { entries: TeamLogEntry[] };
   nbaDirectory: Array<{ team: Team; players: NBAPlayer[] }>;
   nbaStatHub: { season: number; groups: Array<{ team: Team; players: NBAPlayer[] }> };
   nbaComparison: { away: NBATeamStat[]; home: NBATeamStat[] };
@@ -71,8 +74,14 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
     object(group) && team(group.team) && players(group.players));
   if (!object(data)) return false;
   switch (kind) {
+    case 'teamDirectory':
     case 'nbaLeague':
       return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.every(team);
+    case 'teamGameLog':
+      return Array.isArray(data.entries) && data.entries.every((entry: unknown) => object(entry)
+        && [1, 2, 3].includes(Number(entry.seasonType)) && object(entry.game)
+        && typeof entry.game.id === 'string' && entry.game.status === 'FINAL'
+        && Number.isFinite(Date.parse(String(entry.game.date))) && team(entry.game.home) && team(entry.game.away));
     case 'nbaStatHub':
       return Number.isInteger(data.season) && Array.isArray(data.groups) && data.groups.length > 0
         && data.groups.every((group: unknown) => object(group) && team(group.team) && players(group.players))
