@@ -57,6 +57,9 @@ test('Missing upgraded analyses are pending information, not a misleading zero-o
   assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 15, failedGames: 0 }, games), /analyzing 15 queued matchups/);
   assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 0 }, games), /waiting for scheduled matchup analysis/);
   assert.equal(wireAnalysisNotice({ analyzedGames: 4, pendingGames: 0, failedGames: 0 }, games), '');
+  const mixed = games.map((game, index) => ({ ...game, status: index === 0 ? 'FINAL' : 'UPCOMING' }));
+  assert.equal(wireAnalysisNotice({ analyzedGames: 3, upcomingAnalyzedGames: 3, pendingGames: 0, failedGames: 0 }, mixed), '', 'Past games without v9 results do not leave a completed pregame refresh waiting forever');
+  assert.match(wireAnalysisNotice({ analyzedGames: 3, upcomingAnalyzedGames: 2, pendingGames: 0, failedGames: 0 }, mixed), /waiting/);
   assert.equal(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 1 }, games), '');
   assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 0 }, games.map(game => ({ ...game, status: 'FINAL' }))), /not created retroactively/);
 });

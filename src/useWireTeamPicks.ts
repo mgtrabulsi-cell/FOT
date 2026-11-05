@@ -9,7 +9,7 @@ import { subscribePickOrderRefresh } from './services/gamewaireOrderRefresh';
 
 export function useWireTeamPicks(games: Game[], sport: Sport, userId?: string, enabled = true) {
   const [candidates, setCandidates] = useState<{ scope: string; picks: WireTeamPick[]; coverage: WireAnalysisCoverage }>({
-    scope: '', picks: [], coverage: { analyzedGames: 0, pendingGames: 0, failedGames: 0 },
+    scope: '', picks: [], coverage: { analyzedGames: 0, upcomingAnalyzedGames: 0, pendingGames: 0, failedGames: 0 },
   });
   const [error, setError] = useState(''), [revision, setRevision] = useState(0);
   const ids = games.map(game => game.eventId).sort().join(',');
@@ -27,7 +27,7 @@ export function useWireTeamPicks(games: Game[], sport: Sport, userId?: string, e
       const result = await engineRequest<WireAnalysisCoverage & { picks: WireTeamPick[] }>({
         action: 'scoreboardPicks', sport, firstDate, lastDate,
       }, controller.signal);
-      if (!Array.isArray(result.picks) || [result.analyzedGames, result.pendingGames, result.failedGames].some(count => !Number.isInteger(count) || count < 0))
+      if (!Array.isArray(result.picks) || [result.analyzedGames, result.upcomingAnalyzedGames, result.pendingGames, result.failedGames].some(count => !Number.isInteger(count) || count < 0))
         throw new Error('Invalid matchup-score response');
       if (!controller.signal.aborted) {
         setCandidates({ scope, picks: result.picks, coverage: result });

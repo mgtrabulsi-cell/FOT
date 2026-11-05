@@ -6,11 +6,12 @@ import type { Game } from './sportsData.ts';
 
 export type WireTeamPick = ScoreboardPick;
 export type WireTeamPicks = Record<string, WireTeamPick>;
-export type WireAnalysisCoverage = { analyzedGames: number; pendingGames: number; failedGames: number };
+export type WireAnalysisCoverage = { analyzedGames: number; upcomingAnalyzedGames: number; pendingGames: number; failedGames: number };
 export function wireAnalysisNotice(coverage: WireAnalysisCoverage, games: Game[]) {
   if (coverage.pendingGames > 0) return `GamewAIre is analyzing ${coverage.pendingGames} queued matchups. Picks appear as analyses finish; selections are never forced.`;
-  if (coverage.analyzedGames >= games.length || coverage.failedGames > 0) return '';
-  return games.some(game => game.status === 'UPCOMING')
+  const upcoming = games.filter(game => game.status === 'UPCOMING').length;
+  if (coverage.analyzedGames >= games.length || upcoming > 0 && coverage.upcomingAnalyzedGames >= upcoming || coverage.failedGames > 0) return '';
+  return upcoming > 0
     ? 'GamewAIre is waiting for scheduled matchup analysis. Picks appear after verified analysis completes; selections are never forced.'
     : 'No current-model pregame picks were recorded for all games in this slate. Picks are not created retroactively after games start.';
 }

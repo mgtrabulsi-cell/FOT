@@ -172,6 +172,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (jobs.error) throw new Error('Could not load scoreboard analysis progress.');
       const countJobs = (statuses: string[]) => new Set(jobs.data.filter(job => inSlate(job.event_start) && statuses.includes(job.status)).map(job => job.event_id)).size;
       return json({ picks: scoreboardPicks(candidates), analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
+        upcomingAnalyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion && Date.parse(row.event_start) > Date.now()).length,
         pendingGames: countJobs(['pending', 'running']), failedGames: countJobs(['failed']),
         note: 'Ranked across saved matchup analyses. Games without a qualifying model result receive no label. No paid odds refresh or post publication is triggered.' });
     }
