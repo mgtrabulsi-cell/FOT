@@ -16,10 +16,12 @@ const groups: Array<{ title: string; positions: string[]; columns: Array<keyof S
 ];
 
 function TeamSimulation({ team }: { team: SimulationTeamResult }) {
-  const box = roundedSimulationBox(team);
+  if (team.totals === null) return null;
+  const box = roundedSimulationBox({ ...team, totals: team.totals });
   return (
     <section className="nfl-simulation-team">
       <header className="nfl-simulation-team-title"><span>{team.abbr}</span><h3>{team.name}</h3><b>{box.score}</b></header>
+      {team.matchup && <p className="nfl-simulation-caption">Opponent pass-defense adjustment: {team.matchup.passingYardsMultiplier >= 1 ? '+' : ''}{((team.matchup.passingYardsMultiplier - 1) * 100).toFixed(1)}% to receiving-yard efficiency. Receiving leaders benefit in proportion to their projected production; this is a historical allowance adjustment, not a guaranteed outcome.</p>}
       {groups.map(group => {
         const players = team.players.filter(player => group.positions.includes(player.position));
         if (!players.length) return null;
@@ -28,13 +30,33 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
             <caption>{group.title} · Projected stat line</caption>
             <thead><tr><th scope="col">Player</th>{group.columns.map(key => <th scope="col" key={key}>{statLabels[key]}</th>)}</tr></thead>
             <tbody>{players.map(player => <tr key={player.id} className={player.issue ? 'nfl-simulation-unavailable' : undefined}>
-              <th scope="row"><b>{player.name}</b><small>{player.position}{player.issue ? ' · Unavailable' : ''}</small></th>
+              <th scope="row"><b>{player.name}</b><small>{player.position}{player.issue ? ' · Unavailable' : player.limited ? ' · Limited evidence' : ''}</small></th>
               {group.columns.map(key => <td key={key}>{box.players[player.id][key] !== undefined
                 ? <b>{box.players[player.id][key]}</b> : <span aria-label="No supported projection">—</span>}</td>)}
             </tr>)}</tbody>
           </table>
         </div>;
       })}
+      <section className="nfl-simulation-accounting" aria-label={`${team.name} projected team totals and score accounting`}>
+        <h4>Team totals &amp; score accounting</h4>
+        <dl>
+          <div><dt>PASS / REC YDS</dt><dd>{box.totals.passingYards !== null
+            ? <><b>{box.totals.passingYards}</b> pass = <b>{box.listed.receivingYards}</b> WR/TE/RB receiving + <b>{box.remainder.otherReceivingYards}</b> other receiving</>
+            : 'Passing/receiving accounting unavailable.'}</dd></div>
+          <div><dt>CMP / REC</dt><dd>{box.totals.completions !== null
+            ? <><b>{box.totals.completions}</b> completions = <b>{box.listed.receptions}</b> listed catches + <b>{box.remainder.otherReceptions}</b> other catches</>
+            : 'Completion/reception accounting unavailable.'}</dd></div>
+          <div><dt>RUSH YDS</dt><dd><b>{box.totals.rushingYards}</b> total = <b>{box.listed.rushingYards}</b> listed + <b>{box.remainder.otherRushingYards}</b> other rushing</dd></div>
+          {box.scoring && <>
+            <div><dt>PASS / REC TD</dt><dd><b>{box.totals.passingTouchdowns}</b> passing = <b>{box.listed.receivingTouchdowns}</b> listed receiving + <b>{box.remainder.otherReceivingTouchdowns}</b> other receiving</dd></div>
+            <div><dt>RUSH TD</dt><dd><b>{box.totals.rushingTouchdowns}</b> total = <b>{box.listed.rushingTouchdowns}</b> listed + <b>{box.remainder.otherRushingTouchdowns}</b> other rushing</dd></div>
+            <div className="nfl-simulation-points-line"><dt>PROJECTED SCORE</dt><dd><b>{box.score}</b> = 6 x (<b>{box.totals.passingTouchdowns}</b> passing TD + <b>{box.totals.rushingTouchdowns}</b> rushing TD) + <b>{box.scoring.otherPoints}</b> other points</dd></div>
+          </>}
+        </dl>
+        <p>Other receiving/rushing production belongs to unmodeled players, not an invented named player.</p>
+        {box.scoring ? <p>Passing and receiving TDs count once. Other points are an unattributed scoring remainder that may include extra points, field goals, conversions, safeties or defensive scores; no kicker stat line or specific scoring breakdown is inferred.</p>
+          : <p>Touchdown and scoring-point accounting is unavailable for this older forecast.</p>}
+      </section>
       <details className="nfl-simulation-stat-details">
         <summary>Expected values, ranges & player evidence</summary>
         <p>Whole-number lines are rounded and reconciled across the team. A projected 0 TD does not mean a zero chance of scoring. Dashes mean no supported projection, not zero production.</p>
@@ -48,18 +70,14 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
             <dt>{statLabels[key as keyof SimulationStat]}</dt><dd>Expected {stat!.mean.toFixed(2)} · 10th–90th: {stat!.p10}–{stat!.p90}</dd>
           </div>)}</dl>
         </article>)}
-        <p className="nfl-simulation-remainder">Unmodeled-player remainder: {box.remainder.otherReceivingYards} receiving yards, {box.remainder.otherReceptions} catches,
-          {' '}{box.remainder.otherRushingYards} rushing yards
-          {box.remainder.otherReceivingTouchdowns !== undefined ? `, ${box.remainder.otherReceivingTouchdowns} receiving TD, ${box.remainder.otherRushingTouchdowns} rushing TD` : ''}.
-          Missing individual evidence is not filled with zero.</p>
       </details>
     </section>
   );
 }
 
-export default function NFLGameSimulationPanel({ game }: { game: Game }) {
-  const [response, setResponse] = useState<NFLGameSimulation | null>(null);
-  const [forecast, setForecast] = useState<NFLGameSimulation | null>(null);
+export default function NFLGameSimulationPanel({ game, initialSimulation, onForecast, onScenarioChange }: { game: Game; initialSimulation?: NFLGameSimulation; onForecast?: (forecast: NFLGameSimulation) => void; onScenarioChange?: (scenarioId: string) => void }) {
+  const [response, setResponse] = useState<NFLGameSimulation | null>(initialSimulation ?? null);
+  const [forecast, setForecast] = useState<NFLGameSimulation | null>(initialSimulation?.status === 'ready' ? initialSimulation : null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [scenarioId, setScenarioId] = useState('');
@@ -78,34 +96,48 @@ export default function NFLGameSimulationPanel({ game }: { game: Game }) {
   useEffect(() => {
     if (locked) return;
     const controller = new AbortController();
-    let timer: number | undefined, attempts = 0;
+    let timer: number | undefined, attempts = 0, failures = 0, inFlight = false;
     setError('');
+    setResponse(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) ? previous : null);
+    setForecast(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) ? previous : null);
     const load = async () => {
+      if (inFlight || controller.signal.aborted || Date.parse(game.date) <= Date.now()) return;
+      inFlight = true;
       setLoading(true);
       try {
         const result = await loadGameSimulation(game, controller.signal);
         if (controller.signal.aborted) return;
+        failures = 0;
+        setError('');
         setResponse(result);
+        if (result.status === 'ready') onForecast?.(result);
         if (result.status === 'ready') setForecast(result);
-        if (result.status === 'unavailable') setForecast(null);
-        if (result.status === 'collecting' || result.refreshing) {
-          if (++attempts < 60) timer = window.setTimeout(() => { void load(); }, result.status === 'collecting' ? 30000 : 60000);
-          else if (result.status === 'collecting') setError('Background preparation is still running. Check again shortly; no page needs to stay open. Saved evidence is retained.');
-        }
+        const delay = ++attempts >= 60 || result.status === 'ready' && !result.refreshing ? 300000 : result.status === 'collecting' ? 30000 : 60000;
+        timer = window.setTimeout(() => { void load(); }, delay);
       } catch (cause) {
         if (controller.signal.aborted) return;
         console.error('NFL game simulation failed', game.eventId, cause);
         setError(cause instanceof Error ? cause.message : 'The NFL simulation could not load. Retry.');
+        const delay = Math.min(300000, 15000 * 2 ** Math.min(failures++, 5));
+        timer = window.setTimeout(() => { void load(); }, delay);
       } finally {
+        inFlight = false;
         if (!controller.signal.aborted) setLoading(false);
       }
     };
+    const reconnect = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      failures = 0;
+      void load();
+    };
+    window.addEventListener('online', reconnect);
     void load();
-    return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); };
-  }, [game.eventId, game.date, game.home.id, game.away.id, retry, locked]);
-  const displayed = forecast ?? (response?.status === 'unavailable' ? response : null);
+    return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); window.removeEventListener('online', reconnect); };
+  }, [game.eventId, game.date, game.home.id, game.away.id, retry, locked, onForecast]);
+  const displayed = forecast;
   const scenario = displayed?.scenarios.find(row => row.id === scenarioId)
     ?? displayed?.scenarios.find(row => row.home && row.away) ?? displayed?.scenarios[0];
+  useEffect(() => { if (scenario) onScenarioChange?.(scenario.id); }, [scenario?.id, onScenarioChange]);
   return (
     <section className="nfl-simulation" aria-labelledby="nfl-simulation-heading">
       <header className="nfl-simulation-header">
@@ -113,11 +145,16 @@ export default function NFLGameSimulationPanel({ game }: { game: Game }) {
         {!locked && <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)}>{error ? 'Retry' : 'Refresh'}</button>}
       </header>
       {locked && <p role="status">Kickoff has passed. This pregame simulator is locked; no new forecast will be generated.</p>}
-      {error && <p className="feed-warning" role="alert">{error}{forecast && ' Your last verified forecast remains below.'}</p>}
+      {error && <div className="nfl-simulation-caption">
+        <p role="status">{forecast ? 'Your saved simulation remains available while updates reconnect.' : 'Preparing your simulation. A feed interruption is delaying updates.'} Automatic retries continue, including when your connection returns.</p>
+        <details><summary>Update details</summary><p>{error}</p></details>
+      </div>}
       {!response && !error && !locked && <p role="status">Loading the saved GamewAIre simulation…</p>}
+      {response?.status === 'unavailable' && !locked && <p role="status">Preparing a supported game simulation. Player evidence is still being collected; automatic retries continue.</p>}
       {displayed?.refreshing && !locked && <p className="nfl-simulation-caption" role="status">Showing the saved forecast while automatic background preparation updates it.</p>}
       {displayed?.version === legacyNFLSimulationVersion && <p role="status">This earlier forecast has no touchdown estimates. The updated projected box score is being prepared in the background.</p>}
-      {response?.status === 'collecting' && !locked && (
+      {displayed?.evidenceMode && <p className="nfl-simulation-caption" role="status">{displayed.evidenceMode === 'full' ? 'Full historical coverage' : displayed.evidenceMode === 'limited' ? 'Limited verified evidence — additional history is used when available' : 'Team-only scoring estimate — player evidence is not yet sufficient'}</p>}
+      {response && (response.status !== 'ready' || response.refreshing) && !locked && (
         <div className="nfl-simulation-progress" role="status">
           <b>{response.stage}: {response.progress.completed}/{response.progress.total}</b>
           <progress max={Math.max(1, response.progress.total)} value={response.progress.completed} aria-label={response.stage} />
@@ -128,29 +165,30 @@ export default function NFLGameSimulationPanel({ game }: { game: Game }) {
       )}
       {displayed && (
         <>
-          <label className="nfl-simulation-scenario">Quarterback scenario — participation assumed, not confirmed
+          {displayed.evidenceMode !== 'team-only' && <label className="nfl-simulation-scenario">Quarterback scenario — participation assumed, not confirmed
             <select value={scenario?.id ?? ''} onChange={event => setScenarioId(event.target.value)}>
               {displayed.scenarios.map(row => <option key={row.id} value={row.id}>{row.label}{row.issue ? ' — Insufficient evidence' : ''}</option>)}
             </select>
-          </label>
+          </label>}
           {scenario?.issue && <p className="feed-warning" role="status">{scenario.issue}</p>}
           {scenario?.home && scenario.away && (
             <>
               <div className="nfl-simulation-scores">
-                {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{roundedSimulationBox(team).score}</strong><span>{team.name}</span></div>)}
+                {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{Math.round(team.score.mean)}</strong><span>{team.name}</span></div>)}
               </div>
-              <p className="nfl-simulation-caption">Projected final score · Rounded stat lines · {displayed.runs.toLocaleString()} joint draws</p>
+              <p className="nfl-simulation-caption">Projected final score · {displayed.evidenceMode === 'team-only' ? 'Verified final-score history' : 'Rounded stat lines'} · {displayed.runs.toLocaleString()} joint draws</p>
               <details className="nfl-simulation-score-details"><summary>Score expectations & ranges</summary>
                 {[scenario.away, scenario.home].map(team => <p key={team.id}>{team.abbr}: expected {team.score.mean.toFixed(2)} points · 10th–90th: {team.score.p10}–{team.score.p90} · Outscored opponent in {(team.winProbability * 100).toFixed(1)}% of draws</p>)}
                 <p>{((scenario.tieProbability ?? 0) * 100).toFixed(1)}% tied-score draws; overtime is not separately simulated.</p>
               </details>
-              <div className="nfl-simulation-teams"><TeamSimulation team={scenario.away} /><TeamSimulation team={scenario.home} /></div>
+              {displayed.evidenceMode === 'team-only' ? <p className="nfl-simulation-caption">Player stat lines, touchdown accounting and numerical starter/injury adjustments are not supported by the available evidence. No missing player production is filled with zeros.</p>
+                : <div className="nfl-simulation-teams"><TeamSimulation team={scenario.away} /><TeamSimulation team={scenario.home} /></div>}
             </>
           )}
-          <p className="nfl-simulation-caption">Availability checked {new Date(displayed.checkedAt).toLocaleString()} · Forecast saved {new Date(displayed.forecastAt!).toLocaleString()} · 100 completed regular-season/playoff games per team.</p>
+          <p className="nfl-simulation-caption">Evidence checked {new Date(displayed.checkedAt).toLocaleString()} · Forecast saved {new Date(displayed.forecastAt!).toLocaleString()} · {displayed.history.home} home-team / {displayed.history.away} away-team completed games (target: 100 each).</p>
           <details className="nfl-simulation-method"><summary>Roster availability and model limitations</summary>
             <p>Questionable players are assumed to participate at observed usage. Listed out/inactive players are excluded. Offensive-line and defensive injury impacts are not numerically estimated without validated participation evidence.</p>
-            {displayed.injuries.length ? <ul>{displayed.injuries.map((injury, i) => <li key={i}>{injury.name} ({injury.position}, {injury.teamId === game.home.id ? game.home.abbr : game.away.abbr}): {injury.status}</li>)}</ul> : <p>No concerns reported in the roster response; this is not a complete confirmed game-day injury report.</p>}
+            {displayed.injuries.length ? <ul>{displayed.injuries.map((injury, i) => <li key={i}>{injury.name} ({injury.position}, {injury.teamId === game.home.id ? game.home.abbr : game.away.abbr}): {injury.status}</li>)}</ul> : <p>No complete confirmed game-day injury report is available. Refer to evidence issues for source availability.</p>}
             <ul>{displayed.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>
           </details>
         </>

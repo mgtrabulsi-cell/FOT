@@ -2,7 +2,7 @@ import { modelVersion, normalize, rankTopPicks, valueClassification } from './ga
 import type { Candidate, TeamLean } from './gamewaire.ts';
 import { pickBreakdown } from './gamewaireNarrative.ts';
 
-export type ScoreboardPick = { eventId: string; start: string; team: string; rank: number; label: 'GamewAIre Pick' | 'GamewAIre Winner Lean'; reason: string; savedAt: string };
+export type ScoreboardPick = { eventId: string; start: string; team: string; opponent?: string; evidenceAt?: string; rank: number; label: 'GamewAIre Pick' | 'GamewAIre Winner Lean'; reason: string; savedAt: string };
 export function scoreboardBreakdown(pick: Candidate): string {
   return pickBreakdown(pick);
 }
@@ -34,7 +34,8 @@ export function scoreboardPicks(candidates: Candidate[], now = Date.now(), optio
     const eventId = pick.identifiers!.espnEventId;
     if (events.has(eventId) || result.length >= limit) return;
     events.add(eventId);
-    result.push({ eventId, start: pick.start, team: pick.subject, rank: result.length + 1, label: lean ? 'GamewAIre Winner Lean' : 'GamewAIre Pick', savedAt: pick.updatedAt,
+    result.push({ eventId, start: pick.start, team: pick.subject, opponent: normalize(pick.subject) === normalize(pick.home) ? pick.away : pick.home,
+      evidenceAt: pick.dataAt, rank: result.length + 1, label: lean ? 'GamewAIre Winner Lean' : 'GamewAIre Pick', savedAt: pick.updatedAt,
       reason: lean ? scoreboardBreakdown(pick).replace('\n\n', '\n\nModel winner lean for daily coverage, not a value-qualified pick or betting recommendation. ') : scoreboardBreakdown(pick) });
   };
   if (!shortSlate) for (const pick of rankTopPicks(candidates.filter(qualified))) add(pick, false);

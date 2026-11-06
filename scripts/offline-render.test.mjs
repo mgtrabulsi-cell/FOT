@@ -33,6 +33,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/import NotificationBell from ['"].\/NotificationBell['"];/, 'const NotificationBell = () => null;')
   .replace(/import TeamAbbrMark from ['"].\/TeamAbbrMark['"];/, 'const TeamAbbrMark = () => null;')
   .replace(/import NFLGameSimulationPanel from ['"].\/NFLGameSimulation['"];/, 'const NFLGameSimulationPanel = () => null;')
+  .replace(/import \{ useNFLBoardSimulations \} from ['"].\/useNFLBoardSimulations['"];/, 'const useNFLBoardSimulations = () => ({ simulations: {}, errors: {} });')
   .replace(/import \{ useSwipeBack \} from ['"].\/useSwipeBack['"];/, 'const useSwipeBack = () => ({ current: null });')
   .replace(/import \{ ScoreTicker \} from ['"].\/ScoreTicker.tsx['"];/, 'const ScoreTicker = ({ value }) => value;')
   .replace(/import \{ getInterfaceScale \} from ['"].\/uiScale['"];/, 'const getInterfaceScale = () => 1;')

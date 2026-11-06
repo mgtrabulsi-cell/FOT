@@ -354,6 +354,20 @@
 .nfl-simulation-team-title > span { padding: 8px; border: 1px solid #52bfff; border-radius: 6px; color: #73cfff; font-size: 12px; font-weight: 700; }
 .nfl-simulation-team-title h3 { flex: 1; margin: 0; font-size: 16px; }
 .nfl-simulation-team-title > b { font-size: 28px; font-variant-numeric: tabular-nums; color: #fff; }
+.wire-pregame-mode { margin-bottom: 12px; }
+.wire-pregame-mode [role="group"] { display: flex; flex-wrap: wrap; gap: 6px; }
+.wire-pregame-mode button { border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; background: var(--paper); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.wire-pregame-mode button[aria-pressed="true"] { background: var(--accent); color: #071525; border-color: var(--accent); }
+.wire-pregame-mode p { font-size: 12px; color: var(--muted); margin: 8px 0; }
+.nfl-simulation-accounting { margin-top: 14px; padding: 10px; border: 1px solid #31638b; border-radius: 8px; background: #091a2c; }
+.nfl-simulation-accounting h4 { margin: 0 0 8px; font-size: 12px; color: #c7e8ff; }
+.nfl-simulation-accounting dl { margin: 0; font-size: 12px; }
+.nfl-simulation-accounting dl > div { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 8px; padding: 7px 0; border-top: 1px solid #304765; }
+.nfl-simulation-accounting dt { color: #73cfff; font-size: 10px; font-weight: 700; }
+.nfl-simulation-accounting dd { margin: 0; color: #c7d8e9; line-height: 1.5; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.nfl-simulation-accounting dd b { color: #fff; font-weight: 600; }
+.nfl-simulation-accounting .nfl-simulation-points-line { border-top-color: #ff4058; }
+.nfl-simulation-accounting p { margin-bottom: 0; font-size: 11px; }
 .nfl-simulation-table-scroll { overflow-x: auto; margin-top: 12px; border: 1px solid #304765; border-radius: 8px; scrollbar-color: #52bfff #071323; }
 .nfl-simulation table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
 .nfl-simulation caption { padding: 10px; font-size: 11px; color: #73cfff; text-align: left; background: #13324e; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
@@ -381,4 +395,4 @@
 .nfl-simulation summary { cursor: pointer; min-height: 44px; padding: 10px 0; color: #e9f0fa; }
 .nfl-simulation :focus-visible { outline: 2px solid #8fc2ff; outline-offset: 3px; }
 @media (max-width: 1100px) { .nfl-simulation-teams { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 430px) { .nfl-simulation-team { padding: 8px; } .nfl-simulation th, .nfl-simulation td { padding: 9px 5px; } }
+@media (max-width: 430px) { .nfl-simulation-team { padding: 8px; } .nfl-simulation th, .nfl-simulation td { padding: 9px 5px; } .nfl-simulation-accounting dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; } }

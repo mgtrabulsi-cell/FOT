@@ -55,12 +55,26 @@ begin
     where event_id=forecast->>'event_id' and model_version=forecast->>'model_version';
   recorded := clock_timestamp();
   if started <= recorded or (saved.event_id is not null and (saved.event_start <= recorded or saved.settled_at is not null)) then return null; end if;
+  if exists(select 1 from public.gamewire_game_forecasts where event_id=forecast->>'event_id' and event_start <= recorded) then return null; end if;
   if forecast->'payload'->>'status' is distinct from 'ready'
     or forecast->'payload'->>'eventId' is distinct from forecast->>'event_id'
     or forecast->'payload'->>'version' is distinct from forecast->>'model_version'
-    or (forecast->'payload'->'history'->>'home')::integer <> 100
-    or (forecast->'payload'->'history'->>'away')::integer <> 100
+    or coalesce(forecast->>'model_version','') not in ('nfl-joint-bootstrap-v1','nfl-joint-bootstrap-v2','nfl-joint-bootstrap-v3')
+    or coalesce((forecast->'payload'->'history'->>'home')::integer,-1) not between 8 and 100
+    or coalesce((forecast->'payload'->'history'->>'away')::integer,-1) not between 8 and 100
+    or (forecast->>'model_version' <> 'nfl-joint-bootstrap-v3' or forecast->'payload'->>'evidenceMode'='full')
+      and ((forecast->'payload'->'history'->>'home')::integer <> 100 or (forecast->'payload'->'history'->>'away')::integer <> 100)
+    or forecast->>'model_version'='nfl-joint-bootstrap-v3' and coalesce(forecast->'payload'->>'evidenceMode','') not in ('full','limited','team-only')
     or jsonb_typeof(forecast->'payload'->'scenarios') is distinct from 'array'
+    or jsonb_array_length(forecast->'payload'->'scenarios')=0
+    or forecast->>'model_version'='nfl-joint-bootstrap-v3' and exists(
+      select 1 from jsonb_array_elements(forecast->'payload'->'scenarios') scenario
+      where (forecast->'payload'->>'evidenceMode'='team-only' and (
+        scenario->'home'->'teamOnly' is distinct from 'true'::jsonb or scenario->'away'->'teamOnly' is distinct from 'true'::jsonb
+        or scenario->'home'->'totals' is distinct from 'null'::jsonb or scenario->'away'->'totals' is distinct from 'null'::jsonb
+        or scenario->'home'->'players' is distinct from '[]'::jsonb or scenario->'away'->'players' is distinct from '[]'::jsonb))
+      or (forecast->'payload'->>'evidenceMode'<>'team-only' and
+        (scenario->'home'->'teamOnly'='true'::jsonb or scenario->'away'->'teamOnly'='true'::jsonb)))
     then raise exception 'Invalid verified NFL game simulation'; end if;
   result := jsonb_set(forecast->'payload','{forecastAt}',to_jsonb(recorded));
   insert into public.gamewire_game_forecasts(event_id,model_version,event_start,season,season_type,forecast_at,payload)
@@ -101,7 +115,7 @@ create or replace function public.gamewire_request_simulation(target_event text,
 language plpgsql security definer set search_path='' as $$
 begin
   if target_event is null or target_event !~ '^[0-9]{1,12}$' or requested_start is null or requested_start <= clock_timestamp()
-    or requested_start > clock_timestamp()+interval '14 days' or requested_version is distinct from 'nfl-joint-bootstrap-v2'
+    or requested_start > clock_timestamp()+interval '14 days' or requested_version is distinct from 'nfl-joint-bootstrap-v3'
     then raise exception 'Choose an upcoming NFL game within fourteen days'; end if;
   insert into public.gamewire_simulation_jobs(event_id,event_start,model_version)
     values(target_event,requested_start,requested_version)
@@ -119,7 +133,7 @@ begin
   for item in select value from jsonb_array_elements(games) loop
     started := (item->>'event_start')::timestamptz;
     if item->>'event_id' is null or item->>'event_id' !~ '^[0-9]{1,12}$' or started is null or started <= clock_timestamp()
-      or started > clock_timestamp()+interval '14 days' or item->>'model_version' is distinct from 'nfl-joint-bootstrap-v2'
+      or started > clock_timestamp()+interval '14 days' or item->>'model_version' is distinct from 'nfl-joint-bootstrap-v3'
       then raise exception 'Invalid upcoming NFL simulation game'; end if;
     insert into public.gamewire_simulation_jobs(event_id,event_start,model_version,discovered)
       values(item->>'event_id',started,item->>'model_version',true)
@@ -159,7 +173,8 @@ begin
       and next_run_at <= clock_timestamp() and lease_until < clock_timestamp()
       and (dispatched_at is null or dispatched_at <= clock_timestamp()-interval '3 minutes')
     order by discovered desc,
-      case when response->>'version'=model_version and response->>'status' in ('ready','unavailable') then 1 else 0 end,
+      case when response->>'version'=model_version and response->>'status' in ('ready','unavailable')
+        and response->>'refreshing' is distinct from 'true' then 1 else 0 end,
       updated_at,event_id
     limit available for update skip locked
   loop

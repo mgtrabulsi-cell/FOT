@@ -2,6 +2,22 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fetchNBAScoreboard, nbaCalendarDate, readNBAScoreboard, shiftNBACalendarDate } from '../src/services/sportsData.ts';
+import { matchWirePicks } from '../src/services/wireTeamPicks.ts';
+
+test('Automatic NBA picks reconcile the real ten-minute odds/ESPN tip-off difference without accepting a different game', () => {
+  const game = { eventId: '401909288', sport: 'Basketball', status: 'UPCOMING', date: '2026-11-07T00:00:00Z',
+    away: { id: '2', name: 'Boston Celtics' }, home: { id: '30', name: 'Charlotte Hornets' } };
+  const pick = { eventId: game.eventId, start: '2026-11-07T00:10:00Z', team: 'Charlotte Hornets', opponent: 'Boston Celtics',
+    savedAt: '2026-11-06T05:59:09Z', evidenceAt: '2026-11-06T06:00:01Z', rank: 1, label: 'GamewAIre Pick', reason: 'Saved verified estimate' };
+  assert.equal(Object.keys(matchWirePicks([game], [pick])).length, 1);
+  const legacy = { ...pick }; delete legacy.evidenceAt; delete legacy.opponent;
+  assert.equal(Object.keys(matchWirePicks([game], [legacy])).length, 1);
+  for (const change of [{ eventId: 'different' }, { start: '2026-11-07T00:16:00Z' }, { start: '2026-11-08T00:10:00Z' },
+    { team: 'Los Angeles Lakers' }, { opponent: 'Los Angeles Lakers' }, { evidenceAt: '2026-11-07T00:01:00Z' }, { evidenceAt: 'invalid' }])
+    assert.deepEqual(matchWirePicks([game], [{ ...pick, ...change }]), {});
+  assert.deepEqual(matchWirePicks([{ ...game, period: 'Postponed' }], [pick]), {});
+  assert.deepEqual(matchWirePicks([{ ...game, sport: 'Football' }], [pick]), {});
+});
 
 test('NBA day arrows move one calendar day across months, years, leap days and daylight saving', () => {
   for (const [before, after] of [

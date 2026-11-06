@@ -40,7 +40,7 @@ async function request<T>(body: Record<string, unknown>, signal: AbortSignal): P
   if (!supabase) throw new Error('Account services are not configured.');
   const { data: session, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw sessionError;
-  if (!session.session) throw new Error('Sign in to use GamewAIre player analysis.');
+  if (!session.session) throw new Error('Sign in to use GamewAIre analysis.');
   const { data, error } = await supabase.functions.invoke<T>('gamewire-bot', { body, signal,
     headers: { Authorization: `Bearer ${session.session.access_token}` } });
   if (error) {

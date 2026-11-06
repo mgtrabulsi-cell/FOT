@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { array, numeric, object, text } from './gamewaire.ts';
-import { legacyNFLSimulationVersion, nflSimulationRuns, nflSimulationVersion, readNFLGameSimulation, simulationBox, simulationGame } from './nflSimulation.ts';
+import { previousNFLSimulationVersion, readableNFLSimulationVersions, nflSimulationRuns, nflSimulationVersion, readNFLGameSimulation, simulationBox, simulationGame } from './nflSimulation.ts';
 import type { NFLGameSimulation } from './nflSimulation.ts';
 import { advanceSimulation, prepareSimulation } from './nflSimulationSources.ts';
 import type { SimulationCache, SimulationJob } from './nflSimulationSources.ts';
@@ -13,14 +13,14 @@ export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: stri
   if (!/^\d{1,12}$/.test(eventId) || !Number.isFinite(Date.parse(kickoff)) || Date.parse(kickoff) <= now)
     throw new Error('Choose an upcoming NFL game to view its pregame simulation.');
   const snapshot = await admin.from('gamewire_game_forecasts').select('payload,event_start').eq('event_id', eventId)
-    .in('model_version', [nflSimulationVersion, legacyNFLSimulationVersion]).order('model_version', { ascending: false }).limit(1).maybeSingle();
+    .in('model_version', readableNFLSimulationVersions).order('model_version', { ascending: false }).limit(1).maybeSingle();
   if (snapshot.error) throw new Error(migration);
   if (snapshot.data && Date.parse(snapshot.data.event_start) <= now) throw new Error('This game’s original forecast is locked after kickoff, even if the feed reschedules it.');
   const waiting = await admin.from('gamewire_simulation_jobs').select('response,next_run_at,last_error,model_version').eq('event_id', eventId).maybeSingle();
   if (waiting.error) throw new Error('Could not read NFL simulation progress.');
   const saved = snapshot.data && Date.parse(snapshot.data.event_start) === Date.parse(kickoff)
     ? readNFLGameSimulation(snapshot.data.payload, eventId, kickoff, teams) : null;
-  if (saved?.status === 'ready') return { ...saved, refreshing: saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000,
+  if (saved?.status === 'ready') return { ...saved, refreshing: saved.refreshing === true || saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000,
     warnings: waiting.data?.last_error ? [...saved.warnings, `Background preparation issue: ${waiting.data.last_error}`] : saved.warnings };
   if (!waiting.data || waiting.data.model_version !== nflSimulationVersion) {
     if (!waiting.data && !await claim()) throw new Error('Simulation request limit reached (60 per account per hour). Scheduled background preparation continues.');
@@ -45,7 +45,7 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
   try {
     const game = simulationGame(await get(`${site}/summary?event=${eventId}`), eventId, now);
     if (Date.parse(game.date) > now + 14 * 86400000) throw new Error('NFL background preparation only supports games in the next fourteen days.');
-    const snapshot = await admin.from('gamewire_game_forecasts').select('event_start').eq('event_id', eventId).eq('model_version', nflSimulationVersion).maybeSingle();
+    const snapshot = await admin.from('gamewire_game_forecasts').select('event_start').eq('event_id', eventId).order('event_start', { ascending: true }).limit(1).maybeSingle();
     if (snapshot.error) throw new Error(migration);
     if (snapshot.data && Date.parse(snapshot.data.event_start) <= now) throw new Error('This game’s original forecast is locked after kickoff, even if the feed reschedules it.');
     const row = await admin.from('gamewire_simulation_jobs').select('payload,response').eq('event_id', eventId).maybeSingle();
@@ -69,14 +69,15 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
     if (!job || job.version !== nflSimulationVersion || Date.parse(job.createdAt) < now - 5 * 60000) {
       const previous = job;
       job = await prepareSimulation(game, get, cache, now);
-      if (previous?.version === nflSimulationVersion) {
+      if (previous && [nflSimulationVersion, previousNFLSimulationVersion].includes(previous.version)) {
         job.logs = previous.logs;
-        if (['ready', 'unavailable'].includes(text(object(row.data?.response).status))) {
+        if (['ready', 'unavailable'].includes(text(object(row.data?.response).status)) && object(row.data?.response).refreshing !== true) {
           for (const state of Object.values(job.logs)) { state.season = game.season; state.done = false; }
         }
       }
     }
     let result = await advanceSimulation(game, job, cache, get, now);
+    result = readNFLGameSimulation(result, game.id, game.date, { home: game.home.id, away: game.away.id });
     if (result.status === 'ready') {
       const verified = simulationGame(await get(`${site}/summary?event=${eventId}`), eventId, Date.now());
       if (verified.date !== game.date || verified.home.id !== game.home.id || verified.away.id !== game.away.id) throw new Error('The matchup changed during simulation. Retry with the updated schedule.');
@@ -87,12 +88,12 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
       if (!archived.data) throw new Error('The game started or the simulation lease changed before the forecast could be archived.');
       result = archived.data as NFLGameSimulation;
     }
-    const sourceIssues = result.warnings.slice(job.warnings.length);
-    const stalled = result.status === 'collecting' && sourceIssues.length > 0 && (result.progress.completed === 0
+    const sourceIssues = result.preparationIssues ?? result.warnings.slice(job.warnings.length);
+    const stalled = (result.status === 'collecting' || result.refreshing) && sourceIssues.length > 0 && (result.progress.completed === 0
       || object(row.data?.response).stage === result.stage && Number(object(object(row.data?.response).progress).completed) >= result.progress.completed);
     const updated = await admin.from('gamewire_simulation_jobs').update({ payload: job, response: result, model_version: nflSimulationVersion,
       event_start: game.date, last_error: null, ...(!stalled ? { attempts: 0 } : {}), updated_at: new Date().toISOString(),
-      next_run_at: new Date(Date.now() + (result.status === 'collecting' ? 0 : 10 * 60000)).toISOString() })
+      next_run_at: new Date(Date.now() + (result.status === 'collecting' || result.refreshing ? 60000 : 10 * 60000)).toISOString() })
       .eq('event_id', eventId).eq('lease_token', token).select('event_id');
     if (updated.error || updated.data?.length !== 1) throw new Error('Could not save NFL simulation progress. Verified resources remain cached; retry.');
     if (stalled) {
@@ -162,6 +163,7 @@ export async function settleNFLGameSimulations(admin: SupabaseClient, get: (url:
       issues.push(`${row.event_id}: final teams do not match the archived game.`); continue;
     }
     const realized = forecast.scenarios.filter(scenario => {
+      if (scenario.home?.teamOnly && scenario.away?.teamOnly) return true;
       const ids = scenario.id.split(':');
       return scenario.home && scenario.away
         && (box.teams.find(side => side.id === scenario.home!.id)?.players[ids[0]]?.passingAttempts ?? 0) >= 10

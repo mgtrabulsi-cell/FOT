@@ -5,8 +5,8 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsxRuntime from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { legacyNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulationBox, simulationGame, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
-import { advanceSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
+import { legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
+import { advanceSimulation, prepareSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
 import { loadNFLGameSimulation, runNFLGameSimulation, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
 
 const now = Date.parse('2026-11-05T18:00:00Z');
@@ -56,8 +56,98 @@ function rawBox(box) {
 }
 function response(scenarios, overrides = {}) {
   return { status: 'ready', version: nflSimulationVersion, eventId: game.id, kickoff: game.date, checkedAt: new Date(now).toISOString(), forecastAt: new Date(now).toISOString(),
-    stage: 'Simulation complete', progress: { completed: 200, total: 200 }, history: { home: 100, away: 100, target: 100 }, runs: 500, calibrated: false, warnings: [], injuries: [], scenarios, ...overrides };
+    stage: 'Simulation complete', evidenceMode: 'full', progress: { completed: 200, total: 200 }, history: { home: 100, away: 100, target: 100 }, runs: 500, calibrated: false, warnings: [], injuries: [], scenarios, ...overrides };
 }
+function scoreReferences(boxes) {
+  return boxes.map(box => ({ id: box.id, date: box.date, season: box.season, seasonType: box.seasonType,
+    teamId: box.teams[0].id, opponentId: box.teams[1].id,
+    scores: { own: box.teams[0].points, opponent: box.teams[1].points, home: box.teams[0].home } }));
+}
+function simulationCache(values = new Map()) {
+  return { readMany: async keys => new Map(keys.filter(key => values.has(key)).map(key => [key, values.get(key)])),
+    write: async (key, value) => { values.set(key, value); } };
+}
+test('Verified lateral receiving touchdowns retain zero receptions and reconcile with team passing', () => {
+  const f = fixture(), box = f.history.home[0], raw = rawBox(box);
+  const receiving = raw.boxscore.players[0].statistics.find(group => group.name === 'receiving');
+  receiving.athletes[0].stats = [String(box.teams[0].completions), String(box.teams[0].passingYards - 20), '1'];
+  receiving.athletes.push({ athlete: { id: '15' }, stats: ['0', '20', '1'] });
+  const parsed = simulationBox(raw, box.id, now), own = parsed.teams[0];
+  assert.deepEqual(own.players['15'], { receptions: 0, receivingYards: 20, receivingTouchdowns: 1 });
+  assert.equal(own.receptions, own.completions); assert.equal(own.receivingYards, own.passingYards);
+  assert.equal(own.receivingTouchdowns, own.passingTouchdowns);
+  const ref = scoreReferences([box])[0], player = f.players.find(player => player.id === '15');
+  const observations = simulationObservations(player, [ref], new Map([[box.id, parsed]]), now);
+  assert.equal(observations.length, 1); assert.equal(observations[0].player.receptions, 0);
+  receiving.athletes[1].stats[2] = '-1';
+  assert.throws(() => simulationBox(raw, box.id, now), /touchdown/);
+  receiving.athletes[1].stats[2] = '2';
+  assert.throws(() => simulationBox(raw, box.id, now), /reconcile/i);
+});
+test('Four verified QB appearances and eight team games support labeled limited projections', () => {
+  const f = fixture({ qbGames: 4 }), history = { home: f.history.home.slice(0, 8), away: f.history.away.slice(0, 8) };
+  const scenarios = simulateNFLGame(game, history, f.players, f.observations, 500);
+  assert.ok(scenarios.every(scenario => scenario.home && scenario.away));
+  assert.ok(scenarios[0].home.players.find(player => player.position === 'QB').limited);
+  const limited = response(scenarios, { evidenceMode: 'limited', history: { home: 8, away: 8, target: 100 } });
+  assert.equal(readNFLGameSimulation(limited, game.id, game.date, { home: '1', away: '2' }).evidenceMode, 'limited');
+  assert.throws(() => readNFLGameSimulation({ ...limited, evidenceMode: 'full' }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
+  f.observations.forEach((rows, id) => { if (id.endsWith('1') || id.endsWith('2')) rows.forEach(row => { row.player.passingAttempts = 9; }); });
+  assert.ok(simulateNFLGame(game, history, f.players, f.observations, 500).every(scenario => scenario.home === null));
+});
+test('Team-only draws use verified scoring and opponent allowances without invented player or touchdown totals', () => {
+  const f = fixture(), history = { home: scoreReferences(f.history.home.slice(0, 8)), away: scoreReferences(f.history.away.slice(0, 8)) };
+  const scenario = simulateNFLTeamScore(game, history, 500);
+  assert.deepEqual(scenario, simulateNFLTeamScore(game, history, 500));
+  for (const team of [scenario.home, scenario.away]) {
+    assert.equal(team.totals, null); assert.deepEqual(team.players, []); assert.equal(team.teamOnly, true);
+    assert.ok(Number.isFinite(team.score.mean)); assert.throws(() => roundedSimulationBox(team), /does not support/);
+  }
+  assert.ok(Math.abs(scenario.home.winProbability + scenario.away.winProbability + scenario.tieProbability - 1) < 1e-8);
+  const data = response([scenario], { evidenceMode: 'team-only', history: { home: 8, away: 8, target: 100 } });
+  assert.equal(readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' }).evidenceMode, 'team-only');
+  for (const change of [rows => rows.slice(0, 7), rows => [rows[0], ...rows.slice(0, 7)],
+    rows => [{ ...rows[0], date: game.date }, ...rows.slice(1)],
+    rows => [{ ...rows[0], scores: undefined }, ...rows.slice(1)],
+    rows => [{ ...rows[0], scores: { ...rows[0].scores, own: -1 } }, ...rows.slice(1)]]) {
+    assert.throws(() => simulateNFLTeamScore(game, { ...history, home: change(history.home) }, 500));
+  }
+  assert.throws(() => readNFLGameSimulation({ ...data, evidenceMode: 'limited' }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
+});
+test('Unavailable rosters and partial schedule feeds still prepare an honest score-only forecast', async () => {
+  const f = fixture(), cache = simulationCache();
+  const get = async url => {
+    const parsed = new URL(url), year = Number(parsed.searchParams.get('season')), phase = Number(parsed.searchParams.get('seasontype'));
+    if (!parsed.pathname.endsWith('/schedule') || year !== game.season || phase !== 2) throw new Error('Temporary source interruption');
+    const teamId = parsed.pathname.match(/teams\/(\d+)/)[1], boxes = f.history[teamId === '1' ? 'home' : 'away'].filter(box => box.seasonType === 2).slice(0, 8);
+    return { team: { id: teamId }, requestedSeason: { year, type: phase },
+      events: boxes.map(box => ({ id: box.id, date: box.date, competitions: rawBox(box).header.competitions })) };
+  };
+  const job = await prepareSimulation(game, get, cache, now);
+  assert.equal(job.history.home.length, 8); assert.equal(job.history.away.length, 8); assert.deepEqual(job.rosterPlayers, []);
+  assert.ok(job.preparationIssues.length); assert.ok(job.warnings.some(warning => warning.includes('current roster')));
+  const data = await advanceSimulation(game, job, cache, async () => { throw new Error('Box feed interruption'); }, now);
+  assert.equal(data.status, 'ready'); assert.equal(data.evidenceMode, 'team-only'); assert.equal(data.refreshing, true);
+  assert.deepEqual(data.history, { home: 8, away: 8, target: 100 });
+  assert.equal(data.scenarios[0].home.totals, null);
+  readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' });
+  job.history.home = job.history.home.slice(0, 7);
+  const pending = await advanceSimulation(game, job, cache, async () => { throw new Error('Still unavailable'); }, now);
+  assert.equal(pending.status, 'collecting'); assert.deepEqual(pending.scenarios, []);
+  assert.ok(pending.warnings.some(warning => warning.includes('at least eight')));
+});
+test('Reduced cached team/player samples produce a box score without waiting for 100 team games', async () => {
+  const f = fixture(), history = { home: scoreReferences(f.history.home.slice(0, 8)), away: scoreReferences(f.history.away.slice(0, 8)) };
+  const job = { version: nflSimulationVersion, createdAt: new Date(now).toISOString(), history, rosterPlayers: f.players,
+    players: null, injuries: [], warnings: [], logs: Object.fromEntries(f.players.map(player => [player.id,
+      { season: game.season, done: true, refs: history[player.teamId === '1' ? 'home' : 'away'] }])) };
+  const values = new Map([...f.history.home.slice(0, 8), ...f.history.away.slice(0, 8)].map(box => [`nfl:simulation:box:v2:${box.id}`, simulationBox(rawBox(box), box.id, now)]));
+  const data = await advanceSimulation(game, job, simulationCache(values), async () => { throw new Error('Unexpected feed request'); }, now);
+  assert.equal(data.status, 'ready'); assert.equal(data.evidenceMode, 'limited'); assert.equal(data.refreshing, false);
+  assert.ok(data.scenarios[0].home.players.find(player => player.id === '11').stats.passingYards);
+  assert.ok(data.scenarios.every(scenario => scenario.issue === null));
+  readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' });
+});
 test('Only verified upcoming regular-season/playoff games may be simulated', () => {
   const raw = rawBox(fixture().history.home[0]);
   raw.header.id = game.id; raw.header.season = { year: 2026, type: 3 };
@@ -135,9 +225,10 @@ test('Player appearances are verified against the exact historical team and box,
   assert.deepEqual(simulationObservations(player, [{ ...ref, teamId: '3' }], new Map([[box.id, box]]), now, issue => issues.push(issue)), []);
   assert.match(issues[0], /no missing production/);
 });
-test('Exactly 100 games, no duplicates, preseason or target-game leakage', () => {
+test('Reduced histories require eight games; duplicates, preseason and target-game leakage remain rejected', () => {
   const f = fixture();
-  assert.throws(() => simulateNFLGame(game, { ...f.history, home: f.history.home.slice(1) }, f.players, f.observations, 500), /100/);
+  assert.ok(simulateNFLGame(game, { ...f.history, home: f.history.home.slice(1) }, f.players, f.observations, 500)[0].home);
+  assert.throws(() => simulateNFLGame(game, { ...f.history, home: f.history.home.slice(0, 7) }, f.players, f.observations, 500), /8 and 100/);
   const duplicate = [...f.history.home]; duplicate[1] = duplicate[0];
   assert.throws(() => simulateNFLGame(game, { ...f.history, home: duplicate }, f.players, f.observations, 500), /unique/);
   const leaked = [...f.history.home]; leaked[0] = { ...leaked[0], date: game.date };
@@ -168,6 +259,12 @@ test('Quarterback production, individual production and defense change the same 
   const better = simulateNFLGame(game, betterWR.history, betterWR.players, betterWR.observations, 500);
   assert.ok(first[2].home.score.mean > first[0].home.score.mean, 'Different QB completion/production changes team scoring');
   assert.ok(adjusted[0].home.totals.passingYards.mean > first[0].home.totals.passingYards.mean);
+  const receiverYards = (scenario, position) => scenario.home.players.find(player => player.position === position).stats.receivingYards.mean;
+  const gain = position => receiverYards(adjusted[0], position) - receiverYards(first[0], position);
+  assert.ok(gain('WR') > 0 && gain('WR') > gain('RB') && gain('WR') > gain('TE'), 'The usage-leading receiver gets the largest absolute boost against a weaker pass defense');
+  const strong = fixture({ weakDefense: .65 }), suppressed = simulateNFLGame(game, strong.history, strong.players, strong.observations, 500);
+  assert.ok(receiverYards(suppressed[0], 'WR') < receiverYards(first[0], 'WR'));
+  assert.ok(adjusted[0].home.matchup.passingYardsMultiplier > 1);
   assert.ok(better[0].home.score.mean > first[0].home.score.mean);
   assert.ok(better[0].home.players.find(p => p.position === 'WR').stats.receivingYards.mean > first[0].home.players.find(p => p.position === 'WR').stats.receivingYards.mean);
 });
@@ -198,6 +295,16 @@ test('TD distributions and rounded box lines conserve production, cap TDs by opp
     assert.equal(box.players[qb.id].completions, sum('receptions') + box.remainder.otherReceptions);
     assert.equal(Math.round(team.totals.rushingYards.mean), sum('rushingYards') + box.remainder.otherRushingYards);
     assert.ok(box.score >= 6 * (box.players[qb.id].passingTouchdowns + sum('rushingTouchdowns') + box.remainder.otherRushingTouchdowns));
+    assert.equal(box.totals.passingYards, sum('receivingYards') + box.remainder.otherReceivingYards);
+    assert.equal(box.totals.receivingYards, box.totals.passingYards);
+    assert.equal(box.totals.completions, sum('receptions') + box.remainder.otherReceptions);
+    assert.equal(box.totals.rushingYards, sum('rushingYards') + box.remainder.otherRushingYards);
+    assert.equal(box.totals.passingTouchdowns, sum('receivingTouchdowns') + box.remainder.otherReceivingTouchdowns);
+    assert.equal(box.totals.receivingTouchdowns, box.totals.passingTouchdowns);
+    assert.equal(box.totals.rushingTouchdowns, sum('rushingTouchdowns') + box.remainder.otherRushingTouchdowns);
+    assert.equal(box.scoring.offensivePoints, 6 * (box.totals.passingTouchdowns + box.totals.rushingTouchdowns));
+    assert.equal(box.score, box.scoring.offensivePoints + box.scoring.otherPoints);
+    assert.ok(Number.isInteger(box.scoring.otherPoints) && box.scoring.otherPoints >= 0);
     for (const player of team.players) {
       const line = box.players[player.id];
       for (const value of Object.values(line)) assert.ok(Number.isInteger(value) && value >= 0);
@@ -211,6 +318,37 @@ test('TD distributions and rounded box lines conserve production, cap TDs by opp
   const highTD = simulateNFLGame(game, f.history, f.players, f.observations, 500)[0].home;
   assert.ok(highTD.score.mean >= 6 * (highTD.totals.passingTouchdowns.mean + highTD.totals.rushingTouchdowns.mean) - 1);
 });
+test('Fractional stat lines reconcile WR, TE and RB production and exact points, including zero-TD scores', () => {
+  const f = fixture(), original = simulateNFLGame(game, f.history, f.players, f.observations, 500)[0].home;
+  const range = mean => ({ mean, p10: 0, median: Math.floor(mean), p90: Math.ceil(mean) });
+  for (const score of [.4, 5.4, 12.4, 27.4]) {
+    const team = structuredClone(original), hasTD = score >= 12;
+    const qb = team.players.find(player => player.position === 'QB');
+    qb.stats.passingYards = range(112.51); qb.stats.completions = range(3.51); qb.stats.passingAttempts = range(4.51);
+    qb.stats.passingTouchdowns = range(hasTD ? 1 : 0);
+    const production = { WR: [1.49, 50.49, .4], TE: [1.51, 51.51, .4], RB: [.51, 10.51, .2] };
+    for (const player of team.players) {
+      if (production[player.position]) {
+        const [catches, yards, td] = production[player.position];
+        player.stats.receptions = range(catches); player.stats.receivingYards = range(yards);
+        player.stats.receivingTouchdowns = range(hasTD ? td : 0);
+      }
+      if (player.stats.rushingAttempts) player.stats.rushingTouchdowns = range(hasTD && player.position === 'RB' ? 1 : 0);
+    }
+    team.score = range(score);
+    team.totals.receptions = range(3.51); team.totals.passingYards = range(112.51);
+    for (const key of ['otherReceptions', 'otherReceivingYards', 'otherReceivingTouchdowns', 'otherRushingTouchdowns']) team.totals[key] = range(0);
+    team.totals.passingTouchdowns = range(hasTD ? 1 : 0); team.totals.rushingTouchdowns = range(hasTD ? 1 : 0);
+    const box = roundedSimulationBox(team);
+    const yards = team.players.reduce((sum, player) => sum + (box.players[player.id].receivingYards ?? 0), 0);
+    assert.equal(box.players[qb.id].passingYards, yards + box.remainder.otherReceivingYards);
+    assert.equal(box.score, 6 * (box.totals.receivingTouchdowns + box.totals.rushingTouchdowns) + box.scoring.otherPoints);
+    assert.equal(box.totals.passingTouchdowns, box.totals.receivingTouchdowns);
+    assert.ok(box.scoring.otherPoints >= 0);
+    if (!hasTD) assert.equal(box.scoring.otherPoints, Math.round(score));
+    if (score === 12.4) assert.equal(box.scoring.otherPoints, 0);
+  }
+});
 test('Legacy forecasts stay readable but never acquire fabricated TDs; v2 rejects missing TD distributions', () => {
   const f = fixture(), current = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   const old = structuredClone(current); old.version = legacyNFLSimulationVersion;
@@ -220,13 +358,15 @@ test('Legacy forecasts stay readable but never acquire fabricated TDs; v2 reject
   }
   assert.equal(readNFLGameSimulation(old, game.id, game.date, { home: '1', away: '2' }).version, legacyNFLSimulationVersion);
   assert.equal(roundedSimulationBox(old.scenarios[0].home).players['11'].passingTouchdowns, undefined);
+  assert.equal(roundedSimulationBox(old.scenarios[0].home).scoring, null);
+  assert.equal(roundedSimulationBox(old.scenarios[0].home).totals.receivingTouchdowns, null);
   assert.throws(() => readNFLGameSimulation({ ...old, version: nflSimulationVersion }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
 });
 test('Reported out players are excluded; insufficient QB/player/market evidence remains unavailable, not fake zeros', () => {
-  const f = fixture({ injured: true, qbGames: 7 }), missing = simulateNFLGame(game, f.history, f.players, f.observations, 500);
-  assert.ok(missing.every(row => row.home === null && /eight/.test(row.issue)));
+  const f = fixture({ injured: true, qbGames: 3 }), missing = simulateNFLGame(game, f.history, f.players, f.observations, 500);
+  assert.ok(missing.every(row => row.home === null && /four/.test(row.issue)));
   const injured = fixture({ injured: true });
-  injured.observations.set('13', injured.observations.get('13').slice(0, 7));
+  injured.observations.set('13', injured.observations.get('13').slice(0, 3));
   const output = simulateNFLGame(game, injured.history, injured.players, injured.observations, 500)[0].home;
   assert.deepEqual(output.players.find(p => p.id === '14').stats, {});
   assert.match(output.players.find(p => p.id === '14').issue, /Excluded/);
@@ -252,13 +392,18 @@ test('Backfill is bounded, persistent and resumeable; failed boxes cannot masque
   const saved = new Map(), cache = { readMany: async keys => new Map(keys.filter(key => saved.has(key)).map(key => [key, saved.get(key)])), write: async (key, value) => saved.set(key, value) };
   const boxes = new Map([...f.history.home, ...f.history.away].map(box => [box.id, box]));
   let calls = 0;
-  const get = async url => { calls++; return rawBox(boxes.get(new URL(url).searchParams.get('event'))); };
+  const get = async url => {
+    const id = new URL(url).searchParams.get('event');
+    if (!id) throw new Error('Player logs unavailable');
+    calls++; return rawBox(boxes.get(id));
+  };
   const first = await advanceSimulation(game, job, cache, get, now);
-  assert.equal(first.status, 'collecting'); assert.equal(calls, 36); assert.equal(first.history.home + first.history.away, 36);
+  assert.equal(first.status, 'ready'); assert.equal(first.evidenceMode, 'team-only'); assert.equal(first.refreshing, true);
+  assert.equal(calls, 36); assert.equal(first.history.home + first.history.away, 36);
   const second = await advanceSimulation(game, job, cache, get, now);
   assert.equal(calls, 72); assert.equal(second.progress.completed, 72);
   const failing = await advanceSimulation(game, job, cache, async () => { throw new Error('Feed issue'); }, now);
-  assert.equal(failing.status, 'collecting'); assert.equal(failing.progress.completed, 72); assert.equal(failing.scenarios.length, 0);
+  assert.equal(failing.status, 'ready'); assert.equal(failing.evidenceMode, 'team-only'); assert.equal(failing.progress.completed, 72); assert.equal(failing.scenarios.length, 1);
   assert.ok(failing.warnings.some(warning => warning.includes('Feed issue')));
   assert.equal(saved.size, 72);
 });
@@ -355,6 +500,27 @@ test('Fresh and stale forecasts load from storage without feed requests, CPU wor
   assert.equal(await runNFLGameSimulation(locked.admin, game.id, locked.get), null);
   assert.deepEqual(locked.calls, ['gamewire_claim_simulation']); assert.equal(locked.fetched, 0);
 });
+test('Fresh provisional snapshots keep background-refresh status; legacy v2 TD snapshots remain readable', async () => {
+  const api = backendFixture({ ready: true });
+  api.initial.refreshing = true;
+  const load = () => loadNFLGameSimulation(api.admin, game.id, api.kickoff, { home: '1', away: '2' }, async () => { throw new Error('No quota needed'); });
+  assert.equal((await load()).refreshing, true);
+  api.initial.version = previousNFLSimulationVersion;
+  delete api.initial.evidenceMode;
+  assert.equal((await load()).version, previousNFLSimulationVersion);
+});
+test('Archived team-only preparation remains eligible for minute-by-minute backfill', async () => {
+  const api = backendFixture(), f = fixture();
+  api.job.history = { home: scoreReferences(f.history.home.slice(0, 8)), away: scoreReferences(f.history.away.slice(0, 8)) };
+  api.job.history.home.push({ ...api.job.history.home[0], id: '99001' });
+  api.job.players = []; api.job.rosterPlayers = []; api.job.logs = {};
+  const started = Date.now(), data = await runNFLGameSimulation(api.admin, game.id, api.get);
+  assert.equal(data.status, 'ready'); assert.equal(data.evidenceMode, 'team-only'); assert.equal(data.refreshing, true);
+  assert.ok(api.calls.includes('gamewire_save_game_simulation'));
+  const update = api.updates.find(update => update.response);
+  assert.equal(update.response.refreshing, true);
+  assert.ok(Date.parse(update.next_run_at) >= started + 60000 && Date.parse(update.next_run_at) < Date.now() + 65000);
+});
 test('Missing results enqueue once with quota, not foreground backfill; denied requests cannot enqueue', async () => {
   const api = backendFixture({ missing: true });
   const result = await loadNFLGameSimulation(api.admin, game.id, api.kickoff, { home: '1', away: '2' }, async () => true);
@@ -418,13 +584,16 @@ test('Background workers archive verified evidence; write/kickoff failures persi
   }
 });
 test('Stale completed simulations refresh current-season player logs without restarting unfinished historical backfill', async () => {
-  for (const status of ['ready', 'collecting']) {
+  for (const status of ['ready', 'collecting', 'provisional', 'legacy']) {
     const api = backendFixture(), original = api.admin.from;
     api.job.createdAt = new Date(Date.now() - 6 * 60000).toISOString();
     api.job.logs['11'].season = 2020;
+    if (status === 'legacy') api.job.version = previousNFLSimulationVersion;
     api.admin.from = table => {
       const builder = original(table);
-      if (table === 'gamewire_simulation_jobs') builder.maybeSingle = async () => ({ data: { payload: api.job, response: { status } }, error: null });
+      if (table === 'gamewire_simulation_jobs') builder.maybeSingle = async () => ({ data: { payload: api.job, response: {
+        status: ['provisional', 'legacy'].includes(status) ? 'ready' : status, refreshing: status === 'provisional',
+      } }, error: null });
       return builder;
     };
     let refreshed;
@@ -433,17 +602,17 @@ test('Stale completed simulations refresh current-season player logs without res
     }).outputText;
     const context = vm.createContext({ exports: {}, crypto, Date, Error, console, require(name) {
       if (name.includes('nflSimulationSources')) return {
-        prepareSimulation: async () => ({ ...api.job, createdAt: new Date().toISOString(), logs: {} }),
-        advanceSimulation: async (_game, job) => { refreshed = structuredClone(job.logs); return response([], { status: 'collecting', forecastAt: null }); },
+        prepareSimulation: async () => ({ ...api.job, version: nflSimulationVersion, createdAt: new Date().toISOString(), logs: {} }),
+        advanceSimulation: async (_game, job) => { refreshed = structuredClone(job.logs); return response([], { status: 'collecting', forecastAt: null, kickoff: api.kickoff }); },
       };
-      if (name.endsWith('/nflSimulation.ts')) return { simulationGame, nflSimulationVersion };
+      if (name.endsWith('/nflSimulation.ts')) return { simulationGame, nflSimulationVersion, previousNFLSimulationVersion, readNFLGameSimulation };
       if (name.endsWith('/gamewaire.ts')) return { object: value => value && typeof value === 'object' ? value : {}, text: value => typeof value === 'string' ? value : '' };
       return {};
     } });
     vm.runInContext(code, context);
     await context.exports.runNFLGameSimulation(api.admin, game.id, api.get);
-    assert.equal(refreshed['11'].done, status !== 'ready');
-    assert.equal(refreshed['11'].season, status === 'ready' ? 2026 : 2020);
+    assert.equal(refreshed['11'].done, !['ready', 'legacy'].includes(status));
+    assert.equal(refreshed['11'].season, ['ready', 'legacy'].includes(status) ? 2026 : 2020);
     assert.equal(refreshed['11'].refs.length, 30);
   }
 });
@@ -457,7 +626,7 @@ test('Feed-stalled partial backfills retain progress and increasing retry state 
       status: 'collecting', forecastAt: null, kickoff: api.kickoff, stage: 'Team history',
       progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 }, warnings: ['10001: Feed issue'],
     }) };
-    if (name.endsWith('/nflSimulation.ts')) return { simulationGame, nflSimulationVersion };
+    if (name.endsWith('/nflSimulation.ts')) return { simulationGame, nflSimulationVersion, readNFLGameSimulation };
     if (name.endsWith('/gamewaire.ts')) return { object: value => value && typeof value === 'object' ? value : {}, text: value => typeof value === 'string' ? value : '' };
     return {};
   } });
@@ -489,7 +658,7 @@ test('Simulation UI renders scenario selection, ranges, transfer coverage, error
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   const html = simulationMarkup(data, 'Feed issue');
   assert.match(html, /Quarterback scenario/); assert.match(html, /Includes prior teams/); assert.match(html, /10th/);
-  assert.match(html, /Your last verified forecast remains below/); assert.match(html, /Feed issue/);
+  assert.match(html, /Your saved simulation remains available/); assert.match(html, /Feed issue/);
   assert.match(html, /overtime is not separately simulated/); assert.doesNotMatch(html, /<img/);
   assert.match(html, /role="region"/); assert.match(html, /scope="col"/);
   const tables = html.match(/<table>[\s\S]*?<\/table>/g);
@@ -497,18 +666,25 @@ test('Simulation UI renders scenario selection, ranges, transfer coverage, error
   assert.ok(tables.every(table => !/Expected|10th|verified games/.test(table)));
   for (const match of html.matchAll(/<td><b>([^<]+)<\/b><\/td>/g)) assert.match(match[1], /^\d+$/);
   assert.match(html, /PASS TD/); assert.match(html, /REC TD/); assert.match(html, /RUSH TD/);
+  assert.equal((html.match(/projected team totals and score accounting/g) ?? []).length, 2);
+  const accounting = html.match(/<section class="nfl-simulation-accounting"[\s\S]*?<\/section>/g);
+  assert.equal(accounting.length, 2);
+  assert.ok(accounting.every(section => !/<details/.test(section)));
+  assert.ok(accounting.every(section => /WR\/TE\/RB receiving/.test(section) && /other points/.test(section) && /Passing and receiving TDs count once/.test(section)));
   const unavailable = response([{ id: 'missing', label: 'Missing QB', quarterbacks: { home: 'Unknown', away: 'Unknown' }, home: null, away: null, issue: 'Insufficient evidence', tieProbability: null }], { status: 'unavailable' });
-  assert.match(simulationMarkup(unavailable), /Insufficient evidence/);
+  assert.match(simulationMarkup(unavailable), /automatically prepares the upcoming NFL week/);
+  assert.doesNotMatch(simulationMarkup(unavailable), /role="alert"/);
   assert.match(simulationMarkup(data, '', data.scenarios[1].id), /Backup 2/);
 });
 function panelRuntime(load) {
   const code = ts.transpileModule(readFileSync(new URL('../src/NFLGameSimulation.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  const state = [], effects = [], timers = new Map();
+  const state = [], effects = [], timers = new Map(), listeners = new Map();
   let slot = 0, timerId = 0;
   const context = vm.createContext({ exports: {}, AbortController, Date, Error, console: { error() {} }, window: {
     setTimeout: (fn, delay) => { timers.set(++timerId, { fn, delay }); return timerId; }, clearTimeout: id => timers.delete(id),
+    addEventListener: (event, listener) => listeners.set(event, listener), removeEventListener: event => listeners.delete(event),
   }, require(name) {
     if (name === 'react') return {
       useState(initial) { const index = slot++; if (!(index in state)) state[index] = initial; return [state[index], value => { state[index] = typeof value === 'function' ? value(state[index]) : value; }]; },
@@ -521,7 +697,7 @@ function panelRuntime(load) {
   vm.runInContext(code, context);
   const render = () => { slot = 0; effects.length = 0; context.exports.default({ game: { ...game, eventId: game.id } }); };
   render();
-  return { state, effects, timers, render };
+  return { state, effects, timers, listeners, render };
 }
 test('Runtime refresh errors retain the last verified forecast, while leaving aborts stale requests and polling', async () => {
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
@@ -541,4 +717,28 @@ test('Runtime refresh errors retain the last verified forecast, while leaving ab
   stopDelayed(); stopDelayedClock(); resolveRequest(data);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(signal.aborted, true); assert.equal(delayed.state[1], null); assert.equal(delayed.timers.size, 0);
+});
+test('Offline retries back off to five minutes and reconnect resumes automatically without clearing the draft forecast', async () => {
+  const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  let fail = true;
+  const runtime = panelRuntime(async () => { if (fail) throw new Error('Offline'); return data; });
+  const stopClock = runtime.effects[0](), stop = runtime.effects[1]();
+  await new Promise(resolve => setImmediate(resolve));
+  for (const expected of [15000, 30000, 60000, 120000, 240000, 300000, 300000]) {
+    const [id, timer] = [...runtime.timers].find(([, timer]) => timer.delay <= 300000);
+    assert.equal(timer.delay, expected); runtime.timers.delete(id); timer.fn();
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  fail = false; runtime.listeners.get('online')();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(runtime.state[1], data); assert.equal(runtime.state[2], '');
+  stop(); stopClock(); assert.equal(runtime.timers.size, 0); assert.equal(runtime.listeners.size, 0);
+});
+test('Team-only UI shows scores without fabricated box scores, QB assumptions or blocking alerts', () => {
+  const f = fixture(), history = { home: scoreReferences(f.history.home.slice(0, 8)), away: scoreReferences(f.history.away.slice(0, 8)) };
+  const data = response([simulateNFLTeamScore(game, history, 500)], { evidenceMode: 'team-only', history: { home: 8, away: 8, target: 100 } });
+  const html = simulationMarkup(data);
+  assert.match(html, /Team-only scoring estimate/); assert.match(html, /No missing player production is filled with zeros/);
+  assert.doesNotMatch(html, /<table|Quarterback scenario|nfl-simulation-accounting|role="alert"/);
+  assert.match(html, /8 home-team \/ 8 away-team/);
 });

@@ -1,7 +1,7 @@
 import { array, object, text } from './gamewaire.ts';
 import { readBotDepth } from './gamewireBotProjections.ts';
 import { readBotRoster } from './gamewireBot.ts';
-import { nflSimulationRuns, nflSimulationVersion, simulateNFLGame, simulationBox, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from './nflSimulation.ts';
+import { nflSimulationRuns, nflSimulationVersion, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from './nflSimulation.ts';
 import type { NFLGameSimulation, SimulationBox, SimulationGame, SimulationPlayer, SimulationReference } from './nflSimulation.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
@@ -14,7 +14,7 @@ export type SimulationCache = {
 export type SimulationJob = {
   version: string; createdAt: string; history: { home: SimulationReference[]; away: SimulationReference[] };
   rosterPlayers: SimulationPlayer[]; players: SimulationPlayer[] | null; injuries: NFLGameSimulation['injuries'];
-  warnings: string[]; logs: Record<string, { season: number; refs: SimulationReference[]; done: boolean }>;
+  warnings: string[]; preparationIssues?: string[]; logs: Record<string, { season: number; refs: SimulationReference[]; done: boolean }>;
 };
 const boxKey = (id: string) => `nfl:simulation:box:v2:${id}`;
 const unique = (refs: SimulationReference[]) => [...new Map(refs.map(row => [row.id, row])).values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
@@ -28,19 +28,24 @@ async function resource<T>(key: string, cache: SimulationCache, ttl: number, loa
 }
 export async function prepareSimulation(game: SimulationGame, get: (url: string) => Promise<unknown>, cache: SimulationCache, now: number): Promise<SimulationJob> {
   const cutoff = Math.min(now, Date.parse(game.date));
+  const warnings: string[] = [], preparationIssues: string[] = [], injuries: NFLGameSimulation['injuries'] = [];
   const history = async (teamId: string) => {
     let refs: SimulationReference[] = [];
     for (let year = game.season; year >= game.season - 8 && refs.length < 100; year--) {
       const phases = await Promise.all(([2, 3] as const).map(phase => resource(
-        `nfl:simulation:schedule:v1:${teamId}:${year}:${phase}`, cache, year === game.season ? 5 * 60000 : 365 * day,
+        `nfl:simulation:schedule:v2:${teamId}:${year}:${phase}`, cache, year === game.season ? 5 * 60000 : 365 * day,
         () => get(`${site}/teams/${teamId}/schedule?season=${year}&seasontype=${phase}&limit=1000`)
-          .then(raw => simulationSchedule(raw, teamId, year, phase, cutoff)))));
+          .then(raw => simulationSchedule(raw, teamId, year, phase, cutoff))).catch(cause => {
+            console.error('Simulation team schedule unavailable', teamId, year, phase, cause);
+            const issue = `${teamId} (${year}, phase ${phase}): ${message(cause)}`;
+            warnings.push(issue); preparationIssues.push(issue);
+            return [];
+          })));
       refs = unique([...refs, ...phases.flat()]).filter(ref => Date.parse(ref.date) < cutoff);
     }
-    if (refs.length < 100) throw new Error(`${teamId}: only ${refs.length}/100 verified completed regular-season/playoff games could be found. No smaller sample is presented as a 100-game simulation.`);
+    if (refs.length < 100) warnings.push(`${teamId}: ${refs.length}/100 verified completed team games available; a smaller sample is labeled, not presented as 100 games.`);
     return refs.slice(0, 100);
   };
-  const warnings: string[] = [], injuries: NFLGameSimulation['injuries'] = [];
   const roster = async (team: SimulationGame['home']) => {
     const raw = await get(`${site}/teams/${team.id}/roster?season=${game.season}`);
     const rawTeam = text(object(object(raw).team).id);
@@ -76,9 +81,15 @@ export async function prepareSimulation(game: SimulationGame, get: (url: string)
       return { ...player, ...availability(player.id), role };
     });
   };
-  const [home, away, homePlayers, awayPlayers] = await Promise.all([history(game.home.id), history(game.away.id), roster(game.home), roster(game.away)]);
+  const availableRoster = (team: SimulationGame['home']) => roster(team).catch(cause => {
+    console.error('Simulation current roster unavailable', team.id, cause);
+    const issue = `${team.abbr}: current roster and availability unavailable (${message(cause)}); no player projections or starter assumptions are substituted.`;
+    warnings.push(issue); preparationIssues.push(issue);
+    return [];
+  });
+  const [home, away, homePlayers, awayPlayers] = await Promise.all([history(game.home.id), history(game.away.id), availableRoster(game.home), availableRoster(game.away)]);
   return { version: nflSimulationVersion, createdAt: new Date(now).toISOString(), history: { home, away },
-    rosterPlayers: [...homePlayers, ...awayPlayers], players: null, injuries, warnings, logs: {} };
+    rosterPlayers: [...homePlayers, ...awayPlayers], players: null, injuries, warnings, preparationIssues, logs: {} };
 }
 function selectPlayers(job: SimulationJob, boxes: Map<string, SimulationBox>): SimulationPlayer[] {
   return [job.history.home, job.history.away].flatMap(refs => {
@@ -129,15 +140,38 @@ async function boxBatch(refs: SimulationReference[], cache: SimulationCache, get
   })), completed: saved.size, total: required.length, issues };
 }
 export async function advanceSimulation(game: SimulationGame, job: SimulationJob, cache: SimulationCache, get: (url: string) => Promise<unknown>, now: number): Promise<NFLGameSimulation> {
-  const result: NFLGameSimulation = { status: 'collecting', version: nflSimulationVersion, eventId: game.id, kickoff: game.date, checkedAt: job.createdAt,
-    forecastAt: null, stage: 'Team history', progress: { completed: 0, total: 200 }, history: { home: 100, away: 100, target: 100 },
-    runs: nflSimulationRuns, calibrated: false, warnings: [...job.warnings], injuries: job.injuries, scenarios: [] };
+  const result: NFLGameSimulation & { preparationIssues: string[] } = { status: 'collecting', version: nflSimulationVersion, eventId: game.id, kickoff: game.date, checkedAt: job.createdAt,
+    forecastAt: null, stage: 'Team history', progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 },
+    runs: nflSimulationRuns, calibrated: false, preparationIssues: [...job.preparationIssues ?? []], warnings: [...job.warnings], injuries: job.injuries, scenarios: [] };
   const teamRefs = [...job.history.home, ...job.history.away], teamBatch = await boxBatch(teamRefs, cache, get, now);
   result.progress = { completed: teamBatch.completed, total: teamBatch.total };
   result.history.home = job.history.home.filter(ref => teamBatch.boxes.has(ref.id)).length;
   result.history.away = job.history.away.filter(ref => teamBatch.boxes.has(ref.id)).length;
   result.warnings.push(...teamBatch.issues);
-  if (teamBatch.completed < teamBatch.total) return result;
+  result.preparationIssues.push(...teamBatch.issues);
+  const scoreRefs = (refs: SimulationReference[]) => refs.flatMap(ref => {
+    if (ref.scores) return [ref];
+    const box = teamBatch.boxes.get(ref.id), own = box?.teams.find(team => team.id === ref.teamId), opponent = box?.teams.find(team => team.id === ref.opponentId);
+    return own && opponent ? [{ ...ref, scores: { own: own.points, opponent: opponent.points, home: own.home } }] : [];
+  });
+  const scoringHistory = { home: scoreRefs(job.history.home), away: scoreRefs(job.history.away) };
+  const teamOnly = (refreshing: boolean) => {
+    if (scoringHistory.home.length < 8 || scoringHistory.away.length < 8) {
+      result.stage = 'Preparing verified team history';
+      result.warnings.push('A numerical forecast requires at least eight verified prior final scores per team. Background preparation will retry; missing results are not invented.');
+      return result;
+    }
+    result.status = 'ready';
+    result.evidenceMode = 'team-only';
+    result.refreshing = refreshing;
+    result.forecastAt = new Date(now).toISOString();
+    result.history = { home: scoringHistory.home.length, away: scoringHistory.away.length, target: 100 };
+    result.scenarios = [simulateNFLTeamScore(game, scoringHistory, result.runs)];
+    result.warnings.push('Team-only scoring estimate: verified prior final scores blend each team’s scoring with its opponent’s points allowed, using recency and home/away weighting. No player, quarterback, injury, touchdown or box-score estimates are invented.',
+      'Experimental statistical estimate; win frequencies and score ranges are uncalibrated, not betting recommendations.');
+    return result;
+  };
+  if (result.history.home < 8 || result.history.away < 8) return teamOnly(true);
   job.players ??= selectPlayers(job, teamBatch.boxes);
   const active = job.players.filter(player => !player.excluded);
   const work = active.filter(player => !job.logs[player.id]?.done)
@@ -153,7 +187,8 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
         })));
     } catch (cause) {
       console.error('Simulation cross-team logs unavailable', player.id, state.season, cause);
-      result.warnings.push(`${player.name} (${state.season}): ${message(cause)}`); return;
+      const issue = `${player.name} (${state.season}): ${message(cause)}`;
+      result.warnings.push(issue); result.preparationIssues.push(issue); return;
     }
     state.refs = unique([...state.refs, ...evidence.refs]).filter(ref => Date.parse(ref.date) < now).slice(0, 60);
     const earlier = evidence.seasons.filter(year => year < state.season && year >= game.season - 8).sort((a, b) => b - a);
@@ -161,29 +196,42 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     else state.season = earlier[0] ?? state.season - 1;
   }));
   result.progress = { completed: active.filter(player => job.logs[player.id]?.done).length, total: active.length };
-  if (active.some(player => !job.logs[player.id]?.done)) return result;
-  const refs = active.flatMap(player => job.logs[player.id].refs), playerBatch = await boxBatch([...teamRefs, ...refs], cache, get, now);
+  const refs = active.flatMap(player => job.logs[player.id]?.refs ?? []), playerBatch = await boxBatch(refs, cache, get, now);
+  const boxes = new Map([...teamBatch.boxes, ...playerBatch.boxes]);
+  result.history.home = job.history.home.filter(ref => boxes.has(ref.id)).length;
+  result.history.away = job.history.away.filter(ref => boxes.has(ref.id)).length;
   result.stage = 'Player production and defensive matchups';
-  result.progress = { completed: playerBatch.completed, total: playerBatch.total };
+  const required = unique([...teamRefs, ...refs]);
+  result.progress = { completed: required.filter(ref => boxes.has(ref.id)).length, total: required.length };
   result.warnings.push(...playerBatch.issues);
-  if (playerBatch.completed < playerBatch.total) return result;
-  const observations = new Map(active.map(player => [player.id, simulationObservations(player, job.logs[player.id].refs, playerBatch.boxes, now, issue => {
+  result.preparationIssues.push(...playerBatch.issues);
+  const refreshing = required.some(ref => !boxes.has(ref.id)) || active.some(player => !job.logs[player.id]?.done);
+  const observations = new Map(active.map(player => [player.id, simulationObservations(player, job.logs[player.id]?.refs ?? [], boxes, now, issue => {
     console.error('Simulation player observation excluded', issue);
     result.warnings.push(issue);
   })]));
   result.scenarios = simulateNFLGame(game, {
-    home: job.history.home.map(ref => playerBatch.boxes.get(ref.id)!),
-    away: job.history.away.map(ref => playerBatch.boxes.get(ref.id)!),
+    home: job.history.home.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
+    away: job.history.away.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
   }, job.players, observations, result.runs);
-  result.status = result.scenarios.some(scenario => scenario.home && scenario.away) ? 'ready' : 'unavailable';
+  result.warnings.push(...result.scenarios.flatMap(scenario => scenario.issue ? [scenario.issue] : []));
+  result.scenarios = result.scenarios.filter(scenario => scenario.home && scenario.away);
+  if (!result.scenarios.length) {
+    result.stage = refreshing ? 'Preparing player evidence' : 'Team-only simulation complete';
+    return teamOnly(refreshing);
+  }
+  result.status = 'ready';
+  result.refreshing = refreshing;
+  result.evidenceMode = refreshing || result.history.home < 100 || result.history.away < 100
+    || result.scenarios.some(scenario => [...scenario.home!.players, ...scenario.away!.players].some(player => player.limited)) ? 'limited' : 'full';
   result.forecastAt = new Date(now).toISOString();
-  result.stage = result.status === 'ready' ? 'Simulation complete' : 'Insufficient quarterback evidence';
+  result.stage = refreshing ? 'Refining player and team history' : 'Simulation complete';
   result.warnings.push(
     'Experimental joint empirical bootstrap; probabilities and 10th–90th percentile ranges are not calibrated or betting recommendations.',
-    'Team history: exactly 100 completed regular-season/playoff games, recency half-life 24 games; matching home/away history receives 1.5× weight.',
+    `Team history: ${result.history.home} home-team and ${result.history.away} away-team completed regular-season/playoff games, targeting 100 each; recency half-life 24 games and matching home/away weight 1.5×.`,
     'Player history: up to 30 verified production appearances across teams; recency half-life 10 appearances and same-opponent samples receive 1.5× weight.',
     'Defensive adjustments use observed passing/rushing yards per opportunity and points per yard, relative to historical opponent samples; coefficients are heuristic, not fitted injury effects.',
-    'Every QB pairing is conditional, not a confirmed starter. Skill-player markets require eight recorded category appearances and assume listed questionable players participate at observed usage.',
+    'Every QB pairing is conditional, not a confirmed starter. Player markets require at least four verified category appearances; fewer than eight are labeled limited evidence. Listed questionable players are assumed to participate at observed usage.',
     'Reported out/inactive players are excluded from current allocations. Unmodeled players retain a team remainder; no specific injured-player replacement or numerical OL/defensive injury penalty is invented.',
     'Touchdowns use verified per-opportunity player production and opponent allowances. Passing/receiving touchdowns reconcile and scoring is bounded below by six points per offensive touchdown in every draw.',
     'Scores use joint yardage/scoring-rate outcomes, not drive-by-drive, kicker or overtime simulations. Rounded box-score lines are reconciled; expand details for expectations and uncalibrated ranges.',

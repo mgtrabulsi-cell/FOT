@@ -18,13 +18,19 @@ export function wireAnalysisNotice(coverage: WireAnalysisCoverage, games: Game[]
     : 'No current-model pregame picks were recorded for all games in this slate. Picks are not created retroactively after games start.';
 }
 const teamKey = (name: string) => normalize(name).replace(/^losangeles/, 'la');
+const easternDay = (date: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(date));
 export function matchWirePicks(games: Game[], picks: ScoreboardPick[]): WireTeamPicks {
   const result: WireTeamPicks = {};
   for (const pick of picks) {
     const game = games.find(game => game.eventId === pick.eventId);
-    if (!game || !Number.isFinite(Date.parse(pick.start)) || Math.abs(Date.parse(game.date) - Date.parse(pick.start)) > 60_000
+    const tolerance = game?.sport === 'Basketball' ? 15 * 60_000 : 60_000;
+    if (!game || !Number.isFinite(Date.parse(game.date)) || !Number.isFinite(Date.parse(pick.start))
+      || Math.abs(Date.parse(game.date) - Date.parse(pick.start)) > tolerance || easternDay(game.date) !== easternDay(pick.start)
+      || !Number.isFinite(Date.parse(pick.evidenceAt ?? pick.savedAt)) || Date.parse(pick.evidenceAt ?? pick.savedAt) >= Date.parse(game.date)
       || /postpon|cancel|suspend|delay/i.test(`${game.period ?? ''} ${game.clock ?? ''}`)) continue;
     const team = [game.away, game.home].find(team => teamKey(team.name) === teamKey(pick.team));
+    const opponent = pick.opponent;
+    if (opponent && ![game.away, game.home].some(side => side.id !== team?.id && teamKey(side.name) === teamKey(opponent))) continue;
     if (team) result[`${game.eventId}:${team.id}`] = pick;
   }
   return result;

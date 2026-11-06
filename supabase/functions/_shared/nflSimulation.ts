@@ -1,23 +1,26 @@
 import { array, numeric, object, text } from './gamewaire.ts';
 
-export const nflSimulationVersion = 'nfl-joint-bootstrap-v2';
+export const nflSimulationVersion = 'nfl-joint-bootstrap-v3';
+export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v2';
 export const legacyNFLSimulationVersion = 'nfl-joint-bootstrap-v1';
+export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, legacyNFLSimulationVersion];
 export const nflSimulationRuns = 1000;
 export type SimulationPosition = 'QB' | 'RB' | 'WR' | 'TE';
 export type SimulationStat = { passingAttempts: number; completions: number; passingYards: number; passingTouchdowns: number; rushingAttempts: number; rushingYards: number; rushingTouchdowns: number; receptions: number; receivingYards: number; receivingTouchdowns: number };
 export type SimulationSide = SimulationStat & { id: string; home: boolean; points: number; players: Record<string, Partial<SimulationStat>> };
 export type SimulationBox = { id: string; date: string; season: number; seasonType: 2 | 3; teams: SimulationSide[] };
 export type SimulationGame = { id: string; date: string; season: number; seasonType: 2 | 3; home: { id: string; name: string; abbr: string }; away: { id: string; name: string; abbr: string } };
-export type SimulationReference = { id: string; date: string; season: number; seasonType: 2 | 3; teamId: string; opponentId: string };
+export type SimulationReference = { id: string; date: string; season: number; seasonType: 2 | 3; teamId: string; opponentId: string; scores?: { own: number; opponent: number; home: boolean } };
 export type SimulationPlayer = { id: string; name: string; teamId: string; position: SimulationPosition; status: string; excluded: boolean; uncertain: boolean; role: string };
 export type SimulationObservation = { eventId: string; date: string; teamId: string; opponentId: string; player: Partial<SimulationStat>; team: SimulationSide };
 export type SimulationRange = { mean: number; p10: number; median: number; p90: number };
-export type SimulationPlayerResult = { id: string; name: string; position: SimulationPosition; games: number; priorTeams: string[]; headToHeadGames: number; status: string; role: string; stats: Partial<Record<keyof SimulationStat, SimulationRange>>; issue: string | null };
+export type SimulationPlayerResult = { id: string; name: string; position: SimulationPosition; games: number; priorTeams: string[]; headToHeadGames: number; status: string; role: string; limited?: boolean; stats: Partial<Record<keyof SimulationStat, SimulationRange>>; issue: string | null };
 type BaseTotal = 'passingYards' | 'rushingYards' | 'receptions' | 'otherReceivingYards' | 'otherReceptions' | 'otherRushingYards';
 type TouchdownTotal = 'passingTouchdowns' | 'rushingTouchdowns' | 'otherReceivingTouchdowns' | 'otherRushingTouchdowns';
-export type SimulationTeamResult = { id: string; name: string; abbr: string; score: SimulationRange; winProbability: number; players: SimulationPlayerResult[]; totals: Record<BaseTotal, SimulationRange> & Partial<Record<TouchdownTotal, SimulationRange>> };
+export type SimulationTeamTotals = Record<BaseTotal, SimulationRange> & Partial<Record<TouchdownTotal, SimulationRange>>;
+export type SimulationTeamResult = { id: string; name: string; abbr: string; score: SimulationRange; winProbability: number; players: SimulationPlayerResult[]; teamOnly?: boolean; matchup?: { passingYardsMultiplier: number; rushingYardsMultiplier: number }; totals: SimulationTeamTotals | null };
 export type SimulationScenario = { id: string; label: string; quarterbacks: { home: string; away: string }; issue: string | null; home: SimulationTeamResult | null; away: SimulationTeamResult | null; tieProbability: number | null };
-export type NFLGameSimulation = { status: 'collecting' | 'ready' | 'unavailable'; version: string; eventId: string; kickoff: string; checkedAt: string; forecastAt: string | null; stage: string; progress: { completed: number; total: number }; history: { home: number; away: number; target: 100 }; runs: number; calibrated: false; refreshing?: boolean; warnings: string[]; injuries: Array<{ name: string; position: string; teamId: string; status: string }>; scenarios: SimulationScenario[] };
+export type NFLGameSimulation = { status: 'collecting' | 'ready' | 'unavailable'; version: string; eventId: string; kickoff: string; checkedAt: string; forecastAt: string | null; stage: string; evidenceMode?: 'full' | 'limited' | 'team-only'; progress: { completed: number; total: number }; history: { home: number; away: number; target: 100 }; runs: number; calibrated: false; refreshing?: boolean; preparationIssues?: string[]; warnings: string[]; injuries: Array<{ name: string; position: string; teamId: string; status: string }>; scenarios: SimulationScenario[] };
 export const simulationStatKeys: Array<keyof SimulationStat> = ['passingAttempts', 'completions', 'passingYards', 'passingTouchdowns', 'rushingAttempts', 'rushingYards', 'rushingTouchdowns', 'receptions', 'receivingYards', 'receivingTouchdowns'];
 
 export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: string, teams: { home: string; away: string }): NFLGameSimulation {
@@ -33,18 +36,26 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
   const probability = (n: unknown) => finite(n) && n >= 0 && n <= 1;
   const team = (value: unknown, id: string) => {
     const t = object(value), totals = object(t.totals);
-    return t.id === id && typeof t.name === 'string' && typeof t.abbr === 'string' && range(t.score) && probability(t.winProbability)
+    if (t.id !== id || typeof t.name !== 'string' || typeof t.abbr !== 'string' || !range(t.score) || !probability(t.winProbability)) return false;
+    if (t.matchup !== undefined && !['passingYardsMultiplier', 'rushingYardsMultiplier'].every(key => {
+      const factor = object(t.matchup)[key];
+      return typeof factor === 'number' && Number.isFinite(factor) && factor >= Math.sqrt(.5) && factor <= Math.sqrt(1.5);
+    })) return false;
+    if (t.teamOnly === true) return row.version === nflSimulationVersion && row.evidenceMode === 'team-only' && t.totals === null && Array.isArray(t.players) && t.players.length === 0;
+    return t.teamOnly !== true && (row.version !== nflSimulationVersion || row.evidenceMode !== 'team-only')
       && ['passingYards', 'rushingYards', 'receptions', 'otherReceivingYards', 'otherReceptions', 'otherRushingYards'].every(key => range(totals[key]))
-      && (row.version !== nflSimulationVersion || ['passingTouchdowns', 'rushingTouchdowns', 'otherReceivingTouchdowns', 'otherRushingTouchdowns'].every(key => range(totals[key])))
+      && (row.version === legacyNFLSimulationVersion || ['passingTouchdowns', 'rushingTouchdowns', 'otherReceivingTouchdowns', 'otherRushingTouchdowns'].every(key => range(totals[key])))
       && Array.isArray(t.players) && t.players.every(raw => {
         const p = object(raw), stats = object(p.stats);
         return typeof p.id === 'string' && /^\d{1,12}$/.test(p.id) && typeof p.name === 'string' && ['QB', 'RB', 'WR', 'TE'].includes(String(p.position))
           && integer(p.games) && Number(p.games) <= 30 && integer(p.headToHeadGames) && Number(p.headToHeadGames) <= Number(p.games)
           && strings(p.priorTeams) && (p.priorTeams as string[]).every(id => /^\d{1,12}$/.test(id))
           && typeof p.status === 'string' && typeof p.role === 'string' && (p.issue === null || typeof p.issue === 'string')
+          && (row.version === nflSimulationVersion ? typeof p.limited === 'boolean' : p.limited === undefined || typeof p.limited === 'boolean')
+          && (row.evidenceMode !== 'full' || p.limited !== true)
           && p.stats !== null && typeof p.stats === 'object' && !Array.isArray(p.stats)
           && Object.entries(stats).every(([key, stat]) => simulationStatKeys.includes(key as keyof SimulationStat) && range(stat))
-          && (row.version !== nflSimulationVersion || (!stats.passingYards || range(stats.passingTouchdowns))
+          && (row.version === legacyNFLSimulationVersion || (!stats.passingYards || range(stats.passingTouchdowns))
             && (!stats.receivingYards || range(stats.receivingTouchdowns)) && (!stats.rushingYards || range(stats.rushingTouchdowns)));
       });
   };
@@ -55,8 +66,9 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
         || s.issue === null && team(s.home, teams.home) && team(s.away, teams.away) && probability(s.tieProbability)
           && Math.abs(Number(object(s.home).winProbability) + Number(object(s.away).winProbability) + Number(s.tieProbability) - 1) < 1e-8);
   });
-  if (![nflSimulationVersion, legacyNFLSimulationVersion].includes(String(row.version)) || row.eventId !== eventId || Date.parse(String(row.kickoff)) !== Date.parse(kickoff)
+  if (!readableNFLSimulationVersions.includes(String(row.version)) || row.eventId !== eventId || Date.parse(String(row.kickoff)) !== Date.parse(kickoff)
     || row.refreshing !== undefined && typeof row.refreshing !== 'boolean'
+    || row.preparationIssues !== undefined && !strings(row.preparationIssues)
     || !['ready', 'collecting', 'unavailable'].includes(String(row.status)) || row.calibrated !== false || typeof row.stage !== 'string'
     || !Number.isFinite(Date.parse(String(row.checkedAt))) || !integer(progress.completed) || !integer(progress.total) || Number(progress.completed) > Number(progress.total)
     || !integer(history.home) || !integer(history.away) || Number(history.home) > 100 || Number(history.away) > 100 || history.target !== 100
@@ -66,7 +78,10 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
       return ['name', 'position', 'teamId', 'status'].every(key => typeof injury[key] === 'string') && [teams.home, teams.away].includes(String(injury.teamId));
     }) || !scenarios || row.status === 'collecting' && (row.forecastAt !== null || (row.scenarios as unknown[]).length !== 0)
     || row.status !== 'collecting' && (!Number.isFinite(Date.parse(String(row.forecastAt))) || Date.parse(String(row.forecastAt)) >= Date.parse(kickoff)
-      || history.home !== 100 || history.away !== 100 || !(row.scenarios as unknown[]).length)
+      || (row.version === nflSimulationVersion ? Number(history.home) < 8 || Number(history.away) < 8
+        || !['full', 'limited', 'team-only'].includes(String(row.evidenceMode))
+        || row.evidenceMode === 'full' && (history.home !== 100 || history.away !== 100)
+        : history.home !== 100 || history.away !== 100) || !(row.scenarios as unknown[]).length)
     || row.status === 'ready' && !(row.scenarios as unknown[]).some(raw => object(raw).issue === null))
     throw new Error('The NFL simulator returned an invalid or mismatched forecast. Retry; no substitute estimates are shown.');
   return value as NFLGameSimulation;
@@ -120,8 +135,10 @@ export function simulationSchedule(value: unknown, teamId: string, season: numbe
       throw new Error('A historical game belongs to a different season or phase.');
     const own = sides.find(row => text(object(row.team).id) === teamId), other = sides.find(row => row !== own);
     if (sides.length !== 2 || !own || !other || !validId(text(event.id)) || !validId(text(object(other.team).id))) throw new Error('Historical matchup identity is incomplete.');
-    for (const side of sides) count(typeof side.score === 'object' ? object(side.score).value ?? object(side.score).displayValue : side.score, 'final score');
-    return [{ id: text(event.id), date, season, seasonType: phase, teamId, opponentId: text(object(other.team).id) }];
+    const score = (side: Record<string, unknown>) => count(typeof side.score === 'object' ? object(side.score).value ?? object(side.score).displayValue : side.score, 'final score');
+    if (!['home', 'away'].includes(text(own.homeAway)) || !['home', 'away'].includes(text(other.homeAway)) || text(other.homeAway) === text(own.homeAway)) throw new Error('Historical home/away identity is unavailable.');
+    return [{ id: text(event.id), date, season, seasonType: phase, teamId, opponentId: text(object(other.team).id),
+      scores: { own: score(own), opponent: score(other), home: own.homeAway === 'home' } }];
   });
 }
 export function simulationPlayerSeasons(value: unknown, season: number): number[] {
@@ -200,7 +217,7 @@ export function simulationBox(value: unknown, eventId: string, cutoff: number): 
         } else {
           set('receptions', count(stat('receptions'), 'receptions')); set('receivingYards', yards(stat('receivingYards'), 'receiving yards'));
           const touchdowns = count(stat('receivingTouchdowns'), 'receiving touchdowns');
-          if (touchdowns > player.receptions!) throw new Error('Receiving touchdowns exceed receptions.');
+          // A lateral can credit yards and a TD to a player without crediting them a reception.
           set('receivingTouchdowns', touchdowns);
         }
       }
@@ -229,7 +246,7 @@ export function simulationObservations(player: SimulationPlayer, refs: Simulatio
     const team = box.teams.find(side => side.id === ref.teamId), observed = team?.players[player.id];
     if (!team || !observed) return reject('The completed offensive box score does not verify this player on their historical team; no missing production is assumed to be zero.');
     if (player.position === 'QB' && (observed.passingAttempts ?? 0) < 10) return [];
-    if (player.position !== 'QB' && !(observed.rushingAttempts || observed.receptions)) return [];
+    if (player.position !== 'QB' && !(observed.rushingAttempts || observed.receptions || observed.rushingYards || observed.receivingYards || observed.rushingTouchdowns || observed.receivingTouchdowns)) return [];
     return [{ eventId: box.id, date: box.date, teamId: team.id, opponentId: ref.opponentId, player: observed, team }];
   }).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 30);
 }
@@ -289,44 +306,94 @@ function allocateCapped(total: number, shares: number[], caps: number[]): number
   }
   return result;
 }
-export function roundedSimulationBox(team: SimulationTeamResult) {
+export function roundedSimulationBox(team: SimulationTeamResult & { totals: SimulationTeamTotals }) {
+  if (team.totals === null) throw new Error('Team-only scoring does not support a projected box score.');
+  const teamTotals = team.totals;
   const players = Object.fromEntries(team.players.map(player => [player.id, Object.fromEntries(Object.entries(player.stats).map(([key, value]) => [key, Math.round(value!.mean)])) as Partial<SimulationStat>]));
   const remainder: Partial<Record<BaseTotal | TouchdownTotal, number>> = {};
   const reconcile = (key: keyof SimulationStat, total: number, otherKey: BaseTotal | TouchdownTotal, caps?: number[]) => {
     const supported = team.players.filter(player => player.stats[key]);
-    const shares = [...supported.map(player => player.stats[key]!.mean), team.totals[otherKey]?.mean ?? 0];
+    const shares = [...supported.map(player => player.stats[key]!.mean), teamTotals[otherKey]?.mean ?? 0];
     const values = total === 0 ? shares.map(() => 0) : caps ? allocateCapped(total, shares, caps) : allocate(total, shares);
     supported.forEach((player, i) => { players[player.id][key] = values[i]; });
     remainder[otherKey] = values[values.length - 1];
-    return values.reduce((a, b) => a + b, 0);
+    return { total: values.reduce((a, b) => a + b, 0), other: values[values.length - 1] };
   };
   const quarterback = team.players.find(player => player.stats.passingYards);
   const score = Math.round(team.score.mean);
+  let passingYards: number | null = null, completions: number | null = null;
+  let passingTouchdowns: number | null = null, rushingTouchdowns: number | null = null, otherReceivingTouchdowns: number | null = null;
   if (quarterback) {
-    reconcile('receptions', Math.round(team.totals.receptions.mean), 'otherReceptions');
-    players[quarterback.id].completions = Math.round(team.totals.receptions.mean);
+    completions = reconcile('receptions', Math.round(team.totals.receptions.mean), 'otherReceptions').total;
+    players[quarterback.id].completions = completions;
     const receivers = team.players.filter(player => player.stats.receivingYards);
-    players[quarterback.id].passingYards = reconcile('receivingYards', Math.round(team.totals.passingYards.mean), 'otherReceivingYards',
-      [...receivers.map(player => players[player.id].receptions ? Number.MAX_SAFE_INTEGER : 0), remainder.otherReceptions ? Number.MAX_SAFE_INTEGER : 0]);
+    passingYards = reconcile('receivingYards', Math.round(team.totals.passingYards.mean), 'otherReceivingYards',
+      [...receivers.map(player => players[player.id].receptions ? Number.MAX_SAFE_INTEGER : 0), remainder.otherReceptions ? Number.MAX_SAFE_INTEGER : 0]).total;
+    players[quarterback.id].passingYards = passingYards;
   }
   const rushersWithYards = team.players.filter(player => player.stats.rushingYards);
-  reconcile('rushingYards', Math.round(team.totals.rushingYards.mean), 'otherRushingYards',
-    [...rushersWithYards.map(player => players[player.id].rushingAttempts ? Number.MAX_SAFE_INTEGER : 0), Number.MAX_SAFE_INTEGER]);
+  const rushingYards = reconcile('rushingYards', Math.round(team.totals.rushingYards.mean), 'otherRushingYards',
+    [...rushersWithYards.map(player => players[player.id].rushingAttempts ? Number.MAX_SAFE_INTEGER : 0), Number.MAX_SAFE_INTEGER]).total;
   if (team.totals.passingTouchdowns && team.totals.rushingTouchdowns && quarterback) {
     const shares = [team.totals.passingTouchdowns.mean, team.totals.rushingTouchdowns.mean];
     const total = Math.min(Math.round(shares[0] + shares[1]), Math.floor(score / 6));
     const [passing, rushing] = total ? allocate(total, shares) : [0, 0];
     const receivers = team.players.filter(player => player.stats.receivingTouchdowns);
-    players[quarterback.id].passingTouchdowns = reconcile('receivingTouchdowns', passing, 'otherReceivingTouchdowns',
+    const receivingTDs = reconcile('receivingTouchdowns', passing, 'otherReceivingTouchdowns',
       [...receivers.map(player => players[player.id].receptions ?? 0), remainder.otherReceptions ?? 0]);
+    passingTouchdowns = receivingTDs.total;
+    otherReceivingTouchdowns = receivingTDs.other;
+    players[quarterback.id].passingTouchdowns = passingTouchdowns;
     const rushers = team.players.filter(player => player.stats.rushingTouchdowns);
-    reconcile('rushingTouchdowns', rushing, 'otherRushingTouchdowns',
-      [...rushers.map(player => players[player.id].rushingAttempts ?? 0), Number.MAX_SAFE_INTEGER]);
+    rushingTouchdowns = reconcile('rushingTouchdowns', rushing, 'otherRushingTouchdowns',
+      [...rushers.map(player => players[player.id].rushingAttempts ?? 0), Number.MAX_SAFE_INTEGER]).total;
   }
-  return { score, players, remainder };
+  const sum = (key: keyof SimulationStat) => team.players.reduce((total, player) => total + (players[player.id][key] ?? 0), 0);
+  const listed = {
+    receivingYards: sum('receivingYards'), receptions: sum('receptions'), rushingYards: sum('rushingYards'),
+    receivingTouchdowns: passingTouchdowns !== null ? sum('receivingTouchdowns') : null,
+    rushingTouchdowns: rushingTouchdowns !== null ? sum('rushingTouchdowns') : null,
+  };
+  const totals = {
+    passingYards, receivingYards: passingYards, completions, receptions: completions, rushingYards, passingTouchdowns, rushingTouchdowns,
+    receivingTouchdowns: otherReceivingTouchdowns !== null ? sum('receivingTouchdowns') + otherReceivingTouchdowns : null,
+  };
+  const offensivePoints = totals.passingTouchdowns !== null && totals.rushingTouchdowns !== null
+    ? 6 * (totals.passingTouchdowns + totals.rushingTouchdowns) : null;
+  const scoring = offensivePoints !== null ? { offensivePoints, otherPoints: score - offensivePoints } : null;
+  return { score, players, remainder, listed, totals, scoring };
 }
 type TeamDraw = { points: number; stats: Record<string, Partial<SimulationStat>> } & Record<BaseTotal | TouchdownTotal, number>;
 type HistoricalPair = { own: SimulationSide; opponent: SimulationSide; date: string };
+export function simulateNFLTeamScore(game: SimulationGame, history: { home: SimulationReference[]; away: SimulationReference[] }, runs = nflSimulationRuns): SimulationScenario {
+  if (!Number.isInteger(runs) || runs < 500 || runs > 10000) throw new Error('Simulation runs must be between 500 and 10000.');
+  const read = (refs: SimulationReference[], teamId: string) => {
+    const seen = new Set<string>();
+    const rows = [...refs].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+    if (rows.length < 8 || rows.length > 100) throw new Error('Team-only scoring requires 8–100 verified completed games per team.');
+    return rows.map(ref => {
+      if (ref.teamId !== teamId || !validId(ref.id) || seen.has(ref.id) || !validId(ref.opponentId) || ref.opponentId === teamId
+        || !finiteDate(ref.date) || Date.parse(ref.date) >= Date.parse(game.date) || !Number.isInteger(ref.season) || ref.season < 2000 || ref.season > game.season || ![2, 3].includes(ref.seasonType)
+        || !ref.scores || !Number.isInteger(ref.scores.own) || ref.scores.own < 0 || !Number.isInteger(ref.scores.opponent) || ref.scores.opponent < 0
+        || typeof ref.scores.home !== 'boolean') throw new Error('Team-only scoring requires verified prior final scores and matchup identities.');
+      seen.add(ref.id); return ref.scores;
+    });
+  };
+  const home = read(history.home, game.home.id), away = read(history.away, game.away.id);
+  const homeWeight = weights(home, 24, row => row.home ? 1.5 : 1), awayWeight = weights(away, 24, row => !row.home ? 1.5 : 1);
+  const random = generator(`${nflSimulationVersion}:${game.id}:team-only`);
+  const homeScores: number[] = [], awayScores: number[] = [];
+  let homeWins = 0, awayWins = 0, ties = 0;
+  for (let i = 0; i < runs; i++) {
+    const h = draw(home, homeWeight, random), a = draw(away, awayWeight, random);
+    const homeScore = Math.round((h.own + a.opponent) / 2), awayScore = Math.round((a.own + h.opponent) / 2);
+    homeScores.push(homeScore); awayScores.push(awayScore);
+    if (homeScore > awayScore) homeWins++; else if (awayScore > homeScore) awayWins++; else ties++;
+  }
+  return { id: 'team-only', label: 'Team-only scoring estimate', quarterbacks: { home: 'Unconfirmed', away: 'Unconfirmed' }, issue: null,
+    home: { ...game.home, score: simulationRange(homeScores), winProbability: homeWins / runs, players: [], teamOnly: true, totals: null },
+    away: { ...game.away, score: simulationRange(awayScores), winProbability: awayWins / runs, players: [], teamOnly: true, totals: null }, tieProbability: ties / runs };
+}
 export function simulateNFLGame(game: SimulationGame, history: { home: SimulationBox[]; away: SimulationBox[] },
   players: SimulationPlayer[], observations: Map<string, SimulationObservation[]>, runs = nflSimulationRuns): SimulationScenario[] {
   if (!Number.isInteger(runs) || runs < 500 || runs > 10000) throw new Error('Simulation runs must be between 500 and 10000.');
@@ -341,7 +408,7 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
       seen.add(box.id);
       return { own, opponent, date: box.date };
     });
-    if (rows.length !== 100) throw new Error('Exactly 100 completed regular-season/playoff games per team are required.');
+    if (rows.length < 8 || rows.length > 100) throw new Error('Between 8 and 100 completed regular-season/playoff games per team are required.');
     return rows;
   };
   const homeRows = pair(history.home, game.home.id), awayRows = pair(history.away, game.away.id);
@@ -360,15 +427,15 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
   for (const homeQB of homeQBs) for (const awayQB of awayQBs) {
     const id = `${homeQB.id}:${awayQB.id}`, label = `${game.away.abbr}: ${awayQB.name} / ${game.home.abbr}: ${homeQB.name}`;
     const quarterbacks = { home: homeQB.name, away: awayQB.name };
-    const qbIssue = [homeQB, awayQB].filter(p => (observations.get(p.id)?.filter(row => row.player.passingTouchdowns !== undefined).length ?? 0) < 8);
+    const qbIssue = [homeQB, awayQB].filter(p => (observations.get(p.id)?.filter(row => (row.player.passingAttempts ?? 0) >= 10 && ['passingAttempts', 'completions', 'passingYards', 'passingTouchdowns'].every(key => row.player[key as keyof SimulationStat] !== undefined)).length ?? 0) < 4);
     if (qbIssue.length) {
-      results.push({ id, label, quarterbacks, issue: `${qbIssue.map(p => p.name).join(', ')}: fewer than eight verified appearances with at least 10 passing attempts. No replacement QB statistics are invented.`,
+      results.push({ id, label, quarterbacks, issue: `${qbIssue.map(p => p.name).join(', ')}: fewer than four verified appearances with at least 10 passing attempts. No replacement QB statistics are invented.`,
         home: null, away: null, tieProbability: null }); continue;
     }
     const random = generator(`${nflSimulationVersion}:${game.id}:${id}`);
     const setup = (teamId: string, qb: SimulationPlayer, defenseRows: HistoricalPair[], defenseWeights: number[]) => {
       const active = players.filter(p => p.teamId === teamId && !p.excluded && (p.position !== 'QB' || p.id === qb.id));
-      const usable = active.filter(p => (observations.get(p.id)?.length ?? 0) >= 8);
+      const usable = active.filter(p => (observations.get(p.id)?.length ?? 0) >= 4);
       const opponentId = teamId === game.home.id ? game.away.id : game.home.id;
       const cohorts = new Map<string, { rows: SimulationObservation[]; weights: number[] }>();
       for (const p of usable) for (const [market, keys] of [
@@ -377,7 +444,7 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
         ['rushing', ['rushingAttempts', 'rushingYards', 'rushingTouchdowns']],
       ] as const) {
         const rows = observations.get(p.id)!.filter(row => keys.every(key => row.player[key] !== undefined));
-        if (rows.length >= 8) cohorts.set(`${p.id}:${market}`, { rows, weights: weights(rows, 10, row => row.opponentId === opponentId ? 1.5 : 1) });
+        if (rows.length >= 4) cohorts.set(`${p.id}:${market}`, { rows, weights: weights(rows, 10, row => row.opponentId === opponentId ? 1.5 : 1) });
       }
       const allowedPass = weighted(defenseRows, defenseWeights, row => row.opponent.passingYards) / Math.max(1, weighted(defenseRows, defenseWeights, row => row.opponent.passingAttempts));
       const allowedRush = weighted(defenseRows, defenseWeights, row => row.opponent.rushingYards) / Math.max(1, weighted(defenseRows, defenseWeights, row => row.opponent.rushingAttempts));
@@ -446,17 +513,18 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
     }
     const finish = (team: SimulationGame['home'], context: ReturnType<typeof setup>, draws: TeamDraw[], wins: number): SimulationTeamResult => ({
       ...team, score: simulationRange(draws.map(row => row.points)), winProbability: wins / runs,
+      matchup: { passingYardsMultiplier: context.passAdjustment, rushingYardsMultiplier: context.rushAdjustment },
       totals: Object.fromEntries((['passingYards', 'rushingYards', 'receptions', 'otherReceivingYards', 'otherReceptions', 'otherRushingYards',
         'passingTouchdowns', 'rushingTouchdowns', 'otherReceivingTouchdowns', 'otherRushingTouchdowns'] as const)
-        .map(key => [key, simulationRange(draws.map(row => row[key]))])) as SimulationTeamResult['totals'],
+        .map(key => [key, simulationRange(draws.map(row => row[key]))])) as SimulationTeamTotals,
       players: players.filter(p => p.teamId === team.id && (p.position !== 'QB' || context.active.some(active => active.id === p.id))).map(p => {
         const observed = observations.get(p.id) ?? [], usable = context.usable.some(row => row.id === p.id);
         const keys = usable ? Object.keys(draws[0].stats[p.id] ?? {}) as Array<keyof SimulationStat> : [];
         return { id: p.id, name: p.name, position: p.position, games: observed.length, priorTeams: [...new Set(observed.map(row => row.teamId))],
           headToHeadGames: observed.filter(row => row.opponentId === (team.id === game.home.id ? game.away.id : game.home.id)).length,
-          status: p.status, role: p.role,
+          status: p.status, role: p.role, limited: keys.length > 0 && [...context.cohorts.entries()].some(([key, cohort]) => key.startsWith(`${p.id}:`) && cohort.rows.length < 8),
           stats: Object.fromEntries(keys.map(key => [key, simulationRange(draws.map(row => row.stats[p.id]![key]!))])),
-          issue: p.excluded ? 'Excluded by reported availability; no zero-valued projection is substituted.' : !usable ? 'Fewer than eight verified production appearances; included only in unmodeled team remainder.' : !keys.length ? 'No supported market was recorded.' : null };
+          issue: p.excluded ? 'Excluded by reported availability; no zero-valued projection is substituted.' : !usable ? 'Fewer than four verified production appearances; included only in unmodeled team remainder.' : !keys.length ? 'No supported market was recorded.' : null };
       }),
     });
     results.push({ id, label, quarterbacks, issue: null, home: finish(game.home, homeSetup, homeDraws, homeWins), away: finish(game.away, awaySetup, awayDraws, awayWins), tieProbability: ties / runs });
