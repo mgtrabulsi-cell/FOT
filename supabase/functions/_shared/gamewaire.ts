@@ -85,7 +85,7 @@ export function empiricalQuantile(values: number[], fraction: number) {
   return sorted[lower] + (sorted[Math.ceil(position)] - sorted[lower]) * (position - lower);
 }
 export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
-export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; stretchKeys?: string[] };
+export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; winnerLean?: TeamLean; stretchKeys?: string[] };
 export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
   const scale = (value: number, target: number) => Math.max(0, Math.min(1, value / target));
   const score = Math.round(40 * scale(pick.conservativeEV, 0.15) + 25 * scale(pick.edge, 0.15)
@@ -488,9 +488,11 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (previouslyRejected >= 0) rejected.splice(previouslyRejected, 1);
     picks.push(teamLean.pick);
   }
+  const winnerLean = teamOptions.filter(row => row.pick.sport === 'NBA' && row.pick.market === 'h2h')
+    .sort((a, b) => b.pick.probability - a.pick.probability || b.pick.conservativeEV - a.pick.conservativeEV || a.pick.key.localeCompare(b.pick.key))[0];
   return { status: picks.length ? 'completed' : !best.size && rejected.some((row) => row.reason.startsWith('Stale')) ? 'stale_odds'
     : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks: rankTopPicks(picks), rejected, teamLean,
-    ...(minimumPlayerPicks ? { stretchKeys: [] } : {}) };
+    ...(winnerLean ? { winnerLean } : {}), ...(minimumPlayerPicks ? { stretchKeys: [] } : {}) };
 }
 export type Settled = { probability: number; pushProbability: number; american: number; result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closingAmerican?: number | null; withdrawn?: boolean };
 export function performance(rows: Settled[]) {

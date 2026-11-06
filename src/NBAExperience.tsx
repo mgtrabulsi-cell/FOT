@@ -432,7 +432,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
           <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className={`wire-board-team${item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? ' is-loser' : ''}`} key={side.id}>
             <TeamAbbrMark className="wire-board-mark" abbr={side.abbr} color={side.color} name={side.name} />
             <span className="wire-board-team-name"><b><span className="wire-board-team-label">{side.name}</span>
-              {teamPicks[`${item.eventId}:${side.id}`] && <span className="wire-team-pick-note">GamewAIre Pick</span>}
+              {teamPicks[`${item.eventId}:${side.id}`] && <span className="wire-team-pick-note">{teamPicks[`${item.eventId}:${side.id}`].label}</span>}
               <BackToBackBadge game={item} team={side} previousGames={previousGames} />
             </b><small>{side.abbr}{side.record ? ` · ${side.record}` : ''}</small></span>
             <strong className="wire-board-score">{item.status === 'UPCOMING' ? '' : side.score}</strong>
@@ -442,7 +442,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
         {[item.away, item.home].map(side => {
           const pick = teamPicks[`${item.eventId}:${side.id}`];
           return pick ? <details className="wire-game-pick" key={side.id}>
-            <summary><span>GamewAIre Pick #{pick.rank} breakdown</span><b>{pick.team}</b></summary>
+            <summary><span>{`${pick.label} #${pick.rank} breakdown`}</span><b>{pick.team}</b></summary>
             <div><GamewaireBreakdown text={pick.reason} /></div>
           </details> : null;
         })}

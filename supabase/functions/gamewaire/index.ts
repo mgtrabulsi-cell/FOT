@@ -147,7 +147,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp));
         return day >= first && day <= last;
       };
-      type SavedScore = { event_id: string; event_start: string; status: string; payload: { modelVersion?: string; teamLean?: TeamLean } };
+      type SavedScore = { event_id: string; event_start: string; status: string; payload: { modelVersion?: string; teamLean?: TeamLean; winnerLean?: TeamLean } };
       const latest = new Map<string, SavedScore>();
       for (let offset = 0; ; offset += 500) {
         const saved = await admin.from('gamewaire_runs').select('event_id,event_start,payload,status,created_at')
@@ -171,10 +171,18 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         .returns<Array<{ event_id: string; event_start: string; status: string }>>();
       if (jobs.error) throw new Error('Could not load scoreboard analysis progress.');
       const countJobs = (statuses: string[]) => new Set(jobs.data.filter(job => inSlate(job.event_start) && statuses.includes(job.status)).map(job => job.event_id)).size;
-      return json({ picks: scoreboardPicks(candidates), analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
+      const slateGames = new Set([...latest.keys(), ...jobs.data.filter(job => inSlate(job.event_start)).map(job => job.event_id)]).size;
+      const winners = [...latest.values()].flatMap(row => {
+        const winner = row.payload?.winnerLean ?? (row.payload?.teamLean?.pick.market === 'h2h' ? row.payload.teamLean : undefined);
+        return row.payload?.modelVersion === modelVersion && winner ? [winner] : [];
+      });
+      const picks = scoreboardPicks(candidates, Date.now(), body.sport === 'NBA' ? { nbaGames: slateGames, winnerLeans: winners } : {});
+      return json({ picks, ...(body.sport === 'NBA' ? { dailyTarget: slateGames === 0 ? 0 : slateGames < 3 ? 1 : 3, selectionCount: picks.length } : {}),
+        analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
         upcomingAnalyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion && Date.parse(row.event_start) > Date.now()).length,
         pendingGames: countJobs(['pending', 'running']), failedGames: countJobs(['failed']),
-        note: 'Ranked across saved matchup analyses. Games without a qualifying model result receive no label. No paid odds refresh or post publication is triggered.' });
+        note: body.sport === 'NBA' ? 'Three distinct games per Eastern day, or one winner selection total on a 1–2-game slate. Value-qualified picks are prioritized; coverage-only winner leans are labeled separately. Missing evidence is not invented. No paid odds refresh or publication is triggered.'
+          : 'Ranked across saved matchup analyses. Games without a qualifying model result receive no label. No paid odds refresh or post publication is triggered.' });
     }
     if (!canAnalyze) return json({ error: 'GamewAIre management is restricted to the designated account.' }, 403);
     if (body.action === 'report') {

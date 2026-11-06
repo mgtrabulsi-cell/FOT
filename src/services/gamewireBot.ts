@@ -8,7 +8,8 @@ export type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supaba
 export type { PlayerWeekHistory } from '../../supabase/functions/_shared/gamewireBot';
 
 export async function loadGameSimulation(game: Game, signal: AbortSignal) {
-  const value = await request<unknown>({ action: 'simulation', eventId: game.eventId }, signal);
+  const value = await request<unknown>({ action: 'simulation', eventId: game.eventId, kickoff: game.date,
+    homeTeamId: game.home.id, awayTeamId: game.away.id }, signal);
   return readNFLGameSimulation(value, game.eventId, game.date, { home: game.home.id, away: game.away.id });
 }
 

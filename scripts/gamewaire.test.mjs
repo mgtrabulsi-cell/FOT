@@ -1039,6 +1039,49 @@ test('Member scoreboard shortlist ranks every saved matchup, exposes only three 
     return { event_id: `provider-${index}`, event_start: quote.start, status: 'completed',
       payload: { modelVersion: engine.modelVersion, teamLean: { pick, qualifies: index !== 4 } } };
   });
+  test('NBA analysis saves a separate winner estimate even when a spread qualifies and the moneyline fails value screens', () => {
+    const moneyline = { ...quote, key: 'event|h2h|Boston', market: 'h2h', subject: quote.home, side: quote.home, line: null, american: -3000, noVig: .9 };
+    const spread = { ...moneyline, key: 'event|spreads|Boston', market: 'spreads', line: -20.5, american: 150, noVig: .5 };
+    const report = evaluate([moneyline, spread], evidence, { ...settings, markets: ['h2h', 'spreads'] });
+    assert.equal(report.winnerLean.pick.market, 'h2h');
+    assert.equal(report.winnerLean.qualifies, false);
+    assert.equal(report.teamLean.pick.market, 'spreads');
+    assert.ok(report.picks.every(pick => pick.key !== moneyline.key), 'Coverage must not turn a lean into a qualifying bet');
+  });
+  test('NBA daily coverage fills three distinct games with labeled winner leans, but short slates get one winner total', () => {
+    const base = evaluate([{ ...quote, market: 'h2h', line: null, subject: quote.home, side: quote.home }]).picks[0];
+    const picks = Array.from({ length: 4 }, (_, i) => ({ ...base, key: `daily-${i}`, eventId: `provider-${i}`,
+      identifiers: { espnEventId: `nba-${i}` }, probability: .65 + i * .04 }));
+    const winners = picks.slice(1).map(pick => ({ pick: { ...pick, ev: -.1, edge: -.05, conservativeEV: -.3 }, qualifies: false }));
+    const result = scoreboard.scoreboardPicks([picks[0]], now, { nbaGames: 4, winnerLeans: [...winners, winners[0]] });
+    assert.equal(result.length, 3);
+    assert.equal(new Set(result.map(pick => pick.eventId)).size, 3);
+    assert.equal(result[0].label, 'GamewAIre Pick');
+    assert.ok(result.slice(1).every(pick => pick.label === 'GamewAIre Winner Lean' && /not a value-qualified pick/.test(pick.reason)));
+    for (const count of [1, 2]) {
+      const short = scoreboard.scoreboardPicks([], now, { nbaGames: count, winnerLeans: winners.slice(0, count) });
+      assert.equal(short.length, 1);
+      assert.equal(short[0].eventId, `nba-${count}`);
+      assert.match(short[0].reason, /ML/);
+    }
+    const stale = structuredClone(winners[0]); stale.pick.dataAt = stale.pick.start;
+    const missing = structuredClone(winners[1]); missing.pick.samples = [];
+    assert.equal(scoreboard.scoreboardPicks([], now, { nbaGames: 3, winnerLeans: [stale, missing] }).length, 0);
+    assert.equal(scoreboard.scoreboardPicks(picks, now, { nbaGames: 0, winnerLeans: winners }).length, 0);
+  });
+  test('Pending NBA games count toward daily coverage without triggering the 1–2-game rule or additional paid requests', async () => {
+    const base = evaluate([{ ...quote, market: 'h2h', line: null, subject: quote.home, side: quote.home }]).picks[0];
+    const rows = [0, 1].map(i => ({ event_id: `provider-${i}`, event_start: quote.start, status: 'no_qualifying',
+      payload: { modelVersion: engine.modelVersion, winnerLean: { qualifies: false,
+        pick: { ...base, key: `winner-${i}`, identifiers: { espnEventId: `nba-${i}` }, ev: -.1, edge: -.05, conservativeEV: -.3 } } } }));
+    const api = endpoint({ role: 'member', scoreboardRows: rows,
+      scoreboardJobs: [{ event_id: 'provider-2', event_start: quote.start, status: 'pending' }] });
+    const response = await (await api.run({ action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' })).json();
+    assert.equal(response.dailyTarget, 3);
+    assert.equal(response.picks.length, 2);
+    assert.equal(response.pendingGames, 1);
+    assert.deepEqual(api.fetches, []); assert.deepEqual(api.writes, []); assert.deepEqual(api.rpc, []);
+  });
   const api = endpoint({ role: 'member', scoreboardRows: rows });
   const response = await api.run({ action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' });
   assert.equal(response.status, 200);

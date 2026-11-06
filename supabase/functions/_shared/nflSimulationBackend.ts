@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { array, numeric, object, text } from './gamewaire.ts';
-import { nflSimulationRuns, nflSimulationVersion, simulationBox, simulationGame } from './nflSimulation.ts';
+import { legacyNFLSimulationVersion, nflSimulationRuns, nflSimulationVersion, readNFLGameSimulation, simulationBox, simulationGame } from './nflSimulation.ts';
 import type { NFLGameSimulation } from './nflSimulation.ts';
 import { advanceSimulation, prepareSimulation } from './nflSimulationSources.ts';
 import type { SimulationCache, SimulationJob } from './nflSimulationSources.ts';
@@ -8,28 +8,46 @@ import { currentBotWeek, readBotWeek } from './gamewireBot.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const migration = 'NFL simulation storage is unavailable. Apply supabase/nfl-game-simulations.sql before enabling this endpoint.';
-export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: string, get: (url: string) => Promise<unknown>,
+export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: string, kickoff: string, teams: { home: string; away: string },
   claim: () => Promise<boolean>, now = Date.now()): Promise<NFLGameSimulation> {
-  const game = simulationGame(await get(`${site}/summary?event=${eventId}`), eventId, now);
-  const snapshot = await admin.from('gamewire_game_forecasts').select('payload,event_start').eq('event_id', eventId).eq('model_version', nflSimulationVersion).maybeSingle();
+  if (!/^\d{1,12}$/.test(eventId) || !Number.isFinite(Date.parse(kickoff)) || Date.parse(kickoff) <= now)
+    throw new Error('Choose an upcoming NFL game to view its pregame simulation.');
+  const snapshot = await admin.from('gamewire_game_forecasts').select('payload,event_start').eq('event_id', eventId)
+    .in('model_version', [nflSimulationVersion, legacyNFLSimulationVersion]).order('model_version', { ascending: false }).limit(1).maybeSingle();
   if (snapshot.error) throw new Error(migration);
-  const saved = snapshot.data?.payload as NFLGameSimulation | undefined;
   if (snapshot.data && Date.parse(snapshot.data.event_start) <= now) throw new Error('This game’s original forecast is locked after kickoff, even if the feed reschedules it.');
-  if (saved?.status === 'ready' && saved.kickoff === game.date && Date.parse(saved.forecastAt ?? '') > now - 5 * 60000) return saved;
+  const waiting = await admin.from('gamewire_simulation_jobs').select('response,next_run_at,last_error,model_version').eq('event_id', eventId).maybeSingle();
+  if (waiting.error) throw new Error('Could not read NFL simulation progress.');
+  const saved = snapshot.data && Date.parse(snapshot.data.event_start) === Date.parse(kickoff)
+    ? readNFLGameSimulation(snapshot.data.payload, eventId, kickoff, teams) : null;
+  if (saved?.status === 'ready') return { ...saved, refreshing: saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000,
+    warnings: waiting.data?.last_error ? [...saved.warnings, `Background preparation issue: ${waiting.data.last_error}`] : saved.warnings };
+  if (!waiting.data || waiting.data.model_version !== nflSimulationVersion) {
+    if (!waiting.data && !await claim()) throw new Error('Simulation request limit reached (60 per account per hour). Scheduled background preparation continues.');
+    const queued = await admin.rpc('gamewire_request_simulation', { target_event: eventId, requested_start: kickoff, requested_version: nflSimulationVersion });
+    if (queued.error) throw new Error('Could not queue NFL simulation preparation. Apply supabase/nfl-game-simulations.sql and retry.');
+  }
+  const response = waiting.data?.response;
+  if (response && object(response).version === nflSimulationVersion && Date.parse(text(object(response).kickoff)) === Date.parse(kickoff))
+    return readNFLGameSimulation({ ...object(response), warnings: waiting.data?.last_error
+      ? [...array(object(response).warnings), `Background preparation issue: ${waiting.data.last_error}`] : object(response).warnings }, eventId, kickoff, teams);
+  return { status: 'collecting', version: nflSimulationVersion, eventId, kickoff, checkedAt: new Date(now).toISOString(),
+    forecastAt: null, stage: 'Queued for automatic preparation', progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 },
+    runs: nflSimulationRuns, calibrated: false, warnings: waiting.data?.last_error ? [`Background preparation issue: ${waiting.data.last_error}`] : [], injuries: [], scenarios: [] };
+}
+export async function runNFLGameSimulation(admin: SupabaseClient, eventId: string, get: (url: string) => Promise<unknown>, now = Date.now()): Promise<NFLGameSimulation | null> {
   const token = crypto.randomUUID();
   const locked = await admin.rpc('gamewire_claim_simulation', { target_event: eventId, target_token: token });
   if (locked.error) throw new Error(migration);
   if (locked.data !== true) {
-    const waiting = await admin.from('gamewire_simulation_jobs').select('response').eq('event_id', eventId).maybeSingle();
-    if (waiting.error) throw new Error('Could not read NFL simulation progress.');
-    const response = waiting.data?.response as NFLGameSimulation | null;
-    if (response) return { ...response, status: 'collecting', forecastAt: null, scenarios: [], stage: 'Shared backfill in progress' };
-    return { status: 'collecting', version: nflSimulationVersion, eventId, kickoff: game.date, checkedAt: new Date(now).toISOString(),
-      forecastAt: null, stage: 'Preparing shared NFL history', progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 },
-      runs: nflSimulationRuns, calibrated: false, warnings: [], injuries: [], scenarios: [] };
+    return null;
   }
   try {
-    if (!await claim()) throw new Error('Simulation refresh limit reached (60 per account per hour). Shared background backfill continues; retry after the hour changes.');
+    const game = simulationGame(await get(`${site}/summary?event=${eventId}`), eventId, now);
+    if (Date.parse(game.date) > now + 14 * 86400000) throw new Error('NFL background preparation only supports games in the next fourteen days.');
+    const snapshot = await admin.from('gamewire_game_forecasts').select('event_start').eq('event_id', eventId).eq('model_version', nflSimulationVersion).maybeSingle();
+    if (snapshot.error) throw new Error(migration);
+    if (snapshot.data && Date.parse(snapshot.data.event_start) <= now) throw new Error('This game’s original forecast is locked after kickoff, even if the feed reschedules it.');
     const row = await admin.from('gamewire_simulation_jobs').select('payload,response').eq('event_id', eventId).maybeSingle();
     if (row.error) throw new Error('Could not load the saved NFL simulation work.');
     const cache: SimulationCache = {
@@ -69,17 +87,34 @@ export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: stri
       if (!archived.data) throw new Error('The game started or the simulation lease changed before the forecast could be archived.');
       result = archived.data as NFLGameSimulation;
     }
-    const updated = await admin.from('gamewire_simulation_jobs').update({ payload: job, response: result, updated_at: new Date().toISOString() })
+    const sourceIssues = result.warnings.slice(job.warnings.length);
+    const stalled = result.status === 'collecting' && sourceIssues.length > 0 && (result.progress.completed === 0
+      || object(row.data?.response).stage === result.stage && Number(object(object(row.data?.response).progress).completed) >= result.progress.completed);
+    const updated = await admin.from('gamewire_simulation_jobs').update({ payload: job, response: result, model_version: nflSimulationVersion,
+      event_start: game.date, last_error: null, ...(!stalled ? { attempts: 0 } : {}), updated_at: new Date().toISOString(),
+      next_run_at: new Date(Date.now() + (result.status === 'collecting' ? 0 : 10 * 60000)).toISOString() })
       .eq('event_id', eventId).eq('lease_token', token).select('event_id');
     if (updated.error || updated.data?.length !== 1) throw new Error('Could not save NFL simulation progress. Verified resources remain cached; retry.');
+    if (stalled) {
+      console.error('NFL simulation backfill stalled', eventId, result.stage, sourceIssues);
+      const failed = await admin.rpc('gamewire_fail_simulation', { target_event: eventId, target_token: token, failure: sourceIssues.join('; ').slice(0, 1000) });
+      if (failed.error) throw new Error('Could not save the stalled NFL simulation retry.');
+    }
     return result;
+  } catch (cause) {
+    console.error('NFL background simulation preparation failed', eventId, cause);
+    const failed = await admin.rpc('gamewire_fail_simulation', { target_event: eventId, target_token: token,
+      failure: cause instanceof Error ? cause.message : 'NFL background preparation failed.' });
+    if (failed.error) throw new Error('NFL background preparation failed and its retry could not be saved.', { cause });
+    throw cause;
   } finally {
-    const released = await admin.from('gamewire_simulation_jobs').update({ lease_token: null, lease_until: new Date().toISOString() }).eq('event_id', eventId).eq('lease_token', token);
+    const released = await admin.from('gamewire_simulation_jobs').update({ lease_token: null, lease_until: new Date().toISOString(), dispatched_at: null }).eq('event_id', eventId).eq('lease_token', token);
     if (released.error) throw new Error('Could not release the NFL simulation work lease. Retry after two minutes.');
   }
 }
 export async function warmNFLGameSimulations(admin: SupabaseClient, get: (url: string) => Promise<unknown>, now = Date.now()) {
-  const current = await get(`${site}/scoreboard`), target = currentBotWeek(current, new Date(now));
+  const current = await get(`${site}/scoreboard`), reported = currentBotWeek(current, new Date(now));
+  const target = reported.seasonType === 1 ? { ...reported, seasonType: 2, week: 1 } : reported;
   if (![2, 3].includes(target.seasonType)) return { eventId: null, stage: 'No upcoming regular-season/playoff NFL games', issues: [] };
   const weeks = [0, 1, 2].map(offset => ({ week: target.week + offset, phase: target.seasonType }))
     .filter(scope => scope.week <= (scope.phase === 2 ? 18 : 5));
@@ -98,15 +133,11 @@ export async function warmNFLGameSimulations(admin: SupabaseClient, get: (url: s
       && Date.parse(text(event.date)) <= now + 14 * 86400000 && [2, 3].includes(phase ?? 0);
   })).map(event => [text(event.id), event])).values()];
   if (!upcoming.length) return { eventId: null, stage: 'No upcoming NFL games', issues: [] };
-  const jobs = await admin.from('gamewire_simulation_jobs').select('event_id,response,updated_at').in('event_id', upcoming.map(event => text(event.id)));
-  if (jobs.error) throw new Error(migration);
-  const byId = new Map((jobs.data ?? []).map(row => [row.event_id, row]));
-  const pending = upcoming.filter(event => !['ready', 'unavailable'].includes(text(object(byId.get(text(event.id))?.response).status)));
-  const choices = pending.length ? pending : upcoming;
-  choices.sort((a, b) => Date.parse(byId.get(text(a.id))?.updated_at ?? '1970-01-01') - Date.parse(byId.get(text(b.id))?.updated_at ?? '1970-01-01'));
-  const eventId = text(choices[0].id);
-  const result = await loadNFLGameSimulation(admin, eventId, get, async () => true, now);
-  return { eventId, stage: result.stage, progress: result.progress, issues: result.warnings.filter(warning => /^\d+:/.test(warning)) };
+  const queued = await admin.rpc('gamewire_queue_simulations', { games: upcoming.map(event => ({
+    event_id: text(event.id), event_start: text(event.date), model_version: nflSimulationVersion,
+  })) });
+  if (queued.error) throw new Error('Could not queue the upcoming NFL week. Apply supabase/nfl-game-simulations.sql.');
+  return { queued: upcoming.length, stage: 'Upcoming NFL games queued for automatic preparation', issues: [] };
 }
 export async function settleNFLGameSimulations(admin: SupabaseClient, get: (url: string) => Promise<unknown>, now = Date.now()) {
   const pending = await admin.from('gamewire_game_forecasts').select('event_id,event_start,payload,model_version,season,season_type').is('settled_at', null)

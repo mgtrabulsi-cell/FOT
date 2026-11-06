@@ -6,9 +6,11 @@ import type { Game } from './sportsData.ts';
 
 export type WireTeamPick = ScoreboardPick;
 export type WireTeamPicks = Record<string, WireTeamPick>;
-export type WireAnalysisCoverage = { analyzedGames: number; upcomingAnalyzedGames: number; pendingGames: number; failedGames: number };
+export type WireAnalysisCoverage = { analyzedGames: number; upcomingAnalyzedGames: number; pendingGames: number; failedGames: number; dailyTarget?: number; selectionCount?: number };
 export function wireAnalysisNotice(coverage: WireAnalysisCoverage, games: Game[]) {
   if (coverage.pendingGames > 0) return `GamewAIre is analyzing ${coverage.pendingGames} queued matchups. Picks appear as analyses finish; selections are never forced.`;
+  if (coverage.dailyTarget !== undefined && coverage.selectionCount !== undefined && coverage.selectionCount < coverage.dailyTarget)
+    return `${coverage.selectionCount} of ${coverage.dailyTarget} daily NBA selections have verified pregame evidence. Missing winner data is not substituted.`;
   const upcoming = games.filter(game => game.status === 'UPCOMING').length;
   if (coverage.analyzedGames >= games.length || upcoming > 0 && coverage.upcomingAnalyzedGames >= upcoming || coverage.failedGames > 0) return '';
   return upcoming > 0

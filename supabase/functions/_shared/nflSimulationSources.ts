@@ -16,7 +16,7 @@ export type SimulationJob = {
   rosterPlayers: SimulationPlayer[]; players: SimulationPlayer[] | null; injuries: NFLGameSimulation['injuries'];
   warnings: string[]; logs: Record<string, { season: number; refs: SimulationReference[]; done: boolean }>;
 };
-const boxKey = (id: string) => `nfl:simulation:box:v1:${id}`;
+const boxKey = (id: string) => `nfl:simulation:box:v2:${id}`;
 const unique = (refs: SimulationReference[]) => [...new Map(refs.map(row => [row.id, row])).values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Verified simulation evidence is unavailable.';
 async function resource<T>(key: string, cache: SimulationCache, ttl: number, load: () => Promise<T>): Promise<T> {
@@ -185,7 +185,8 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     'Defensive adjustments use observed passing/rushing yards per opportunity and points per yard, relative to historical opponent samples; coefficients are heuristic, not fitted injury effects.',
     'Every QB pairing is conditional, not a confirmed starter. Skill-player markets require eight recorded category appearances and assume listed questionable players participate at observed usage.',
     'Reported out/inactive players are excluded from current allocations. Unmodeled players retain a team remainder; no specific injured-player replacement or numerical OL/defensive injury penalty is invented.',
-    'Scores are rounded joint yardage/scoring-rate outcomes, not drive-by-drive or touchdown simulations. Passing yards, receiving yards and receptions reconcile within every draw.',
+    'Touchdowns use verified per-opportunity player production and opponent allowances. Passing/receiving touchdowns reconcile and scoring is bounded below by six points per offensive touchdown in every draw.',
+    'Scores use joint yardage/scoring-rate outcomes, not drive-by-drive, kicker or overtime simulations. Rounded box-score lines are reconciled; expand details for expectations and uncalibrated ranges.',
   );
   return result;
 }

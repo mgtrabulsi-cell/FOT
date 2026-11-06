@@ -11,7 +11,7 @@ import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
 import { archivePlayerForecast, finalPlayerStats, loadPlayerHistory, settleForecasts } from '../_shared/gamewireForecasts.ts';
 import type { PlayerForecast } from '../_shared/gamewireForecasts.ts';
-import { loadNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../_shared/nflSimulationBackend.ts';
+import { loadNFLGameSimulation, runNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../_shared/nflSimulationBackend.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -33,6 +33,11 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     if (cron) {
       const input = object(await request.json());
       if (input.action === 'warm-simulations') return json(await warmNFLGameSimulations(admin, url => publicJSON(url, fetcher)));
+      if (input.action === 'run-simulation') {
+        if (!/^\d{1,12}$/.test(text(input.eventId))) return json({ error: 'Invalid NFL background simulation event.' }, 400);
+        const result = await runNFLGameSimulation(admin, text(input.eventId), url => publicJSON(url, fetcher));
+        return json(result ? { eventId: result.eventId, stage: result.stage, progress: result.progress } : { eventId: input.eventId, stage: 'Worker already running' });
+      }
       if (input.action !== 'settle-projections') return json({ error: 'Invalid forecast settlement job.' }, 400);
       const pending = await admin.from('gamewire_player_forecasts').select('*').is('settled_at', null)
         .lt('event_start', new Date().toISOString()).gt('event_start', new Date(Date.now() - 21 * 86400000).toISOString())
@@ -49,7 +54,9 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     try { raw = await request.json(); } catch { return json({ error: 'Invalid bot request.' }, 400); }
     const input = object(raw);
     if (!['directory', 'breakdown', 'history', 'rankings', 'save-rankings', 'simulation'].includes(text(input.action))) return json({ error: 'Choose player search, a player breakdown or an NFL simulation.' }, 400);
-    if (input.action === 'simulation' && !/^\d{1,12}$/.test(text(input.eventId))) return json({ error: 'Choose a valid NFL event for simulation.' }, 400);
+    if (input.action === 'simulation' && (!/^\d{1,12}$/.test(text(input.eventId)) || !Number.isFinite(Date.parse(text(input.kickoff)))
+      || !/^\d{1,12}$/.test(text(input.homeTeamId)) || !/^\d{1,12}$/.test(text(input.awayTeamId)) || input.homeTeamId === input.awayTeamId))
+      return json({ error: 'Choose a valid NFL event, teams and kickoff for simulation.' }, 400);
     const editingRankings = input.action === 'rankings' || input.action === 'save-rankings';
     if (editingRankings) {
       const permission = await client.rpc('gamewaire_can_admin');
@@ -67,7 +74,8 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       if (result.error) throw new Error('Could not check the player analysis request limit.');
       claimed = result.data === true; return claimed;
     };
-    if (input.action === 'simulation') return json(await loadNFLGameSimulation(admin, text(input.eventId), url => publicJSON(url, fetcher), claim));
+    if (input.action === 'simulation') return json(await loadNFLGameSimulation(admin, text(input.eventId), text(input.kickoff),
+      { home: text(input.homeTeamId), away: text(input.awayTeamId) }, claim));
     const cached = async <T>(key: string, milliseconds: number | ((data: T) => number), load: () => Promise<T>): Promise<{ data: T; cached: boolean }> => {
       const now = new Date();
       const saved = await admin.from('gamewire_bot_cache').select('payload').eq('cache_key', key).gt('expires_at', now.toISOString()).maybeSingle();

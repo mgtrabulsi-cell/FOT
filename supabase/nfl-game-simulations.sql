@@ -87,8 +87,97 @@ create trigger gamewire_lock_game_simulation before update on public.gamewire_ga
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net with schema extensions;
+alter table public.gamewire_simulation_jobs
+  add column if not exists event_start timestamptz,
+  add column if not exists model_version text,
+  add column if not exists discovered boolean not null default false,
+  add column if not exists next_run_at timestamptz not null default clock_timestamp(),
+  add column if not exists dispatched_at timestamptz,
+  add column if not exists attempts integer not null default 0,
+  add column if not exists last_error text;
+create index if not exists gamewire_simulation_jobs_queue on public.gamewire_simulation_jobs(next_run_at,event_start);
+
+create or replace function public.gamewire_request_simulation(target_event text,requested_start timestamptz,requested_version text) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+  if target_event is null or target_event !~ '^[0-9]{1,12}$' or requested_start is null or requested_start <= clock_timestamp()
+    or requested_start > clock_timestamp()+interval '14 days' or requested_version is distinct from 'nfl-joint-bootstrap-v2'
+    then raise exception 'Choose an upcoming NFL game within fourteen days'; end if;
+  insert into public.gamewire_simulation_jobs(event_id,event_start,model_version)
+    values(target_event,requested_start,requested_version)
+  on conflict(event_id) do update
+    set event_start=coalesce(public.gamewire_simulation_jobs.event_start,excluded.event_start),
+      model_version=excluded.model_version,next_run_at=clock_timestamp()
+    where public.gamewire_simulation_jobs.model_version is distinct from excluded.model_version;
+end $$;
+
+create or replace function public.gamewire_queue_simulations(games jsonb) returns void
+language plpgsql security definer set search_path='' as $$
+declare item jsonb; started timestamptz;
+begin
+  if jsonb_typeof(games) is distinct from 'array' or jsonb_array_length(games)>64 then raise exception 'Invalid NFL simulation week'; end if;
+  for item in select value from jsonb_array_elements(games) loop
+    started := (item->>'event_start')::timestamptz;
+    if item->>'event_id' is null or item->>'event_id' !~ '^[0-9]{1,12}$' or started is null or started <= clock_timestamp()
+      or started > clock_timestamp()+interval '14 days' or item->>'model_version' is distinct from 'nfl-joint-bootstrap-v2'
+      then raise exception 'Invalid upcoming NFL simulation game'; end if;
+    insert into public.gamewire_simulation_jobs(event_id,event_start,model_version,discovered)
+      values(item->>'event_id',started,item->>'model_version',true)
+    on conflict(event_id) do update set event_start=excluded.event_start,model_version=excluded.model_version,discovered=true,
+      next_run_at=case when public.gamewire_simulation_jobs.model_version is distinct from excluded.model_version
+        or public.gamewire_simulation_jobs.event_start is distinct from excluded.event_start then clock_timestamp()
+        else public.gamewire_simulation_jobs.next_run_at end,
+      payload=case when public.gamewire_simulation_jobs.event_start is distinct from excluded.event_start
+        then null else public.gamewire_simulation_jobs.payload end,
+      response=case when public.gamewire_simulation_jobs.event_start is distinct from excluded.event_start
+        then null else public.gamewire_simulation_jobs.response end;
+  end loop;
+end $$;
+
+create or replace function public.gamewire_fail_simulation(target_event text,target_token uuid,failure text) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+  update public.gamewire_simulation_jobs set attempts=attempts+1,last_error=left(failure,1000),
+    next_run_at=clock_timestamp()+make_interval(mins=>least(30,power(2,least(attempts,5))::integer)),
+    updated_at=clock_timestamp()
+    where event_id=target_event and lease_token=target_token;
+end $$;
+
+create or replace function public.gamewire_dispatch_simulations() returns integer
+language plpgsql security definer set search_path='' as $$
+declare job public.gamewire_simulation_jobs; dispatched integer:=0; available integer; endpoint text; secret text;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('nfl-simulation-dispatch',0));
+  select greatest(0,4-count(*))::integer into available from public.gamewire_simulation_jobs
+    where dispatched_at > clock_timestamp()-interval '3 minutes' or lease_until > clock_timestamp();
+  if available=0 then return 0; end if;
+  select replace(decrypted_secret,'/poll-live-games','/gamewire-bot') into endpoint from vault.decrypted_secrets where name='gamewire-poll-url';
+  select decrypted_secret into secret from vault.decrypted_secrets where name='gamewire-poll-secret';
+  if endpoint is null or secret is null then raise exception 'NFL simulation cron secrets are not configured'; end if;
+  for job in select * from public.gamewire_simulation_jobs
+    where event_start > clock_timestamp() and event_start <= clock_timestamp()+interval '14 days'
+      and next_run_at <= clock_timestamp() and lease_until < clock_timestamp()
+      and (dispatched_at is null or dispatched_at <= clock_timestamp()-interval '3 minutes')
+    order by discovered desc,
+      case when response->>'version'=model_version and response->>'status' in ('ready','unavailable') then 1 else 0 end,
+      updated_at,event_id
+    limit available for update skip locked
+  loop
+    perform net.http_post(url:=endpoint,
+      headers:=jsonb_build_object('Content-Type','application/json','x-gamewire-cron-secret',secret),
+      body:=jsonb_build_object('action','run-simulation','eventId',job.event_id),timeout_milliseconds:=180000);
+    update public.gamewire_simulation_jobs set dispatched_at=clock_timestamp(),
+      next_run_at=clock_timestamp()+interval '3 minutes',updated_at=clock_timestamp() where event_id=job.event_id;
+    dispatched:=dispatched+1;
+  end loop;
+  return dispatched;
+end $$;
+revoke all on function public.gamewire_request_simulation(text,timestamptz,text),
+  public.gamewire_queue_simulations(jsonb),public.gamewire_fail_simulation(text,uuid,text),public.gamewire_dispatch_simulations() from public,anon,authenticated;
+grant execute on function public.gamewire_request_simulation(text,timestamptz,text),
+  public.gamewire_queue_simulations(jsonb),public.gamewire_fail_simulation(text,uuid,text),public.gamewire_dispatch_simulations() to service_role;
 select cron.unschedule(jobid) from cron.job where jobname='gamewire-warm-nfl-simulations';
-select cron.schedule('gamewire-warm-nfl-simulations','*/2 * * * *',$job$
+select cron.schedule('gamewire-warm-nfl-simulations','*/5 * * * *',$job$
   select net.http_post(
     url := replace((select decrypted_secret from vault.decrypted_secrets where name='gamewire-poll-url'),'/poll-live-games','/gamewire-bot'),
     headers := jsonb_build_object('Content-Type','application/json',
@@ -96,5 +185,7 @@ select cron.schedule('gamewire-warm-nfl-simulations','*/2 * * * *',$job$
     body := '{"action":"warm-simulations"}'::jsonb,timeout_milliseconds := 180000
   );
 $job$);
+select cron.unschedule(jobid) from cron.job where jobname='gamewire-dispatch-nfl-simulations';
+select cron.schedule('gamewire-dispatch-nfl-simulations','* * * * *','select public.gamewire_dispatch_simulations();');
 notify pgrst,'reload schema';
 commit;
