@@ -782,7 +782,7 @@ test('Projected receiver names are white and rows sort by displayed catches then
 
 test('Simulation graphic uses reconciled box values, usage-ranked players and both teams without modifying the forecast', async () => {
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
-  const scenario = data.scenarios[0], before = JSON.stringify(scenario), drawn = [];
+  const scenario = data.scenarios[0], before = JSON.stringify(scenario), drawn = [], positions = [];
   const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
@@ -792,7 +792,7 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
     roundRect() {}, scale() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
     fillRect() {}, strokeRect() {}, drawImage() {},
     measureText: value => ({ width: String(value).length * 9 }),
-    fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); } };
+    fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); positions.push({ value, x, y }); } };
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(['png'])) };
   const context = vm.createContext({ exports: {}, Intl, Date, Error, document: { createElement: () => canvas }, require(name) {
     if (name.includes('nflSimulation')) return { roundedSimulationBox };
@@ -820,9 +820,22 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(drawn.includes(scenario.away.abbr)); assert.ok(drawn.includes(scenario.home.abbr));
   assert.ok(!stops.includes('#39bcff'));
   assert.equal(canvas.width, 1600); assert.equal(canvas.height, 1000);
-  const landscapeText = [...drawn]; drawn.length = 0;
+  const assertRunningBackRow = () => {
+    const labels = positions.filter(row => ['RUSH ATT', 'RUSH YDS', 'RUSH TD'].includes(row.value));
+    assert.equal(labels.length, 6);
+    assert.equal(new Set(labels.map(row => row.y)).size, 1);
+    for (const teamX of [40, 830]) {
+      const columns = labels.filter(row => row.x >= teamX && row.x < teamX + 730);
+      assert.equal(columns.length, 3);
+      assert.ok(columns[0].x < columns[1].x && columns[1].x < columns[2].x);
+    }
+    assert.equal(drawn.filter(value => value === 'REC YDS').length, 4, 'Receiving yards only appear for the four receiving players');
+  };
+  assertRunningBackRow();
+  const landscapeText = [...drawn]; drawn.length = 0; positions.length = 0;
   await renderSimulationGraphic(scenario, game.date, { away: '#fb4f14', home: '#241773' }, 'instagram');
   assert.equal(canvas.width, 1080); assert.equal(canvas.height, 1350);
+  assertRunningBackRow();
   assert.deepEqual(drawn, landscapeText);
   assert.ok(drawn.includes(scenario.away.name)); assert.ok(drawn.includes(scenario.home.name));
   assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));

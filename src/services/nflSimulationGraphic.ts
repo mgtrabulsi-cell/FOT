@@ -139,15 +139,16 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       text(label, x + 25, y + 28, 23, 280, white, true);
     };
     const metrics = (y: number, player: typeof model.quarterback, keys: Array<[keyof SimulationStat, string]>) => {
+      const twoRows = portrait && keys.length > 3;
       keys.forEach(([key, title], i) => {
-        const column = x + 28 + (portrait ? i % 2 * 337 : i * (674 / keys.length));
-        const rowY = y + (portrait ? Math.floor(i / 2) * 112 : 0);
+        const column = x + 28 + (twoRows ? i % 2 * 337 : i * (674 / keys.length));
+        const rowY = y + (twoRows ? Math.floor(i / 2) * 112 : 0);
         const value = player ? model.box?.players[player.id][key] : undefined;
         if (i) {
           ctx.strokeStyle = '#51647a66'; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.moveTo(column - 14, rowY - 16); ctx.lineTo(column - 14, rowY + 50); ctx.stroke();
         }
-        text(title, column, rowY, portrait ? 28 : 18, portrait ? 300 : 150, muted);
+        text(title, column, rowY, portrait ? 28 : 18, twoRows ? 300 : 674 / keys.length - 20, muted);
         text(value === undefined ? '\u2014' : String(value), column, rowY + (portrait ? 54 : 36),
           portrait ? 52 : 33, 150, metallic(rowY + 36, 33));
       });
@@ -155,12 +156,12 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     const card = (y: number, label: string, player: typeof model.quarterback, keys: Array<[keyof SimulationStat, string]>) => {
       heading(y, label, portrait ? 390 : 166);
       text(player?.name ?? 'Projection unavailable', x + 28, y + (portrait ? 115 : 82), portrait ? 44 : 34, 674);
-      metrics(y + (portrait ? 190 : 112), player, keys);
+      metrics(y + (portrait ? keys.length <= 3 ? 235 : 190 : 112), player, keys);
     };
     card(portrait ? 370 : 348, 'QUARTERBACK', model.quarterback, [['completions', 'CMP'], ['passingAttempts', 'ATT'],
       ['passingYards', 'PASS YDS'], ['passingTouchdowns', 'PASS TD']]);
     card(portrait ? 800 : 536, 'TOP RUNNING BACK', model.runningBack, [['rushingAttempts', 'RUSH ATT'], ['rushingYards', 'RUSH YDS'],
-      ['rushingTouchdowns', 'RUSH TD'], ['receivingYards', 'REC YDS']]);
+      ['rushingTouchdowns', 'RUSH TD']]);
     heading(portrait ? 1230 : 724, 'TOP 2 RECEIVERS', portrait ? 550 : 173);
     [0, 1].forEach(i => {
       const player = model.receivers[i], y = portrait ? 1350 + i * 240 : 797 + i * 70;

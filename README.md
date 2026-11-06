@@ -110,6 +110,8 @@ Simulation exports use The Wire's glossy midnight-navy panels, metallic display 
 
 Both export sizes show rounded, glossy team-color abbreviation badges in the score banner, matching the site's name-only team marks rather than provider logos.
 
+The RB card shows carries, rushing yards and rushing touchdowns in one horizontal row in both sizes; receiving yards remain in the receiving-player section, not the RB card.
+
 The GamewAIre simulations toggle uses red styling in both states, with a white selected indicator. On mobile simulation cards, kickoff/status sits above the bell/team row so full team names can wrap at word boundaries without competing with the status column.
 
 The Wire's NFL pregame toggle switches between regular **Pregame stats** and **GamewAIre simulations**. Simulation mode shows saved projected scores on upcoming game cards and opens the score/player simulation directly; live/final games retain actual scores. Board reads are limited to three concurrent requests, retain verified scores during interruptions and pass saved results into the detail view to avoid a blank handoff. NBA remains on regular pregame stats.
