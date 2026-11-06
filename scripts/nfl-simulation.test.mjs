@@ -709,11 +709,11 @@ test('Feed-stalled partial backfills retain progress and increasing retry state 
   assert.deepEqual([...saved.response.warnings], ['10001: Feed issue']);
   assert.ok(api.updates.some(update => update.lease_token === null));
 });
-function simulationMarkup(data, error = '', scenarioId = '', admin = false) {
+function simulationMarkup(data, error = '', scenarioId = '', admin = false, teamId = game.away.id) {
   const code = ts.transpileModule(readFileSync(new URL('../src/NFLGameSimulation.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  const state = [data, data?.status === 'ready' ? data : null, error, 0, scenarioId, false, false, admin];
+  const state = [data, data?.status === 'ready' ? data : null, error, 0, scenarioId, false, false, admin, teamId];
   let i = 0;
   const context = vm.createContext({ exports: {}, Date, console, require(name) {
     if (name === 'react') return { useState: () => [state[i++], () => {}], useEffect() {} };
@@ -732,13 +732,13 @@ test('Simulation UI renders scenario selection, ranges, transfer coverage, error
   assert.match(html, /overtime is not separately simulated/); assert.doesNotMatch(html, /<img/);
   assert.match(html, /role="region"/); assert.match(html, /scope="col"/);
   const tables = html.match(/<table>[\s\S]*?<\/table>/g);
-  assert.ok(tables.length >= 6);
+  assert.equal(tables.length, 3);
   assert.ok(tables.every(table => !/Expected|10th|verified games/.test(table)));
   for (const match of html.matchAll(/<td><b>([^<]+)<\/b><\/td>/g)) assert.match(match[1], /^\d+$/);
   assert.match(html, /PASS TD/); assert.match(html, /REC TD/); assert.match(html, /RUSH TD/);
-  assert.equal((html.match(/projected team totals and score accounting/g) ?? []).length, 2);
+  assert.equal((html.match(/projected team totals and score accounting/g) ?? []).length, 1);
   const accounting = html.match(/<details class="nfl-simulation-accounting"[\s\S]*?<\/details>/g);
-  assert.equal(accounting.length, 2);
+  assert.equal(accounting.length, 1);
   assert.ok(accounting.every(section => !/<details[^>]* open/.test(section)));
   assert.ok(accounting.every(section => /WR\/TE\/RB receiving/.test(section) && /other points/.test(section) && /Passing and receiving TDs count once/.test(section)));
   const unavailable = response([{ id: 'missing', label: 'Missing QB', quarterbacks: { home: 'Unknown', away: 'Unknown' }, home: null, away: null, issue: 'Insufficient evidence', tieProbability: null }], { status: 'unavailable' });
@@ -770,10 +770,36 @@ function panelRuntime(load, supabase) {
     return { loadGameSimulation: load };
   } });
   vm.runInContext(code, context);
-  const render = () => { slot = 0; effects.length = 0; context.exports.default({ game: { ...game, eventId: game.id } }); };
+  const render = () => { slot = 0; effects.length = 0; return context.exports.default({ game: { ...game, eventId: game.id } }); };
   render();
   return { state, effects, timers, listeners, render };
 }
+test('Simulation team buttons switch the single visible box score and retain selection across QB scenarios and refreshes', () => {
+  const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  const runtime = panelRuntime(async () => data);
+  runtime.state[0] = data; runtime.state[1] = data;
+  const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node)
+    ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
+  const render = () => nodes(runtime.render());
+  const boxes = tree => tree.filter(node => node.props?.team);
+  let tree = render();
+  assert.equal(boxes(tree).length, 1);
+  assert.equal(boxes(tree)[0].props.team.id, game.away.id);
+  const buttons = tree.filter(node => node.type === 'button' && typeof node.props['aria-pressed'] === 'boolean');
+  assert.deepEqual(buttons.map(node => node.props['aria-pressed']), [true, false]);
+  buttons[1].props.onClick(); tree = render();
+  assert.equal(boxes(tree).length, 1);
+  assert.equal(boxes(tree)[0].props.team.id, game.home.id);
+  tree.find(node => node.type === 'select').props.onChange({ target: { value: data.scenarios[1].id } });
+  tree = render();
+  assert.equal(boxes(tree)[0].props.team, data.scenarios[1].home);
+  runtime.state[1] = structuredClone(data); tree = render();
+  assert.equal(boxes(tree)[0].props.team.id, game.home.id);
+  const html = simulationMarkup(data, '', '', false, game.home.id);
+  assert.match(html, /aria-label="Home Team projected box score"/);
+  assert.doesNotMatch(html, /aria-label="Away Team passing projections"/);
+  assert.match(html, /aria-label="Projected final score"/);
+});
 test('Runtime refresh errors retain the last verified forecast, while leaving aborts stale requests and polling', async () => {
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   let fail = false;

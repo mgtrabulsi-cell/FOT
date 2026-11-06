@@ -100,6 +100,8 @@ Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `su
 
 Notification bells on NFL simulation cards sit to the left of team abbreviation marks and names, between the status and team columns, on both desktop and mobile.
 
+Simulation box scores show one team at a time, with away/home team buttons above the player tables. Both projected final scores remain visible at the top; switching teams or QB scenarios does not require scrolling past the other team's players.
+
 The GamewAIre simulations toggle uses red styling in both states, with a white selected indicator. On mobile simulation cards, kickoff/status sits above the bell/team row so full team names can wrap at word boundaries without competing with the status column.
 
 The Wire's NFL pregame toggle switches between regular **Pregame stats** and **GamewAIre simulations**. Simulation mode shows saved projected scores on upcoming game cards and opens the score/player simulation directly; live/final games retain actual scores. Board reads are limited to three concurrent requests, retain verified scores during interruptions and pass saved results into the detail view to avoid a blank handoff. NBA remains on regular pregame stats.

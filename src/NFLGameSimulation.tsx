@@ -143,6 +143,8 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
     ?? displayed?.scenarios.find(row => row.home && row.away) ?? displayed?.scenarios[0];
   useEffect(() => { if (scenario) onScenarioChange?.(scenario.id); }, [scenario?.id, onScenarioChange]);
   const [admin, setAdmin] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState(game.away.id);
+  const selectedTeam = scenario?.home?.id === selectedTeamId ? scenario.home : scenario?.away;
   useEffect(() => {
     if (!supabase) return;
     let active = true, revision = 0;
@@ -192,7 +194,17 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                 <p>{((scenario.tieProbability ?? 0) * 100).toFixed(1)}% tied-score draws; overtime is not separately simulated.</p>
               </details>
               {displayed.evidenceMode === 'team-only' ? <p className="nfl-simulation-caption">Player stat lines, touchdown accounting and numerical starter/injury adjustments are not supported by the available evidence. No missing player production is filled with zeros.</p>
-                : <div className="nfl-simulation-teams"><TeamSimulation team={scenario.away} /><TeamSimulation team={scenario.home} /></div>}
+                : selectedTeam && <div className="nfl-simulation-teams">
+                    <div className="nfl-simulation-team-switch" role="group" aria-label="Projected box score team">
+                      {[scenario.away, scenario.home].map(team => <button key={team.id} type="button"
+                        aria-pressed={selectedTeam.id === team.id} onClick={() => setSelectedTeamId(team.id)}>
+                        <span>{team.abbr}</span><b>{team.name}</b>
+                      </button>)}
+                    </div>
+                    <div role="region" aria-label={`${selectedTeam.name} projected box score`}>
+                      <TeamSimulation key={selectedTeam.id} team={selectedTeam} />
+                    </div>
+                  </div>}
             </>
           )}
         </>
