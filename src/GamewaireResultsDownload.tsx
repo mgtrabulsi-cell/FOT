@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { StoredPick } from './services/gamewaire';
 import { renderResultsGraphic } from './services/gamewaireResultsGraphic';
 
-export function ResultsGraphicDownload({ generate, disabled, filename, description, alt }: {
-  generate: () => Promise<Blob>; disabled: boolean; filename: string; description: string; alt: string;
+export function ResultsGraphicDownload({ generate, disabled, filename, description, alt, label = 'Download results graphic',
+  snapshotNote = 'Snapshot from your last download. Download again after grading or changing results.' }: {
+  generate: () => Promise<Blob>; disabled: boolean; filename: string; description: string; alt: string; label?: string; snapshotNote?: string;
 }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [preview, setPreview] = useState('');
   const url = useRef('');
@@ -21,13 +22,13 @@ export function ResultsGraphicDownload({ generate, disabled, filename, descripti
     } finally { setBusy(false); }
   };
   return <div className="gai-results-download">
-    <button type="button" disabled={disabled || busy} onClick={() => void download()}>{busy ? 'Creating graphic...' : 'Download results graphic'}</button>
+    <button type="button" disabled={disabled || busy} onClick={() => void download()}>{busy ? 'Creating graphic...' : label}</button>
     <small>{description}</small>
     {error && <p role="alert" className="feed-warning">{error}</p>}
     {preview && <details><summary>View downloaded graphic</summary>
       <img src={preview} alt={alt} />
       <a href={preview} download={filename}>Save PNG again</a>
-      <p className="gai-note">Snapshot from your last download. Download again after grading or changing results.</p>
+      <p className="gai-note">{snapshotNote}</p>
     </details>}
   </div>;
 }

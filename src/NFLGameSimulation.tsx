@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { Game } from './services/sportsData';
 import { loadGameSimulation } from './services/gamewireBot';
 import { supabase } from './services/supabaseClient';
+import { ResultsGraphicDownload } from './GamewaireResultsDownload';
+import { renderSimulationGraphic } from './services/nflSimulationGraphic';
 import { legacyNFLSimulationVersion, roundedSimulationBox } from '../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation, SimulationStat, SimulationTeamResult } from '../supabase/functions/_shared/nflSimulation';
 
@@ -193,6 +195,20 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
           {scenario?.home && scenario.away && (
             <>
               <p className="nfl-simulation-caption">Projected final score · {displayed.evidenceMode === 'team-only' ? 'Verified final-score history' : 'Rounded stat lines'} · {displayed.runs.toLocaleString()} joint draws</p>
+              {admin && <div className="nfl-simulation-graphic-downloads">
+              <ResultsGraphicDownload key={`${game.eventId}-${scenario.id}`} label="Download game graphic" disabled={false}
+                generate={() => renderSimulationGraphic(scenario, game.date, { away: game.away.color, home: game.home.color })}
+                filename={`GameWire-Simulation-${scenario.away.abbr}-${scenario.home.abbr}-${game.eventId}.png`}
+                snapshotNote="Snapshot from your last download. Download again after the simulation updates."
+                description="1600 x 1000 PNG: both scores, QBs, top RB by carries and top two receivers by receptions. Uses the selected QB scenario; unavailable stats stay blank."
+                alt={`${scenario.away.name} vs ${scenario.home.name} simulated scores and player projections`} />
+              <ResultsGraphicDownload key={`instagram-${game.eventId}-${scenario.id}`} label="Download Instagram graphic" disabled={false}
+                generate={() => renderSimulationGraphic(scenario, game.date, { away: game.away.color, home: game.home.color }, 'instagram')}
+                filename={`GameWire-Simulation-${scenario.away.abbr}-${scenario.home.abbr}-${game.eventId}-Instagram.png`}
+                description="Instagram portrait PNG (1080 x 1350). Same projections, with larger stat blocks arranged for the portrait layout."
+                snapshotNote="Snapshot from your last download. Download again after the simulation updates."
+                alt={`${scenario.away.name} vs ${scenario.home.name} Instagram simulation graphic`} />
+              </div>}
               <details className="nfl-simulation-score-details"><summary>Score expectations & ranges</summary>
                 {[scenario.away, scenario.home].map(team => <p key={team.id}>{team.abbr}: expected {team.score.mean.toFixed(2)} points · 10th–90th: {team.score.p10}–{team.score.p90} · Outscored opponent in {(team.winProbability * 100).toFixed(1)}% of draws</p>)}
                 <p>{((scenario.tieProbability ?? 0) * 100).toFixed(1)}% tied-score draws; overtime is not separately simulated.</p>

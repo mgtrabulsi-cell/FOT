@@ -718,6 +718,7 @@ function simulationMarkup(data, error = '', scenarioId = '', admin = false, team
   const context = vm.createContext({ exports: {}, Date, console, require(name) {
     if (name === 'react') return { useState: () => [state[i++], () => {}], useEffect() {} };
     if (name === 'react/jsx-runtime') return jsxRuntime;
+    if (name === './GamewaireResultsDownload') return { ResultsGraphicDownload: props => jsxRuntime.jsx('button', { children: props.label }) };
     if (name.includes('nflSimulation')) return { roundedSimulationBox, legacyNFLSimulationVersion };
     return {};
   } });
@@ -746,6 +747,8 @@ test('Simulation UI renders scenario selection, ranges, transfer coverage, error
   assert.doesNotMatch(simulationMarkup(unavailable), /role="alert"/);
   assert.match(simulationMarkup(data, '', data.scenarios[1].id, true), /Backup 2/);
   const publicHtml = simulationMarkup(data, 'Feed issue');
+  assert.doesNotMatch(publicHtml, /Download game graphic|Download Instagram graphic/);
+  assert.match(html, /Download game graphic/); assert.match(html, /Download Instagram graphic/);
   assert.doesNotMatch(publicHtml, /Feed issue|Admin:|player evidence|verified games|Limited evidence|Coverage:/);
   assert.ok(publicHtml.indexOf('nfl-simulation-scores') < publicHtml.indexOf('nfl-simulation-scenario'));
   assert.ok(html.indexOf('Admin:') > html.lastIndexOf('</table>'));
@@ -775,6 +778,54 @@ test('Projected receiver names are white and rows sort by displayed catches then
   assert.deepEqual(team.players.map(player => player.id), originalOrder);
   const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
   assert.match(css, /\.nfl-simulation tbody th\[scope="row"\] > b, \.nfl-simulation td b \{ color: #fff; \}/);
+});
+
+test('Simulation graphic uses reconciled box values, usage-ranked players and both teams without modifying the forecast', async () => {
+  const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  const scenario = data.scenarios[0], before = JSON.stringify(scenario), drawn = [];
+  const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const stops = [];
+  const gradient = { addColorStop: (_, color) => stops.push(color) };
+  const ctx = { createLinearGradient: () => gradient, createRadialGradient: () => gradient,
+    scale() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
+    fillRect() {}, strokeRect() {}, drawImage() {},
+    measureText: value => ({ width: String(value).length * 9 }),
+    fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); } };
+  const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(['png'])) };
+  const context = vm.createContext({ exports: {}, Intl, Date, Error, document: { createElement: () => canvas }, require(name) {
+    if (name.includes('nflSimulation')) return { roundedSimulationBox };
+    if (name.includes('TeamAbbrMark')) return { teamMarkColor: color => /^[0-9a-f]{6}$/i.test((color ?? '').replace(/^#/, '')) ? `#${color.replace(/^#/, '')}` : '#8ba2c3' };
+    if (name.includes('gamewaireResultsGraphic')) return { loadGamewireGraphicAssets: async () => ({ naturalWidth: 100, naturalHeight: 100 }) };
+    throw new Error(name);
+  } });
+  vm.runInContext(code, context);
+  const { simulationGraphicTeam, renderSimulationGraphic } = context.exports;
+  for (const team of [scenario.away, scenario.home]) {
+    const model = simulationGraphicTeam(team), box = roundedSimulationBox(team);
+    assert.equal(model.quarterback.position, 'QB');
+    assert.equal(model.runningBack.position, 'RB');
+    assert.equal(model.receivers.length, 2);
+    assert.ok(box.players[model.receivers[0].id].receptions >= box.players[model.receivers[1].id].receptions);
+    assert.deepEqual(model.box, box);
+  }
+  await renderSimulationGraphic(scenario, game.date, { away: '#fb4f14', home: '241773' });
+  assert.ok(stops.includes('#fb4f14')); assert.ok(stops.includes('#241773'));
+  assert.ok(stops.includes('#fb4f1435')); assert.ok(stops.includes('#24177335'));
+  assert.ok(!stops.includes('#39bcff'));
+  assert.equal(canvas.width, 1600); assert.equal(canvas.height, 1000);
+  const landscapeText = [...drawn]; drawn.length = 0;
+  await renderSimulationGraphic(scenario, game.date, { away: '#fb4f14', home: '#241773' }, 'instagram');
+  assert.equal(canvas.width, 1080); assert.equal(canvas.height, 1350);
+  assert.deepEqual(drawn, landscapeText);
+  assert.ok(drawn.includes(scenario.away.name)); assert.ok(drawn.includes(scenario.home.name));
+  assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));
+  assert.equal(JSON.stringify(scenario), before);
+  assert.equal(simulationGraphicTeam({ ...scenario.away, players: [], totals: null }).quarterback, undefined);
+  await assert.rejects(renderSimulationGraphic({ ...scenario, home: null }, game.date), /available simulation/);
+  canvas.toBlob = callback => callback(null);
+  await assert.rejects(renderSimulationGraphic(scenario, game.date), /export the PNG/);
 });
 
 function panelRuntime(load, supabase) {
