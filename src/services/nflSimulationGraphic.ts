@@ -1,7 +1,7 @@
 import { roundedSimulationBox } from '../../supabase/functions/_shared/nflSimulation';
 import type { SimulationScenario, SimulationTeamResult, SimulationStat } from '../../supabase/functions/_shared/nflSimulation';
 import { loadGamewireGraphicAssets } from './gamewaireResultsGraphic';
-import { teamMarkColor } from '../TeamAbbrMark';
+import { teamMarkAbbr, teamMarkColor } from '../TeamAbbrMark';
 
 export function simulationGraphicTeam(team: SimulationTeamResult) {
   const box = team.totals ? roundedSimulationBox({ ...team, totals: team.totals }) : null;
@@ -112,8 +112,23 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     const x = index ? 830 : 40, accent = index ? homeColor : awayColor;
     const model = simulationGraphicTeam(team);
     const teamX = index ? 1120 : 70;
-    text(team.abbr, teamX, 228, 35, 405, metallic(228, 35), true);
-    text(team.name, teamX, 277, 36, 405, metallic(277, 36), true);
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(teamX, 188, 78, 78, 16);
+    ctx.fillStyle = '#081526'; ctx.fill();
+    const badge = ctx.createLinearGradient(teamX, 188, teamX + 78, 266);
+    badge.addColorStop(0, `${accent}d9`); badge.addColorStop(1, `${accent}8c`);
+    ctx.fillStyle = badge; ctx.fill();
+    ctx.strokeStyle = `${accent}cc`; ctx.lineWidth = 2; ctx.stroke();
+    ctx.clip();
+    const gloss = ctx.createLinearGradient(0, 188, 0, 235);
+    gloss.addColorStop(0, '#ffffff35'); gloss.addColorStop(1, '#ffffff00');
+    ctx.fillStyle = gloss; ctx.fillRect(teamX, 188, 78, 78);
+    const label = teamMarkAbbr(team.abbr);
+    ctx.font = '700 24px "DM Sans"';
+    text(label, teamX + (78 - ctx.measureText(label).width) / 2, 232, 24, 72);
+    ctx.fillStyle = accent; ctx.fillRect(teamX + 24, 245, 30, 4);
+    ctx.restore();
+    text(team.name, teamX, 298, 30, 405, metallic(298, 30), true);
     const heading = (y: number, label: string, height: number) => {
       panel(x, y, 730, height, accent);
       path([[x + 14, y], [x + 320, y], [x + 293, y + 38], [x, y + 38], [x, y + 14]]);

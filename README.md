@@ -108,6 +108,8 @@ Admins see **Download game graphic** (1600 x 1000 landscape) and **Download Inst
 
 Simulation exports use The Wire's glossy midnight-navy panels, metallic display lettering, angled section tabs and a central score banner. Each side's lighting, borders and tabs use that team's feed-supplied primary color, matching the site's abbreviation marks; missing or invalid colors use the same neutral fallback. GameWire branding stays red/silver, and player names and labels remain high-contrast. The two receivers share a compact panel.
 
+Both export sizes show rounded, glossy team-color abbreviation badges in the score banner, matching the site's name-only team marks rather than provider logos.
+
 The GamewAIre simulations toggle uses red styling in both states, with a white selected indicator. On mobile simulation cards, kickoff/status sits above the bell/team row so full team names can wrap at word boundaries without competing with the status column.
 
 The Wire's NFL pregame toggle switches between regular **Pregame stats** and **GamewAIre simulations**. Simulation mode shows saved projected scores on upcoming game cards and opens the score/player simulation directly; live/final games retain actual scores. Board reads are limited to three concurrent requests, retain verified scores during interruptions and pass saved results into the detail view to avoid a blank handoff. NBA remains on regular pregame stats.

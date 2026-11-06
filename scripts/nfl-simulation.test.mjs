@@ -789,14 +789,17 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   const stops = [];
   const gradient = { addColorStop: (_, color) => stops.push(color) };
   const ctx = { createLinearGradient: () => gradient, createRadialGradient: () => gradient,
-    scale() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
+    roundRect() {}, scale() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
     fillRect() {}, strokeRect() {}, drawImage() {},
     measureText: value => ({ width: String(value).length * 9 }),
     fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); } };
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(['png'])) };
   const context = vm.createContext({ exports: {}, Intl, Date, Error, document: { createElement: () => canvas }, require(name) {
     if (name.includes('nflSimulation')) return { roundedSimulationBox };
-    if (name.includes('TeamAbbrMark')) return { teamMarkColor: color => /^[0-9a-f]{6}$/i.test((color ?? '').replace(/^#/, '')) ? `#${color.replace(/^#/, '')}` : '#8ba2c3' };
+    if (name.includes('TeamAbbrMark')) return {
+      teamMarkAbbr: abbr => (abbr ?? '').trim().toUpperCase().slice(0, 4) || '\u2014',
+      teamMarkColor: color => /^[0-9a-f]{6}$/i.test((color ?? '').replace(/^#/, '')) ? `#${color.replace(/^#/, '')}` : '#8ba2c3',
+    };
     if (name.includes('gamewaireResultsGraphic')) return { loadGamewireGraphicAssets: async () => ({ naturalWidth: 100, naturalHeight: 100 }) };
     throw new Error(name);
   } });
@@ -813,6 +816,8 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   await renderSimulationGraphic(scenario, game.date, { away: '#fb4f14', home: '241773' });
   assert.ok(stops.includes('#fb4f14')); assert.ok(stops.includes('#241773'));
   assert.ok(stops.includes('#fb4f1435')); assert.ok(stops.includes('#24177335'));
+  assert.ok(stops.includes('#fb4f14d9')); assert.ok(stops.includes('#241773d9'));
+  assert.ok(drawn.includes(scenario.away.abbr)); assert.ok(drawn.includes(scenario.home.abbr));
   assert.ok(!stops.includes('#39bcff'));
   assert.equal(canvas.width, 1600); assert.equal(canvas.height, 1000);
   const landscapeText = [...drawn]; drawn.length = 0;
