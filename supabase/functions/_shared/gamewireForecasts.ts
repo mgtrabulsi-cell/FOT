@@ -6,6 +6,8 @@ import { forecastDistribution } from './gamewireBotIntelligence.ts';
 import type { BotReport, ForecastStat, PlayerForecast, PlayerWeekHistory } from './gamewireBot.ts';
 import { adjustedPrediction, learnAdjustment } from './gamewireLearning.ts';
 import type { LearningSample } from './gamewireLearning.ts';
+import { reconcileSimulationProjections } from './nflSimulationAlignment.ts';
+import type { NFLGameSimulation } from './nflSimulation.ts';
 
 export const playerProjectionVersion = 'player-intelligence-v2';
 const metrics: Record<string, { category: string; column: string }> = {
@@ -66,9 +68,13 @@ export async function loadPlayerHistory(admin: SupabaseClient, playerId: string,
   return settleForecasts(admin, saved.data as PlayerForecast[], fetcher);
 }
 
-export async function archivePlayerForecast(admin: SupabaseClient, report: BotReport, now = Date.now()) {
+export async function archivePlayerForecast(admin: SupabaseClient, report: BotReport, now = Date.now(), simulation?: NFLGameSimulation) {
   const game = report.matchup;
-  if (!game || game.state !== 'pre' || Date.parse(game.start) <= now || !report.eligibleForGuidance || report.week > 18 || !report.projections.some(stat => stat.estimate !== null)) return;
+  if (!game || game.state !== 'pre' || Date.parse(game.start) <= now || !report.eligibleForGuidance) return;
+  if (report.week > 18) {
+    if (simulation) report.projections = reconcileSimulationProjections(report.projections, simulation, report.player.teamId, report.player.id);
+    return;
+  }
   report.projections = report.projections.map(stat => ({ ...stat }));
   const saved = await admin.from('gamewire_player_forecasts').select('*').eq('season', report.season).eq('position', report.player.position)
     .eq('format', report.format).eq('model_version', playerProjectionVersion).not('settled_at', 'is', null)
@@ -95,6 +101,19 @@ export async function archivePlayerForecast(admin: SupabaseClient, report: BotRe
     if (learning.active) projection.explanation += ` Bounded settled-result correction ${Math.round((learning.adjustment - 1) * 100)}%, validated on ${learning.validationGames} later games.`;
     projections.push({ market: projection.market, label: projection.label, estimate, base, learning,
       distribution: projection.distribution, defenseRank: projection.defenseRank, matchup: projection.evidence?.matchup });
+  }
+  if (simulation) {
+    report.projections = reconcileSimulationProjections(report.projections, simulation, report.player.teamId, report.player.id);
+    for (const aligned of report.projections) {
+      if (!aligned?.simulation || aligned.estimate === null) continue;
+      const stat = projections.find(projection => projection.market === aligned.market);
+      if (stat) {
+        stat.estimate = aligned.estimate;
+        stat.distribution = aligned.distribution;
+        stat.simulation = aligned.simulation;
+      } else projections.push({ market: aligned.market, label: aligned.label, estimate: aligned.estimate, base: aligned.estimate,
+        distribution: aligned.distribution, simulation: aligned.simulation });
+    }
   }
   if (!projections.length) return;
   const archived = await admin.rpc('gamewire_save_forecast', { forecast: {

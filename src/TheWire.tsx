@@ -888,7 +888,11 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
       const simulation = pregameView === 'simulation' && upcoming && savedSimulation?.status === 'ready' && Date.parse(savedSimulation.kickoff) === Date.parse(game.date)
         ? savedSimulation.scenarios.find(scenario => scenario.home && scenario.away) : undefined;
       const intl = internationalVenue(game);
-      const pick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
+      const savedPick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
+      const pick = savedPick?.market === 'h2h' && simulation?.away && simulation.home
+        && (Math.round(simulation.away.score.mean) === Math.round(simulation.home.score.mean)
+          || teamPicks[`${game.eventId}:${Math.round(simulation.away.score.mean) > Math.round(simulation.home.score.mean) ? game.away.id : game.home.id}`] !== savedPick)
+        ? undefined : savedPick;
       return (
         <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : final ? ' is-final-game' : upcoming && pregameView === 'simulation' ? ' is-simulation-game' : ''}`}>
           <NotificationBell />
@@ -920,7 +924,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                     <span className="wire-board-team-name">
                       <b>
                         <span className="wire-board-team-label">{team.name}</span>
-                        {teamPicks[`${game.eventId}:${team.id}`] && <span className="wire-team-pick-note">GamewAIre Pick</span>}
+                        {pick && teamPicks[`${game.eventId}:${team.id}`] === pick && <span className="wire-team-pick-note">GamewAIre Pick</span>}
                         {isTeamFavorite(team.id, game.feedPath) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
                         {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
                       </b>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Game } from './services/sportsData';
 import { loadGameSimulation } from './services/gamewireBot';
+import { supabase } from './services/supabaseClient';
 import { legacyNFLSimulationVersion, roundedSimulationBox } from '../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation, SimulationStat, SimulationTeamResult } from '../supabase/functions/_shared/nflSimulation';
 
@@ -21,7 +22,6 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
   return (
     <section className="nfl-simulation-team">
       <header className="nfl-simulation-team-title"><span>{team.abbr}</span><h3>{team.name}</h3><b>{box.score}</b></header>
-      {team.matchup && <p className="nfl-simulation-caption">Opponent pass-defense adjustment: {team.matchup.passingYardsMultiplier >= 1 ? '+' : ''}{((team.matchup.passingYardsMultiplier - 1) * 100).toFixed(1)}% to receiving-yard efficiency. Receiving leaders benefit in proportion to their projected production; this is a historical allowance adjustment, not a guaranteed outcome.</p>}
       {groups.map(group => {
         const players = team.players.filter(player => group.positions.includes(player.position));
         if (!players.length) return null;
@@ -30,15 +30,15 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
             <caption>{group.title} · Projected stat line</caption>
             <thead><tr><th scope="col">Player</th>{group.columns.map(key => <th scope="col" key={key}>{statLabels[key]}</th>)}</tr></thead>
             <tbody>{players.map(player => <tr key={player.id} className={player.issue ? 'nfl-simulation-unavailable' : undefined}>
-              <th scope="row"><b>{player.name}</b><small>{player.position}{player.issue ? ' · Unavailable' : player.limited ? ' · Limited evidence' : ''}</small></th>
+              <th scope="row"><b>{player.name}</b><small>{player.position}{player.issue ? ' · Unavailable' : ''}</small></th>
               {group.columns.map(key => <td key={key}>{box.players[player.id][key] !== undefined
                 ? <b>{box.players[player.id][key]}</b> : <span aria-label="No supported projection">—</span>}</td>)}
             </tr>)}</tbody>
           </table>
         </div>;
       })}
-      <section className="nfl-simulation-accounting" aria-label={`${team.name} projected team totals and score accounting`}>
-        <h4>Team totals &amp; score accounting</h4>
+      <details className="nfl-simulation-accounting" aria-label={`${team.name} projected team totals and score accounting`}>
+        <summary>Team totals &amp; score accounting</summary>
         <dl>
           <div><dt>PASS / REC YDS</dt><dd>{box.totals.passingYards !== null
             ? <><b>{box.totals.passingYards}</b> pass = <b>{box.listed.receivingYards}</b> WR/TE/RB receiving + <b>{box.remainder.otherReceivingYards}</b> other receiving</>
@@ -56,9 +56,15 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
         <p>Other receiving/rushing production belongs to unmodeled players, not an invented named player.</p>
         {box.scoring ? <p>Passing and receiving TDs count once. Other points are an unattributed scoring remainder that may include extra points, field goals, conversions, safeties or defensive scores; no kicker stat line or specific scoring breakdown is inferred.</p>
           : <p>Touchdown and scoring-point accounting is unavailable for this older forecast.</p>}
-      </section>
-      <details className="nfl-simulation-stat-details">
+      </details>
+    </section>
+  );
+}
+
+function TeamEvidence({ team }: { team: SimulationTeamResult }) {
+  return <details className="nfl-simulation-stat-details">
         <summary>Expected values, ranges & player evidence</summary>
+        {team.matchup && <p>Opponent pass-defense adjustment: {team.matchup.passingYardsMultiplier >= 1 ? '+' : ''}{((team.matchup.passingYardsMultiplier - 1) * 100).toFixed(1)}% to receiving-yard efficiency. Historical allowance adjustment, not a guaranteed outcome.</p>}
         <p>Whole-number lines are rounded and reconciled across the team. A projected 0 TD does not mean a zero chance of scoring. Dashes mean no supported projection, not zero production.</p>
         {team.players.map(player => <article key={player.id}>
           <h4>{player.name} · {player.position}</h4>
@@ -70,9 +76,7 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
             <dt>{statLabels[key as keyof SimulationStat]}</dt><dd>Expected {stat!.mean.toFixed(2)} · 10th–90th: {stat!.p10}–{stat!.p90}</dd>
           </div>)}</dl>
         </article>)}
-      </details>
-    </section>
-  );
+      </details>;
 }
 
 export default function NFLGameSimulationPanel({ game, initialSimulation, onForecast, onScenarioChange }: { game: Game; initialSimulation?: NFLGameSimulation; onForecast?: (forecast: NFLGameSimulation) => void; onScenarioChange?: (scenarioId: string) => void }) {
@@ -138,44 +142,50 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
   const scenario = displayed?.scenarios.find(row => row.id === scenarioId)
     ?? displayed?.scenarios.find(row => row.home && row.away) ?? displayed?.scenarios[0];
   useEffect(() => { if (scenario) onScenarioChange?.(scenario.id); }, [scenario?.id, onScenarioChange]);
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true, revision = 0;
+    const check = async () => {
+      const current = ++revision;
+      setAdmin(false);
+      const permission = await supabase!.rpc('gamewaire_can_admin');
+      if (permission.error) {
+        console.error('Could not verify simulation diagnostics permissions', permission.error);
+        return;
+      }
+      if (active && current === revision) setAdmin(permission.data === true);
+    };
+    const refresh = () => { void check().catch(cause => { console.error('Could not load simulation diagnostics permissions', cause); }); };
+    refresh();
+    const { data } = supabase.auth.onAuthStateChange(() => { ++revision; setAdmin(false); window.setTimeout(() => { if (active) refresh(); }, 0); });
+    return () => { active = false; data.subscription.unsubscribe(); };
+  }, []);
   return (
     <section className="nfl-simulation" aria-labelledby="nfl-simulation-heading">
+      {scenario?.home && scenario.away && <div className="nfl-simulation-scores" aria-label="Projected final score">
+        {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{Math.round(team.score.mean)}</strong><span>{team.name}</span></div>)}
+      </div>}
       <header className="nfl-simulation-header">
         <div><h2 id="nfl-simulation-heading">GamewAIre Game Simulation</h2><p>Experimental · Production across teams · Not a betting recommendation</p></div>
         {!locked && <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)}>{error ? 'Retry' : 'Refresh'}</button>}
       </header>
       {locked && <p role="status">Kickoff has passed. This pregame simulator is locked; no new forecast will be generated.</p>}
-      {error && <div className="nfl-simulation-caption">
+      {error && !displayed && <div className="nfl-simulation-caption">
         <p role="status">{forecast ? 'Your saved simulation remains available while updates reconnect.' : 'Preparing your simulation. A feed interruption is delaying updates.'} Automatic retries continue, including when your connection returns.</p>
-        <details><summary>Update details</summary><p>{error}</p></details>
       </div>}
       {!response && !error && !locked && <p role="status">Loading the saved GamewAIre simulation…</p>}
-      {response?.status === 'unavailable' && !locked && <p role="status">Preparing a supported game simulation. Player evidence is still being collected; automatic retries continue.</p>}
-      {displayed?.refreshing && !locked && <p className="nfl-simulation-caption" role="status">Showing the saved forecast while automatic background preparation updates it.</p>}
-      {displayed?.version === legacyNFLSimulationVersion && <p role="status">This earlier forecast has no touchdown estimates. The updated projected box score is being prepared in the background.</p>}
-      {displayed?.evidenceMode && <p className="nfl-simulation-caption" role="status">{displayed.evidenceMode === 'full' ? 'Full historical coverage' : displayed.evidenceMode === 'limited' ? 'Limited verified evidence — additional history is used when available' : 'Team-only scoring estimate — player evidence is not yet sufficient'}</p>}
-      {response && (response.status !== 'ready' || response.refreshing) && !locked && (
-        <div className="nfl-simulation-progress" role="status">
-          <b>{response.stage}: {response.progress.completed}/{response.progress.total}</b>
-          <progress max={Math.max(1, response.progress.total)} value={response.progress.completed} aria-label={response.stage} />
-          <small>{game.away.abbr}: {response.history.away}/100 team games · {game.home.abbr}: {response.history.home}/100 team games</small>
-          <p>The server automatically prepares the upcoming NFL week. This view only checks saved progress; preparation continues even if you close it.</p>
-          {response.warnings.length > 0 && <details><summary>Evidence issues ({response.warnings.length})</summary><ul>{response.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details>}
-        </div>
-      )}
+      {!displayed && response && !error && !locked && <p role="status">Preparing your GamewAIre simulation. Updates load automatically.</p>}
       {displayed && (
         <>
           {displayed.evidenceMode !== 'team-only' && <label className="nfl-simulation-scenario">Quarterback scenario — participation assumed, not confirmed
             <select value={scenario?.id ?? ''} onChange={event => setScenarioId(event.target.value)}>
-              {displayed.scenarios.map(row => <option key={row.id} value={row.id}>{row.label}{row.issue ? ' — Insufficient evidence' : ''}</option>)}
+              {displayed.scenarios.map(row => <option key={row.id} value={row.id}>{row.label}{row.issue ? ' — Preparing' : ''}</option>)}
             </select>
           </label>}
-          {scenario?.issue && <p className="feed-warning" role="status">{scenario.issue}</p>}
+          {scenario?.issue && <p role="status">This quarterback scenario is not available yet.</p>}
           {scenario?.home && scenario.away && (
             <>
-              <div className="nfl-simulation-scores">
-                {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{Math.round(team.score.mean)}</strong><span>{team.name}</span></div>)}
-              </div>
               <p className="nfl-simulation-caption">Projected final score · {displayed.evidenceMode === 'team-only' ? 'Verified final-score history' : 'Rounded stat lines'} · {displayed.runs.toLocaleString()} joint draws</p>
               <details className="nfl-simulation-score-details"><summary>Score expectations & ranges</summary>
                 {[scenario.away, scenario.home].map(team => <p key={team.id}>{team.abbr}: expected {team.score.mean.toFixed(2)} points · 10th–90th: {team.score.p10}–{team.score.p90} · Outscored opponent in {(team.winProbability * 100).toFixed(1)}% of draws</p>)}
@@ -185,14 +195,28 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                 : <div className="nfl-simulation-teams"><TeamSimulation team={scenario.away} /><TeamSimulation team={scenario.home} /></div>}
             </>
           )}
-          <p className="nfl-simulation-caption">Evidence checked {new Date(displayed.checkedAt).toLocaleString()} · Forecast saved {new Date(displayed.forecastAt!).toLocaleString()} · {displayed.history.home} home-team / {displayed.history.away} away-team completed games (target: 100 each).</p>
-          <details className="nfl-simulation-method"><summary>Roster availability and model limitations</summary>
-            <p>Questionable players are assumed to participate at observed usage. Listed out/inactive players are excluded. Offensive-line and defensive injury impacts are not numerically estimated without validated participation evidence.</p>
-            {displayed.injuries.length ? <ul>{displayed.injuries.map((injury, i) => <li key={i}>{injury.name} ({injury.position}, {injury.teamId === game.home.id ? game.home.abbr : game.away.abbr}): {injury.status}</li>)}</ul> : <p>No complete confirmed game-day injury report is available. Refer to evidence issues for source availability.</p>}
-            <ul>{displayed.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>
-          </details>
         </>
       )}
+      {admin && (response || error) && <details className="nfl-simulation-method"><summary>Admin: preparation, history &amp; evidence</summary>
+          {error && <p className="nfl-simulation-issue" role="status">Update issue: {error}. Saved projections remain available; automatic retries continue.</p>}
+          {response && <div className="nfl-simulation-progress">
+            <b>{response.stage}: {response.progress.completed}/{response.progress.total}</b>
+            <progress max={Math.max(1, response.progress.total)} value={response.progress.completed} aria-label={response.stage} />
+            <small>{game.away.abbr}: {response.history.away}/100 team games · {game.home.abbr}: {response.history.home}/100 team games</small>
+            <p>The server automatically prepares the upcoming NFL week. Preparation continues even if you close it.</p>
+            <ul>{response.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>
+          </div>}
+          {displayed && <>
+          {scenario?.issue && <p>{scenario.issue}</p>}
+          <p className="nfl-simulation-caption">Evidence checked {new Date(displayed.checkedAt).toLocaleString()} · Forecast saved {new Date(displayed.forecastAt!).toLocaleString()} · {displayed.history.home} home-team / {displayed.history.away} away-team completed games (target: 100 each).</p>
+          {displayed.evidenceMode && <p>Coverage: {displayed.evidenceMode}. {displayed.refreshing ? 'Additional history is collecting.' : 'Collection complete.'}</p>}
+          {displayed.version === legacyNFLSimulationVersion && <p>This earlier forecast has no touchdown estimates.</p>}
+            <p>Questionable players are assumed to participate at observed usage. Listed out/inactive players are excluded. Offensive-line and defensive injury impacts are not numerically estimated without validated participation evidence.</p>
+            {displayed.injuries.length ? <ul>{displayed.injuries.map((injury, i) => <li key={i}>{injury.name} ({injury.position}, {injury.teamId === game.home.id ? game.home.abbr : game.away.abbr}): {injury.status}</li>)}</ul> : <p>No complete confirmed game-day injury report is available. Refer to evidence issues for source availability.</p>}
+            {scenario?.away && <TeamEvidence team={scenario.away} />}
+            {scenario?.home && <TeamEvidence team={scenario.home} />}
+          </>}
+          </details>}
     </section>
   );
 }

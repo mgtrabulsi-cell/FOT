@@ -155,7 +155,7 @@ test('Live and final bells reserve a shared middle column while retaining a 44px
   const nba = readFileSync(new URL('../src/NBAExperience.tsx', import.meta.url), 'utf8');
   assert.match(nba, /item\.status === 'FINAL' \? ' is-final-game'/);
   assert.match(nfl, /<\/button>\s*\{pick && <details className="wire-game-pick">/);
-  assert.match(nfl, /teamPicks\[`\$\{game.eventId\}:\$\{team.id\}`\] && <span className="wire-team-pick-note">GamewAIre Pick/);
+  assert.match(nfl, /pick && teamPicks\[`\$\{game.eventId\}:\$\{team.id\}`\] === pick && <span className="wire-team-pick-note">GamewAIre Pick/);
   assert.doesNotMatch(nfl, /Saved pregame price:/);
   assert.match(css, /\.wire-team-pick-note \{[^}]*background: #c62836;[^}]*color: #fff/);
   assert.match(css, /b:has\(\.wire-team-pick-note\) \{ flex-wrap: wrap/);

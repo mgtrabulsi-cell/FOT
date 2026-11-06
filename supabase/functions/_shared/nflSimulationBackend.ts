@@ -8,6 +8,18 @@ import { currentBotWeek, readBotWeek } from './gamewireBot.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const migration = 'NFL simulation storage is unavailable. Apply supabase/nfl-game-simulations.sql before enabling this endpoint.';
+export async function savedNFLGameSimulation(admin: SupabaseClient, eventId: string, kickoff: string, now = Date.now()): Promise<NFLGameSimulation | undefined> {
+  const saved = await admin.from('gamewire_game_forecasts').select('payload,event_start')
+    .eq('event_id', eventId).in('model_version', readableNFLSimulationVersions)
+    .order('model_version', { ascending: false }).limit(1).maybeSingle();
+  if (saved.error) throw new Error('Could not verify the saved NFL simulation for projection/pick alignment.');
+  if (!saved.data || Date.parse(saved.data.event_start) !== Date.parse(kickoff)) return undefined;
+  const raw = object(saved.data.payload), scenario = array(raw.scenarios).map(object).find(row => row.issue === null && row.home && row.away);
+  if (!scenario) return undefined;
+  const forecast = readNFLGameSimulation(raw, eventId, kickoff, { home: text(object(scenario.home).id), away: text(object(scenario.away).id) });
+  if (forecast.status !== 'ready' || Date.parse(forecast.forecastAt ?? '') > now) return undefined;
+  return forecast;
+}
 export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: string, kickoff: string, teams: { home: string; away: string },
   claim: () => Promise<boolean>, now = Date.now()): Promise<NFLGameSimulation> {
   if (!/^\d{1,12}$/.test(eventId) || !Number.isFinite(Date.parse(kickoff)) || Date.parse(kickoff) <= now)
@@ -71,6 +83,9 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
       job = await prepareSimulation(game, get, cache, now);
       if (previous && [nflSimulationVersion, previousNFLSimulationVersion].includes(previous.version)) {
         job.logs = previous.logs;
+        if (previous.version !== nflSimulationVersion) {
+          for (const state of Object.values(job.logs)) state.done = false;
+        }
         if (['ready', 'unavailable'].includes(text(object(row.data?.response).status)) && object(row.data?.response).refreshing !== true) {
           for (const state of Object.values(job.logs)) { state.season = game.season; state.done = false; }
         }

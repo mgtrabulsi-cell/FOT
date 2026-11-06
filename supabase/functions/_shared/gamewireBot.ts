@@ -6,6 +6,7 @@ import type { LearningAdjustment } from './gamewireLearning.ts';
 
 export type BotFormat = 'ppr' | 'half' | 'standard';
 export type ForecastStat = { market: string; label: string; estimate: number; base: number; learning?: LearningAdjustment;
+  simulation?: BotProjection['simulation'];
   distribution?: BotProjection['distribution']; defenseRank?: number | null; matchup?: string };
 export type PlayerForecast = {
   id: string; player_id: string; team_id: string; position: string; season: number; week: number; format: string;

@@ -176,6 +176,7 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
       if (name.startsWith('npm:')) return { createClient: () => client };
       if (name.includes('apiSportsBotInputs')) return { feedDefensiveStandings: async () => null };
       if (name.includes('gamewireForecasts')) return forecastTools;
+      if (name.includes('nflSimulationBackend')) return { savedNFLGameSimulation: async () => undefined };
       if (name.includes('gamewireRankings')) return rankingTools;
       if (name.includes('gamewireBotProjections')) return { collectBotProjections: async () => projections };
       if (name.includes('gamewireBotIntelligence')) return intelligenceTools;

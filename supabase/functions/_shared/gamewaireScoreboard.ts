@@ -1,12 +1,14 @@
 import { modelVersion, normalize, rankTopPicks, valueClassification } from './gamewaire.ts';
 import type { Candidate, TeamLean } from './gamewaire.ts';
 import { pickBreakdown } from './gamewaireNarrative.ts';
+import { simulationAllowsMoneyline } from './nflSimulationAlignment.ts';
+import type { NFLGameSimulation } from './nflSimulation.ts';
 
-export type ScoreboardPick = { eventId: string; start: string; team: string; opponent?: string; evidenceAt?: string; rank: number; label: 'GamewAIre Pick' | 'GamewAIre Winner Lean'; reason: string; savedAt: string };
+export type ScoreboardPick = { eventId: string; start: string; team: string; market?: 'h2h' | 'spreads'; opponent?: string; evidenceAt?: string; rank: number; label: 'GamewAIre Pick' | 'GamewAIre Winner Lean'; reason: string; savedAt: string };
 export function scoreboardBreakdown(pick: Candidate): string {
   return pickBreakdown(pick);
 }
-export function scoreboardPicks(candidates: Candidate[], now = Date.now(), options: { nbaGames?: number; winnerLeans?: TeamLean[] } = {}): ScoreboardPick[] {
+export function scoreboardPicks(candidates: Candidate[], now = Date.now(), options: { nbaGames?: number; winnerLeans?: TeamLean[]; nflSimulations?: Map<string, NFLGameSimulation> } = {}): ScoreboardPick[] {
   const verified = (pick: Candidate) => ['h2h', 'spreads'].includes(pick.market)
     && pick.modelVersion?.startsWith(modelVersion) && !!pick.identifiers?.espnEventId
     && [pick.ev, pick.edge, pick.conservativeEV, pick.quality, pick.american].every(Number.isFinite)
@@ -18,7 +20,8 @@ export function scoreboardPicks(candidates: Candidate[], now = Date.now(), optio
     && Date.parse(pick.dataAt) - Date.parse(pick.updatedAt) <= 600_000
     && [pick.home, pick.away].some(team => normalize(team) === normalize(pick.subject))
     && Array.isArray(pick.samples) && Array.isArray(pick.risks);
-  const qualified = (pick: Candidate) => verified(pick) && ['ELITE VALUE', 'A VALUE', 'B VALUE'].includes(valueClassification(pick));
+  const qualified = (pick: Candidate) => verified(pick) && ['ELITE VALUE', 'A VALUE', 'B VALUE'].includes(valueClassification(pick))
+    && (!options.nflSimulations || Date.parse(pick.start) <= now || simulationAllowsMoneyline(pick, options.nflSimulations.get(pick.identifiers?.espnEventId ?? '')));
   const winners = [...candidates.filter(pick => pick.market === 'h2h').map(pick => ({ pick, qualifies: true })), ...options.winnerLeans ?? []]
     .filter(({ pick }) => pick.sport === 'NBA' && pick.market === 'h2h' && pick.line === null && verified(pick)
       && pick.quality >= .75 && Number.isFinite(pick.probability) && pick.probability > 0 && pick.probability < 1 && pick.pushProbability === 0
@@ -34,7 +37,7 @@ export function scoreboardPicks(candidates: Candidate[], now = Date.now(), optio
     const eventId = pick.identifiers!.espnEventId;
     if (events.has(eventId) || result.length >= limit) return;
     events.add(eventId);
-    result.push({ eventId, start: pick.start, team: pick.subject, opponent: normalize(pick.subject) === normalize(pick.home) ? pick.away : pick.home,
+    result.push({ eventId, start: pick.start, team: pick.subject, market: pick.market === 'h2h' ? 'h2h' : 'spreads', opponent: normalize(pick.subject) === normalize(pick.home) ? pick.away : pick.home,
       evidenceAt: pick.dataAt, rank: result.length + 1, label: lean ? 'GamewAIre Winner Lean' : 'GamewAIre Pick', savedAt: pick.updatedAt,
       reason: lean ? scoreboardBreakdown(pick).replace('\n\n', '\n\nModel winner lean for daily coverage, not a value-qualified pick or betting recommendation. ') : scoreboardBreakdown(pick) });
   };

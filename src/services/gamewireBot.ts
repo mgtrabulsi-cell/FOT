@@ -32,8 +32,15 @@ function validHistory(value: unknown, playerId: string, season: number, format: 
       && (week.actuals === null && week.settled_at === null || week.settled_at !== null && week.actuals !== null
         && typeof week.actuals === 'object' && !Array.isArray(week.actuals) && Object.values(actuals).every(nullableNumber))
       && list(week.projections, stat => { const projection = object(stat);
-        return strings(projection, ['market', 'label']) && finite(projection.estimate) && finite(projection.base); });
+        return strings(projection, ['market', 'label']) && finite(projection.estimate) && finite(projection.base)
+          && (projection.simulation === undefined || validSimulationAlignment(projection.simulation)); });
   });
+}
+function validSimulationAlignment(value: unknown): boolean {
+  const row = object(value);
+  return strings(row, ['eventId', 'scenarioId', 'version', 'forecastAt'])
+    && /^\d{1,12}$/.test(String(row.eventId)) && Number.isFinite(Date.parse(String(row.forecastAt)))
+    && (row.originalEstimate === null || finite(row.originalEstimate));
 }
 
 async function request<T>(body: Record<string, unknown>, signal: AbortSignal): Promise<T> {
@@ -98,6 +105,7 @@ function validReport(value: unknown): value is BotReport {
        && (projection.limitedData === undefined || typeof projection.limitedData === 'boolean')
        && (projection.basis === undefined || ['matchup', 'current-season'].includes(String(projection.basis)))
        && (projection.evidence === undefined || validProjectionEvidence(projection.evidence))
+       && (projection.simulation === undefined || validSimulationAlignment(projection.simulation))
        && (projection.estimate === null || finite(projection.estimate))
        && ['baseline', 'defenseAverage', 'share', 'historyAverage', 'contenderAverage'].every((key) => projection[key] === null || finite(projection[key]))
        && ['playerGames', 'defenseGames', 'historyGames', 'contenderGames'].every((key) => Number.isInteger(projection[key]))

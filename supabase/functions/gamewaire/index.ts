@@ -7,6 +7,9 @@ import { planScheduledAnalyses } from '../_shared/gamewaireSchedule.ts';
 import type { ScheduledJob } from '../_shared/gamewaireSchedule.ts';
 import { loadPickLearning } from '../_shared/gamewirePickLearning.ts';
 import { scoreboardPicks } from '../_shared/gamewaireScoreboard.ts';
+import { savedNFLGameSimulation } from '../_shared/nflSimulationBackend.ts';
+import { simulationAllowsMoneyline } from '../_shared/nflSimulationAlignment.ts';
+import type { NFLGameSimulation } from '../_shared/nflSimulation.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -176,13 +179,20 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         const winner = row.payload?.winnerLean ?? (row.payload?.teamLean?.pick.market === 'h2h' ? row.payload.teamLean : undefined);
         return row.payload?.modelVersion === modelVersion && winner ? [winner] : [];
       });
-      const picks = scoreboardPicks(candidates, Date.now(), body.sport === 'NBA' ? { nbaGames: slateGames, winnerLeans: winners } : {});
+      const nflSimulations = new Map<string, NFLGameSimulation>();
+      if (body.sport === 'NFL') for (const candidate of candidates) {
+        const eventId = candidate.identifiers?.espnEventId;
+        if (candidate.market !== 'h2h' || !eventId || nflSimulations.has(eventId) || Date.parse(candidate.start) <= Date.now()) continue;
+        const forecast = await savedNFLGameSimulation(admin, eventId, candidate.start);
+        if (forecast) nflSimulations.set(eventId, forecast);
+      }
+      const picks = scoreboardPicks(candidates, Date.now(), body.sport === 'NBA' ? { nbaGames: slateGames, winnerLeans: winners } : { nflSimulations });
       return json({ picks, ...(body.sport === 'NBA' ? { dailyTarget: slateGames === 0 ? 0 : slateGames < 3 ? 1 : 3, selectionCount: picks.length } : {}),
         analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
         upcomingAnalyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion && Date.parse(row.event_start) > Date.now()).length,
         pendingGames: countJobs(['pending', 'running']), failedGames: countJobs(['failed']),
         note: body.sport === 'NBA' ? 'Three distinct games per Eastern day, or one winner selection total on a 1–2-game slate. Value-qualified picks are prioritized; coverage-only winner leans are labeled separately. Missing evidence is not invented. No paid odds refresh or publication is triggered.'
-          : 'Ranked across saved matchup analyses. Games without a qualifying model result receive no label. No paid odds refresh or post publication is triggered.' });
+          : 'Ranked across saved matchup analyses. NFL moneyline picks must also match the saved default simulation winner; missing or tied simulations receive no moneyline label. No paid odds refresh or post publication is triggered.' });
     }
     if (!canAnalyze) return json({ error: 'GamewAIre management is restricted to the designated account.' }, 403);
     if (body.action === 'report') {
@@ -325,8 +335,11 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const matchup = await resolveMatchup(anchor, fetcher);
       const data = await collectEvidence(allQuotes, matchup, Date.now(), fetcher);
       const learning = await loadPickLearning(admin, sport, modelVersion, Date.now());
-      report = { ...evaluate(quotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks, learning), warnings: data.warnings, coverage: data.coverage,
+      const forecast = sport === 'NFL' ? await savedNFLGameSimulation(admin, matchup.eventId, start) : undefined;
+      const alignedQuotes = sport === 'NFL' ? quotes.filter(quote => simulationAllowsMoneyline(quote, forecast)) : quotes;
+      report = { ...evaluate(alignedQuotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks, learning), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
+      if (alignedQuotes.length !== quotes.length) report.warnings.push('NFL moneyline markets opposing the saved simulation winner were excluded. If the simulation is missing or tied, moneyline selections wait; no replacement value pick is forced.');
       if (aiKey && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }

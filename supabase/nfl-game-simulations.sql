@@ -59,15 +59,15 @@ begin
   if forecast->'payload'->>'status' is distinct from 'ready'
     or forecast->'payload'->>'eventId' is distinct from forecast->>'event_id'
     or forecast->'payload'->>'version' is distinct from forecast->>'model_version'
-    or coalesce(forecast->>'model_version','') not in ('nfl-joint-bootstrap-v1','nfl-joint-bootstrap-v2','nfl-joint-bootstrap-v3')
+    or coalesce(forecast->>'model_version','') not in ('nfl-joint-bootstrap-v1','nfl-joint-bootstrap-v2','nfl-joint-bootstrap-v3','nfl-joint-bootstrap-v4')
     or coalesce((forecast->'payload'->'history'->>'home')::integer,-1) not between 8 and 100
     or coalesce((forecast->'payload'->'history'->>'away')::integer,-1) not between 8 and 100
-    or (forecast->>'model_version' <> 'nfl-joint-bootstrap-v3' or forecast->'payload'->>'evidenceMode'='full')
+    or (forecast->>'model_version' not in ('nfl-joint-bootstrap-v3','nfl-joint-bootstrap-v4') or forecast->'payload'->>'evidenceMode'='full')
       and ((forecast->'payload'->'history'->>'home')::integer <> 100 or (forecast->'payload'->'history'->>'away')::integer <> 100)
-    or forecast->>'model_version'='nfl-joint-bootstrap-v3' and coalesce(forecast->'payload'->>'evidenceMode','') not in ('full','limited','team-only')
+    or forecast->>'model_version' in ('nfl-joint-bootstrap-v3','nfl-joint-bootstrap-v4') and coalesce(forecast->'payload'->>'evidenceMode','') not in ('full','limited','team-only')
     or jsonb_typeof(forecast->'payload'->'scenarios') is distinct from 'array'
     or jsonb_array_length(forecast->'payload'->'scenarios')=0
-    or forecast->>'model_version'='nfl-joint-bootstrap-v3' and exists(
+    or forecast->>'model_version' in ('nfl-joint-bootstrap-v3','nfl-joint-bootstrap-v4') and exists(
       select 1 from jsonb_array_elements(forecast->'payload'->'scenarios') scenario
       where (forecast->'payload'->>'evidenceMode'='team-only' and (
         scenario->'home'->'teamOnly' is distinct from 'true'::jsonb or scenario->'away'->'teamOnly' is distinct from 'true'::jsonb
@@ -115,7 +115,7 @@ create or replace function public.gamewire_request_simulation(target_event text,
 language plpgsql security definer set search_path='' as $$
 begin
   if target_event is null or target_event !~ '^[0-9]{1,12}$' or requested_start is null or requested_start <= clock_timestamp()
-    or requested_start > clock_timestamp()+interval '14 days' or requested_version is distinct from 'nfl-joint-bootstrap-v3'
+    or requested_start > clock_timestamp()+interval '14 days' or requested_version is distinct from 'nfl-joint-bootstrap-v4'
     then raise exception 'Choose an upcoming NFL game within fourteen days'; end if;
   insert into public.gamewire_simulation_jobs(event_id,event_start,model_version)
     values(target_event,requested_start,requested_version)
@@ -133,7 +133,7 @@ begin
   for item in select value from jsonb_array_elements(games) loop
     started := (item->>'event_start')::timestamptz;
     if item->>'event_id' is null or item->>'event_id' !~ '^[0-9]{1,12}$' or started is null or started <= clock_timestamp()
-      or started > clock_timestamp()+interval '14 days' or item->>'model_version' is distinct from 'nfl-joint-bootstrap-v3'
+      or started > clock_timestamp()+interval '14 days' or item->>'model_version' is distinct from 'nfl-joint-bootstrap-v4'
       then raise exception 'Invalid upcoming NFL simulation game'; end if;
     insert into public.gamewire_simulation_jobs(event_id,event_start,model_version,discovered)
       values(item->>'event_id',started,item->>'model_version',true)

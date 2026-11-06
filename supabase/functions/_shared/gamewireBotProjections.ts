@@ -6,6 +6,7 @@ import type { ProjectionEvidence, ProjectionObservation, ComparableObservation }
 import type { LearningAdjustment } from './gamewireLearning.ts';
 
 export type BotProjection = {
+  simulation?: { eventId: string; scenarioId: string; version: string; forecastAt: string; originalEstimate: number | null };
   distribution?: ReturnType<typeof forecastDistribution>;
   market: string; label: string; estimate: number | null; unit: 'yards' | 'receptions'; baseline: number | null; playerGames: number;
   yards: number | null; // Kept for older clients during the frontend rollout.

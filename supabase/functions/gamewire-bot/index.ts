@@ -11,7 +11,7 @@ import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
 import { archivePlayerForecast, finalPlayerStats, loadPlayerHistory, settleForecasts } from '../_shared/gamewireForecasts.ts';
 import type { PlayerForecast } from '../_shared/gamewireForecasts.ts';
-import { loadNFLGameSimulation, runNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../_shared/nflSimulationBackend.ts';
+import { loadNFLGameSimulation, runNFLGameSimulation, savedNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../_shared/nflSimulationBackend.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -283,7 +283,11 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     if (matchup && (matchup.state !== 'pre' || Date.parse(matchup.start) <= Date.now())) {
       report.indication = 'Game locked'; report.summary = 'This week’s game has started or finished. Saved workload is historical, not a pregame recommendation.';
     }
-    await archivePlayerForecast(admin, report, Date.now());
+    const alignmentForecast = matchup?.state === 'pre' && report.indication !== 'Game locked'
+      ? await savedNFLGameSimulation(admin, matchup.eventId, matchup.start) : undefined;
+    if (matchup?.state === 'pre' && report.indication !== 'Game locked' && !alignmentForecast)
+      report.warnings.push('Game simulation is still preparing; player-specific estimates remain independently calculated until a saved game projection is available.');
+    await archivePlayerForecast(admin, report, Date.now(), alignmentForecast);
     if (matchup && report.indication !== 'Game locked') {
       const start = new Date(Date.parse(matchup.start) - 6 * 3600000).toISOString(), end = new Date(Date.parse(matchup.start) + 6 * 3600000).toISOString();
       const publications = await admin.from('gamewaire_publications').select('picks,event_start').eq('sport', 'NFL').gte('event_start', start).lte('event_start', end).limit(30);

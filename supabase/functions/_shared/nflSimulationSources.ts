@@ -93,7 +93,8 @@ export async function prepareSimulation(game: SimulationGame, get: (url: string)
 }
 function selectPlayers(job: SimulationJob, boxes: Map<string, SimulationBox>): SimulationPlayer[] {
   return [job.history.home, job.history.away].flatMap(refs => {
-    const teamId = refs[0].teamId;
+    const teamId = refs[0]?.teamId;
+    if (!teamId) return [];
     const usage = (player: SimulationPlayer) => {
       const values = refs.slice(0, 5).flatMap(ref => {
         const observed = boxes.get(ref.id)?.teams.find(team => team.id === teamId)?.players[player.id];
@@ -190,9 +191,9 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
       const issue = `${player.name} (${state.season}): ${message(cause)}`;
       result.warnings.push(issue); result.preparationIssues.push(issue); return;
     }
-    state.refs = unique([...state.refs, ...evidence.refs]).filter(ref => Date.parse(ref.date) < now).slice(0, 60);
-    const earlier = evidence.seasons.filter(year => year < state.season && year >= game.season - 8).sort((a, b) => b - a);
-    if (state.refs.length >= 30 || state.season <= game.season - 8 || evidence.seasons.length > 0 && !earlier.length) state.done = true;
+    state.refs = unique([...state.refs, ...evidence.refs]).filter(ref => Date.parse(ref.date) < Math.min(now, Date.parse(game.date))).slice(0, 100);
+    const earlier = evidence.seasons.filter(year => year < state.season).sort((a, b) => b - a);
+    if (state.refs.length >= 100 || state.season <= 2000 || evidence.seasons.length > 0 && !earlier.length) state.done = true;
     else state.season = earlier[0] ?? state.season - 1;
   }));
   result.progress = { completed: active.filter(player => job.logs[player.id]?.done).length, total: active.length };
