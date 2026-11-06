@@ -34,7 +34,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   const awayColor = teamMarkColor(colors.away), homeColor = teamMarkColor(colors.home);
   const text = (value: string, x: number, y: number, size: number, width: number,
     color: string | CanvasGradient = white, display = false) => {
-    const font = () => `${display ? 'italic ' : ''}700 ${size}px ${display ? 'Oswald' : '"DM Sans"'}`;
+    const font = () => `${display && !portrait ? 'italic ' : ''}700 ${size}px ${display ? 'Oswald' : '"DM Sans"'}`;
     ctx.font = font();
     while (ctx.measureText(value).width > width && size > 18) {
       size--; ctx.font = font();
@@ -43,6 +43,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.fillStyle = color; ctx.fillText(value, x, y);
   };
   const metallic = (y: number, size: number) => {
+    if (portrait) return white;
     const gradient = ctx.createLinearGradient(0, y - size, 0, y + 4);
     gradient.addColorStop(0, '#ffffff'); gradient.addColorStop(.45, '#f4f8ff');
     gradient.addColorStop(.53, '#a3b7ce'); gradient.addColorStop(1, '#ffffff');
@@ -52,6 +53,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
   };
   const beam = (x: number, y: number, end: number, color: string, strength = 14) => {
+    if (portrait) return;
     ctx.save();
     const gradient = ctx.createLinearGradient(x, y, end, y);
     gradient.addColorStop(0, `${color}00`); gradient.addColorStop(.4, color);
@@ -61,6 +63,21 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(end, y); ctx.stroke(); ctx.restore();
   };
   const panel = (x: number, y: number, width: number, height: number, accent: string) => {
+    if (portrait) {
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(x, y, width, height, 16);
+      const fill = ctx.createLinearGradient(x, y, x + width, y + height);
+      fill.addColorStop(0, '#142c47'); fill.addColorStop(1, '#081526');
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = '#345b7e'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.clip();
+      ctx.fillStyle = accent; ctx.fillRect(x, y, 4, height);
+      const gloss = ctx.createLinearGradient(0, y, 0, y + height * .42);
+      gloss.addColorStop(0, '#ffffff0d'); gloss.addColorStop(1, '#ffffff00');
+      ctx.fillStyle = gloss; ctx.fillRect(x, y, width, height);
+      ctx.restore();
+      return;
+    }
     path([[x + 14, y], [x + width - 14, y], [x + width, y + 14], [x + width, y + height - 14],
       [x + width - 14, y + height], [x + 14, y + height], [x, y + height - 14], [x, y + 14]]);
     const fill = ctx.createLinearGradient(x, y, x + width / 2, y + height);
@@ -73,14 +90,16 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.save(); ctx.clip(); ctx.fillStyle = gloss; ctx.fillRect(x, y, width, 44); ctx.restore();
   };
   const background = ctx.createLinearGradient(0, 0, 1600, height);
-  background.addColorStop(0, '#10243a'); background.addColorStop(.5, '#030911'); background.addColorStop(1, '#1a1021');
+  background.addColorStop(0, portrait ? '#09182b' : '#10243a');
+  background.addColorStop(.5, portrait ? '#071323' : '#030911');
+  background.addColorStop(1, portrait ? '#040b16' : '#1a1021');
   ctx.fillStyle = background; ctx.fillRect(0, 0, 1600, height);
-  for (let i = -4; i < 15; i++) {
+  for (let i = -4; !portrait && i < 15; i++) {
     const x = i * 160;
     path([[x, 0], [x + 44, 0], [x + 720, height], [x + 676, height]]);
     ctx.fillStyle = i % 3 === 0 ? '#4b82b312' : '#ffffff04'; ctx.fill();
   }
-  [awayColor, homeColor].forEach((accent, i) => {
+  (portrait ? [] : [awayColor, homeColor]).forEach((accent, i) => {
     const light = ctx.createRadialGradient(i ? 1600 : 0, 550, 0, i ? 1600 : 0, 550, 750);
     light.addColorStop(0, `${accent}35`); light.addColorStop(1, `${accent}00`);
     ctx.fillStyle = light; ctx.fillRect(0, 0, 1600, height);
@@ -89,11 +108,11 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.moveTo(i ? 1600 : 0, height - 180); ctx.lineTo(i ? 1370 : 230, height); ctx.stroke(); ctx.restore();
   });
   ctx.drawImage(logo, 25, 2, 175, 175 * logo.naturalHeight / logo.naturalWidth);
-  ctx.font = 'italic 700 72px Oswald';
+  ctx.font = `${portrait ? '' : 'italic '}700 72px Oswald`;
   const brandX = (1600 - ctx.measureText('GamewAIre').width) / 2;
   text('Gamew', brandX, 82, 72, 300, metallic(82, 72), true);
   const aiX = brandX + ctx.measureText('Gamew').width;
-  text('AI', aiX, 82, 72, 110, red, true);
+  text('AI', aiX, 82, 72, 110, portrait ? '#39bcff' : red, true);
   text('re', aiX + ctx.measureText('AI').width, 82, 72, 120, metallic(82, 72), true);
   ctx.font = '700 20px "DM Sans"';
   const subtitle = 'S I M U L A T I O N   P R E V I E W';
@@ -102,7 +121,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   const date = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric',
     year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(kickoff));
   panel(40, 171, 1520, 145, awayColor);
-  ctx.font = 'italic 700 23px Oswald';
+  ctx.font = `${portrait ? '' : 'italic '}700 23px Oswald`;
   text('PROJECTED FINAL', (1600 - ctx.measureText('PROJECTED FINAL').width) / 2, 204, 23, 320, muted, true);
   text(String(Math.round(scenario.away.score.mean)), 575, 285, 96, 180, metallic(285, 96), true);
   text('VS', 780, 266, 28, 60, muted, true);
@@ -111,26 +130,39 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   [scenario.away, scenario.home].forEach((team, index) => {
     const x = index ? 830 : 40, accent = index ? homeColor : awayColor;
     const model = simulationGraphicTeam(team);
-    const teamX = index ? 1120 : 70;
+    const teamX = portrait ? index ? 1045 : 465 : index ? 1120 : 70;
+    const badgeY = portrait ? 215 : 188;
     ctx.save();
-    ctx.beginPath(); ctx.roundRect(teamX, 188, 78, 78, 16);
+    ctx.beginPath(); ctx.roundRect(teamX, badgeY, 78, 78, 16);
     ctx.fillStyle = '#081526'; ctx.fill();
-    const badge = ctx.createLinearGradient(teamX, 188, teamX + 78, 266);
+    const badge = ctx.createLinearGradient(teamX, badgeY, teamX + 78, badgeY + 78);
     badge.addColorStop(0, `${accent}d9`); badge.addColorStop(1, `${accent}8c`);
     ctx.fillStyle = badge; ctx.fill();
     ctx.strokeStyle = `${accent}cc`; ctx.lineWidth = 2; ctx.stroke();
     ctx.clip();
-    const gloss = ctx.createLinearGradient(0, 188, 0, 235);
+    const gloss = ctx.createLinearGradient(0, badgeY, 0, badgeY + 47);
     gloss.addColorStop(0, '#ffffff35'); gloss.addColorStop(1, '#ffffff00');
-    ctx.fillStyle = gloss; ctx.fillRect(teamX, 188, 78, 78);
+    ctx.fillStyle = gloss; ctx.fillRect(teamX, badgeY, 78, 78);
     const label = teamMarkAbbr(team.abbr);
     ctx.font = '700 24px "DM Sans"';
-    text(label, teamX + (78 - ctx.measureText(label).width) / 2, 232, 24, 72);
-    ctx.fillStyle = accent; ctx.fillRect(teamX + 24, 245, 30, 4);
+    text(label, teamX + (78 - ctx.measureText(label).width) / 2, badgeY + 44, 24, 72);
+    ctx.fillStyle = accent; ctx.fillRect(teamX + 24, badgeY + 57, 30, 4);
     ctx.restore();
-    text(team.name, teamX, 298, 30, 405, metallic(298, 30), true);
+    text(team.name, portrait ? index ? 1150 : 70 : teamX, portrait ? 266 : 298, 30,
+      portrait ? 365 : 405, metallic(298, 30), true);
     const heading = (y: number, label: string, height: number) => {
       panel(x, y, 730, height, accent);
+      if (portrait) {
+        ctx.fillStyle = '#16aeff';
+        for (let i = 0; i < 3; i++) {
+          const left = x + 28 + i * 14;
+          path([[left + 14, y + 24], [left + 21, y + 24], [left + 7, y + 48], [left, y + 48]]);
+          ctx.fill();
+        }
+        text(label, x + 100, y + 48, 30, 600, '#dce6f2', true);
+        ctx.fillStyle = '#1687c5'; ctx.fillRect(x + 25, y + 65, 680, 1);
+        return;
+      }
       path([[x + 14, y], [x + 320, y], [x + 293, y + 38], [x, y + 38], [x, y + 14]]);
       const tab = ctx.createLinearGradient(x, y, x + 320, y + 38);
       tab.addColorStop(0, accent); tab.addColorStop(1, '#07101c');

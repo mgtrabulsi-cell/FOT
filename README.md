@@ -110,6 +110,10 @@ Simulation exports use The Wire's glossy midnight-navy panels, metallic display 
 
 Both export sizes show rounded, glossy team-color abbreviation badges in the score banner, matching the site's name-only team marks rather than provider logos.
 
+The Instagram layout mirrors The Wire's scoreboard styling: midnight-navy rounded cards, subtle glass shading, thin blue borders, cyan triple-slash section headings and team-colored left rails/badges. It uses flat high-contrast type without the landscape export's metallic text, diagonal background facets or neon beams.
+
+Its score banner places the team badges next to the central scores, with each team name on the outside: name, badge, away score / home score, badge, name.
+
 The QB card shows completions, attempts, passing yards and passing touchdowns in one horizontal row in both sizes. The RB card likewise shows carries, rushing yards and rushing touchdowns in one horizontal row; receiving yards remain in the receiving-player section, not the RB card.
 
 The GamewAIre simulations toggle uses red styling in both states, with a white selected indicator. On mobile simulation cards, kickoff/status sits above the bell/team row so full team names can wrap at word boundaries without competing with the status column.

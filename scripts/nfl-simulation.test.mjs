@@ -786,14 +786,15 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const stops = [];
+  const stops = [], roundedCards = [], shadows = [];
   const gradient = { addColorStop: (_, color) => stops.push(color) };
   const ctx = { createLinearGradient: () => gradient, createRadialGradient: () => gradient,
-    roundRect() {}, scale() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
+    roundRect: (...args) => roundedCards.push(args), scale() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
     fillRect() {}, strokeRect() {}, drawImage() {},
     measureText: value => ({ width: String(value).length * 9 }),
     fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); positions.push({ value, x, y }); } };
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(['png'])) };
+  Object.defineProperty(ctx, 'shadowBlur', { set: value => shadows.push(value) });
   const context = vm.createContext({ exports: {}, Intl, Date, Error, document: { createElement: () => canvas }, require(name) {
     if (name.includes('nflSimulation')) return { roundedSimulationBox };
     if (name.includes('TeamAbbrMark')) return {
@@ -840,9 +841,20 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
     assert.equal(drawn.filter(value => value === 'REC YDS').length, 4, 'Receiving yards only appear for the four receiving players');
   };
   assertRunningBackRow();
-  const landscapeText = [...drawn]; drawn.length = 0; positions.length = 0;
+  assert.equal(roundedCards.length, 2, 'Landscape keeps its angled panels and rounded team badges');
+  const landscapeText = [...drawn]; drawn.length = 0; positions.length = 0; roundedCards.length = 0; shadows.length = 0; stops.length = 0;
   await renderSimulationGraphic(scenario, game.date, { away: '#fb4f14', home: '#241773' }, 'instagram');
   assert.equal(canvas.width, 1080); assert.equal(canvas.height, 1350);
+  assert.equal(roundedCards.length, 9, 'Instagram uses rounded score/player panels and team badges');
+  const badges = roundedCards.filter(([, , width, height]) => width === 78 && height === 78);
+  assert.deepEqual(badges.map(([x, y]) => [x, y]), [[465, 215], [1045, 215]]);
+  const awayName = positions.find(row => row.value === scenario.away.name);
+  const homeName = positions.find(row => row.value === scenario.home.name);
+  assert.ok(awayName.x < badges[0][0] && badges[0][0] + 78 < 575);
+  assert.ok(900 + 140 < badges[1][0] && badges[1][0] + 78 < homeName.x);
+  assert.equal(awayName.y, homeName.y);
+  assert.ok(stops.includes('#142c47')); assert.ok(stops.includes('#081526'));
+  assert.ok(!shadows.some(value => value > 0), 'Instagram has no neon beam glow');
   assertRunningBackRow();
   assert.deepEqual(drawn, landscapeText);
   assert.ok(drawn.includes(scenario.away.name)); assert.ok(drawn.includes(scenario.home.name));
