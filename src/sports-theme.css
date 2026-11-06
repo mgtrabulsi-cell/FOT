@@ -390,7 +390,7 @@
 .nfl-simulation td { white-space: nowrap; min-width: 48px; }
 .nfl-simulation .nfl-simulation-issue { color: #f4c497; }
 .nfl-simulation thead th { color: #c7e8ff; background: #10283f; font-size: 11px; }
-.nfl-simulation td b { color: #fff; }
+.nfl-simulation tbody th[scope="row"] > b, .nfl-simulation td b { color: #fff; }
 .nfl-simulation-unavailable td { color: #b5c6dd; }
 .nfl-simulation-stat-details { border-top: 1px solid #31638b; }
 .nfl-simulation-stat-details article { border-top: 1px solid #304765; padding: 10px 0; }

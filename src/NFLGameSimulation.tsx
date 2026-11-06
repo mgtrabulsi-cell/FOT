@@ -24,10 +24,14 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
       <header className="nfl-simulation-team-title"><span>{team.abbr}</span><h3>{team.name}</h3><b>{box.score}</b></header>
       {groups.map(group => {
         const players = team.players.filter(player => group.positions.includes(player.position));
+        if (group.title === 'Receiving') players.sort((a, b) =>
+          (box.players[b.id].receptions ?? -1) - (box.players[a.id].receptions ?? -1)
+          || (box.players[b.id].receivingYards ?? -1) - (box.players[a.id].receivingYards ?? -1)
+          || a.name.localeCompare(b.name));
         if (!players.length) return null;
         return <div className="nfl-simulation-table-scroll" key={group.title} tabIndex={0} role="region" aria-label={`${team.name} ${group.title.toLowerCase()} projections`}>
           <table>
-            <caption>{group.title} · Projected stat line</caption>
+            <caption>{group.title} · Projected stat line{group.title === 'Receiving' ? ' · Most receptions first' : ''}</caption>
             <thead><tr><th scope="col">Player</th>{group.columns.map(key => <th scope="col" key={key}>{statLabels[key]}</th>)}</tr></thead>
             <tbody>{players.map(player => <tr key={player.id} className={player.issue ? 'nfl-simulation-unavailable' : undefined}>
               <th scope="row"><b>{player.name}</b><small>{player.position}{player.issue ? ' · Unavailable' : ''}</small></th>

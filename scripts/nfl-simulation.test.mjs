@@ -750,6 +750,33 @@ test('Simulation UI renders scenario selection, ranges, transfer coverage, error
   assert.ok(publicHtml.indexOf('nfl-simulation-scores') < publicHtml.indexOf('nfl-simulation-scenario'));
   assert.ok(html.indexOf('Admin:') > html.lastIndexOf('</table>'));
 });
+test('Projected receiver names are white and rows sort by displayed catches then receiving yards', () => {
+  const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  const team = data.scenarios[0].away, receiver = team.players.find(player => player.position === 'WR');
+  const range = mean => ({ mean, p10: mean, median: mean, p90: mean });
+  const extra = (id, name, catches, yards) => ({ ...structuredClone(receiver), id, name,
+    stats: { ...structuredClone(receiver.stats), receptions: range(catches), receivingYards: range(yards) } });
+  team.players.push(extra('991', 'Highest catches', 14, 150), extra('992', 'Low catches', 1, 10),
+    extra('993', 'More tie yards', 5, 95), extra('994', 'Fewer tie yards', 5, 40),
+    { ...structuredClone(receiver), id: '995', name: 'Unavailable receiver', issue: 'Unavailable', stats: {} });
+  const originalOrder = team.players.map(player => player.id);
+  const box = roundedSimulationBox(team);
+  const expected = team.players.filter(player => ['WR', 'TE'].includes(player.position)).sort((a, b) =>
+    (box.players[b.id].receptions ?? -1) - (box.players[a.id].receptions ?? -1)
+    || (box.players[b.id].receivingYards ?? -1) - (box.players[a.id].receivingYards ?? -1)
+    || a.name.localeCompare(b.name)).map(player => player.name);
+  const html = simulationMarkup(data);
+  const body = html.match(/<caption>Receiving[\s\S]*?<tbody>([\s\S]*?)<\/tbody>/)[1];
+  const names = [...body.matchAll(/scope="row"><b>([^<]+)<\/b>/g)].map(match => match[1]);
+  assert.deepEqual(names, expected);
+  assert.equal(names[0], 'Highest catches');
+  assert.equal(names.at(-1), 'Unavailable receiver');
+  assert.ok(names.indexOf('More tie yards') < names.indexOf('Fewer tie yards'));
+  assert.deepEqual(team.players.map(player => player.id), originalOrder);
+  const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
+  assert.match(css, /\.nfl-simulation tbody th\[scope="row"\] > b, \.nfl-simulation td b \{ color: #fff; \}/);
+});
+
 function panelRuntime(load, supabase) {
   const code = ts.transpileModule(readFileSync(new URL('../src/NFLGameSimulation.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },

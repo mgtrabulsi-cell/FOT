@@ -102,6 +102,8 @@ Notification bells on NFL simulation cards sit to the left of team abbreviation 
 
 Simulation box scores show one team at a time, with away/home team buttons above the player tables. Both projected final scores remain visible at the top; switching teams or QB scenarios does not require scrolling past the other team's players.
 
+Projected player names are white. The Receiving table sorts by displayed projected receptions descending, then receiving yards, then name; unsupported projections stay below supported ones.
+
 The GamewAIre simulations toggle uses red styling in both states, with a white selected indicator. On mobile simulation cards, kickoff/status sits above the bell/team row so full team names can wrap at word boundaries without competing with the status column.
 
 The Wire's NFL pregame toggle switches between regular **Pregame stats** and **GamewAIre simulations**. Simulation mode shows saved projected scores on upcoming game cards and opens the score/player simulation directly; live/final games retain actual scores. Board reads are limited to three concurrent requests, retain verified scores during interruptions and pass saved results into the detail view to avoid a blank handoff. NBA remains on regular pregame stats.
