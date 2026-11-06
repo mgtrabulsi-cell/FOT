@@ -7,7 +7,7 @@ import * as jsxRuntime from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { nflSimulationVersion, readNFLGameSimulation, simulateNFLGame, simulationBox, simulationGame, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
 import { advanceSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
-import { loadNFLGameSimulation } from '../supabase/functions/_shared/nflSimulationBackend.ts';
+import { loadNFLGameSimulation, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
 
 const now = Date.parse('2026-11-05T18:00:00Z');
 const game = { id: '90000', date: '2026-11-15T18:00:00Z', season: 2026, seasonType: 2,
@@ -288,6 +288,36 @@ test('Fresh shared forecasts bypass quota; concurrent jobs return collecting wit
   const locked = backendFixture({ locked: true });
   assert.equal((await loadNFLGameSimulation(locked.admin, game.id, locked.get, async () => { throw new Error('Must not charge locked work'); })).status, 'collecting');
   assert.deepEqual(locked.calls, ['gamewire_claim_simulation']);
+});
+test('Warm-up uses supported weekly ESPN scoreboards, validates metadata and filters to the next 14 days', async () => {
+  const api = backendFixture({ ready: true }), calls = [], clock = Date.now();
+  const original = api.admin.from;
+  let eventIds;
+  api.admin.from = table => {
+    if (table !== 'gamewire_simulation_jobs') return original(table);
+    const builder = { select: () => builder, in: (_column, ids) => { eventIds = ids; return builder; },
+      then: resolve => Promise.resolve({ data: [], error: null }).then(resolve) };
+    return builder;
+  };
+  const get = async url => {
+    if (url.includes('/summary')) return api.get(url);
+    calls.push(url);
+    const query = new URL(url).searchParams, week = Number(query.get('week') || 9);
+    const event = { id: week === 9 ? game.id : String(week), date: new Date(clock + (week === 9 ? 1 : week === 10 ? 8 : 15) * 86400000).toISOString(),
+      competitions: [{ status: { type: { state: 'pre' } } }] };
+    return { season: { year: 2026, type: 2 }, week: { number: week }, events: [event] };
+  };
+  const warmed = await warmNFLGameSimulations(api.admin, get, clock);
+  assert.equal(warmed.eventId, game.id);
+  assert.deepEqual(eventIds, [game.id, '10']);
+  assert.equal(calls.length, 4);
+  assert.ok(calls.slice(1).every(url => new URL(url).searchParams.get('dates') === '2026'));
+  assert.ok(calls.every(url => !/dates=\d{8}-/.test(url)));
+  await assert.rejects(warmNFLGameSimulations(api.admin, async url => {
+    const board = await get(url);
+    if (url.includes('week=10')) board.week.number = 9;
+    return board;
+  }, clock), /different NFL/);
 });
 test('Completed cached evidence is archived and progress saved; quota/write/kickoff failures release work and surface errors', async () => {
   const successful = backendFixture();

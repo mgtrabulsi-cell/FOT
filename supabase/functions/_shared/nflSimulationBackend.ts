@@ -4,6 +4,7 @@ import { nflSimulationRuns, nflSimulationVersion, simulationBox, simulationGame 
 import type { NFLGameSimulation } from './nflSimulation.ts';
 import { advanceSimulation, prepareSimulation } from './nflSimulationSources.ts';
 import type { SimulationCache, SimulationJob } from './nflSimulationSources.ts';
+import { currentBotWeek, readBotWeek } from './gamewireBot.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const migration = 'NFL simulation storage is unavailable. Apply supabase/nfl-game-simulations.sql before enabling this endpoint.';
@@ -73,13 +74,24 @@ export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: stri
   }
 }
 export async function warmNFLGameSimulations(admin: SupabaseClient, get: (url: string) => Promise<unknown>, now = Date.now()) {
-  const date = (time: number) => new Date(time).toISOString().slice(0, 10).replace(/-/g, '');
-  const board = await get(`${site}/scoreboard?dates=${date(now)}-${date(now + 14 * 86400000)}&limit=1000`);
-  const upcoming = array(object(board).events).map(object).filter(event => {
+  const current = await get(`${site}/scoreboard`), target = currentBotWeek(current, new Date(now));
+  if (![2, 3].includes(target.seasonType)) return { eventId: null, stage: 'No upcoming regular-season/playoff NFL games', issues: [] };
+  const weeks = [0, 1, 2].map(offset => ({ week: target.week + offset, phase: target.seasonType }))
+    .filter(scope => scope.week <= (scope.phase === 2 ? 18 : 5));
+  if (target.seasonType === 2 && target.week >= 17) weeks.push({ week: 1, phase: 3 }, { week: 2, phase: 3 });
+  const boards = await Promise.all(weeks.map(async scope => {
+    const board = await get(`${site}/scoreboard?dates=${target.season}&seasontype=${scope.phase}&week=${scope.week}&limit=1000`);
+    const reported = readBotWeek(board);
+    if (reported.season !== target.season || reported.seasonType !== scope.phase || reported.week !== scope.week)
+      throw new Error('Simulation warm-up scoreboard returned a different NFL season, phase or week.');
+    return board;
+  }));
+  const upcoming = [...new Map(boards.flatMap(board => array(object(board).events).map(object).filter(event => {
     const competition = object(array(event.competitions)[0]), state = text(object(object(competition.status).type).state);
     const phase = numeric(object(event.season).type) ?? numeric(object(event.seasonType).type) ?? numeric(object(object(board).season).type);
-    return /^\d{1,12}$/.test(text(event.id)) && state === 'pre' && Date.parse(text(event.date)) > now && [2, 3].includes(phase ?? 0);
-  });
+    return /^\d{1,12}$/.test(text(event.id)) && state === 'pre' && Date.parse(text(event.date)) > now
+      && Date.parse(text(event.date)) <= now + 14 * 86400000 && [2, 3].includes(phase ?? 0);
+  })).map(event => [text(event.id), event])).values()];
   if (!upcoming.length) return { eventId: null, stage: 'No upcoming NFL games', issues: [] };
   const jobs = await admin.from('gamewire_simulation_jobs').select('event_id,response,updated_at').in('event_id', upcoming.map(event => text(event.id)));
   if (jobs.error) throw new Error(migration);
