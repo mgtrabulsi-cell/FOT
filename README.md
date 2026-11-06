@@ -98,6 +98,8 @@ Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `su
 
 ### NFL game simulations
 
+Notification bells on NFL simulation cards sit to the left of team abbreviation marks and names, between the status and team columns, on both desktop and mobile.
+
 The Wire's NFL pregame toggle switches between regular **Pregame stats** and **GamewAIre simulations**. Simulation mode shows saved projected scores on upcoming game cards and opens the score/player simulation directly; live/final games retain actual scores. Board reads are limited to three concurrent requests, retain verified scores during interruptions and pass saved results into the detail view to avoid a blank handoff. NBA remains on regular pregame stats.
 
 Automatic NBA matchup badges tolerate up to 15 minutes between the saved odds-feed tip-off and ESPN's scheduled tip-off (the common difference is 10 minutes), but still require the exact ESPN event, matching team/opponent, the same Eastern date and evidence recorded before ESPN's scheduled start. Postponed/canceled games, larger timing changes and after-tip evidence remain rejected. NFL retains its one-minute timing check. This repairs missing badges/sidebar picks without new paid analyses or relaxed value thresholds.

@@ -890,7 +890,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
       const intl = internationalVenue(game);
       const pick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
       return (
-        <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : final ? ' is-final-game' : ''}`}>
+        <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : final ? ' is-final-game' : upcoming && pregameView === 'simulation' ? ' is-simulation-game' : ''}`}>
           <NotificationBell />
           <button
             type="button"
@@ -907,7 +907,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 <span>{formatGameTime(game)}</span>
               )}
               {live && (game.period || game.clock) && <small>{gameClockLabel(game.period, game.clock)}</small>}
-              {upcoming && pregameView === 'simulation' && <small>{simulation ? 'SIMULATED SCORE' : 'Simulation preparing'}</small>}
+              {upcoming && pregameView === 'simulation' && <small>{simulation ? 'SIM SCORE' : 'Pending'}</small>}
             </span>
             <span className="wire-board-teams">
               {[game.away, game.home].map((team, index) => {

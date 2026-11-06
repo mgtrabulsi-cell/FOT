@@ -148,7 +148,7 @@ test('Live and final bells reserve a shared middle column while retaining a 44px
   assert.match(css, /grid-template-areas: "status bell teams" "footer footer footer"/);
   assert.match(css, /grid-template-columns: 54px 44px minmax\(0, 1fr\)/);
   assert.match(css, /\.notification-bell \{[^}]*width: 44px; height: 44px/);
-  assert.match(css, /\.notification-game-card:is\(\.is-live-game, \.is-final-game\) \.notification-bell svg \{ width: 14px; height: 14px/);
+  assert.match(css, /\.notification-game-card:is\(\.is-live-game, \.is-final-game, \.is-simulation-game\) \.notification-bell svg \{ width: 14px; height: 14px/);
   const nfl = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
   assert.match(nfl, /notification-game-card\$\{live \? ' is-live-game'/);
   assert.match(nfl, /final \? ' is-final-game'/);

@@ -50,8 +50,10 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   let tree = render();
   const toggle = label => tree.find(node => node.type === 'button' && node.props.children === label);
   assert.equal(toggle('Pregame stats').props['aria-pressed'], true);
+  assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card'));
   toggle('GamewAIre simulations').props.onClick(); tree = render();
   assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
+  assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card is-simulation-game'));
   assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [22, 28]);
   tree.find(node => node.props['data-game-id'] === game.id).props.onClick(); tree = render();
   const panel = tree.find(node => node.type === 'SimulationPanel');
