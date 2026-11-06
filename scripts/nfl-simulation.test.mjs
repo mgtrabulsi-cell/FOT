@@ -295,6 +295,9 @@ test('TD distributions and rounded box lines conserve production, cap TDs by opp
     assert.ok(Math.abs(team.totals.rushingTouchdowns.mean - mean('rushingTouchdowns') - team.totals.otherRushingTouchdowns.mean) < .4);
     assert.equal(box.players[qb.id].passingTouchdowns, sum('receivingTouchdowns') + box.remainder.otherReceivingTouchdowns);
     assert.equal(box.players[qb.id].passingYards, sum('receivingYards') + box.remainder.otherReceivingYards);
+    assert.equal(box.players[qb.id].passingYards, sum('receivingYards'), 'Every supported scenario allocates all passing yards to listed receiving targets');
+    assert.equal(box.remainder.otherReceivingYards, 0);
+    assert.equal(box.remainder.otherReceptions, 0);
     assert.equal(box.players[qb.id].completions, sum('receptions') + box.remainder.otherReceptions);
     assert.equal(Math.round(team.totals.rushingYards.mean), sum('rushingYards') + box.remainder.otherRushingYards);
     assert.ok(box.score >= 6 * (box.players[qb.id].passingTouchdowns + sum('rushingTouchdowns') + box.remainder.otherRushingTouchdowns));
@@ -351,6 +354,70 @@ test('Fractional stat lines reconcile WR, TE and RB production and exact points,
     if (!hasTD) assert.equal(box.scoring.otherPoints, Math.round(score));
     if (score === 12.4) assert.equal(box.scoring.otherPoints, 0);
   }
+});
+test('Burrow 270 versus 241 listed yards allocates the full 29-yard gap toward the leading receiving targets', () => {
+  const f = fixture(), team = simulateNFLGame(game, f.history, f.players, f.observations, 500)[0].home;
+  const range = mean => ({ mean, p10: mean, median: mean, p90: mean });
+  const qb = team.players.find(player => player.position === 'QB');
+  qb.name = 'Joe Burrow'; qb.stats.passingYards = range(270); qb.stats.completions = range(22);
+  const chase = team.players.find(player => player.position === 'WR');
+  const higgins = { ...structuredClone(chase), id: '16', name: 'Tee Higgins' };
+  chase.name = "Ja'Marr Chase"; team.players.push(higgins);
+  const receiving = new Map([[chase.id, [100, 7]], [higgins.id, [85, 6]], ['15', [36, 3]], ['13', [20, 2]]]);
+  for (const player of team.players) if (receiving.has(player.id)) {
+    const [yards, catches] = receiving.get(player.id);
+    player.stats.receivingYards = range(yards); player.stats.receptions = range(catches);
+  }
+  team.totals.passingYards = range(270); team.totals.receptions = range(22);
+  team.totals.otherReceivingYards = range(29); team.totals.otherReceptions = range(4);
+  const original = structuredClone(team), box = roundedSimulationBox(team);
+  const yards = playerId => box.players[playerId].receivingYards;
+  assert.equal(box.players[qb.id].passingYards, 270, 'Do not lower the QB to hide the gap');
+  assert.equal(box.listed.receivingYards, 270);
+  assert.equal(box.remainder.otherReceivingYards, 0);
+  assert.equal(box.listed.receptions, 22);
+  assert.equal(box.remainder.otherReceptions, 0);
+  assert.equal(yards(chase.id), 112);
+  assert.equal(yards(higgins.id), 95);
+  assert.equal(yards('15'), 40);
+  assert.equal(yards('13'), 23);
+  assert.equal(yards(chase.id) - 100 + yards(higgins.id) - 85 + yards('15') - 36 + yards('13') - 20, 29);
+  assert.deepEqual(team, original, 'Saved evidence/ranges must not be overwritten by derived box lines');
+  const forecast = response([{ id: 'burrow', label: 'Burrow scenario', issue: null, home: team, away: team, quarterbacks: {}, tieProbability: 0 }]);
+  const aligned = reconcileSimulationProjections([
+    { market: 'player_reception_yds', unit: 'yards', estimate: 100, explanation: 'Player baseline' },
+  ], forecast, team.id, chase.id)[0];
+  assert.equal(aligned.estimate, yards(chase.id), 'Chat uses the same allocated line');
+});
+
+test('Receiving allocation respects zero-catch and unsupported targets, including older saved snapshots', () => {
+  const f = fixture(), scenarios = simulateNFLGame(game, f.history, f.players, f.observations, 500), base = scenarios[0].home;
+  for (const version of [legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion]) {
+    const team = structuredClone(base);
+    const receiver = team.players.find(player => player.position === 'WR');
+    receiver.stats.receptions = { mean: 0, p10: 0, median: 0, p90: 0 };
+    const unavailable = { ...structuredClone(receiver), id: '17', name: 'Unavailable target', issue: 'Unavailable', stats: {} };
+    team.players.push(unavailable);
+    const saved = response(structuredClone(scenarios), { version });
+    saved.scenarios[0].home = team;
+    if (version === legacyNFLSimulationVersion) for (const scenario of saved.scenarios) for (const side of [scenario.home, scenario.away]) {
+      for (const key of Object.keys(side.totals)) if (/Touchdowns/.test(key)) delete side.totals[key];
+      for (const player of side.players) for (const key of Object.keys(player.stats)) if (/Touchdowns/.test(key)) delete player.stats[key];
+    }
+    const parsed = readNFLGameSimulation(saved, game.id, game.date, { home: '1', away: '2' });
+    const box = roundedSimulationBox(parsed.scenarios[0].home);
+    assert.equal(box.players[receiver.id].receivingYards, 0, version);
+    assert.deepEqual(box.players[unavailable.id], {}, version);
+    assert.equal(box.listed.receivingYards, box.players[team.players.find(player => player.position === 'QB').id].passingYards, version);
+    assert.equal(box.remainder.otherReceivingYards, 0, version);
+  }
+  const zeroYards = structuredClone(base);
+  for (const player of zeroYards.players) if (player.stats.receivingYards)
+    player.stats.receivingYards = { mean: 0, p10: 0, median: 0, p90: 0 };
+  zeroYards.totals.otherReceivingYards = structuredClone(zeroYards.totals.passingYards);
+  const box = roundedSimulationBox(zeroYards);
+  assert.equal(box.listed.receivingYards, Math.round(zeroYards.totals.passingYards.mean));
+  assert.equal(box.remainder.otherReceivingYards, 0);
 });
 test('Legacy forecasts stay readable but never acquire fabricated TDs; v2 rejects missing TD distributions', () => {
   const f = fixture(), current = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));

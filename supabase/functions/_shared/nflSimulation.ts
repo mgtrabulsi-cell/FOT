@@ -320,9 +320,14 @@ export function roundedSimulationBox(team: SimulationTeamResult & { totals: Simu
   const teamTotals = team.totals;
   const players = Object.fromEntries(team.players.map(player => [player.id, Object.fromEntries(Object.entries(player.stats).map(([key, value]) => [key, Math.round(value!.mean)])) as Partial<SimulationStat>]));
   const remainder: Partial<Record<BaseTotal | TouchdownTotal, number>> = {};
-  const reconcile = (key: keyof SimulationStat, total: number, otherKey: BaseTotal | TouchdownTotal, caps?: number[]) => {
+  const reconcile = (key: keyof SimulationStat, total: number, otherKey: BaseTotal | TouchdownTotal, caps?: number[], listedOnly = false) => {
     const supported = team.players.filter(player => player.stats[key]);
-    const shares = [...supported.map(player => player.stats[key]!.mean), teamTotals[otherKey]?.mean ?? 0];
+    let listedShares = supported.map(player => player.stats[key]!.mean);
+    if (listedOnly && key === 'receivingYards' && !listedShares.some((share, i) => share > 0 && (!caps || caps[i] > 0))) {
+      listedShares = supported.map(player => players[player.id].receptions ?? 0);
+    }
+    const allocateToListed = listedOnly && listedShares.some((share, i) => share > 0 && (!caps || caps[i] > 0));
+    const shares = [...listedShares, allocateToListed ? 0 : teamTotals[otherKey]?.mean ?? 0];
     const values = total === 0 ? shares.map(() => 0) : caps ? allocateCapped(total, shares, caps) : allocate(total, shares);
     supported.forEach((player, i) => { players[player.id][key] = values[i]; });
     remainder[otherKey] = values[values.length - 1];
@@ -333,11 +338,11 @@ export function roundedSimulationBox(team: SimulationTeamResult & { totals: Simu
   let passingYards: number | null = null, completions: number | null = null;
   let passingTouchdowns: number | null = null, rushingTouchdowns: number | null = null, otherReceivingTouchdowns: number | null = null;
   if (quarterback) {
-    completions = reconcile('receptions', Math.round(team.totals.receptions.mean), 'otherReceptions').total;
+    completions = reconcile('receptions', Math.round(team.totals.receptions.mean), 'otherReceptions', undefined, true).total;
     players[quarterback.id].completions = completions;
     const receivers = team.players.filter(player => player.stats.receivingYards);
     passingYards = reconcile('receivingYards', Math.round(team.totals.passingYards.mean), 'otherReceivingYards',
-      [...receivers.map(player => players[player.id].receptions ? Number.MAX_SAFE_INTEGER : 0), remainder.otherReceptions ? Number.MAX_SAFE_INTEGER : 0]).total;
+      [...receivers.map(player => players[player.id].receptions ? Number.MAX_SAFE_INTEGER : 0), remainder.otherReceptions ? Number.MAX_SAFE_INTEGER : 0], true).total;
     players[quarterback.id].passingYards = passingYards;
   }
   const rushersWithYards = team.players.filter(player => player.stats.rushingYards);

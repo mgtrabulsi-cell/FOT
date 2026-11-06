@@ -41,10 +41,10 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
         <summary>Team totals &amp; score accounting</summary>
         <dl>
           <div><dt>PASS / REC YDS</dt><dd>{box.totals.passingYards !== null
-            ? <><b>{box.totals.passingYards}</b> pass = <b>{box.listed.receivingYards}</b> WR/TE/RB receiving + <b>{box.remainder.otherReceivingYards}</b> other receiving</>
+            ? <><b>{box.totals.passingYards}</b> pass = <b>{box.listed.receivingYards}</b> WR/TE/RB receiving{box.remainder.otherReceivingYards ? <> + <b>{box.remainder.otherReceivingYards}</b> unallocated receiving</> : null}</>
             : 'Passing/receiving accounting unavailable.'}</dd></div>
           <div><dt>CMP / REC</dt><dd>{box.totals.completions !== null
-            ? <><b>{box.totals.completions}</b> completions = <b>{box.listed.receptions}</b> listed catches + <b>{box.remainder.otherReceptions}</b> other catches</>
+            ? <><b>{box.totals.completions}</b> completions = <b>{box.listed.receptions}</b> listed catches{box.remainder.otherReceptions ? <> + <b>{box.remainder.otherReceptions}</b> unallocated catches</> : null}</>
             : 'Completion/reception accounting unavailable.'}</dd></div>
           <div><dt>RUSH YDS</dt><dd><b>{box.totals.rushingYards}</b> total = <b>{box.listed.rushingYards}</b> listed + <b>{box.remainder.otherRushingYards}</b> other rushing</dd></div>
           {box.scoring && <>
@@ -53,7 +53,7 @@ function TeamSimulation({ team }: { team: SimulationTeamResult }) {
             <div className="nfl-simulation-points-line"><dt>PROJECTED SCORE</dt><dd><b>{box.score}</b> = 6 x (<b>{box.totals.passingTouchdowns}</b> passing TD + <b>{box.totals.rushingTouchdowns}</b> rushing TD) + <b>{box.scoring.otherPoints}</b> other points</dd></div>
           </>}
         </dl>
-        <p>Other receiving/rushing production belongs to unmodeled players, not an invented named player.</p>
+        <p>Receiving yards and catches are allocated across supported listed targets by projected share, giving higher-production targets more of the remainder. Without supported targets, production stays unallocated; missing player stats are never invented. Other rushing production remains a team remainder.</p>
         {box.scoring ? <p>Passing and receiving TDs count once. Other points are an unattributed scoring remainder that may include extra points, field goals, conversions, safeties or defensive scores; no kicker stat line or specific scoring breakdown is inferred.</p>
           : <p>Touchdown and scoring-point accounting is unavailable for this older forecast.</p>}
       </details>
@@ -65,7 +65,7 @@ function TeamEvidence({ team }: { team: SimulationTeamResult }) {
   return <details className="nfl-simulation-stat-details">
         <summary>Expected values, ranges & player evidence</summary>
         {team.matchup && <p>Opponent pass-defense adjustment: {team.matchup.passingYardsMultiplier >= 1 ? '+' : ''}{((team.matchup.passingYardsMultiplier - 1) * 100).toFixed(1)}% to receiving-yard efficiency. Historical allowance adjustment, not a guaranteed outcome.</p>}
-        <p>Whole-number lines are rounded and reconciled across the team. A projected 0 TD does not mean a zero chance of scoring. Dashes mean no supported projection, not zero production.</p>
+        <p>Whole-number lines allocate the receiving remainder across supported listed targets by projected share; the underlying expected values and ranges below are before that allocation. A projected 0 TD does not mean a zero chance of scoring. Dashes mean no supported projection, not zero production.</p>
         {team.players.map(player => <article key={player.id}>
           <h4>{player.name} · {player.position}</h4>
           <p>{player.games} verified games{player.priorTeams.some(id => id !== team.id) ? ' · Includes prior teams' : ''}
