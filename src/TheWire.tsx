@@ -408,7 +408,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const pregameToggle = <section className="wire-pregame-mode" aria-label="NFL pregame display">
     <div role="group" aria-label="NFL pregame view">
       <button type="button" aria-pressed={pregameView === 'stats'} onClick={() => changePregameView('stats')}>Pregame stats</button>
-      <button type="button" aria-pressed={pregameView === 'simulation'} onClick={() => changePregameView('simulation')}>GamewAIre simulations</button>
+      <button type="button" className="wire-simulation-toggle" aria-pressed={pregameView === 'simulation'} onClick={() => changePregameView('simulation')}>GamewAIre simulations</button>
     </div>
     {pregameView === 'simulation' && <p>Projected scores for upcoming NFL games; live and final scores stay actual. Quarterback participation is conditional, not confirmed.</p>}
   </section>;

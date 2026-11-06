@@ -28,6 +28,13 @@ function hooks() {
 }
 const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements)
   : [node, ...elements(node.props?.children)];
+test('Simulation toggle remains red in both states and mobile cards reserve readable team-name space', () => {
+  const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
+  assert.match(css, /\.wire-pregame-mode \.wire-simulation-toggle \{[^}]*min-height: 44px;[^}]*background: #a51c28;[^}]*color: #fff/);
+  assert.match(css, /\.wire-pregame-mode \.wire-simulation-toggle\[aria-pressed="true"\] \{[^}]*background: #c62836;[^}]*color: #fff/);
+  assert.match(css, /grid-template-areas: "status status" "bell teams" "footer footer"/);
+  assert.match(css, /\.is-simulation-game \.wire-board-team-label \{[^}]*white-space: normal; overflow-wrap: normal; word-break: normal/);
+});
 test('Wire toggle shows simulated scores, opens the simulation directly, and restores normal pregame/live views', () => {
   const h = hooks(), jsx = (type, props) => ({ type, props });
   const context = vm.createContext({ exports: {}, window: { scrollTo() {} }, console, require(name) {
@@ -53,6 +60,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card'));
   toggle('GamewAIre simulations').props.onClick(); tree = render();
   assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
+  assert.equal(toggle('GamewAIre simulations').props.className, 'wire-simulation-toggle');
   assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card is-simulation-game'));
   assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [22, 28]);
   tree.find(node => node.props['data-game-id'] === game.id).props.onClick(); tree = render();
