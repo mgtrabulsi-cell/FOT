@@ -821,6 +821,14 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(!stops.includes('#39bcff'));
   assert.equal(canvas.width, 1600); assert.equal(canvas.height, 1000);
   const assertRunningBackRow = () => {
+    const qbLabels = positions.filter(row => ['CMP', 'ATT', 'PASS YDS', 'PASS TD'].includes(row.value));
+    assert.equal(qbLabels.length, 8);
+    assert.equal(new Set(qbLabels.map(row => row.y)).size, 1);
+    for (const teamX of [40, 830]) {
+      const columns = qbLabels.filter(row => row.x >= teamX && row.x < teamX + 730);
+      assert.equal(columns.length, 4);
+      assert.ok(columns.every((column, i) => i === 0 || column.x > columns[i - 1].x));
+    }
     const labels = positions.filter(row => ['RUSH ATT', 'RUSH YDS', 'RUSH TD'].includes(row.value));
     assert.equal(labels.length, 6);
     assert.equal(new Set(labels.map(row => row.y)).size, 1);
