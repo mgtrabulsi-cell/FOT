@@ -11,6 +11,7 @@ import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
 import { archivePlayerForecast, finalPlayerStats, loadPlayerHistory, settleForecasts } from '../_shared/gamewireForecasts.ts';
 import type { PlayerForecast } from '../_shared/gamewireForecasts.ts';
+import { loadNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../_shared/nflSimulationBackend.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -31,20 +32,24 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
   try {
     if (cron) {
       const input = object(await request.json());
+      if (input.action === 'warm-simulations') return json(await warmNFLGameSimulations(admin, url => publicJSON(url, fetcher)));
       if (input.action !== 'settle-projections') return json({ error: 'Invalid forecast settlement job.' }, 400);
       const pending = await admin.from('gamewire_player_forecasts').select('*').is('settled_at', null)
         .lt('event_start', new Date().toISOString()).gt('event_start', new Date(Date.now() - 21 * 86400000).toISOString())
         .order('event_start', { ascending: true }).limit(80);
       if (pending.error) throw new Error('Could not load pending player forecasts.');
       const settled = await settleForecasts(admin, pending.data as PlayerForecast[], fetcher);
-      return json({ settled: settled.weeks.filter(row => row.settled_at).length, issues: settled.issues }, settled.issues.length ? 207 : 200);
+      const games = await settleNFLGameSimulations(admin, url => publicJSON(url, fetcher));
+      const issues = [...settled.issues, ...games.issues];
+      return json({ settled: settled.weeks.filter(row => row.settled_at).length, gamesSettled: games.settled, issues }, issues.length ? 207 : 200);
     }
     const user = await client.auth.getUser();
     if (user.error || !user.data.user || user.data.user.is_anonymous) return json({ error: 'Sign in with an account to use player analysis.' }, 401);
     let raw: unknown;
     try { raw = await request.json(); } catch { return json({ error: 'Invalid bot request.' }, 400); }
     const input = object(raw);
-    if (!['directory', 'breakdown', 'history', 'rankings', 'save-rankings'].includes(text(input.action))) return json({ error: 'Choose player search or a player breakdown.' }, 400);
+    if (!['directory', 'breakdown', 'history', 'rankings', 'save-rankings', 'simulation'].includes(text(input.action))) return json({ error: 'Choose player search, a player breakdown or an NFL simulation.' }, 400);
+    if (input.action === 'simulation' && !/^\d{1,12}$/.test(text(input.eventId))) return json({ error: 'Choose a valid NFL event for simulation.' }, 400);
     const editingRankings = input.action === 'rankings' || input.action === 'save-rankings';
     if (editingRankings) {
       const permission = await client.rpc('gamewaire_can_admin');
@@ -62,6 +67,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       if (result.error) throw new Error('Could not check the player analysis request limit.');
       claimed = result.data === true; return claimed;
     };
+    if (input.action === 'simulation') return json(await loadNFLGameSimulation(admin, text(input.eventId), url => publicJSON(url, fetcher), claim));
     const cached = async <T>(key: string, milliseconds: number | ((data: T) => number), load: () => Promise<T>): Promise<{ data: T; cached: boolean }> => {
       const now = new Date();
       const saved = await admin.from('gamewire_bot_cache').select('payload').eq('cache_key', key).gt('expires_at', now.toISOString()).maybeSingle();

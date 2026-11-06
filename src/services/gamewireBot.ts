@@ -2,8 +2,15 @@ import { supabase } from './supabaseClient';
 import type { BotDirectory, BotFormat, BotPlayer, BotReport, PlayerWeekHistory } from '../../supabase/functions/_shared/gamewireBot';
 import { readRankingList } from '../../supabase/functions/_shared/gamewireRankings';
 import type { RankingList } from '../../supabase/functions/_shared/gamewireRankings';
+import { readNFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
+import type { Game } from './sportsData';
 export type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supabase/functions/_shared/gamewireBot';
 export type { PlayerWeekHistory } from '../../supabase/functions/_shared/gamewireBot';
+
+export async function loadGameSimulation(game: Game, signal: AbortSignal) {
+  const value = await request<unknown>({ action: 'simulation', eventId: game.eventId }, signal);
+  return readNFLGameSimulation(value, game.eventId, game.date, { home: game.home.id, away: game.away.id });
+}
 
 export async function loadBotHistory(playerId: string, season: number, format: BotFormat, signal: AbortSignal): Promise<PlayerWeekHistory> {
   const value = await request<unknown>({ action: 'history', playerId, season, format }, signal);

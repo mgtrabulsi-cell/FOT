@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import TeamAbbrMark from './TeamAbbrMark';
+import NFLGameSimulationPanel from './NFLGameSimulation';
 import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
@@ -296,7 +297,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const boardRef = useRef<HTMLDivElement>(null);
   const returnToGameRef = useRef<string | null>(null);
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
-  const [subTab, setSubTab] = useState<'boxscore' | 'teamStats'>('boxscore');
+  const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>('boxscore');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [playerStatMode, setPlayerStatMode] = useState<'total' | 'average'>('total');
   const [loadedBoxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);
@@ -391,6 +392,9 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   }, [games, nflGames, selectedGameId, featuredFavoriteTeamId]);
 
   const selectedGame = nflGames.find((g) => g.id === selectedGameId) ?? nflGames[0];
+  useEffect(() => {
+    if (selectedGame?.status !== 'UPCOMING' && subTab === 'simulation') setSubTab('boxscore');
+  }, [selectedGame?.status, subTab]);
   const selectedPrimetime = selectedGame ? getPrimetimeLabel(selectedGame) : null;
   const selectedIntl = selectedGame ? internationalVenue(selectedGame) : null;
   const livePrimetimeGame = nflGames.find((g) => g.status === 'LIVE' && isPrimetimeGame(g))
@@ -1199,7 +1203,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
           </section>
 
           {/* THE HALF-AND-HALF TEAM BAR */}
-          <section className="wire-team-toggle-section">
+          {subTab !== 'simulation' && <section className="wire-team-toggle-section">
             <div className="wire-team-bar" role="tablist" aria-label="Select team to view box score">
               <button
                 role="tab"
@@ -1261,7 +1265,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 </div>
               </button>
             </div>
-          </section>
+          </section>}
 
           {/* Subtabs: Player Box Score vs Team Comparison */}
           <div className="wire-subtabs-bar">
@@ -1278,6 +1282,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
               >
                 Team Comparison
               </button>
+              {isUpcoming && <button className={subTab === 'simulation' ? 'active' : ''} aria-pressed={subTab === 'simulation'} onClick={() => setSubTab('simulation')}>GamewAIre Simulation</button>}
             </div>
 
             {subTab === 'boxscore' && !isUpcoming && (
@@ -1307,7 +1312,9 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
           )}
 
           {/* Main Body */}
-          {loading && !boxScore && !isUpcoming ? (
+          {subTab === 'simulation' && isUpcoming ? (
+            <NFLGameSimulationPanel key={`${selectedGame.eventId}:${selectedGame.date}`} game={selectedGame} />
+          ) : loading && !boxScore && !isUpcoming ? (
             <div className="panel empty-games">Loading game box score and player stats…</div>
           ) : failed && !boxScore && !isUpcoming ? (
             <div className="panel feed-warning">
@@ -1482,9 +1489,9 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
             </div>
           )}
 
-          <p className="nfl-data-note">
+          {subTab !== 'simulation' && <p className="nfl-data-note">
             {isUpcoming ? `${subTab === 'teamStats' ? 'Team averages' : playerStatMode === 'total' ? 'Player totals' : 'Player per-game averages'} use regular-season statistics. Missing values are shown as unavailable.` : 'Box scores and individual statistics update live from public game feeds.'}
-          </p>
+          </p>}
         </div>
       )}
     </div>
