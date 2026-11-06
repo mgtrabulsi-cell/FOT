@@ -279,7 +279,7 @@ function backendFixture({ ready = false, locked = false, archiveFailure = false,
     competition.competitors = [game.home, game.away].map((team, i) => ({ homeAway: i ? 'away' : 'home', team: { ...team, displayName: team.name, abbreviation: team.abbr } }));
     return raw;
   };
-  return { admin, get, calls, updates };
+  return { admin, get, calls, updates, job };
 }
 test('Fresh shared forecasts bypass quota; concurrent jobs return collecting without acquiring another lease', async () => {
   const fresh = backendFixture({ ready: true });
@@ -330,6 +330,36 @@ test('Completed cached evidence is archived and progress saved; quota/write/kick
     await assert.rejects(loadNFLGameSimulation(api.admin, game.id, api.get, claim), pattern);
     assert.ok(api.updates.some(update => update.lease_token === null));
     assert.ok(!api.updates.some(update => update.response?.status === 'ready'));
+  }
+});
+test('Stale completed simulations refresh current-season player logs without restarting unfinished historical backfill', async () => {
+  for (const status of ['ready', 'collecting']) {
+    const api = backendFixture(), original = api.admin.from;
+    api.job.createdAt = new Date(Date.now() - 6 * 60000).toISOString();
+    api.job.logs['11'].season = 2020;
+    api.admin.from = table => {
+      const builder = original(table);
+      if (table === 'gamewire_simulation_jobs') builder.maybeSingle = async () => ({ data: { payload: api.job, response: { status } }, error: null });
+      return builder;
+    };
+    let refreshed;
+    const code = ts.transpileModule(readFileSync(new URL('../supabase/functions/_shared/nflSimulationBackend.ts', import.meta.url), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const context = vm.createContext({ exports: {}, crypto, Date, Error, console, require(name) {
+      if (name.includes('nflSimulationSources')) return {
+        prepareSimulation: async () => ({ ...api.job, createdAt: new Date().toISOString(), logs: {} }),
+        advanceSimulation: async (_game, job) => { refreshed = structuredClone(job.logs); return response([], { status: 'collecting', forecastAt: null }); },
+      };
+      if (name.endsWith('/nflSimulation.ts')) return { simulationGame, nflSimulationVersion };
+      if (name.endsWith('/gamewaire.ts')) return { object: value => value && typeof value === 'object' ? value : {}, text: value => typeof value === 'string' ? value : '' };
+      return {};
+    } });
+    vm.runInContext(code, context);
+    await context.exports.loadNFLGameSimulation(api.admin, game.id, api.get, async () => true);
+    assert.equal(refreshed['11'].done, status !== 'ready');
+    assert.equal(refreshed['11'].season, status === 'ready' ? 2026 : 2020);
+    assert.equal(refreshed['11'].refs.length, 30);
   }
 });
 function simulationMarkup(data, error = '', scenarioId = '') {

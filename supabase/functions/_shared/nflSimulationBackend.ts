@@ -30,7 +30,7 @@ export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: stri
   }
   try {
     if (!await claim()) throw new Error('Simulation refresh limit reached (60 per account per hour). Shared background backfill continues; retry after the hour changes.');
-    const row = await admin.from('gamewire_simulation_jobs').select('payload').eq('event_id', eventId).maybeSingle();
+    const row = await admin.from('gamewire_simulation_jobs').select('payload,response').eq('event_id', eventId).maybeSingle();
     if (row.error) throw new Error('Could not load the saved NFL simulation work.');
     const cache: SimulationCache = {
       readMany: async <T>(keys: string[]) => {
@@ -51,7 +51,12 @@ export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: stri
     if (!job || job.version !== nflSimulationVersion || Date.parse(job.createdAt) < now - 5 * 60000) {
       const previous = job;
       job = await prepareSimulation(game, get, cache, now);
-      if (previous?.version === nflSimulationVersion) job.logs = previous.logs;
+      if (previous?.version === nflSimulationVersion) {
+        job.logs = previous.logs;
+        if (['ready', 'unavailable'].includes(text(object(row.data?.response).status))) {
+          for (const state of Object.values(job.logs)) { state.season = game.season; state.done = false; }
+        }
+      }
     }
     let result = await advanceSimulation(game, job, cache, get, now);
     if (result.status === 'ready') {
