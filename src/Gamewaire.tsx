@@ -360,6 +360,20 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
     }));
   };
+  const openSoccerGames = (league: typeof soccerSports[number] = 'EPL') => {
+    setSection('bets'); setMemberSport(league); setMemberGame('');
+    if (!status?.canAnalyze) { openPublishedPicks(); return; }
+    changeSport(league); setPickView('candidates'); setSelectedRun('');
+    setSettings((previous) => ({ ...previous, player: '' }));
+    setActionError(''); setNotice('');
+    window.requestAnimationFrame(() => {
+      const workspace = document.getElementById('gai-analysis-workspace') as HTMLDetailsElement | null;
+      if (!workspace) return;
+      workspace.open = true;
+      workspace.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      workspace.querySelector<HTMLSelectElement>('select')?.focus({ preventScroll: true });
+    });
+  };
   return <section className="gai-panel" aria-label="GamewAIre">
     <div className="gai-section-tabs" role="tablist" aria-label="GamewAIre sections"
       onKeyDown={(event) => {
@@ -385,7 +399,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     <div id="gai-bets-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bets-tab"
       hidden={section !== 'bets'} tabIndex={0}>
     <header className="gai-hero gai-home-hero">
-      <div className="gai-hero-copy"><span className="eyebrow">NFL + NBA · MODEL-DRIVEN INSIGHTS</span>
+      <div className="gai-hero-copy"><span className="eyebrow">NFL + NBA + SOCCER · MODEL-DRIVEN INSIGHTS</span>
         <h2>THE <em>ANALYSIS ENGINE</em></h2>
         <p>Data. Matchups. A clearer view.</p>
         <small>Compare real prices and model estimates. Verified data. No promise of profit.</small>
@@ -398,7 +412,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       </div>
     </header>
     <section className="gai-record-overview" aria-label="GamewAIre record overview">
-      <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD · ALL TIME · NBA + NFL</span><h3>GamewAIre results</h3></div>
+      <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD · ALL TIME · ALL SPORTS</span><h3>GamewAIre results</h3></div>
         <button onClick={() => openResults('top')}>View full results</button></div>
       {!loaded ? <p className="gai-note">{error ? 'Record unavailable until saved results reload.' : 'Loading recorded results…'}</p> :
         <div className="gai-record-cards">
@@ -449,8 +463,17 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           });
         }}><Bot size={27} aria-hidden="true" /><b>Player Lab &amp; Props</b><ArrowRight size={18} aria-hidden="true" /></button>
         <button type="button" onClick={() => openResults('all')}><Activity size={27} aria-hidden="true" /><b>Results &amp; History</b><ArrowRight size={18} aria-hidden="true" /></button>
+        <button type="button" onClick={() => openSoccerGames()}><Layers size={27} aria-hidden="true" /><b>{status?.canAnalyze ? 'Soccer games & picks' : 'Published soccer picks'}</b><ArrowRight size={18} aria-hidden="true" /></button>
       </div>
     </nav>
+    {status?.canAnalyze && <section className="gai-scheduled" aria-label="Soccer game analysis">
+      <h3>Pull picks from soccer games</h3>
+      <p className="gai-note">Choose a league below, select the Eastern game date, and load upcoming games. Select a matchup, then run analysis to pull its supported picks. Review the saved report before publishing. Opening this section or loading games uses no odds credits; running analysis may use the displayed credits.</p>
+      <div className="gai-view-switch" role="group" aria-label="Soccer leagues">
+        {soccerSports.map((league) => <button type="button" key={league} disabled={busy}
+          aria-pressed={candidateView && sport === league} onClick={() => openSoccerGames(league)}>{league === 'EPL' ? 'Premier League' : league}</button>)}
+      </div>
+    </section>}
     {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
     {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
     {status?.canAnalyze && <section id="gai-saved-games" className="gai-scheduled" aria-label="Saved analyses">
@@ -513,7 +536,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       </div>
       <p className="gai-note">Saved, admin-published picks. Selecting a game never triggers a paid provider call.</p>
     </section>}
-    {candidateView && status && <details className="gai-workspace"><summary>New analysis &amp; settings</summary>
+    {candidateView && status && <details id="gai-analysis-workspace" className="gai-workspace"><summary>New analysis &amp; settings</summary>
     {!status.oddsReady && <p className="feed-warning" role="status">Sportsbook analysis is unavailable until an admin configures The Odds API on the server. Open provider setup below.</p>}
     <section className="gai-admin" aria-label="Admin analysis controls">
       <form className="gai-form" onSubmit={(event) => { event.preventDefault(); void request('analyze'); }}>

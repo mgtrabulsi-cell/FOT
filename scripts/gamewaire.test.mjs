@@ -12,6 +12,32 @@ import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
 import * as scoreboard from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import * as simulationBackend from '../supabase/functions/_shared/nflSimulationBackend.ts';
 import * as simulationAlignment from '../supabase/functions/_shared/nflSimulationAlignment.ts';
+test('Soccer shortcuts open league analysis without requesting or publishing odds', () => {
+  const source = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
+  const helper = source.match(/const openSoccerGames =[\s\S]*?\n  };/)?.[0];
+  assert.ok(helper);
+  const code = ts.transpileModule(helper, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  for (const canAnalyze of [true, false]) {
+    const changes = [], workspace = { open: false, scrollIntoView() { changes.push('scroll'); },
+      querySelector() { return { focus() { changes.push('focus'); } }; } };
+    const context = vm.createContext({ status: { canAnalyze },
+      setSection: value => changes.push(['section', value]), setMemberSport: value => changes.push(['memberSport', value]),
+      setMemberGame: value => changes.push(['memberGame', value]), openPublishedPicks: () => changes.push('published'),
+      changeSport: value => changes.push(['sport', value]), setPickView: value => changes.push(['view', value]),
+      setSelectedRun: value => changes.push(['run', value]), setSettings: update => changes.push(['player', update({ player: 'Old NBA player' }).player]),
+      setActionError() {}, setNotice() {}, window: { requestAnimationFrame: callback => callback(), matchMedia: () => ({ matches: true }) },
+      document: { getElementById: id => { assert.equal(id, 'gai-analysis-workspace'); return workspace; } },
+      engineRequest: () => { throw new Error('Shortcut must not request odds'); },
+    });
+    vm.runInContext(`${code}\nopenSoccerGames('Serie A');`, context);
+    assert.ok(changes.some(value => Array.isArray(value) && value[0] === 'memberSport' && value[1] === 'Serie A'));
+    assert.equal(workspace.open, canAnalyze);
+    if (canAnalyze) {
+      assert.ok(changes.some(value => Array.isArray(value) && value[0] === 'sport' && value[1] === 'Serie A'));
+      assert.ok(changes.some(value => Array.isArray(value) && value[0] === 'player' && value[1] === ''));
+    } else assert.ok(changes.includes('published'));
+  }
+});
 import * as soccer from '../supabase/functions/_shared/gamewaireSoccer.ts';
 import { completedSavedGames, isSavedGamePastReview, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
 
@@ -771,7 +797,13 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(renderToStaticMarkup(createElement(Page)), /Run analysis · up to 2 credits/, 'Required team markets are not counted twice');
   assert.match(admin, /Publish 0\/4 picks/);
   assert.match(admin, /ODDS_API_KEY/);
-  assert.match(admin, /<details class="gai-workspace"><summary>New analysis &amp; settings/);
+  assert.match(admin, /<details id="gai-analysis-workspace" class="gai-workspace"><summary>New analysis &amp; settings/);
+  assert.match(admin, /aria-label="Soccer game analysis"/);
+  assert.match(admin, /aria-label="Soccer leagues"/);
+  assert.match(admin, /Soccer games &amp; picks/);
+  assert.match(admin, /Pull picks from soccer games/);
+  assert.doesNotMatch(report, /aria-label="Soccer game analysis"/, 'Member soccer access must not expose analysis controls');
+  assert.match(report, /Published soccer picks/);
   assert.doesNotMatch(admin, /class="feed-warning"[^>]*>This baseline/);
   assert.match(admin, /<summary>Data notes &amp; excluded markets/);
   assert.match(admin, /class="gai-evidence"><summary>Admin stats &amp; source observations/);
