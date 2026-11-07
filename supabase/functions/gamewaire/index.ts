@@ -3,7 +3,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isNFLPrimetime, markets, modelVersion, probabilityModelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport, TeamLean } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
-import { planScheduledAnalyses } from '../_shared/gamewaireSchedule.ts';
+import { planScheduledAnalyses, scheduledMarkets } from '../_shared/gamewaireSchedule.ts';
 import type { ScheduledJob } from '../_shared/gamewaireSchedule.ts';
 import { loadPickLearning } from '../_shared/gamewirePickLearning.ts';
 import { scoreboardPicks } from '../_shared/gamewaireScoreboard.ts';
@@ -119,13 +119,13 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (claimed.error) throw new Error('Could not claim the next scheduled analysis.');
       if (!claimed.data) return json({ status: 'idle' });
       const job = object(claimed.data);
-      if (typeof job.id !== 'string' || (job.sport !== 'NBA' && job.sport !== 'NFL') || typeof job.event_id !== 'string'
+      if (typeof job.id !== 'string' || (job.sport !== 'NBA' && job.sport !== 'NFL' && !isSoccer(text(job.sport))) || typeof job.event_id !== 'string'
         || typeof job.event_start !== 'string' || typeof job.matchup !== 'string' || typeof job.selection_note !== 'string')
         throw new Error('Scheduled job data is invalid.');
-      scheduledJob = { id: job.id, sport: job.sport, event_id: job.event_id, event_start: job.event_start,
+      scheduledJob = { id: job.id, sport: job.sport as Sport, event_id: job.event_id, event_start: job.event_start,
         matchup: job.matchup, selection_note: job.selection_note };
       body = { action: 'analyze', sport: scheduledJob.sport, eventId: scheduledJob.event_id,
-        settings: { ...defaultSettings, markets: ['h2h', 'spreads'] } };
+        settings: { ...defaultSettings, markets: scheduledMarkets(scheduledJob.sport) } };
       canAnalyze = true;
     } else {
       const verified = await client.auth.getUser();
@@ -290,6 +290,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     }
     if (cached.data && ['completed', 'no_qualifying', 'insufficient_data'].includes(cached.data.status)
       && object(cached.data.payload).modelVersion === (isSoccer(sport) ? soccerModelVersion : modelVersion)
+      && (!isSoccer(sport) || !playerAnalysis || object(cached.data.payload).soccerPropCoverageVersion === 'single-sided-v1')
       && (!minimumPlayerPicks || object(cached.data.payload).playerPropMinimum === minimumPlayerPicks)
       && Date.parse(cached.data.event_start) > Date.now() && Date.now() - Date.parse(cached.data.created_at) < 600_000
       && array(object(cached.data.payload).picks).every((value) => {
@@ -354,6 +355,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));
     if (missingMarkets.length) report.warnings.push(`Requested markets not returned: ${missingMarkets.join(', ')}. These may not be posted yet or included in the subscription; no picks were invented for missing markets.`);
     report = { ...report, modelVersion: isSoccer(sport) ? soccerModelVersion : modelVersion, providerUsage, playerPropMinimum: minimumPlayerPicks,
+      ...(isSoccer(sport) && playerAnalysis ? { soccerPropCoverageVersion: 'single-sided-v1' } : {}),
       ...(scheduledJob ? { scheduled: { jobId: scheduledJob.id, selectionNote: scheduledJob.selection_note } } : {}) };
     const finished = await admin.rpc('gamewaire_finish', { target_run: runId, final_status: report.status, report, candidates: report.picks });
     if (finished.error) {

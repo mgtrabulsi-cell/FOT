@@ -493,7 +493,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       </label>
       <details className="gai-schedule-details"><summary>Scheduled shortlists &amp; job status</summary>
       <details><summary>Schedule &amp; analysis costs · 1 AM Eastern</summary>
-      <p className="gai-note">NBA: daily at 1 AM Eastern. NFL: Thursdays at 1 AM Eastern for every upcoming game through Wednesday. Moneyline/spread only, up to 2 credits per game. Game leans stay private until you review and publish; player markets run only when you explicitly request them.
+      <p className="gai-note">NBA and all four soccer leagues: daily at 1 AM Eastern. NFL: Thursdays at 1 AM Eastern for every upcoming game through Wednesday, with next-week catch-up from Tuesday noon. NBA/NFL: moneyline/spread; soccer: match result/totals only, up to 2 credits per game. Soccer shares a 40-attempt / 80-credit Eastern daily cap; budget and low-balance skips are shown below. Game leans stay private until you review and publish; player markets run only when you explicitly request them.
         Accessing saved reports costs 0. Jobs run once, one at a time; missing markets or failures are not automatically retried. No game lean or Top Pick publishes automatically.</p></details>
       {!batches.length && <p>No scheduled batches yet. The next batch starts at 1 AM Eastern.</p>}
       {batches.filter((batch) => batch.status !== 'ready' || reviewJobs.some((job) => job.batch_id === batch.id)).map((batch) => <section key={batch.id} className="gai-scheduled-batch"><h3>{batch.sport} · {batch.game_date}</h3>

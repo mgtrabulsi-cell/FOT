@@ -616,7 +616,13 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     {restoringWeek && <p className="nfl-data-note" role="status">Showing saved posts from Week {savedFeed.week}. Updating the selected week in the background.</p>}
     {(!season || !week) && !savedFeed ? <p role="status">Waiting for the selected NFL week...</p> : !loaded && !loadError ? <p role="status">{news ? 'Loading Fantasy News...' : 'Loading The Angle...'}</p> : loaded && !published.length && <p className="angle-empty">{news ? rows.some((row) => row.status === 'published') ? 'No Fantasy News matches this filter.' : 'No Fantasy News published for this week yet.' : 'No angles published for this week yet. Verified storylines from the GameWire desk will appear here.'}</p>}
     {admin && visible && <XPublishingStatus />}
-    <div className={`angle-cards${news ? '' : ' angle-cards-collapsible'}`} ref={readObserver.root}>{published.map((angle) => <article className={`angle-card${news ? '' : ' angle-card-collapsible'}${angle.pinned_at ? ' angle-card-pinned' : ''}`} id={`angle-${angle.id}`} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}>
+    <div className={`angle-cards${news ? '' : ' angle-cards-collapsible'}`} ref={readObserver.root}>{published.map((angle) => <article className={`angle-card${news ? '' : ' angle-card-collapsible'}${angle.pinned_at ? ' angle-card-pinned' : ''}`} id={`angle-${angle.id}`} key={angle.id} tabIndex={angle.id === storyId ? -1 : undefined} aria-label={angle.id === storyId ? 'Storyline opened from notification' : undefined}
+      data-expanded={news ? undefined : expandedPosts.includes(angle.id)}
+      onClick={(event) => {
+        if (news || expandedPosts.includes(angle.id) || event.defaultPrevented || !(event.target instanceof Element)
+          || event.target.closest('button, a, input, textarea, select, label, summary, [role="button"], [contenteditable]:not([contenteditable="false"])')) return;
+        setExpandedPosts((previous) => previous.includes(angle.id) ? previous : [...previous, angle.id]);
+      }}>
       {!news && (admin
         ? <button type="button" className={`angle-pin-button${angle.pinned_at ? ' is-pinned' : ''}`} disabled={busy} aria-pressed={!!angle.pinned_at} title={angle.pinned_at ? 'Unpin this post' : 'Pin this post to the top of the feed'} aria-label={angle.pinned_at ? `Unpin ${angle.title}` : `Pin ${angle.title} to the top of the feed`} onClick={() => void togglePin(angle)}><Pin size={13} aria-hidden="true" /></button>
         : angle.pinned_at ? <span className="angle-pin-button is-pinned" role="img" title="Pinned post" aria-label="Pinned post"><Pin size={13} aria-hidden="true" /></span> : null)}

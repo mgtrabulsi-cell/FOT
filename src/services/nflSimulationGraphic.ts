@@ -209,7 +209,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   });
   text(`QB scenario: ${scenario.label}`, 40, height - 71, portrait ? 28 : 20, 1520, muted);
   text(`${date} ET`, 40, height - 27, 19, 450, muted);
-  text('Simulated outcomes, not guarantees. Usage-ranked; participation assumed.', 495, height - 27, 18, 850, muted);
+  text(scenario.overtime ? 'OT score-only; player stats regulation. Mean scores may match. Uncalibrated.' : 'Simulated outcomes, not guarantees. Usage-ranked; participation assumed.', 495, height - 27, 18, 850, muted);
   text('gamewire.us', 1360, height - 27, 24, 200, white, true);
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
     : reject(new Error('Your browser could not export the PNG. Retry.')), 'image/png'));

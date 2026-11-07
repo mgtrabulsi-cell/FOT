@@ -15,5 +15,11 @@ test('soccer migration preserves permissions, locks, manual review, settlement/a
         : readFileSync(new URL(`../supabase/${name}.sql`, import.meta.url), 'utf8'));
     for (const name of ['gamewaire-saved-lean-publishing', 'gamewaire-soccer'])
       await db.exec(readFileSync(new URL(`../supabase/tests/${name}.sql`, import.meta.url), 'utf8'));
+    await db.exec(readFileSync(new URL('../supabase/gamewaire-model-schedule.sql', import.meta.url), 'utf8')
+      .split("select cron.unschedule(jobid)")[0] + 'commit;');
+    for (const name of ['gamewaire-soccer-daily-schedule', 'gamewaire-soccer-daily-schedule'])
+      await db.exec(readFileSync(new URL(`../supabase/${name}.sql`, import.meta.url), 'utf8'));
+    for (const name of ['gamewaire-model-schedule', 'gamewaire-soccer-daily-schedule', 'gamewaire-saved-lean-publishing'])
+      await db.exec(readFileSync(new URL(`../supabase/tests/${name}.sql`, import.meta.url), 'utf8'));
   } finally { await db.close(); }
 });

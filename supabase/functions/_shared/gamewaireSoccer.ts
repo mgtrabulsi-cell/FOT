@@ -81,6 +81,7 @@ export async function collectSoccerEvidence(quotes: Quote[], matchup: Matchup, n
   const warnings: string[] = ['Experimental soccer analysis; probabilities are not calibrated guarantees. Regulation time (90 minutes plus stoppage time) only; cups, extra time and shootouts excluded.'];
   const summaries = new Map<string, unknown>();
   const offered = [...new Set(quotes.filter(row => row.market.startsWith('player_')).map(row => row.subject))];
+  if (quotes.some(row => row.priceCoverage === 'single-sided')) warnings.push('Some player markets provide only one side. These use actual offered prices and verified appearance statistics; opposite odds and no-vig comparisons remain unavailable.');
   if (offered.length > 24) warnings.push('Only the first 24 offered player identities are checked; other props are explicitly excluded.');
   if (offered.length) {
     const games = [...new Map(teams.flatMap(row => row.games.slice(0, 12)).map(game => [game.eventId!, game])).values()];
@@ -135,7 +136,8 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     const reject = (reason: string) => rejected.push({ key: quote.key, reason });
     if (!Number.isFinite(Date.parse(quote.start)) || Date.parse(quote.start) <= now) { reject('Only upcoming regulation-time fixtures are eligible.'); continue; }
     if (!Number.isFinite(Date.parse(quote.updatedAt)) || now - Date.parse(quote.updatedAt) > 600_000 || Date.parse(quote.updatedAt) > now + 60_000) { reject('Stale or future odds.'); continue; }
-    if (quote.noVig === null || !Number.isFinite(quote.noVig) || quote.noVig <= 0 || quote.noVig >= 1) { reject('Complete matched three-way match-winner or two-way over/under sportsbook prices required.'); continue; }
+    const singleSided = quote.market.startsWith('player_') && quote.priceCoverage === 'single-sided' && quote.noVig === null;
+    if (!singleSided && (quote.noVig === null || !Number.isFinite(quote.noVig) || quote.noVig <= 0 || quote.noVig >= 1)) { reject('Complete matched three-way match-winner or two-way over/under sportsbook prices required; a verified single-sided player price is also supported.'); continue; }
     if (quote.market !== 'h2h' && (quote.line === null || quote.line < 0 || quote.line * 2 % 1 !== 0 || !['Over', 'Under'].includes(quote.side))) { reject('Only whole/half-goal or stat over/under lines are supported; quarter lines require split settlement.'); continue; }
     try { decimalOdds(quote.american); } catch { reject('Invalid sportsbook price.'); continue; }
     if (quote.market.startsWith('player_') && quote.american < -200) { reject('Player price worse than -200 excluded.'); continue; }
@@ -186,10 +188,12 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
       const rows = [...data.samples].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, count);
       return rows.reduce((sum, row) => sum + row.value, 0) / rows.length;
     };
+    const priceRisks = quote.priceCoverage === 'single-sided'
+      ? [...data.risks, 'Single-sided sportsbook player market: no opposite price was supplied. No no-vig probability or opposite selection is inferred. Value screens compare verified appearance estimates with the actual offered price.'] : data.risks;
     const pick: Candidate = { ...quote, modelVersion: soccerModelVersion, probability: win, pushProbability: push, implied, edge, ev, conservativeEV,
       projection, sampleSize: data.samples.length, effectiveSample: n, last5: observedAverage(5), last10: observedAverage(10), seasonAverage: observedAverage(data.samples.length),
-      quality: data.quality, dataAt: data.fetchedAt, samples: data.samples, risks: data.risks, facts, explanation: [...facts, ...data.risks].join(' '),
-      identifiers: data.identifiers, matchupForm: data.matchupForm, fairAmerican: fairAmericanOdds(conditional), noVigEdge: conditional - quote.noVig!,
+      quality: data.quality, dataAt: data.fetchedAt, samples: data.samples, risks: priceRisks, facts, explanation: [...facts, ...priceRisks].join(' '),
+      identifiers: data.identifiers, matchupForm: data.matchupForm, fairAmerican: fairAmericanOdds(conditional), noVigEdge: quote.noVig === null ? null : conditional - quote.noVig,
       baseline: 'Experimental same-league current-season scoring/appearance baseline; no guarantee.' };
     pick.valueClass = valueClassification(pick);
     supported.push(pick);

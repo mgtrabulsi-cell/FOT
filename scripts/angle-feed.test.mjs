@@ -33,13 +33,17 @@ const code = ts.transpileModule(component.getText(parsed).replace('export defaul
 }).outputText;
 
 function fixture(saved = null) {
+  class ClickTarget {
+    constructor(interactive = false) { this.interactive = interactive; }
+    closest() { return this.interactive ? this : null; }
+  }
   const hooks = [], requests = [], listeners = new Set();
   let cursor = 0, changed = false, effects = [], tree;
   const props = { user: null, games: [], season: 2026, week: 7, active: false };
   const jsx = (type, props) => ({ type, props });
   const context = vm.createContext({
     ...angles, ...picks, postThemes,
-    exports: {}, require: () => ({ jsx, jsxs: jsx }), console, AbortController,
+    exports: {}, require: () => ({ jsx, jsxs: jsx }), console, AbortController, Element: ClickTarget,
     errorMessage: (cause) => cause.message, generalMatchups: [],
     readRenderSnapshot: () => saved,
     saveRenderSnapshot: (_kind, _key, data) => { saved = data; },
@@ -89,6 +93,7 @@ function fixture(saved = null) {
   }
   return {
     props, requests, render, text: () => JSON.stringify(tree), saved: () => saved,
+    clickTarget: interactive => new ClickTarget(interactive),
     async settle() { await new Promise((resolve) => setImmediate(resolve)); render(); },
     unmount: () => hooks.forEach((hook) => hook?.cleanup?.()),
   };
@@ -113,6 +118,30 @@ function findNode(node, predicate) {
   if (!node || typeof node !== 'object') return undefined;
   return predicate(node) ? node : findNode(node.props?.children, predicate);
 }
+test('Clicking collapsed card text or padding opens it, while controls and open content retain their actions', () => {
+  const app = fixture({ season: 2026, week: 7, rows: [story] });
+  app.props.active = true;
+  try {
+    let tree = app.render();
+    const card = () => findNode(tree, node => node.type === 'article' && node.props.id === `angle-${story.id}`);
+    const toggle = () => findNode(tree, node => node.props?.className === 'angle-post-toggle');
+    assert.equal(card().props['data-expanded'], false);
+    card().props.onClick({ target: app.clickTarget(true) }); tree = app.render();
+    assert.equal(card().props['data-expanded'], false, 'Nested controls do not trigger card expansion');
+    card().props.onClick({ target: app.clickTarget(false), defaultPrevented: true }); tree = app.render();
+    assert.equal(card().props['data-expanded'], false);
+    card().props.onClick({ target: app.clickTarget(false) }); tree = app.render();
+    assert.equal(card().props['data-expanded'], true);
+    assert.match(app.text(), /Saved analysis/);
+    card().props.onClick({ target: app.clickTarget(false) }); tree = app.render();
+    assert.equal(card().props['data-expanded'], true, 'Reading expanded content does not collapse it');
+    toggle().props.onClick();
+    card().props.onClick({ target: app.clickTarget(true) }); tree = app.render();
+    assert.equal(card().props['data-expanded'], false, 'The native title button still closes without a bubbling reopen');
+    toggle().props.onClick(); tree = app.render();
+    assert.equal(card().props['data-expanded'], true, 'Native button activation still opens the post');
+  } finally { app.unmount(); }
+});
 
 test('Collapsed Angle titles prefix the first assigned theme only and remove it while expanded', () => {
   for (const [themes, label] of [[['betting'], 'Betting'], [['fantasy'], 'Fantasy'], [['news'], 'News'], [['betting', 'news'], 'Betting'], [undefined, 'News'], [[], null]]) {

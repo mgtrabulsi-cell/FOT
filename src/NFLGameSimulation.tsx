@@ -194,7 +194,8 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
           {scenario?.issue && <p role="status">This quarterback scenario is not available yet.</p>}
           {scenario?.home && scenario.away && (
             <>
-              <p className="nfl-simulation-caption">Projected final score · {displayed.evidenceMode === 'team-only' ? 'Verified final-score history' : 'Rounded stat lines'} · {displayed.runs.toLocaleString()} joint draws</p>
+              <p className="nfl-simulation-caption">Projected final score · {displayed.evidenceMode === 'team-only' ? 'Verified score history' : 'Rounded stat lines'} · {displayed.runs.toLocaleString()} joint draws
+                {scenario.overtime && <> · Empirical overtime included; player stats cover regulation only. Genuine regular-season ties and equal rounded averages remain possible.</>}</p>
               {admin && <div className="nfl-simulation-graphic-downloads">
               <ResultsGraphicDownload key={`${game.eventId}-${scenario.id}`} label="Download game graphic" disabled={false}
                 generate={() => renderSimulationGraphic(scenario, game.date, { away: game.away.color, home: game.home.color })}
@@ -211,7 +212,8 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
               </div>}
               <details className="nfl-simulation-score-details"><summary>Score expectations & ranges</summary>
                 {[scenario.away, scenario.home].map(team => <p key={team.id}>{team.abbr}: expected {team.score.mean.toFixed(2)} points · 10th–90th: {team.score.p10}–{team.score.p90} · Outscored opponent in {(team.winProbability * 100).toFixed(1)}% of draws</p>)}
-                <p>{((scenario.tieProbability ?? 0) * 100).toFixed(1)}% tied-score draws; overtime is not separately simulated.</p>
+                <p>{((scenario.tieProbability ?? 0) * 100).toFixed(1)}% {scenario.overtime ? 'final ties after empirical possession overtime' : 'tied-score draws; overtime was not separately simulated in this archived model'}.
+                  {scenario.overtime && <> Overtime in {(scenario.overtime.probability * 100).toFixed(1)}% of draws; score-only, with no invented player production. Equal rounded averages do not imply a tied game.</>}</p>
               </details>
               {displayed.evidenceMode === 'team-only' ? <p className="nfl-simulation-caption">Player stat lines, touchdown accounting and numerical starter/injury adjustments are not supported by the available evidence. No missing player production is filled with zeros.</p>
                 : selectedTeam && <div className="nfl-simulation-teams">

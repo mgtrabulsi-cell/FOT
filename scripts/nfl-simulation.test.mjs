@@ -12,17 +12,114 @@ import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboa
 import { advanceSimulation, prepareSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
 import { loadNFLGameSimulation, runNFLGameSimulation, savedNFLGameSimulation, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
 import { loadSimulationLearning, simulationLearningBaselines } from '../supabase/functions/_shared/nflSimulationLearning.ts';
+import { readOvertimeDrives, simulateOvertime, validateOvertimeEvidence } from '../supabase/functions/_shared/nflSimulationOvertime.ts';
+import { PGlite } from '@electric-sql/pglite';
 
 const now = Date.parse('2026-11-05T18:00:00Z');
 const game = { id: '90000', date: '2026-11-15T18:00:00Z', season: 2026, seasonType: 2,
   home: { id: '1', name: 'Home Team', abbr: 'HOM' }, away: { id: '2', name: 'Away Team', abbr: 'AWY' } };
 const date = i => new Date(now - (i + 1) * 7 * 86400000).toISOString();
+const possession = (points, seconds = 180, defensePoints = 0) => ({
+  eventId: '100', driveId: '1', teamId: '1', seconds, offensePoints: points, defensePoints,
+});
+const otEvidence = (home, away) => ({ home: [home], away: [away] });
+test('Overtime opening TD permits second opportunity, unmatched reply loses, matched reply reaches sudden death', () => {
+  assert.deepEqual(simulateOvertime(20, 20, 2, otEvidence(possession(7), possession(3)), () => 0),
+    { home: 27, away: 23, played: true });
+  assert.deepEqual(simulateOvertime(20, 20, 2, otEvidence(possession(7), possession(7)), () => 0),
+    { home: 33, away: 27, played: true });
+  assert.deepEqual(simulateOvertime(20, 20, 2, otEvidence(possession(0, 180, 2), possession(7)), () => 0),
+    { home: 20, away: 22, played: true });
+});
+test('Regular season clock expiry preserves genuine ties and can deny a completed second opportunity', () => {
+  assert.deepEqual(simulateOvertime(20, 20, 2, otEvidence(possession(7, 300), possession(7, 300)), () => 0),
+    { home: 27, away: 27, played: true });
+  assert.deepEqual(simulateOvertime(20, 20, 2, otEvidence(possession(0, 400), possession(7, 400)), () => 0),
+    { home: 20, away: 20, played: true });
+  assert.deepEqual(simulateOvertime(20, 20, 2, otEvidence(possession(3, 400), possession(7, 400)), () => 0),
+    { home: 23, away: 20, played: true });
+});
+test('Postseason repeats 15-minute periods without ties; non-tied regulation draws consume no randomness', () => {
+  assert.deepEqual(simulateOvertime(20, 20, 3, otEvidence(possession(7, 700), possession(7, 700)), () => 0),
+    { home: 33, away: 27, played: true });
+  assert.deepEqual(simulateOvertime(21, 20, 3, { home: [], away: [] }, () => { throw Error('Unexpected draw'); }),
+    { home: 21, away: 20, played: false });
+  assert.throws(() => simulateOvertime(20, 20, 3, otEvidence(possession(0), possession(0)), () => 0), /safety bound/);
+});
+test('Overtime evidence requires both teams, completed non-partial drives and distinct prior games', () => {
+  assert.throws(() => validateOvertimeEvidence({ home: [], away: [] }), /24 verified/);
+  const box = rawBox(fixture().history.home[0]);
+  assert.equal(readOvertimeDrives(box, box.header.id).length, 8);
+  box.drives.previous[0].result = 'END OF HALF';
+  box.drives.previous[1].plays = [{ type: { text: 'Kickoff' }, homeScore: 0, awayScore: 0 }];
+  box.drives.previous[2].start.period.number = 5;
+  assert.equal(readOvertimeDrives(box, box.header.id).length, 5);
+  const parsed = simulationBox(box, box.header.id, now);
+  assert.equal(parsed.regulationOnly, true);
+  box.header.competitions[0].competitors[0].linescores.push({ displayValue: '0' });
+  assert.equal(simulationBox(box, box.header.id, now).regulationOnly, false, 'Even scoreless historical OT is excluded');
+});
+test('Overtime full-model scores retain exact regulation player accounting and archive metadata', () => {
+  const f = fixture(), evidence = {
+    home: f.history.home.flatMap(box => box.overtimeDrives).filter(row => row.teamId === game.home.id),
+    away: f.history.away.flatMap(box => box.overtimeDrives).filter(row => row.teamId === game.away.id),
+  };
+  const scenarios = simulateNFLGame(game, f.history, f.players, f.observations, 500, undefined, evidence);
+  for (const scenario of scenarios) {
+    assert.equal(scenario.overtime.attribution, 'score-only');
+    for (const team of [scenario.home, scenario.away]) {
+      const box = roundedSimulationBox(team);
+      assert.ok(box.scoring.otherPoints >= 0);
+      assert.equal(box.totals.passingYards, box.listed.receivingYards);
+    }
+  }
+  const data = response(scenarios);
+  assert.deepEqual(readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' }).scenarios, scenarios);
+  const invalid = structuredClone(data); invalid.scenarios[0].overtime.samples.home = 0;
+  assert.throws(() => readNFLGameSimulation(invalid, game.id, game.date, { home: '1', away: '2' }), /invalid/);
+  const unverified = structuredClone(f.history); delete unverified.home[0].regulationOnly;
+  assert.throws(() => simulateNFLGame(game, unverified, f.players, f.observations, 500, undefined, evidence), /regulation-only/);
+  const finals = { home: scoreReferences(f.history.home), away: scoreReferences(f.history.away) };
+  assert.throws(() => simulateNFLTeamScore(game, finals, 500, evidence), /verified prior final scores/);
+  for (const refs of [finals.home, finals.away]) refs.forEach(ref => { ref.regulationOnly = true; });
+  const scoreOnly = simulateNFLTeamScore(game, finals, 500, evidence);
+  assert.equal(scoreOnly.overtime.attribution, 'score-only'); assert.equal(scoreOnly.home.totals, null);
+});
+test('SQL archives v5 overtime metadata and retains older v4 model rows without mutation', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec('create role anon; create role authenticated; create role service_role;');
+    const sql = readFileSync(new URL('../supabase/nfl-game-simulations.sql', import.meta.url), 'utf8');
+    await db.exec(sql.slice(0, sql.indexOf('create or replace function public.gamewire_lock_game_simulation')) + '\ncommit;');
+    const token = '00000000-0000-4000-8000-000000000001';
+    await db.query('select public.gamewire_claim_simulation($1,$2::uuid)', [game.id, token]);
+    const f = fixture(), evidence = {
+      home: f.history.home.flatMap(box => box.overtimeDrives).filter(row => row.teamId === game.home.id),
+      away: f.history.away.flatMap(box => box.overtimeDrives).filter(row => row.teamId === game.away.id),
+    };
+    const kickoff = new Date(Date.now() + 86400000).toISOString();
+    const payload = response(simulateNFLGame(game, f.history, f.players, f.observations, 500, undefined, evidence), { kickoff });
+    const forecast = { event_id: game.id, event_start: kickoff, season: 2026, season_type: 2, model_version: nflSimulationVersion, payload };
+    const result = await db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb) as payload', [token, JSON.stringify(forecast)]);
+    assert.equal(result.rows[0].payload.scenarios[0].overtime.method, 'empirical-possession-bootstrap-v1');
+    const invalid = structuredClone(forecast); delete invalid.payload.scenarios[0].overtime;
+    await assert.rejects(db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb)', [token, JSON.stringify(invalid)]), /Invalid verified/);
+    const legacy = structuredClone(forecast); legacy.model_version = previousNFLSimulationVersion; legacy.payload.version = previousNFLSimulationVersion;
+    legacy.payload.scenarios.forEach(scenario => { delete scenario.overtime; });
+    await db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb)', [token, JSON.stringify(legacy)]);
+    const rows = await db.query('select model_version,payload from public.gamewire_game_forecasts order by model_version');
+    assert.equal(rows.rows.length, 2);
+    assert.equal(rows.rows[0].model_version, previousNFLSimulationVersion);
+    assert.equal(rows.rows[0].payload.scenarios[0].overtime, undefined);
+    readNFLGameSimulation(rows.rows[0].payload, game.id, kickoff, { home: '1', away: '2' });
+  } finally { await db.close(); }
+});
 const partial = (passingAttempts, completions, passingYards, rushingAttempts, rushingYards, receptions, receivingYards) =>
   Object.fromEntries(Object.entries({ passingAttempts, completions, passingYards, passingTouchdowns: passingAttempts === undefined ? undefined : 2,
     rushingAttempts, rushingYards, rushingTouchdowns: rushingAttempts === undefined ? undefined : 1,
     receptions, receivingYards, receivingTouchdowns: receptions === undefined ? undefined : 1 }).filter(([, n]) => n !== undefined));
 
-test('Simulation learning uses realized settled games, original baselines and later-game validation without counting scenarios twice', async () => {
+test('v5 learning remains neutral because settled player actuals include overtime', async () => {
   const clock = Date.parse('2026-11-07T12:00:00Z');
   const rows = Array.from({ length: 50 }, (_, i) => {
     const start = new Date(clock - (60 - i) * 86400000).toISOString();
@@ -42,8 +139,8 @@ test('Simulation learning uses realized settled games, original baselines and la
   } };
   const learned = await loadSimulationLearning(admin, clock);
   for (const adjustment of Object.values(learned)) {
-    assert.equal(adjustment.active, true); assert.equal(adjustment.adjustment, 1.1);
-    assert.equal(adjustment.trainingGames + adjustment.validationGames, 50);
+    assert.equal(adjustment.active, false); assert.equal(adjustment.adjustment, 1);
+    assert.equal(adjustment.trainingGames + adjustment.validationGames, 0);
   }
   rows.slice(37).forEach(row => row.actuals.teams.forEach(team => { team.points = 18; team.passingYards = 180; team.rushingYards = 90; }));
   assert.ok(Object.values(await loadSimulationLearning(admin, clock)).every(adjustment => !adjustment.active));
@@ -96,12 +193,21 @@ function fixture({ injured = false, weakDefense = 1, qbGames = 30, receiverYards
           : partial(undefined, undefined, undefined, undefined, undefined, 4, 42 + i % 3 * 5);
     return { eventId: String(30000 + Number(p.id) * 100 + i), date: date(i), teamId, opponentId: i % 3 === 0 ? p.teamId === '1' ? '2' : '1' : '8', player, team };
   })]));
+  for (const box of [...home, ...away]) {
+    box.regulationOnly = true;
+    box.overtimeDrives = readOvertimeDrives(rawBox(box), box.id);
+  }
   return { history: { home, away }, players, observations };
 }
 function rawBox(box) {
   return { header: { id: box.id, season: { year: box.season, type: box.seasonType }, competitions: [{
-    date: box.date, status: { type: { state: 'post', completed: true } }, competitors: box.teams.map(team => ({ homeAway: team.home ? 'home' : 'away', team: { id: team.id }, score: String(team.points) })),
-  }] }, boxscore: { players: box.teams.map(team => ({ team: { id: team.id }, statistics: [
+    date: box.date, status: { type: { state: 'post', completed: true } }, competitors: box.teams.map(team => ({ homeAway: team.home ? 'home' : 'away', team: { id: team.id }, score: String(team.points), linescores: [team.points, 0, 0, 0].map(n => ({ displayValue: String(n) })) })),
+  }] }, drives: { previous: box.teams.flatMap(team => Array.from({ length: 4 }, (_, i) => ({
+    id: `${box.id}-${team.id}-${i}`, team: { id: team.id }, result: i ? 'PUNT' : 'TD',
+    start: { period: { number: 1 } }, end: { period: { number: 1 } }, timeElapsed: { displayValue: '3:00' },
+    plays: [{ type: { text: 'Rush' }, homeScore: 0, awayScore: 0 },
+      { type: { text: 'Pass' }, homeScore: team.home && !i ? 7 : 0, awayScore: !team.home && !i ? 7 : 0 }],
+  }))) }, boxscore: { players: box.teams.map(team => ({ team: { id: team.id }, statistics: [
     { name: 'passing', keys: ['completions/passingAttempts', 'passingYards', 'passingTouchdowns'], athletes: [{ athlete: { id: `${team.id}1` }, stats: [`${team.completions}/${team.passingAttempts}`, String(team.passingYards), String(team.passingTouchdowns)] }] },
     { name: 'rushing', keys: ['rushingAttempts', 'rushingYards', 'rushingTouchdowns'], athletes: [{ athlete: { id: `${team.id}3` }, stats: [String(team.rushingAttempts), String(team.rushingYards), String(team.rushingTouchdowns)] }] },
     { name: 'receiving', keys: ['receptions', 'receivingYards', 'receivingTouchdowns'], athletes: [{ athlete: { id: `${team.id}4` }, stats: [String(team.receptions), String(team.receivingYards), String(team.receivingTouchdowns)] }] },
@@ -167,7 +273,7 @@ test('Team-only draws use verified scoring and opponent allowances without inven
   }
   assert.throws(() => readNFLGameSimulation({ ...data, evidenceMode: 'limited' }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
 });
-test('Unavailable rosters and partial schedule feeds still prepare an honest score-only forecast', async () => {
+test('Unavailable possession feeds do not fabricate overtime for a score-only forecast', async () => {
   const f = fixture(), cache = simulationCache();
   const get = async url => {
     const parsed = new URL(url), year = Number(parsed.searchParams.get('season')), phase = Number(parsed.searchParams.get('seasontype'));
@@ -180,23 +286,24 @@ test('Unavailable rosters and partial schedule feeds still prepare an honest sco
   assert.equal(job.history.home.length, 8); assert.equal(job.history.away.length, 8); assert.deepEqual(job.rosterPlayers, []);
   assert.ok(job.preparationIssues.length); assert.ok(job.warnings.some(warning => warning.includes('current roster')));
   const data = await advanceSimulation(game, job, cache, async () => { throw new Error('Box feed interruption'); }, now);
-  assert.equal(data.status, 'ready'); assert.equal(data.evidenceMode, 'team-only'); assert.equal(data.refreshing, true);
-  assert.deepEqual(data.history, { home: 8, away: 8, target: 100 });
-  assert.equal(data.scenarios[0].home.totals, null);
+  assert.equal(data.status, 'collecting'); assert.deepEqual(data.scenarios, []);
+  assert.ok(data.warnings.some(warning => warning.includes('Overtime requires')));
   readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' });
   job.history.home = job.history.home.slice(0, 7);
   const pending = await advanceSimulation(game, job, cache, async () => { throw new Error('Still unavailable'); }, now);
   assert.equal(pending.status, 'collecting'); assert.deepEqual(pending.scenarios, []);
-  assert.ok(pending.warnings.some(warning => warning.includes('at least eight')));
+  assert.ok(pending.warnings.some(warning => warning.includes('Overtime requires')));
 });
 test('Reduced cached team/player samples produce a box score without waiting for 100 team games', async () => {
   const f = fixture(), history = { home: scoreReferences(f.history.home.slice(0, 8)), away: scoreReferences(f.history.away.slice(0, 8)) };
   const job = { version: nflSimulationVersion, createdAt: new Date(now).toISOString(), history, rosterPlayers: f.players,
     players: null, injuries: [], warnings: [], logs: Object.fromEntries(f.players.map(player => [player.id,
       { season: game.season, done: true, refs: history[player.teamId === '1' ? 'home' : 'away'] }])) };
-  const values = new Map([...f.history.home.slice(0, 8), ...f.history.away.slice(0, 8)].map(box => [`nfl:simulation:box:v2:${box.id}`, simulationBox(rawBox(box), box.id, now)]));
-  const data = await advanceSimulation(game, job, simulationCache(values), async () => { throw new Error('Unexpected feed request'); }, now);
+  const values = new Map([...f.history.home.slice(0, 8), ...f.history.away.slice(0, 8)].map(box => [`nfl:simulation:box:v3:${box.id}`, simulationBox(rawBox(box), box.id, now)]));
+  const data = await advanceSimulation(game, job, simulationCache(values), async () => { throw new Error('Unexpected feed request'); }, now,
+    Object.fromEntries(['score', 'passingYards', 'rushingYards'].map(metric => [metric, { active: true, adjustment: 1.1 }])));
   assert.equal(data.status, 'ready'); assert.equal(data.evidenceMode, 'limited'); assert.equal(data.refreshing, false);
+  assert.ok(Object.values(data.learning.adjustments).every(adjustment => !adjustment.active && adjustment.adjustment === 1));
   assert.ok(data.scenarios[0].home.players.find(player => player.id === '11').stats.passingYards);
   assert.ok(data.scenarios.every(scenario => scenario.issue === null));
   readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' });
@@ -566,11 +673,11 @@ function backendFixture({ ready = false, locked = false, archiveFailure = false,
   const job = { version: nflSimulationVersion, createdAt: new Date().toISOString(), history: { home: refs(f.history.home), away: refs(f.history.away) },
     rosterPlayers: f.players, players: f.players, warnings: [], injuries: [], logs: {} };
   if (stale) initial.forecastAt = new Date(Date.now() - 15 * 60000).toISOString();
-  const cache = new Map([...f.history.home, ...f.history.away].map(box => [`nfl:simulation:box:v2:${box.id}`, box]));
+  const cache = new Map([...f.history.home, ...f.history.away].map(box => [`nfl:simulation:box:v3:${box.id}`, box]));
   for (const p of f.players) {
     const observations = f.observations.get(p.id), references = observations.map(row => {
-      const own = { ...row.team, players: { [p.id]: row.player } }, box = { id: row.eventId, date: row.date, season: 2026, seasonType: 2, teams: [own, side(row.opponentId, false)] };
-      cache.set(`nfl:simulation:box:v2:${box.id}`, box);
+      const own = { ...row.team, players: { [p.id]: row.player } }, box = { id: row.eventId, date: row.date, season: 2026, seasonType: 2, regulationOnly: true, teams: [own, side(row.opponentId, false)] };
+      cache.set(`nfl:simulation:box:v3:${box.id}`, box);
       return { id: box.id, date: box.date, season: 2026, seasonType: 2, teamId: own.id, opponentId: row.opponentId };
     });
     job.logs[p.id] = { done: true, season: 2026, refs: references };
@@ -794,7 +901,7 @@ test('Simulation UI renders scenario selection, ranges, transfer coverage, error
   const html = simulationMarkup(data, 'Feed issue', '', true);
   assert.match(html, /Quarterback scenario/); assert.match(html, /Includes prior teams/); assert.match(html, /10th/);
   assert.match(html, /Saved projections remain available/); assert.match(html, /Feed issue/);
-  assert.match(html, /overtime is not separately simulated/); assert.doesNotMatch(html, /<img/);
+  assert.match(html, /overtime was not separately simulated in this archived model/); assert.doesNotMatch(html, /<img/);
   assert.match(html, /role="region"/); assert.match(html, /scope="col"/);
   const tables = html.match(/<table>[\s\S]*?<\/table>/g);
   assert.equal(tables.length, 3);
@@ -1019,7 +1126,7 @@ test('Team-only UI shows scores without fabricated box scores, QB assumptions or
   const f = fixture(), history = { home: scoreReferences(f.history.home.slice(0, 8)), away: scoreReferences(f.history.away.slice(0, 8)) };
   const data = response([simulateNFLTeamScore(game, history, 500)], { evidenceMode: 'team-only', history: { home: 8, away: 8, target: 100 } });
   const html = simulationMarkup(data);
-  assert.match(html, /Verified final-score history/); assert.match(html, /No missing player production is filled with zeros/);
+  assert.match(html, /Verified score history/); assert.match(html, /No missing player production is filled with zeros/);
   assert.doesNotMatch(html, /<table|Quarterback scenario|nfl-simulation-accounting|role="alert"/);
   assert.match(simulationMarkup(data, '', '', true), /8 home-team \/ 8 away-team/);
 });
@@ -1049,9 +1156,9 @@ test('Background collection continues to older career seasons after 30 player re
   const state = { season: 2026, refs: refs('home').slice(0, 30), done: false };
   const job = { version: nflSimulationVersion, createdAt: new Date(now).toISOString(), history: { home: refs('home'), away: refs('away') },
     rosterPlayers: [player], players: [player], injuries: [], warnings: [], logs: { [player.id]: state } };
-  const values = new Map([...f.history.home, ...f.history.away].map(box => [`nfl:simulation:box:v2:${box.id}`, simulationBox(rawBox(box), box.id, now)]));
+  const values = new Map([...f.history.home, ...f.history.away].map(box => [`nfl:simulation:box:v3:${box.id}`, simulationBox(rawBox(box), box.id, now)]));
   const extra = { ...f.history.home[1], id: '901000', date: new Date(now - 86400000).toISOString(), season: 2026, seasonType: 2 };
-  values.set(`nfl:simulation:box:v2:${extra.id}`, simulationBox(rawBox(extra), extra.id, now));
+  values.set(`nfl:simulation:box:v3:${extra.id}`, simulationBox(rawBox(extra), extra.id, now));
   const logs = { filters: [{ name: 'season', value: '2026', options: [{ value: '2026' }, { value: '2025' }] }],
     names: ['passingAttempts'], events: { [extra.id]: { gameDate: extra.date, team: { id: '1' }, opponent: { id: '3' } } },
     seasonTypes: [{ displayName: '2026 Regular Season', categories: [{ events: [{ eventId: extra.id, stats: ['35'] }] }] }] };

@@ -29,6 +29,7 @@ export type Quote = {
   key: string; eventId: string; sport: Sport; start: string; home: string; away: string;
   market: string; subject: string; side: string; line: number | null; american: number;
   book: string; updatedAt: string; noVig: number | null;
+  priceCoverage?: 'single-sided';
 };
 export type Observation = { eventId?: string; date: string; value: number; minutes?: number; opponent?: string; location?: string; season?: number; weight?: number; offensiveInvolvement?: number; pointsFor?: number; pointsAgainst?: number; total?: number };
 export type NBARotation = { label: 'Core rotation' | 'High-usage rotation'; minutes: number; involvement?: number };
@@ -376,9 +377,12 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
           ? impliedProbability(price) / outcomes.reduce((sum, row) => sum + impliedProbability(Number(row.price)), 0) : null
           : opposite.length === 1 && numeric(opposite[0].price) !== undefined
           ? noVigProbabilities([price, Number(opposite[0].price)])[0] : null;
+        const singleSided = isSoccer(sport) && name.startsWith('player_') && ['Over', 'Under'].includes(side)
+          && outcomes.filter(other => other.description === outcome.description && numeric(other.point) === line).length === 1;
         result.push({ key: [event.id, name, subject, side, line ?? ''].join('|'), eventId: text(event.id), sport,
           start: text(event.commence_time), home: text(event.home_team), away: text(event.away_team),
-          market: name, subject, side, line, american: price, book: text(book.title) || text(book.key), updatedAt, noVig });
+          market: name, subject, side, line, american: price, book: text(book.title) || text(book.key), updatedAt, noVig,
+          ...(singleSided ? { priceCoverage: 'single-sided' as const } : {}) });
       }
     }
   }

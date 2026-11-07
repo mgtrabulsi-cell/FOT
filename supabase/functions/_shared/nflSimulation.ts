@@ -1,16 +1,18 @@
 import { array, numeric, object, text } from './gamewaire.ts';
+import { overtimeRulesSource, readOvertimeDrives, simulateOvertime, validateOvertimeEvidence } from './nflSimulationOvertime.ts';
+import type { OvertimeDrive, OvertimeEvidence } from './nflSimulationOvertime.ts';
 
-export const nflSimulationVersion = 'nfl-joint-bootstrap-v4';
-export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v3';
+export const nflSimulationVersion = 'nfl-joint-bootstrap-v5';
+export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v4';
 export const legacyNFLSimulationVersion = 'nfl-joint-bootstrap-v1';
-export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
+export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v3', 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
 export const nflSimulationRuns = 1000;
 export type SimulationPosition = 'QB' | 'RB' | 'WR' | 'TE';
 export type SimulationStat = { passingAttempts: number; completions: number; passingYards: number; passingTouchdowns: number; rushingAttempts: number; rushingYards: number; rushingTouchdowns: number; receptions: number; receivingYards: number; receivingTouchdowns: number };
 export type SimulationSide = SimulationStat & { id: string; home: boolean; points: number; players: Record<string, Partial<SimulationStat>> };
-export type SimulationBox = { id: string; date: string; season: number; seasonType: 2 | 3; teams: SimulationSide[] };
+export type SimulationBox = { id: string; date: string; season: number; seasonType: 2 | 3; teams: SimulationSide[]; regulationOnly?: boolean; overtimeDrives?: OvertimeDrive[] };
 export type SimulationGame = { id: string; date: string; season: number; seasonType: 2 | 3; home: { id: string; name: string; abbr: string }; away: { id: string; name: string; abbr: string } };
-export type SimulationReference = { id: string; date: string; season: number; seasonType: 2 | 3; teamId: string; opponentId: string; scores?: { own: number; opponent: number; home: boolean } };
+export type SimulationReference = { id: string; date: string; season: number; seasonType: 2 | 3; teamId: string; opponentId: string; regulationOnly?: boolean; scores?: { own: number; opponent: number; home: boolean } };
 export type SimulationPlayer = { id: string; name: string; teamId: string; position: SimulationPosition; status: string; excluded: boolean; uncertain: boolean; role: string };
 export type SimulationObservation = { eventId: string; date: string; teamId: string; opponentId: string; player: Partial<SimulationStat>; team: SimulationSide };
 export type SimulationRange = { mean: number; p10: number; median: number; p90: number };
@@ -19,7 +21,7 @@ type BaseTotal = 'passingYards' | 'rushingYards' | 'receptions' | 'otherReceivin
 type TouchdownTotal = 'passingTouchdowns' | 'rushingTouchdowns' | 'otherReceivingTouchdowns' | 'otherRushingTouchdowns';
 export type SimulationTeamTotals = Record<BaseTotal, SimulationRange> & Partial<Record<TouchdownTotal, SimulationRange>>;
 export type SimulationTeamResult = { id: string; name: string; abbr: string; score: SimulationRange; winProbability: number; players: SimulationPlayerResult[]; teamOnly?: boolean; matchup?: { passingYardsMultiplier: number; rushingYardsMultiplier: number }; totals: SimulationTeamTotals | null };
-export type SimulationScenario = { id: string; label: string; quarterbacks: { home: string; away: string }; issue: string | null; home: SimulationTeamResult | null; away: SimulationTeamResult | null; tieProbability: number | null };
+export type SimulationScenario = { id: string; label: string; quarterbacks: { home: string; away: string }; issue: string | null; home: SimulationTeamResult | null; away: SimulationTeamResult | null; tieProbability: number | null; overtime?: { method: 'empirical-possession-bootstrap-v1'; rules: string; rulesSource: string; evidenceEvents: { home: string[]; away: string[] }; probability: number; samples: { home: number; away: number }; attribution: 'score-only'; seasonType: 2 | 3 } };
 export type SimulationLearningMetric = 'score' | 'passingYards' | 'rushingYards';
 export type SimulationLearning = {
   version: 'simulation-walk-forward-v1';
@@ -31,7 +33,7 @@ export const simulationStatKeys: Array<keyof SimulationStat> = ['passingAttempts
 
 export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: string, teams: { home: string; away: string }): NFLGameSimulation {
   const row = object(value), progress = object(row.progress), history = object(row.history);
-  const flexible = [nflSimulationVersion, previousNFLSimulationVersion].includes(String(row.version));
+  const flexible = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v3'].includes(String(row.version));
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   const integer = (n: unknown) => finite(n) && Number.isInteger(n) && n >= 0;
   const strings = (values: unknown) => Array.isArray(values) && values.every(n => typeof n === 'string');
@@ -88,7 +90,20 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
   };
   const scenarios = Array.isArray(row.scenarios) && row.scenarios.every(raw => {
     const s = object(raw), qbs = object(s.quarterbacks);
+    const ot = object(s.overtime), samples = object(ot.samples);
+    const validOvertime = s.overtime === undefined || ot.method === 'empirical-possession-bootstrap-v1'
+      && typeof ot.rules === 'string' && probability(ot.probability) && ot.attribution === 'score-only'
+      && ot.rulesSource === overtimeRulesSource
+      && ['home', 'away'].every(side => {
+        const events = object(ot.evidenceEvents)[side];
+        return strings(events) && array(events).length >= 8 && array(events).every(id => validId(String(id)))
+          && new Set(array(events)).size === array(events).length;
+      })
+      && [2, 3].includes(Number(ot.seasonType)) && integer(samples.home) && Number(samples.home) >= 24
+      && integer(samples.away) && Number(samples.away) >= 24
+      && (ot.seasonType !== 3 || s.tieProbability === 0);
     return ['id', 'label'].every(key => typeof s[key] === 'string') && typeof qbs.home === 'string' && typeof qbs.away === 'string'
+      && validOvertime
       && (typeof s.issue === 'string' && s.home === null && s.away === null && s.tieProbability === null
         || s.issue === null && team(s.home, teams.home) && team(s.away, teams.away) && probability(s.tieProbability)
           && Math.abs(Number(object(s.home).winProbability) + Number(object(s.away).winProbability) + Number(s.tieProbability) - 1) < 1e-8);
@@ -254,7 +269,15 @@ export function simulationBox(value: unknown, eventId: string, cutoff: number): 
     return { ...total, id, home: side.homeAway === 'home', points: count(side.score, 'final score'), players };
   });
   if (teams[0].id === teams[1].id) throw new Error('A completed simulation game has duplicate teams.');
-  return { id: eventId, date, season: Number(season.year), seasonType: phase as 2 | 3, teams };
+  const regulationOnly = !/overtime|\/OT|\bOT\b/i.test(`${text(status.detail)} ${text(status.shortDetail)}`)
+    && !array(object(data.drives).previous).some(raw => Number(object(object(object(raw).end).period).number) > 4)
+    && sides.every(side => {
+    const lines = array(side.linescores);
+    return lines.length === 4 && lines.every(line => /^\d+$/.test(text(object(line).displayValue)))
+      && lines.reduce<number>((sum, line) => sum + Number(object(line).displayValue), 0) === Number(side.score);
+  });
+  return { id: eventId, date, season: Number(season.year), seasonType: phase as 2 | 3, teams,
+    regulationOnly, overtimeDrives: readOvertimeDrives(value, eventId) };
 }
 export function simulationObservations(player: SimulationPlayer, refs: SimulationReference[], boxes: Map<string, SimulationBox>, cutoff: number, onIssue?: (issue: string) => void): SimulationObservation[] {
   const seen = new Set<string>();
@@ -405,7 +428,14 @@ export function roundedSimulationBox(team: SimulationTeamResult & { totals: Simu
 }
 type TeamDraw = { points: number; stats: Record<string, Partial<SimulationStat>> } & Record<BaseTotal | TouchdownTotal, number>;
 type HistoricalPair = { own: SimulationSide; opponent: SimulationSide; date: string };
-export function simulateNFLTeamScore(game: SimulationGame, history: { home: SimulationReference[]; away: SimulationReference[] }, runs = nflSimulationRuns): SimulationScenario {
+function validateGameOvertime(game: SimulationGame, evidence: OvertimeEvidence) {
+  validateOvertimeEvidence(evidence);
+  if (evidence.home[0].teamId !== game.home.id || evidence.away[0].teamId !== game.away.id
+    || game.season < (game.seasonType === 2 ? 2025 : 2022))
+    throw new Error('Overtime evidence or rule era does not match this game.');
+}
+export function simulateNFLTeamScore(game: SimulationGame, history: { home: SimulationReference[]; away: SimulationReference[] }, runs = nflSimulationRuns, overtime?: OvertimeEvidence): SimulationScenario {
+  if (overtime) validateGameOvertime(game, overtime);
   if (!Number.isInteger(runs) || runs < 500 || runs > 10000) throw new Error('Simulation runs must be between 500 and 10000.');
   const read = (refs: SimulationReference[], teamId: string) => {
     const seen = new Set<string>();
@@ -413,6 +443,7 @@ export function simulateNFLTeamScore(game: SimulationGame, history: { home: Simu
     if (rows.length < 8 || rows.length > 100) throw new Error('Team-only scoring requires 8–100 verified completed games per team.');
     return rows.map(ref => {
       if (ref.teamId !== teamId || !validId(ref.id) || seen.has(ref.id) || !validId(ref.opponentId) || ref.opponentId === teamId
+        || overtime && ref.regulationOnly !== true
         || !finiteDate(ref.date) || Date.parse(ref.date) >= Date.parse(game.date) || !Number.isInteger(ref.season) || ref.season < 2000 || ref.season > game.season || ![2, 3].includes(ref.seasonType)
         || !ref.scores || !Number.isInteger(ref.scores.own) || ref.scores.own < 0 || !Number.isInteger(ref.scores.opponent) || ref.scores.opponent < 0
         || typeof ref.scores.home !== 'boolean') throw new Error('Team-only scoring requires verified prior final scores and matchup identities.');
@@ -423,20 +454,33 @@ export function simulateNFLTeamScore(game: SimulationGame, history: { home: Simu
   const homeWeight = weights(home, 24, row => row.home ? 1.5 : 1), awayWeight = weights(away, 24, row => !row.home ? 1.5 : 1);
   const random = generator(`${nflSimulationVersion}:${game.id}:team-only`);
   const homeScores: number[] = [], awayScores: number[] = [];
-  let homeWins = 0, awayWins = 0, ties = 0;
+  let homeWins = 0, awayWins = 0, ties = 0, overtimeRuns = 0;
   for (let i = 0; i < runs; i++) {
     const h = draw(home, homeWeight, random), a = draw(away, awayWeight, random);
-    const homeScore = Math.round((h.own + a.opponent) / 2), awayScore = Math.round((a.own + h.opponent) / 2);
+    let homeScore = Math.round((h.own + a.opponent) / 2), awayScore = Math.round((a.own + h.opponent) / 2);
+    if (overtime) {
+      const final = simulateOvertime(homeScore, awayScore, game.seasonType, overtime, random);
+      homeScore = final.home; awayScore = final.away; overtimeRuns += Number(final.played);
+    }
     homeScores.push(homeScore); awayScores.push(awayScore);
     if (homeScore > awayScore) homeWins++; else if (awayScore > homeScore) awayWins++; else ties++;
   }
   return { id: 'team-only', label: 'Team-only scoring estimate', quarterbacks: { home: 'Unconfirmed', away: 'Unconfirmed' }, issue: null,
     home: { ...game.home, score: simulationRange(homeScores), winProbability: homeWins / runs, players: [], teamOnly: true, totals: null },
-    away: { ...game.away, score: simulationRange(awayScores), winProbability: awayWins / runs, players: [], teamOnly: true, totals: null }, tieProbability: ties / runs };
+    away: { ...game.away, score: simulationRange(awayScores), winProbability: awayWins / runs, players: [], teamOnly: true, totals: null }, tieProbability: ties / runs,
+    ...(overtime ? { overtime: overtimeMetadata(game, overtime, overtimeRuns / runs) } : {}) };
+}
+function overtimeMetadata(game: SimulationGame, evidence: OvertimeEvidence, probability: number): NonNullable<SimulationScenario['overtime']> {
+  return { method: 'empirical-possession-bootstrap-v1', rules: 'NFL Rule 16 (2025+ regular season / 2022+ postseason)',
+    rulesSource: overtimeRulesSource, evidenceEvents: {
+      home: [...new Set(evidence.home.map(row => row.eventId))], away: [...new Set(evidence.away.map(row => row.eventId))],
+    },
+    probability, samples: { home: evidence.home.length, away: evidence.away.length }, attribution: 'score-only', seasonType: game.seasonType };
 }
 export function simulateNFLGame(game: SimulationGame, history: { home: SimulationBox[]; away: SimulationBox[] },
   players: SimulationPlayer[], observations: Map<string, SimulationObservation[]>, runs = nflSimulationRuns,
-  learned = { score: 1, passingYards: 1, rushingYards: 1 }): SimulationScenario[] {
+  learned = { score: 1, passingYards: 1, rushingYards: 1 }, overtime?: OvertimeEvidence): SimulationScenario[] {
+  if (overtime) validateGameOvertime(game, overtime);
   if (!Number.isInteger(runs) || runs < 500 || runs > 10000) throw new Error('Simulation runs must be between 500 and 10000.');
   if (Object.values(learned).some(value => !Number.isFinite(value) || value < .9 || value > 1.1))
     throw new Error('Simulation learning corrections must remain within ten percent.');
@@ -446,6 +490,7 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
       const own = box.teams.find(side => side.id === teamId), opponent = box.teams.find(side => side.id !== teamId);
       if (!own || !opponent || seen.has(box.id) || Date.parse(box.date) >= Date.parse(game.date) || ![2, 3].includes(box.seasonType))
         throw new Error('Simulation requires unique, pre-kickoff completed team histories.');
+      if (overtime && box.regulationOnly !== true) throw new Error('Overtime simulations require verified regulation-only history to avoid double counting.');
       if ([own, opponent].some(side => !Number.isInteger(side.passingTouchdowns) || !Number.isInteger(side.rushingTouchdowns)
         || side.passingTouchdowns < 0 || side.rushingTouchdowns < 0)) throw new Error('Team history is missing verified touchdown production.');
       seen.add(box.id);
@@ -554,10 +599,14 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
         passingTouchdowns, rushingTouchdowns, otherReceivingTouchdowns, otherRushingTouchdowns };
     };
     const homeDraws: TeamDraw[] = [], awayDraws: TeamDraw[] = [];
-    let homeWins = 0, awayWins = 0, ties = 0;
+    let homeWins = 0, awayWins = 0, ties = 0, overtimeRuns = 0;
     for (let i = 0; i < runs; i++) {
       const homeSample = draw(homeRows, homeWeight, random), awaySample = draw(awayRows, awayWeight, random);
       const home = teamDraw(homeSample.own, awaySample.opponent, homeQB, homeSetup), away = teamDraw(awaySample.own, homeSample.opponent, awayQB, awaySetup);
+      if (overtime) {
+        const final = simulateOvertime(home.points, away.points, game.seasonType, overtime, random);
+        home.points = final.home; away.points = final.away; overtimeRuns += Number(final.played);
+      }
       homeDraws.push(home); awayDraws.push(away);
       if (home.points > away.points) homeWins++; else if (away.points > home.points) awayWins++; else ties++;
     }
@@ -577,7 +626,8 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
           issue: p.excluded ? 'Excluded by reported availability; no zero-valued projection is substituted.' : !usable ? 'Fewer than four verified production appearances; included only in unmodeled team remainder.' : !keys.length ? 'No supported market was recorded.' : null };
       }),
     });
-    results.push({ id, label, quarterbacks, issue: null, home: finish(game.home, homeSetup, homeDraws, homeWins), away: finish(game.away, awaySetup, awayDraws, awayWins), tieProbability: ties / runs });
+    results.push({ id, label, quarterbacks, issue: null, home: finish(game.home, homeSetup, homeDraws, homeWins), away: finish(game.away, awaySetup, awayDraws, awayWins), tieProbability: ties / runs,
+      ...(overtime ? { overtime: overtimeMetadata(game, overtime, overtimeRuns / runs) } : {}) });
   }
   return results;
 }

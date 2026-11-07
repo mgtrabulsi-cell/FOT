@@ -73,13 +73,38 @@ test('player stats require an actual appearance and explicit stat, never bench/m
   stats.push({ name: 'totalShots', value: 0 }); stats[0].value = 0;
   assert.equal(soccerPlayerObservation(summary, q, { ...games[0], eventId: 'g' }, '1'), undefined);
 });
+test('single-sided soccer props retain actual odds and verified estimates without inventing paired markets', () => {
+  const raw = { id: 'soccer', home_team: 'Home', away_team: 'Away', commence_time: start,
+    bookmakers: [{ key: 'book', markets: [{ key: 'player_shots', last_update: new Date(now).toISOString(),
+      outcomes: [{ name: 'Over', description: 'Player', point: 1.5, price: 150 }] }] }] };
+  const [prop] = readQuotes(raw, 'EPL');
+  assert.equal(prop.noVig, null);
+  assert.equal(prop.priceCoverage, 'single-sided');
+  const data = { ...evidence, samples: games.map(game => ({ ...game, value: 3 })) };
+  const report = evaluate([prop], data);
+  assert.equal(report.picks.length, 1);
+  assert.equal(report.picks[0].side, 'Over');
+  assert.equal(report.picks[0].noVigEdge, null);
+  assert.match(report.picks[0].risks.join(' '), /Single-sided sportsbook/);
+  const paired = evaluate([{ ...prop, priceCoverage: undefined, noVig: .5 }], data).picks[0];
+  assert.equal(report.picks[0].probability, paired.probability);
+  assert.equal(report.picks[0].conservativeEV, paired.conservativeEV, 'One-sided support does not loosen value checks');
+  assert.equal(evaluate([prop], { ...data, eligible: false }).picks.length, 0);
+  assert.equal(evaluate([prop], { ...data, samples: data.samples.slice(0, 7) }).picks.length, 0);
+  const totals = { ...prop, market: 'totals', subject: 'Away @ Home' };
+  assert.equal(evaluate([totals], data).picks.length, 0, 'Totals still require both prices');
+  raw.bookmakers[0].markets[0].outcomes.push({ ...raw.bookmakers[0].markets[0].outcomes[0] });
+  const malformed = readQuotes(raw, 'EPL');
+  assert.ok(malformed.every(row => row.priceCoverage === undefined));
+  assert.equal(evaluate(malformed, data).picks.length, 0, 'Duplicate or ambiguous prices do not become single-sided support');
+});
 test('all four league settings support verified prop markets, not unverified handicaps', () => {
   for (const sport of soccerSports) {
     assert.equal(readSettings({ ...settings, markets: [...markets[sport]] }, sport).markets.length, 5);
     assert.throws(() => readSettings({ ...settings, markets: ['spreads'] }, sport), /supported/);
   }
   const ui = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
-  assert.match(ui, /soccerSports/); assert.match(ui, /no scheduling/);
+  assert.match(ui, /soccerSports/); assert.match(ui, /soccer leagues: daily at 1 AM Eastern/);
 });
 test('soccer matchup requires exact league identity and tight kickoff alignment', async () => {
   const event = { id: 'future', date: start, season: { year: 2026 }, competitions: [{ status: { type: { state: 'pre' } },
@@ -89,8 +114,8 @@ test('soccer matchup requires exact league identity and tight kickoff alignment'
   event.date = new Date(Date.parse(start) + 6 * 60000).toISOString();
   await assert.rejects(resolveSoccerMatchup(quote, fetcher), /five minutes/);
 });
-test('scheduler never selects soccer fixtures', () => {
+test('scheduler includes all four soccer leagues without mixing NBA fixtures', () => {
   const source = readFileSync(new URL('../supabase/functions/_shared/gamewaireSchedule.ts', import.meta.url), 'utf8');
-  assert.match(source, /const sports: Sport\[\] = \['NBA', 'NFL'\]/);
+  assert.match(source, /scheduledSports: Sport\[\] = \['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga'\]/);
   assert.equal(scheduleEvents([{ id: 'soccer', sport: 'EPL', start }], 'NBA', '2026-11-08', now).length, 0);
 });

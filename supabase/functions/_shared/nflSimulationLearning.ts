@@ -7,6 +7,9 @@ import type { SimulationScenario, SimulationLearning, SimulationLearningMetric }
 
 export const simulationLearningMetrics = ['score', 'passingYards', 'rushingYards'] as const;
 export type { SimulationLearning } from './nflSimulation.ts';
+export function neutralSimulationLearning(cutoff: number): SimulationLearning['adjustments'] {
+  return Object.fromEntries(simulationLearningMetrics.map(metric => [metric, learnAdjustment([], 'stat', cutoff)])) as SimulationLearning['adjustments'];
+}
 
 export function simulationLearningBaselines(scenarios: SimulationScenario[]): SimulationLearning['baselines'] {
   return scenarios.filter(scenario => scenario.home && scenario.away).map(scenario => ({
@@ -18,6 +21,11 @@ export function simulationLearningBaselines(scenarios: SimulationScenario[]): Si
 }
 
 export async function loadSimulationLearning(admin: SupabaseClient, cutoff: number): Promise<SimulationLearning['adjustments']> {
+  // v5 player production covers regulation only, while archived actuals are full-game.
+  // Do not learn from incompatible outcomes until regulation actuals are archived.
+  if (nflSimulationVersion === 'nfl-joint-bootstrap-v5') {
+    return neutralSimulationLearning(cutoff);
+  }
   const groups: Record<SimulationLearningMetric, LearningSample[]> = { score: [], passingYards: [], rushingYards: [] };
   for (let offset = 0; ; offset += 500) {
     const saved = await admin.from('gamewire_game_forecasts').select('event_id,event_start,payload,actuals,settled_at')

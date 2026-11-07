@@ -2,7 +2,8 @@ import { array, object, text } from './gamewaire.ts';
 import { readBotDepth } from './gamewireBotProjections.ts';
 import { readBotRoster } from './gamewireBot.ts';
 import { nflSimulationRuns, nflSimulationVersion, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from './nflSimulation.ts';
-import { simulationLearningBaselines, simulationLearningFactors } from './nflSimulationLearning.ts';
+import { validateOvertimeEvidence } from './nflSimulationOvertime.ts';
+import { neutralSimulationLearning, simulationLearningBaselines } from './nflSimulationLearning.ts';
 import type { NFLGameSimulation, SimulationBox, SimulationGame, SimulationPlayer, SimulationReference } from './nflSimulation.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
@@ -17,7 +18,7 @@ export type SimulationJob = {
   rosterPlayers: SimulationPlayer[]; players: SimulationPlayer[] | null; injuries: NFLGameSimulation['injuries'];
   warnings: string[]; preparationIssues?: string[]; logs: Record<string, { season: number; refs: SimulationReference[]; done: boolean }>;
 };
-const boxKey = (id: string) => `nfl:simulation:box:v2:${id}`;
+const boxKey = (id: string) => `nfl:simulation:box:v3:${id}`;
 const unique = (refs: SimulationReference[]) => [...new Map(refs.map(row => [row.id, row])).values()].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Verified simulation evidence is unavailable.';
 async function resource<T>(key: string, cache: SimulationCache, ttl: number, load: () => Promise<T>): Promise<T> {
@@ -147,15 +148,35 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     forecastAt: null, stage: 'Team history', progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 },
     runs: nflSimulationRuns, calibrated: false, preparationIssues: [...job.preparationIssues ?? []], warnings: [...job.warnings], injuries: job.injuries, scenarios: [] };
   const teamRefs = [...job.history.home, ...job.history.away], teamBatch = await boxBatch(teamRefs, cache, get, now);
+  if (game.season < (game.seasonType === 2 ? 2025 : 2022)) {
+    result.status = 'unavailable'; result.stage = 'Unsupported historical overtime rules';
+    result.warnings.push('This overtime model supports regular seasons since 2025 and postseason since 2022 only.');
+    return result;
+  }
   result.progress = { completed: teamBatch.completed, total: teamBatch.total };
   result.history.home = job.history.home.filter(ref => teamBatch.boxes.has(ref.id)).length;
   result.history.away = job.history.away.filter(ref => teamBatch.boxes.has(ref.id)).length;
   result.warnings.push(...teamBatch.issues);
   result.preparationIssues.push(...teamBatch.issues);
+  const regulationBoxes = new Map([...teamBatch.boxes].filter(([, box]) => box.regulationOnly === true));
+  const overtime = {
+    home: [...regulationBoxes.values()].flatMap(box => box.overtimeDrives ?? []).filter(drive => drive.teamId === game.home.id),
+    away: [...regulationBoxes.values()].flatMap(box => box.overtimeDrives ?? []).filter(drive => drive.teamId === game.away.id),
+  };
+  try { validateOvertimeEvidence(overtime); }
+  catch (cause) {
+    result.warnings.push(message(cause), 'No default overtime scoring odds are substituted. Historical overtime or unverified period totals are excluded from regulation training.');
+    result.stage = 'Preparing verified regulation and possession evidence';
+    if (teamBatch.completed === teamBatch.total) result.status = 'unavailable';
+    return result;
+  }
+  const excluded = teamBatch.boxes.size - regulationBoxes.size;
+  if (excluded) result.warnings.push(`${excluded} historical games excluded from regulation cohorts: overtime or unverified quarter totals.`);
+  result.warnings.push('Overtime bootstraps observed completed regulation possessions and durations, not fitted overtime strategy. Field position, clock-dependent play calling, kickoff returns and conversion decisions are not separately modeled. Scoring beyond the remaining regular-season clock is not credited; playoff possessions continue across 15-minute periods. Added points are score-only; genuine regular-season ties and equal rounded average scores remain possible.');
   const scoreRefs = (refs: SimulationReference[]) => refs.flatMap(ref => {
-    if (ref.scores) return [ref];
+    if (!regulationBoxes.has(ref.id)) return [];
     const box = teamBatch.boxes.get(ref.id), own = box?.teams.find(team => team.id === ref.teamId), opponent = box?.teams.find(team => team.id === ref.opponentId);
-    return own && opponent ? [{ ...ref, scores: { own: own.points, opponent: opponent.points, home: own.home } }] : [];
+    return own && opponent ? [{ ...ref, regulationOnly: true, scores: { own: own.points, opponent: opponent.points, home: own.home } }] : [];
   });
   const scoringHistory = { home: scoreRefs(job.history.home), away: scoreRefs(job.history.away) };
   const teamOnly = (refreshing: boolean) => {
@@ -169,7 +190,7 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     result.refreshing = refreshing;
     result.forecastAt = new Date(now).toISOString();
     result.history = { home: scoringHistory.home.length, away: scoringHistory.away.length, target: 100 };
-    result.scenarios = [simulateNFLTeamScore(game, scoringHistory, result.runs)];
+    result.scenarios = [simulateNFLTeamScore(game, scoringHistory, result.runs, overtime)];
     result.warnings.push('Team-only scoring estimate: verified prior final scores blend each team’s scoring with its opponent’s points allowed, using recency and home/away weighting. No player, quarterback, injury, touchdown or box-score estimates are invented.',
       'Experimental statistical estimate; win frequencies and score ranges are uncalibrated, not betting recommendations.');
     return result;
@@ -200,7 +221,7 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
   }));
   result.progress = { completed: active.filter(player => job.logs[player.id]?.done).length, total: active.length };
   const refs = active.flatMap(player => job.logs[player.id]?.refs ?? []), playerBatch = await boxBatch(refs, cache, get, now);
-  const boxes = new Map([...teamBatch.boxes, ...playerBatch.boxes]);
+  const boxes = new Map([...teamBatch.boxes, ...playerBatch.boxes].filter(([, box]) => box.regulationOnly === true));
   result.history.home = job.history.home.filter(ref => boxes.has(ref.id)).length;
   result.history.away = job.history.away.filter(ref => boxes.has(ref.id)).length;
   result.stage = 'Player production and defensive matchups';
@@ -208,7 +229,8 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
   result.progress = { completed: required.filter(ref => boxes.has(ref.id)).length, total: required.length };
   result.warnings.push(...playerBatch.issues);
   result.preparationIssues.push(...playerBatch.issues);
-  const refreshing = required.some(ref => !boxes.has(ref.id)) || active.some(player => !job.logs[player.id]?.done);
+  const fetched = new Map([...teamBatch.boxes, ...playerBatch.boxes]);
+  const refreshing = required.some(ref => !fetched.has(ref.id)) || active.some(player => !job.logs[player.id]?.done);
   const observations = new Map(active.map(player => [player.id, simulationObservations(player, job.logs[player.id]?.refs ?? [], boxes, now, issue => {
     console.error('Simulation player observation excluded', issue);
     result.warnings.push(issue);
@@ -217,12 +239,10 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     home: job.history.home.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
     away: job.history.away.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
   };
-  result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs);
+  if (history.home.length < 8 || history.away.length < 8) return teamOnly(refreshing);
+  result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs, undefined, overtime);
   if (learning) {
-    result.learning = { version: 'simulation-walk-forward-v1', adjustments: learning, baselines: simulationLearningBaselines(result.scenarios) };
-    if (Object.values(learning).some(adjustment => adjustment.active)) {
-      result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs, simulationLearningFactors(learning));
-    }
+    result.learning = { version: 'simulation-walk-forward-v1', adjustments: neutralSimulationLearning(now), baselines: simulationLearningBaselines(result.scenarios) };
   }
   result.warnings.push(...result.scenarios.flatMap(scenario => scenario.issue ? [scenario.issue] : []));
   result.scenarios = result.scenarios.filter(scenario => scenario.home && scenario.away);
@@ -244,8 +264,8 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     'Every QB pairing is conditional, not a confirmed starter. Player markets require at least four verified category appearances; fewer than eight are labeled limited evidence. Listed questionable players are assumed to participate at observed usage.',
     'Reported out/inactive players are excluded from current allocations. Unmodeled players retain a team remainder; no specific injured-player replacement or numerical OL/defensive injury penalty is invented.',
     'Touchdowns use verified per-opportunity player production and opponent allowances. Passing/receiving touchdowns reconcile and scoring is bounded below by six points per offensive touchdown in every draw.',
-    'Scores use joint yardage/scoring-rate outcomes, not drive-by-drive, kicker or overtime simulations. Rounded box-score lines are reconciled; expand details for expectations and uncalibrated ranges.',
+    'Regulation uses joint yardage/scoring-rate outcomes from verified non-overtime games. Tied draws add empirical possession overtime under current NFL rules. Overtime is score-only: no player yards or touchdowns are invented; added points remain unallocated other points. Genuine regular-season ties and equal rounded average scores remain possible.',
   );
-  if (result.learning) result.warnings.push('Results-based corrections use original archived forecasts and verified realized-game outcomes. Corrections stay inactive until they improve on later held-out games; no continual performance improvement is guaranteed.');
+  if (result.learning) result.warnings.push('v5 learning is neutral: archived full-game player actuals include overtime, while these player expectations cover regulation only. Legacy v4 forecasts do not train this version.');
   return result;
 }
