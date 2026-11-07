@@ -98,6 +98,20 @@ Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `su
 
 ## GamewAIre setup
 
+### On-demand soccer (experimental)
+
+GamewAIre admin review also supports Premier League (`EPL`), Serie A, La Liga and Bundesliga. This is **manual analysis and reviewed publication only**: the scheduler, scoreboard badges and NFL week filters remain NFL/NBA-only. Existing saved records and NFL/NBA v9 learning compatibility are unchanged; soccer has its own `soccer-evidence-v1` model and does not consume cross-sport learning adjustments.
+
+Apply `supabase/gamewaire-soccer.sql` **after** `supabase/gamewaire-saved-lean-publishing.sql` and the existing schedule/results migrations. It expands only manual storage/publication/lock constraints, retains RLS and service-only publication RPCs, and adds soccer snapshot/model checks. Do not expand schedule constraints. Deploying migrations/functions is a separate admin operation.
+
+The existing `ODDS_API_KEY` is used with provider league keys `soccer_epl`, `soccer_italy_serie_a`, `soccer_spain_la_liga`, and `soccer_germany_bundesliga`. Coverage depends on the actual subscription/bookmakers. Supported markets are three-way `h2h`, goal `totals`, and two-way `player_shots`, `player_shots_on_target`, `player_assists`; no unsupported anytime-scorer or quarter-handicap prices are guessed. See [provider market definitions](https://the-odds-api.com/sports-odds-data/betting-markets.html).
+
+ESPN league scoreboards must match both teams and kickoff within five minutes. Histories require eight current-season, same-league, full-time games per team; cup/extra-time/shootout games and future observations are excluded. Props additionally require eight explicit individual appearances with stable ESPN player identity and the requested game stat; absent stats and bench appearances never become zeros. Missing odds/stat coverage is shown as an exclusion or insufficient evidence.
+
+Match winner probabilities use an unfitted independent Poisson scoring baseline (team goals scored/opponent goals conceded); win/draw/loss sum to one and draw is **not** a push. Goal totals separate integer-line pushes; player props use smoothed observed appearance outcomes. Conservative uncertainty/quality/value gates can produce no value picks. A separately labeled highest-probability supported lean can still be reviewed. All settlement assumptions are **90 minutes plus stoppage time**, not extra time. No accuracy, profit or win-rate guarantee; confirmed future lineups and opponent-adjusted fitted strength are unavailable.
+
+Validate locally with `node --test scripts/gamewaire-soccer.test.mjs scripts/gamewaire.test.mjs scripts/gamewaire-soccer-sql.test.mjs`, `npm run build`, and `npx deno check supabase/functions/gamewaire/index.ts`. The SQL regression uses the development-only PGlite runner, exercising migration idempotency, publication permissions, league locks, manual publication, draw settlement, audited records and legacy NFL/NBA archives. It deliberately does not provision or run cron/network extensions.
+
 ### NFL game simulations
 
 #### Results-based learning

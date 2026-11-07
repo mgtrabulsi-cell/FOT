@@ -1,14 +1,15 @@
-import { impliedProbability, normalize, pickBlurb } from './gamewaire.ts';
+import { impliedProbability, isSoccer, normalize, pickBlurb } from './gamewaire.ts';
 import type { Candidate } from './gamewaire.ts';
 
 export const gamewaireMarketLabels: Record<string, string> = {
   h2h: 'Moneyline', spreads: 'Spread', totals: 'Total points',
   player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists', player_threes: 'Made threes',
   player_pass_yds: 'Passing yards', player_rush_yds: 'Rushing yards', player_reception_yds: 'Receiving yards', player_receptions: 'Receptions',
+  player_shots: 'Shots', player_shots_on_target: 'Shots on target',
 };
-export const gamewairePickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject} ML`
+export const gamewairePickTitle = (pick: Candidate) => pick.market === 'h2h' ? `${pick.subject}${isSoccer(pick.sport) ? ' · 90-minute result' : ' ML'}`
   : pick.market === 'spreads' ? `${pick.subject}${pick.line === null ? '' : ` ${pick.line > 0 ? '+' : ''}${pick.line}`}`
-  : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${gamewaireMarketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
+  : `${pick.subject} · ${pick.side}${pick.line === null ? '' : ` ${pick.line}`} ${isSoccer(pick.sport) && pick.market === 'totals' ? 'Total goals' : gamewaireMarketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}`;
 
 function matchupContext(pick: Candidate) {
   const key = (name: string) => normalize(name).replace(/^losangeles/, 'la');
@@ -59,6 +60,7 @@ function modelComparison(pick: Candidate) {
 
 export function pickBreakdown(pick: Candidate) {
   const title = gamewairePickTitle(pick);
+  if (isSoccer(pick.sport)) return [title, pick.explanation, 'Experimental regulation-time estimate, not a guaranteed win or betting recommendation.'].join('\n\n');
   const teamPick = pick.market === 'h2h' || pick.market === 'spreads';
   const context = teamPick ? matchupContext(pick) : `GamewAIre likes ${title}. ${pickBlurb(pick)}`;
   return [title, context, modelComparison(pick), `GamewAIre Verdict: ${title}`].join('\n\n');

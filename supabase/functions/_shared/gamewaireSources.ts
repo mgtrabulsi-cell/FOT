@@ -1,7 +1,7 @@
-import { array, isNFLPrimetime, markets, normalize, numeric, object, text } from './gamewaire.ts';
+import { array, isNFLPrimetime, isSoccer, markets, normalize, numeric, object, text } from './gamewaire.ts';
 import type { Evidence, FormRecord, NBARotation, Observation, OpponentContext, Quote, Sport, TeamForm } from './gamewaire.ts';
 
-const paths = { NBA: 'basketball/nba', NFL: 'football/nfl' };
+const paths: Record<Sport, string> = { NBA: 'basketball/nba', NFL: 'football/nfl', EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1' };
 const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 export const teamNameKey = (name: string) => normalize(name).replace(/^losangeles/, 'la');
 export function defensiveStandings(value: unknown, sport: Sport, season: number, fetchedAt: string): Map<string, OpponentContext> {
@@ -69,6 +69,7 @@ export async function publicJSON(url: string, fetcher: typeof fetch = fetch) {
 }
 export type Matchup = { eventId: string; season: number; home: { id: string; name: string }; away: { id: string; name: string } };
 export async function resolveMatchup(quote: Quote, fetcher: typeof fetch = fetch): Promise<Matchup> {
+  if (isSoccer(quote.sport)) throw new Error('Soccer requires dedicated league and kickoff matching.');
   const date = new Date(Date.parse(quote.start) - 6 * 60 * 60_000).toISOString().slice(0, 10).replace(/-/g, '');
   const end = new Date(Date.parse(quote.start) + 6 * 60 * 60_000).toISOString().slice(0, 10).replace(/-/g, '');
   const boards = await Promise.all([...new Set([date, end])].map((day) =>
@@ -183,6 +184,7 @@ export function nbaRotationPool(players: Array<{ name: string; teamId: string; s
   return result;
 }
 export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: number, fetcher: typeof fetch = fetch) {
+  if (quotes.some(quote => isSoccer(quote.sport))) throw new Error('Soccer requires dedicated regulation-time evidence.');
   const sport = quotes[0].sport, path = paths[sport], base = `https://site.api.espn.com/apis/site/v2/sports/${path}`;
   const fetchedAt = new Date(now).toISOString(), evidence = new Map<string, Evidence>(), warnings: string[] = [];
   const memo = new Map<string, Promise<unknown>>();
@@ -365,4 +367,5 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
   }
   return { evidence, warnings: [...new Set(warnings)], coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };
 }
-export const oddsSport: Record<Sport, string> = { NFL: 'americanfootball_nfl', NBA: 'basketball_nba' };
+export const oddsSport: Record<Sport, string> = { NFL: 'americanfootball_nfl', NBA: 'basketball_nba',
+  EPL: 'soccer_epl', 'Serie A': 'soccer_italy_serie_a', 'La Liga': 'soccer_spain_la_liga', Bundesliga: 'soccer_germany_bundesliga' };

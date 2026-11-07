@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Activity, ArrowRight, BarChart3, Bot, Crosshair, Layers, Star } from 'lucide-react';
 import { isSavedGamePastReview, loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
-import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks } from './services/gamewaire';
+import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, isSoccer, soccerSports, soccerModelVersion } from './services/gamewaire';
 import { pickBreakdown } from '../supabase/functions/_shared/gamewaireNarrative.ts';
 import GamewaireBreakdown from './GamewaireBreakdown';
 import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
@@ -18,6 +18,8 @@ import GamewaireBestBetsDownload from './GamewaireBestBetsDownload';
 import GamewireBot from './GamewireBot';
 import GamewireRankings from './GamewireRankings';
 import { gamewaireMarketLabels as marketLabels, gamewairePickTitle as pickTitle } from './services/gamewairePresentation';
+const currentModel = (pick: Candidate) => pick.modelVersion.startsWith(isSoccer(pick.sport) ? soccerModelVersion : modelVersion);
+const requestedMarkets = (settings: Settings, sport: Sport) => new Set([...fullAnalysisSettings(settings, sport).markets, 'h2h', ...(isSoccer(sport) ? [] : ['spreads'])]);
 
 const percent = (value: number | null) => value === null ? 'Unavailable' : `${(value * 100).toFixed(1)}%`;
 const odds = (value: number) => value > 0 ? `+${value}` : String(value);
@@ -32,7 +34,7 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
   selection?: { checked: boolean; disabled: boolean; onChange: (checked: boolean) => void } }) {
   const valueScore = gamewaireGrade(pick).score;
   const grade = probabilityGrade(pick.probability);
-  const marketLabel = marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ');
+  const marketLabel = isSoccer(pick.sport) && pick.market === 'totals' ? 'Total goals' : marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ');
   const title = pickTitle(pick);
   return <article className={`gai-pick angle-card${bestBet ? ' gai-best-bet' : ''}`} data-selectable={!!selection}>
     {selection && <label className="gai-select-pick"><input type="checkbox" checked={selection.checked} disabled={selection.disabled}
@@ -108,7 +110,7 @@ function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun;
   const [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const stale = candidates.some((pick) => Date.now() - Date.parse(pick.updatedAt) > 600_000) || Date.parse(report.event_start) <= Date.now();
-  const legacy = candidates.some((pick) => !pick.modelVersion.startsWith(modelVersion));
+  const legacy = candidates.some((pick) => !currentModel(pick));
   return <section className="gai-publish" aria-label="Choose member picks"><h4>Choose up to four props / totals</h4>
     <p className="gai-note">Player props publish as Top Picks; full-game totals publish as Game Leans. Moneylines and spreads belong in Game Leans. Tap for reasoning, then select up to four picks.</p>
     <div className="gai-picks">{candidates.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} technical stretch={report.payload.stretchKeys?.includes(pick.key)}
@@ -122,7 +124,7 @@ function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun;
       void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: fullAnalysisSettings(report.settings, report.sport), fullAnalysis: true })
         .then(({ run, cached }) => { setSelected([]); setNotice(cached ? 'Reused a fresh report; no additional Odds API credits used.' : 'Prices refreshed. Review the candidates before publishing.'); onFreshReport(run); refresh(); })
         .catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
-    }}>{busy ? 'Refreshing…' : `Refresh prices & review picks · up to ${new Set([...fullAnalysisSettings(report.settings, report.sport).markets, 'h2h', 'spreads']).size} credits`}</button>}
+    }}>{busy ? 'Refreshing…' : `Refresh prices & review picks · up to ${requestedMarkets(report.settings, report.sport).size} credits`}</button>}
     <button disabled={busy || stale || legacy || !selected.length} onClick={() => {
       setBusy(true); setError(''); setNotice('');
       void engineRequest({ action: 'publish', runId: report.id, keys: selected })
@@ -139,19 +141,19 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
   const started = Date.parse(report.event_start) <= Date.now();
   const invalid = !lean || !Number.isFinite(Date.parse(lean.pick.updatedAt)) || !Number.isFinite(Date.parse(lean.pick.dataAt))
     || Date.parse(lean.pick.updatedAt) > Date.now() + 60_000 || Date.parse(lean.pick.dataAt) > Date.now() + 60_000
-    || !lean.pick.modelVersion.startsWith(modelVersion);
+    || !currentModel(lean.pick);
   const analyze = async (players: boolean) => {
     setBusy(true); setError(''); setNotice('');
     try {
       const { run } = await engineRequest<{ run: AnalysisRun }>({ action: 'analyze', sport: report.sport, eventId: report.event_id,
-        settings: { ...report.settings, player: '', markets: players ? [...markets[report.sport]] : ['h2h', 'spreads'] } });
+        settings: { ...report.settings, player: '', markets: players ? [...markets[report.sport]] : isSoccer(report.sport) ? ['h2h'] : ['h2h', 'spreads'] } });
       onFreshReport(run); refresh();
     } catch (cause) { setError(errorMessage(cause)); }
     finally { setBusy(false); }
   };
   return <section aria-label="Review game lean">
     <h4>Game lean · review before publishing</h4>
-    <p className="gai-note">NBA and NFL analyses stay private until you publish. Review the saved moneyline/spread below. Full-game totals also count in Game Leans; player props count in Top Picks.</p>
+    <p className="gai-note">All analyses stay private until you review and publish. Soccer match winner includes Draw, settled over 90 minutes plus stoppage time. Full-game totals count in Game Leans; verified player props count in Top Picks.</p>
     {lean ? <><p className="gai-note">{lean.reason}</p><PickCard pick={lean.pick} rank={1} technical /></>
       : <p>No verified game lean is available in this report. Missing data is not replaced with a forced pick.</p>}
     {lean && <p className="gai-note">Publish this saved pregame snapshot without another odds request. Saved odds: {stamp(lean.pick.updatedAt)} · Data: {stamp(lean.pick.dataAt)}. These are not live prices; current lines and availability may differ.</p>}
@@ -165,8 +167,8 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
       }}>Publish game lean · 0 credits</button>
     </div>
     <details className="gai-review-tools"><summary>Optional: refresh prices or analyze players</summary>
-      <button disabled={busy || started} onClick={() => void analyze(false)}>Refresh game lean only · up to 2 credits</button>
-      <button disabled={busy || started} onClick={() => void analyze(true)}>Analyze players &amp; full game · up to 7 credits</button>
+      <button disabled={busy || started} onClick={() => void analyze(false)}>Refresh game lean only · up to {isSoccer(report.sport) ? 1 : 2} credits</button>
+      <button disabled={busy || started} onClick={() => void analyze(true)}>Analyze players &amp; full game · up to {requestedMarkets({ ...report.settings, markets: [...markets[report.sport]] }, report.sport).size} credits</button>
     </details>
     {started && <p className="gai-note">This game has started; it can no longer be analyzed or published.</p>}
     {error && <p role="alert" className="feed-warning">{error}</p>}
@@ -515,7 +517,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     {!status.oddsReady && <p className="feed-warning" role="status">Sportsbook analysis is unavailable until an admin configures The Odds API on the server. Open provider setup below.</p>}
     <section className="gai-admin" aria-label="Admin analysis controls">
       <form className="gai-form" onSubmit={(event) => { event.preventDefault(); void request('analyze'); }}>
-        <label>Sport<select value={sport} disabled={busy} onChange={(event) => changeSport(event.target.value as Sport)}><option>NBA</option><option>NFL</option></select></label>
+        <label>Sport<select value={sport} disabled={busy} onChange={(event) => changeSport(event.target.value as Sport)}>{(['NBA', 'NFL', ...soccerSports] as const).map(value => <option key={value} value={value}>{value === 'EPL' ? 'Premier League' : value}</option>)}</select></label>
         <label>Date (Eastern)<input type="date" value={date} disabled={busy} onChange={(event) => { setDate(event.target.value); setEvents([]); setEventId(''); }} required /></label>
         <button className="gai-load" type="button" disabled={busy || !date || !status.oddsReady} onClick={() => void request('events')}>Load upcoming games</button>
         <label>Matchup<select value={eventId} onChange={(event) => setEventId(event.target.value)} disabled={busy} required><option value="">Select a game</option>
@@ -527,7 +529,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           {[
             { label: 'Moneyline (game winner)', group: ['h2h'] },
             { label: 'Player props', group: markets[sport].filter((item) => item.startsWith('player_')) },
-            { label: 'Totals / spreads', group: ['totals', 'spreads'] },
+            { label: isSoccer(sport) ? 'Total goals' : 'Totals / spreads', group: isSoccer(sport) ? ['totals'] : ['totals', 'spreads'] },
           ].map(({ label, group }) => <label key={label}><input type="checkbox" disabled={sport === 'NFL' && label === 'Player props'} checked={group.some((item) => fullAnalysisSettings(settings, sport).markets.includes(item))}
             onChange={(event) => setSettings((previous) => ({ ...previous, markets: event.target.checked
               ? [...new Set([...previous.markets, ...group])] : previous.markets.filter((item) => !group.includes(item)) }))} />{label}</label>)}
@@ -539,7 +541,8 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           { key: 'minQuality', label: 'Minimum completeness %', min: 75, max: 100 }, { key: 'recentWeight', label: 'Last-10 weighting %', max: 60 }] as const).map((field) => <label key={field.key}>{field.label}<input type="number" min={'min' in field ? field.min : 0} max={field.max} step="1" value={Math.round(settings[field.key] * 100)} required onChange={(event) => setSettings((previous) => ({ ...previous, [field.key]: Number(event.target.value) / 100 }))} /></label>)}
         <p className="gai-note">NBA focuses on core rotation and high-usage reserves, not confirmed lineups. Full NFL primetime analysis targets eight distinct player props plus a game lean; other games target three props. Data and availability checks may leave fewer eligible options.</p>
         </details>
-        <button className="gai-run" disabled={busy || !eventId || !fullAnalysisSettings(settings, sport).markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : `Run analysis · up to ${new Set([...fullAnalysisSettings(settings, sport).markets, 'h2h', 'spreads']).size} credits`}</button>
+        <button className="gai-run" disabled={busy || !eventId || !fullAnalysisSettings(settings, sport).markets.length || !status.oddsReady}>{busy ? 'Analysis in progress…' : `Run analysis · up to ${requestedMarkets(settings, sport).size} credits`}</button>
+        {isSoccer(sport) && <p className="gai-note">Experimental, on-demand soccer only—no scheduling. Match winner includes draw (not a push); totals use regulation-time goals. Shots, shots on target and assists require actual two-way sportsbook odds and eight verified individual same-league appearances. Missing data is excluded. No guaranteed accuracy or forced value picks. Recent weighting does not apply to the unfitted soccer baseline.</p>}
         {sport === 'NFL' && <p className="gai-note">Run analysis always includes NFL player props, even after opening an overnight lean-only report. Use Refresh game lean only for the separate 2-credit team-market refresh.</p>}
         <p className="gai-note">Odds API estimate for one game. Only returned markets are charged; reusing a fresh cached report costs 0 credits. Player filters do not reduce market costs.</p>
       </form>
@@ -560,7 +563,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     <section id="gai-top-picks" className="gai-top-picks gai-outline" aria-label={candidateView ? 'Top Picks' : 'Top Picks and Game Leans'}>
       <div className="gai-section-heading"><h3><span aria-hidden="true">★</span> {candidateView ? 'Top Picks' : 'Top Picks & Game Leans'}</h3><span className="gai-tag">{candidateView ? 'Admin candidates · unpublished' : 'Published picks'}</span></div>
       {!candidateView && <div className="gai-sport-tabs" role="group" aria-label="Published sport">
-        {(['all', 'NBA', 'NFL'] as const).map((league) => <button key={league} aria-pressed={memberSport === league}
+        {(['all', 'NBA', 'NFL', ...soccerSports] as const).map((league) => <button key={league} aria-pressed={memberSport === league}
           onClick={() => { setMemberSport(league); setMemberGame(''); }}>{league === 'all' ? 'All sports' : league}</button>)}
       </div>}
       {candidateView ? <section aria-label="Analysis reports">
@@ -589,7 +592,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
             void engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action: 'analyze', sport: report.sport, eventId: report.event_id, settings: fullAnalysisSettings(report.settings, report.sport), fullAnalysis: true })
               .then(({ run, cached }) => { openReport(run); setNotice(cached ? 'Reused a fresh report; no additional Odds API credits used.' : statusLabels[run.status]); refreshHistory(); })
               .catch((cause: unknown) => setActionError(errorMessage(cause))).finally(() => setBusy(false));
-          }}>{report.sport === 'NFL' ? 'Run full NFL analysis' : 'Refresh this game'} · up to {new Set([...fullAnalysisSettings(report.settings, report.sport).markets, 'h2h', 'spreads']).size} credits</button>}
+          }}>{report.sport === 'NFL' ? 'Run full NFL analysis' : 'Refresh this game'} · up to {requestedMarkets(report.settings, report.sport).size} credits</button>}
           <details className="gai-diagnostics"><summary>Data notes &amp; excluded markets</summary>
             {report.payload.scheduled && <p className="gai-note">Overnight shortlist · {report.payload.scheduled.selectionNote} Saved {stamp(report.created_at)}.</p>}
             {report.payload.providerUsage && <p className="gai-note">Odds API: {report.payload.providerUsage.requestCost ?? 'Unknown'} credits for this saved request · {report.payload.providerUsage.creditsRemaining ?? 'Unknown'} remaining as of {stamp(report.payload.providerUsage.checkedAt)}. Opening this report uses no credits.</p>}
@@ -640,7 +643,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     <details id="gai-results" className="gai-history"><summary>Results &amp; pick history</summary>
     <section aria-label="Model performance">
       <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD</span><h3>Published pick results</h3></div>
-        <label>Results sport<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option><option>NBA</option><option>NFL</option></select></label>
+        <label>Results sport<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option>{(['NBA', 'NFL', ...soccerSports] as const).map(value => <option key={value}>{value}</option>)}</select></label>
       </div>
       {status?.canAnalyze && <GamewaireResultsDownload picks={picks} disabled={!loaded || !!error} />}
       <p className="gai-note">Results are recorded by an admin, not automatically settled. Pending picks stay pending until reviewed.</p>

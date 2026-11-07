@@ -1,11 +1,19 @@
 import { adjustedPickProbability, learnAdjustment, pickLearningKey } from './gamewireLearning.ts';
 import type { LearningAdjustment } from './gamewireLearning.ts';
-export type Sport = 'NFL' | 'NBA';
+export const soccerSports = ['EPL', 'Serie A', 'La Liga', 'Bundesliga'] as const;
+export type SoccerSport = typeof soccerSports[number];
+export type Sport = 'NFL' | 'NBA' | SoccerSport;
+export const isSoccer = (sport: string): sport is SoccerSport => (soccerSports as readonly string[]).includes(sport);
+export const soccerModelVersion = 'soccer-evidence-v1';
 export const modelVersion = 'evidence-value-v10';
 export const probabilityModelVersion = 'evidence-value-v9';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
+  EPL: ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
+  'Serie A': ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
+  'La Liga': ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
+  Bundesliga: ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
 } as const;
 export type Settings = {
   markets: string[]; direction: 'both' | 'over' | 'under'; player: string;
@@ -40,6 +48,7 @@ export function isNFLPrimetime(start: string) {
     && Number(parts.find((part) => part.type === 'hour')?.value) >= 19;
 }
 export type Evidence = {
+  soccerLeague?: SoccerSport;
   samples: Observation[]; fetchedAt: string; quality: number; risks: string[];
   eligible: boolean; reason?: string; adjustment?: number;
   currentSeason?: number;
@@ -99,6 +108,7 @@ export function probabilityGrade(probability: number) {
     : probability >= 0.55 ? 'B' : probability >= 0.50 ? 'B-' : 'C';
 }
 export function gameLeanBlurb(pick: Candidate) {
+  if (isSoccer(pick.sport)) return pick.explanation;
   const recordText = (row: FormRecord) => `${row.wins}-${row.losses}${row.ties ? `-${row.ties} (W-L-T)` : ''}`;
   const samples = [...pick.samples].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
   const season = Math.max(...samples.flatMap((row) => row.season === undefined ? [] : [row.season]));
@@ -185,6 +195,7 @@ export function gameLeanBlurb(pick: Candidate) {
   return `${first.join(' ')}\n\n${second.join(' ')}`;
 }
 export function pickBlurb(pick: Candidate) {
+  if (isSoccer(pick.sport)) return pick.explanation;
   if (pick.market === 'h2h' || pick.market === 'spreads') return gameLeanBlurb(pick);
   const units: Record<string, string> = { player_points: 'points', player_rebounds: 'rebounds', player_assists: 'assists',
     player_threes: 'made threes', player_pass_yds: 'passing yards', player_rush_yds: 'rushing yards',
@@ -356,7 +367,14 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
           if (name === 'spreads') return numeric(other.point) === -Number(line);
           return other.description === outcome.description && numeric(other.point) === line;
         });
-        const noVig = opposite.length === 1 && numeric(opposite[0].price) !== undefined
+        const soccerThreeWay = isSoccer(sport) && name === 'h2h';
+        const completeThreeWay = soccerThreeWay && outcomes.length === 3
+          && new Set(outcomes.map(row => text(row.name))).size === 3
+          && [text(event.home_team), text(event.away_team), 'Draw'].every(side => outcomes.some(row => row.name === side))
+          && outcomes.every(row => numeric(row.price) !== undefined);
+        const noVig = soccerThreeWay ? completeThreeWay
+          ? impliedProbability(price) / outcomes.reduce((sum, row) => sum + impliedProbability(Number(row.price)), 0) : null
+          : opposite.length === 1 && numeric(opposite[0].price) !== undefined
           ? noVigProbabilities([price, Number(opposite[0].price)])[0] : null;
         result.push({ key: [event.id, name, subject, side, line ?? ''].join('|'), eventId: text(event.id), sport,
           start: text(event.commence_time), home: text(event.home_team), away: text(event.away_team),
@@ -369,6 +387,7 @@ export function readQuotes(value: unknown, sport: Sport): Quote[] {
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, limit: 4 | 8 | 9 = 4, minimumPlayerPicks: 0 | 3 | 8 = 0,
   learning: Map<string, LearningAdjustment> = new Map()): Evaluation {
+  if (quotes.some(quote => isSoccer(quote.sport))) throw new Error('Soccer requires the dedicated three-way regulation-time evaluator.');
   const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [], teamOptions: TeamLean[] = [];
   const best = new Map<string, Quote>();
   for (const quote of quotes) {

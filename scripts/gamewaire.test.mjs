@@ -12,6 +12,7 @@ import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
 import * as scoreboard from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import * as simulationBackend from '../supabase/functions/_shared/nflSimulationBackend.ts';
 import * as simulationAlignment from '../supabase/functions/_shared/nflSimulationAlignment.ts';
+import * as soccer from '../supabase/functions/_shared/gamewaireSoccer.ts';
 import { completedSavedGames, isSavedGamePastReview, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
 
 const now = Date.parse('2026-10-27T18:00:00Z');
@@ -637,7 +638,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
     .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, fullAnalysisSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, fullAnalysisSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb, isSoccer, soccerSports, soccerModelVersion } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture, PickCard, Settlement } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
@@ -983,6 +984,51 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+for (const sport of engine.soccerSports) test(`${sport} on-demand backend uses verified league games and player appearances, saves private results with no player quota or schedule`, async () => {
+  const fixture = endpoint({ configured: true });
+  const path = soccer.soccerPaths[sport], league = path.split('/')[1];
+  const calls = [];
+  const games = Array.from({ length: 12 }, (_, index) => ({
+    id: `soccer-game-${index}`, date: new Date(now - (index + 1) * 86400000).toISOString(), season: { year: 2026 },
+    competitions: [{ status: { period: 2, type: { name: 'STATUS_FULL_TIME', completed: true } }, competitors: [
+      { homeAway: 'home', team: { id: '1', displayName: 'Home' }, score: { value: 1, $ref: `https://sports.core.api.espn.com/v2/sports/${path}/leagues/${league}/scores/1` } },
+      { homeAway: 'away', team: { id: '2', displayName: 'Away' }, score: { value: 1, $ref: `https://sports.core.api.espn.com/v2/sports/${path}/leagues/${league}/scores/2` } },
+    ] }],
+  }));
+  const fetcher = async input => {
+    const url = String(input); calls.push(url);
+    if (url.includes('api.the-odds-api.com')) {
+      assert.ok(url.includes(sources.oddsSport[sport]));
+      assert.ok(!url.includes('spreads'));
+      return Response.json({ id: 'event', home_team: 'Home', away_team: 'Away', commence_time: quote.start,
+        bookmakers: [{ key: 'book', markets: [
+          { key: 'h2h', last_update: quote.updatedAt, outcomes: [{ name: 'Home', price: 150 }, { name: 'Away', price: 150 }, { name: 'Draw', price: 300 }] },
+          { key: 'player_shots', last_update: quote.updatedAt, outcomes: [{ name: 'Over', description: 'Player', point: .5, price: 200 }, { name: 'Under', description: 'Player', point: .5, price: -240 }] },
+        ] }] });
+    }
+    assert.ok(url.includes(path));
+    if (url.includes('/scoreboard')) return Response.json({ events: [{ id: 'espn-event', date: quote.start, season: { year: 2026 },
+      competitions: [{ status: { type: { state: 'pre' } }, competitors: games[0].competitions[0].competitors }] }] });
+    if (url.includes('/schedule')) return Response.json({ season: { year: 2026 }, events: games });
+    const game = games.find(game => url.includes(game.id));
+    return Response.json({ header: { id: game.id, competitions: [{ ...game.competitions[0], date: game.date }] },
+      rosters: [{ team: { id: '1' }, roster: [{ athlete: { id: 'verified-player', displayName: 'Player' },
+        stats: [{ name: 'appearances', value: 1 }, { name: 'totalShots', value: 3 }] }] }] });
+  };
+  const response = await fixture.run({ action: 'analyze', sport, eventId: 'event', settings: { ...engine.defaultSettings, markets: ['h2h', 'player_shots'] } }, true, fetcher);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.run.payload.modelVersion, engine.soccerModelVersion);
+  assert.equal(body.run.payload.coverage.league, sport);
+  assert.equal(body.run.payload.playerPropMinimum, 0);
+  assert.ok(body.run.payload.teamLean.pick.pushProbability === 0);
+  assert.ok(body.run.payload.picks.some(pick => pick.market === 'player_shots' && pick.identifiers.playerId === 'verified-player'));
+  assert.equal(calls.filter(url => url.includes('api.the-odds-api.com')).length, 1);
+  assert.ok(fixture.rpc.some(call => call.name === 'gamewaire_claim'));
+  assert.ok(fixture.rpc.some(call => call.name === 'gamewaire_analysis_lock'));
+  assert.ok(fixture.rpc.some(call => call.name === 'gamewaire_finish'));
+  assert.ok(fixture.rpc.every(call => !call.name.includes('publish') && !call.name.includes('schedule')));
+});
 function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
   scoreboardRows = [], scoreboardError = null, scoreboardJobs = [], scoreboardJobsError = null,
   settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
@@ -1005,7 +1051,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
         maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role }
           : table === 'gamewaire_picks' ? settlementConflict ? null : { id: 'pick' }
           : table === 'sports_resources' ? eventCache
-          : table === 'gamewaire_runs' && builder.columns === 'payload' ? { payload: { modelVersion: publicationVersion } }
+          : table === 'gamewaire_runs' && builder.columns === 'payload,sport' ? { sport: 'NBA', payload: { modelVersion: publicationVersion } }
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: table === 'gamewaire_runs' && builder.columns?.includes('event_start,payload,status')
@@ -1034,6 +1080,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       if (name.includes('gamewaireScoreboard')) return scoreboard;
       if (name.includes('nflSimulationBackend')) return simulationBackend;
       if (name.includes('nflSimulationAlignment')) return simulationAlignment;
+      if (name.includes('gamewaireSoccer')) return soccer;
       if (name.includes('gamewaireSources')) return { ...sources, resolveMatchup: async () => ({}), collectEvidence: async (quotes) => ({
         evidence: new Map(quotes.map((q) => [q.key, evidence])), warnings: [], coverage: {},
       }) };

@@ -1,10 +1,12 @@
-import { object, array, text } from '../../supabase/functions/_shared/gamewaire.ts';
+import { object, array, text, isSoccer } from '../../supabase/functions/_shared/gamewaire.ts';
 import type { Candidate, Sport, TeamLean } from '../../supabase/functions/_shared/gamewaire.ts';
 
 export type SavedGame = { sport: Sport; event_id: string; event_start: string; matchup: string;
   payload?: { picks?: Candidate[]; teamLean?: TeamLean } };
 export const savedGameKey = (game: Pick<SavedGame, 'sport' | 'event_id'>) => `${game.sport}:${game.event_id}`;
 const teamKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^losangeles/, 'la');
+const soccerPaths = { EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1' };
+const sportPath = (sport: Sport) => isSoccer(sport) ? soccerPaths[sport] : sport === 'NBA' ? 'basketball/nba' : 'football/nfl';
 const espnId = (game: SavedGame) => game.payload?.teamLean?.pick.identifiers?.espnEventId
   ?? game.payload?.picks?.find((pick) => pick.identifiers?.espnEventId)?.identifiers?.espnEventId;
 export function easternGameDate(value: string | number) {
@@ -49,7 +51,7 @@ export async function loadCompletedSavedGames(games: SavedGame[], signal: AbortS
     const start = Date.parse(game.event_start);
     const days = new Set([easternGameDate(start), easternGameDate(start + 12 * 60 * 60_000), easternGameDate(start - 12 * 60 * 60_000)]);
     for (const day of days) {
-      const path = game.sport === 'NBA' ? 'basketball/nba' : 'football/nfl';
+      const path = sportPath(game.sport);
       const url = `https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard?dates=${day.replace(/-/g, '')}&limit=100`;
       requests.set(url, [...(requests.get(url) ?? []), game]);
     }
@@ -81,7 +83,7 @@ export async function loadCompletedSavedGames(games: SavedGame[], signal: AbortS
   }
   await Promise.all([...unresolved.values()].map(async ({ game, id }) => {
     try {
-      const path = game.sport === 'NBA' ? 'basketball/nba' : 'football/nfl';
+      const path = sportPath(game.sport);
       const response = await fetcher(`https://site.api.espn.com/apis/site/v2/sports/${path}/summary?event=${encodeURIComponent(id)}`,
         { signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]), cache: 'no-store' });
       if (!response.ok) throw new Error(`Game status feed returned HTTP ${response.status}.`);

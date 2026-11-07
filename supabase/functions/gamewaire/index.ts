@@ -10,6 +10,8 @@ import { scoreboardPicks } from '../_shared/gamewaireScoreboard.ts';
 import { savedNFLGameSimulation } from '../_shared/nflSimulationBackend.ts';
 import { simulationAllowsMoneyline } from '../_shared/nflSimulationAlignment.ts';
 import type { NFLGameSimulation } from '../_shared/nflSimulation.ts';
+import { isSoccer, soccerModelVersion } from '../_shared/gamewaire.ts';
+import { collectSoccerEvidence, evaluateSoccer, resolveSoccerMatchup } from '../_shared/gamewaireSoccer.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -205,9 +207,9 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (body.action === 'publishLean') {
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId))
         return json({ error: 'Choose a saved game lean.' }, 400);
-      const source = await admin.from('gamewaire_runs').select('payload').eq('id', body.runId).maybeSingle();
+      const source = await admin.from('gamewaire_runs').select('payload,sport').eq('id', body.runId).maybeSingle();
       if (source.error) throw new Error('Could not verify the saved lean.');
-      if (!source.data || object(source.data.payload).modelVersion !== modelVersion)
+      if (!source.data || object(source.data.payload).modelVersion !== (isSoccer(text(source.data.sport)) ? soccerModelVersion : modelVersion))
         return json({ error: 'This saved analysis uses an older model. Refresh the game lean before publishing.' }, 400);
       const saved = await admin.rpc('gamewaire_publish_lean', { target_run: body.runId });
       if (saved.error) return json({ error: `Could not publish game lean: ${saved.error.message}` }, 400);
@@ -217,9 +219,9 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId) || !Array.isArray(body.keys)
         || body.keys.length < 1 || body.keys.length > 4 || body.keys.some((key) => typeof key !== 'string')
         || new Set(body.keys).size !== body.keys.length) return json({ error: 'Select one to four unique candidates from an analysis.' }, 400);
-      const source = await admin.from('gamewaire_runs').select('payload').eq('id', body.runId).maybeSingle();
+      const source = await admin.from('gamewaire_runs').select('payload,sport').eq('id', body.runId).maybeSingle();
       if (source.error) throw new Error('Could not verify the analysis model before publishing.');
-      if (!source.data || object(source.data.payload).modelVersion !== modelVersion)
+      if (!source.data || object(source.data.payload).modelVersion !== (isSoccer(text(source.data.sport)) ? soccerModelVersion : modelVersion))
         return json({ error: 'This saved analysis uses an older model. Generate fresh candidates before publishing.' }, 400);
       const saved = await admin.rpc('gamewaire_publish', { target_run: body.runId, selected_keys: body.keys });
       if (saved.error) return json({ error: `Could not publish picks: ${saved.error.message}` }, 400);
@@ -243,8 +245,10 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         try { decimalOdds(body.closingAmerican); } catch { return json({ error: 'Invalid closing odds.' }, 400); }
         closing = body.closingAmerican;
       }
-      const pick = await admin.from('gamewaire_picks').select('event_start,american,line').eq('id', body.id).single();
+      const pick = await admin.from('gamewaire_picks').select('event_start,american,line,sport,market').eq('id', body.id).single();
       if (pick.error) throw new Error('Could not load the pick being settled.');
+      if (isSoccer(text(pick.data.sport)) && pick.data.market === 'h2h' && body.result === 'push')
+        return json({ error: 'A soccer three-way match result cannot push. A draw wins the Draw selection and loses either team selection; void is reserved for verified canceled/invalid markets.' }, 400);
       if (Date.parse(pick.data.event_start) > Date.now() && body.result !== 'pending' && body.result !== 'void') return json({ error: 'A future event cannot be marked won, lost or pushed.' }, 400);
       if (closing !== null && (typeof body.closingAt !== 'string' || !Number.isFinite(Date.parse(body.closingAt)) || Date.parse(body.closingAt) >= Date.parse(pick.data.event_start)
         || typeof body.closingLine !== 'number' && body.closingLine !== null || body.closingLine !== pick.data.line)) return json({ error: 'Closing price must be timestamped before the event and match the original line for price-value comparison.' }, 400);
@@ -259,8 +263,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (!update.data) return json({ error: 'Another admin changed this pick. Refresh before retrying.' }, 409);
       return json({ saved: true });
     }
-    const sport: Sport | null = body.sport === 'NFL' || body.sport === 'NBA' ? body.sport : null;
-    if (!sport) return json({ error: 'Choose NFL or NBA.' }, 400);
+    const sport: Sport | null = body.sport === 'NFL' || body.sport === 'NBA' || isSoccer(text(body.sport)) ? body.sport as Sport : null;
+    if (!sport) return json({ error: 'Choose NFL, NBA, Premier League, Serie A, La Liga or Bundesliga.' }, 400);
     if (!oddsKey) return json({ status: 'setup_required', error: 'A server-side ODDS_API_KEY and the required player-prop subscription must be configured before sportsbook markets can be evaluated.' }, 503);
     if (body.action === 'events') {
       const date = body.date;
@@ -273,7 +277,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     let settings;
     try { settings = readSettings(body.settings, sport); } catch (error) { return json({ error: message(error) }, 400); }
     if (!scheduledJob && body.fullAnalysis === true) settings = fullAnalysisSettings(settings, sport);
-    const playerAnalysis = !scheduledJob && settings.markets.some((market) => market.startsWith('player_'));
+    const playerAnalysis = !scheduledJob && !isSoccer(sport) && settings.markets.some((market) => market.startsWith('player_'));
     const expired = await admin.from('gamewaire_runs').update({ status: 'provider_error', payload: { error: 'Prior analysis was interrupted. Retry with fresh provider data.' }, finished_at: new Date().toISOString() })
       .eq('sport', sport).eq('event_id', body.eventId).eq('status', 'in_progress').lt('created_at', new Date(Date.now() - 180_000).toISOString());
     if (expired.error) throw new Error('Could not clear an interrupted analysis.');
@@ -285,7 +289,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       return json({ error: 'This game is already being analyzed. Reopen its saved report shortly.' }, 409);
     }
     if (cached.data && ['completed', 'no_qualifying', 'insufficient_data'].includes(cached.data.status)
-      && object(cached.data.payload).modelVersion === modelVersion
+      && object(cached.data.payload).modelVersion === (isSoccer(sport) ? soccerModelVersion : modelVersion)
       && (!minimumPlayerPicks || object(cached.data.payload).playerPropMinimum === minimumPlayerPicks)
       && Date.parse(cached.data.event_start) > Date.now() && Date.now() - Date.parse(cached.data.created_at) < 600_000
       && array(object(cached.data.payload).picks).every((value) => {
@@ -311,7 +315,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       return json({ error: 'Hourly analysis limit reached (6 per admin / 20 site-wide). Saved reports, published picks and game lists are still available.',
         retryAt: retryAt.toISOString() }, 429);
     }
-    const requestedMarkets = [...new Set([...settings.markets, 'h2h', 'spreads'])];
+    const requestedMarkets = [...new Set([...settings.markets, 'h2h', ...(isSoccer(sport) ? [] : ['spreads'])])];
     const raw = await oddsJSON(`sports/${oddsSport[sport]}/events/${encodeURIComponent(text(body.eventId))}/odds?regions=us&oddsFormat=american&markets=${requestedMarkets.join(',')}`, oddsKey, fetcher,
       (usage) => { providerUsage = usage; });
     const event = object(raw), start = text(event.commence_time);
@@ -332,15 +336,15 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       warnings: [allQuotes.length ? 'No sportsbook player markets match the selected player.' : 'No supported sportsbook markets were returned. Check provider market entitlements.'] };
     else {
       const anchor: Quote = quotes[0];
-      const matchup = await resolveMatchup(anchor, fetcher);
-      const data = await collectEvidence(allQuotes, matchup, Date.now(), fetcher);
-      const learning = await loadPickLearning(admin, sport, probabilityModelVersion, Date.now());
+      const matchup = await (isSoccer(sport) ? resolveSoccerMatchup(anchor, fetcher) : resolveMatchup(anchor, fetcher));
+      const data = await (isSoccer(sport) ? collectSoccerEvidence(allQuotes, matchup, Date.now(), fetcher) : collectEvidence(allQuotes, matchup, Date.now(), fetcher));
+      const learning = isSoccer(sport) ? new Map() : await loadPickLearning(admin, sport, probabilityModelVersion, Date.now());
       const forecast = sport === 'NFL' ? await savedNFLGameSimulation(admin, matchup.eventId, start) : undefined;
       const alignedQuotes = sport === 'NFL' ? quotes.filter(quote => simulationAllowsMoneyline(quote, forecast)) : quotes;
-      report = { ...evaluate(alignedQuotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks, learning), warnings: data.warnings, coverage: data.coverage,
+      report = { ...(isSoccer(sport) ? evaluateSoccer(alignedQuotes, data.evidence, settings, Date.now()) : evaluate(alignedQuotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks, learning)), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (alignedQuotes.length !== quotes.length) report.warnings.push('NFL moneyline markets opposing the saved simulation winner were excluded. If the simulation is missing or tied, moneyline selections wait; no replacement value pick is forced.');
-      if (aiKey && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
+      if (aiKey && !isSoccer(sport) && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }
     if (minimumPlayerPicks && report.picks.filter((pick: Candidate) => pick.market.startsWith('player_')).length < minimumPlayerPicks) {
@@ -349,7 +353,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     const availableMarkets = new Set(allQuotes.map((quote) => quote.market));
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));
     if (missingMarkets.length) report.warnings.push(`Requested markets not returned: ${missingMarkets.join(', ')}. These may not be posted yet or included in the subscription; no picks were invented for missing markets.`);
-    report = { ...report, modelVersion, providerUsage, playerPropMinimum: minimumPlayerPicks,
+    report = { ...report, modelVersion: isSoccer(sport) ? soccerModelVersion : modelVersion, providerUsage, playerPropMinimum: minimumPlayerPicks,
       ...(scheduledJob ? { scheduled: { jobId: scheduledJob.id, selectionNote: scheduledJob.selection_note } } : {}) };
     const finished = await admin.rpc('gamewaire_finish', { target_run: runId, final_status: report.status, report, candidates: report.picks });
     if (finished.error) {

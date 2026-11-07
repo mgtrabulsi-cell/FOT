@@ -4,7 +4,7 @@ import { bestBetLabels } from './gamewaireOrder';
 import type { publishedSelections } from './gamewaireOrder';
 import { gamewaireMarketLabels, gamewairePickTitle } from './gamewairePresentation';
 
-type InstagramEdition = { sport: 'NBA' | 'NFL'; date: string };
+type InstagramEdition = { sport: import('../../supabase/functions/_shared/gamewaire.ts').Sport; date: string };
 type GraphicPick = ReturnType<typeof publishedSelections>[number] & { instagramTopRank?: number | null; instagramLeanRank?: number | null };
 export async function renderGamewairePickGraphics(picks: GraphicPick[], instagram?: InstagramEdition): Promise<File[]> {
   if (!picks.length || picks.length > (instagram ? 6 : 5)) throw new Error(instagram ? 'Choose one to six published selections for the Instagram carousel.' : 'Choose one to five published selections for the pick graphics.');
