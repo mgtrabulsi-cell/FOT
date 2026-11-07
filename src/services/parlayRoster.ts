@@ -1,7 +1,13 @@
 import { createDraftStorage } from './draftStorage';
 import { publicSupabaseConfig } from './supabaseClient';
-export type RosterSport = 'NBA' | 'NFL' | 'NHL' | 'UCL';
-export const isRosterSport = (value: string): value is RosterSport => ['NBA', 'NFL', 'NHL', 'UCL'].includes(value);
+export type RosterSport = 'NBA' | 'NFL' | 'NHL' | 'UCL' | 'CFB' | 'Soccer';
+export const isRosterSport = (value: string): value is RosterSport => ['NBA', 'NFL', 'NHL', 'UCL', 'CFB', 'Soccer'].includes(value);
+export const soccerLeagues = {
+  'eng.1': 'Premier League', 'esp.1': 'La Liga', 'ita.1': 'Serie A',
+  'ger.1': 'Bundesliga', 'fra.1': 'Ligue 1', 'usa.1': 'MLS',
+};
+export type SoccerLeague = keyof typeof soccerLeagues;
+export const isSoccerLeague = (value: string): value is SoccerLeague => Object.prototype.hasOwnProperty.call(soccerLeagues, value);
 
 export type ParlayTeam = { id: string; name: string; abbr: string; logo: string; color: string };
 export type ParlayPlayer = { id: string; name: string; position: string; image: string };
@@ -20,13 +26,14 @@ function roster(value: unknown): { players: ParlayPlayer[] } {
     && ['id', 'name', 'position', 'image'].every((k) => typeof p[k] === 'string'))) throw new Error('Invalid parlay player roster.');
   return data as { players: ParlayPlayer[] };
 }
-async function load<T>(sport: RosterSport, team: string | undefined, season: number | undefined, read: (value: unknown) => T, signal: AbortSignal) {
-  const key = `${sport}:${team ?? 'teams'}:${season ?? ''}`;
+async function load<T>(sport: RosterSport, team: string | undefined, season: number | undefined, read: (value: unknown) => T, signal: AbortSignal, soccerLeague: SoccerLeague = 'eng.1') {
+  const key = `${sport === 'Soccer' ? `${sport}:${soccerLeague}` : sport}:${team ?? 'teams'}:${season ?? ''}`;
   let value: T;
   try {
     if (!publicSupabaseConfig) throw new Error('Account services are not configured.');
     const url = new URL(`${publicSupabaseConfig.url}/functions/v1/parlay-roster`);
     url.searchParams.set('sport', sport);
+    if (sport === 'Soccer') url.searchParams.set('league', soccerLeague);
     if (team) { url.searchParams.set('team', team); url.searchParams.set('season', String(season)); }
     const response = await fetch(url, { signal });
     const data: unknown = await response.json();
@@ -46,5 +53,5 @@ async function load<T>(sport: RosterSport, team: string | undefined, season: num
   }
   return { data: value, warning: '' };
 }
-export const loadParlayTeams = (sport: RosterSport, signal: AbortSignal) => load(sport, undefined, undefined, directory, signal);
+export const loadParlayTeams = (sport: RosterSport, signal: AbortSignal, soccerLeague?: SoccerLeague) => load(sport, undefined, undefined, directory, signal, soccerLeague);
 export const loadParlayPlayers = (sport: RosterSport, team: string, season: number, signal: AbortSignal) => load(sport, team, season, roster, signal);

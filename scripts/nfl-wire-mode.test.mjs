@@ -28,6 +28,16 @@ function hooks() {
 }
 const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements)
   : [node, ...elements(node.props?.children)];
+test('Mobile box-score identities use full-width rows without an unused score column or broken words', () => {
+  const theme = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(theme, /\.wire-matchup-grid\.matchup-scoreboard \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(theme, /\.wire-matchup-grid\.matchup-scoreboard \.wire-matchup-team \{ display: grid; grid-template-columns: 76px minmax\(0, 1fr\)/);
+  assert.match(theme, /\.wire-matchup-grid\.matchup-scoreboard \.wire-matchup-team-details h2 \{[^}]*overflow-wrap: normal; word-break: normal/);
+  assert.match(theme, /\.matchup-scoreboard \.wire-matchup-score \{ grid-column: auto; grid-row: auto/);
+  assert.match(css, /\.wire-team-bar \{ grid-template-columns: minmax\(0, 1fr\); gap: 6px/);
+  assert.match(css, /\.wire-team-half-name \{ font-size: 14px; overflow-wrap: normal; word-break: normal/);
+});
 test('Simulation toggle remains red in both states and mobile cards reserve readable team-name space', () => {
   const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
   assert.match(css, /\.wire-pregame-mode \.wire-simulation-toggle \{[^}]*min-height: 44px;[^}]*background: #a51c28;[^}]*color: #fff/);

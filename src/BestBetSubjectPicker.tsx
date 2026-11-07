@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { isRosterSport, loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
+import { isRosterSport, isSoccerLeague, soccerLeagues, loadParlayPlayers, loadParlayTeams } from './services/parlayRoster';
 import type { ParlayPlayer, ParlayTeam } from './services/parlayRoster';
-import type { RosterSport } from './services/parlayRoster';
+import type { RosterSport, SoccerLeague } from './services/parlayRoster';
 import type { BestBetSubject } from './services/bestBetGraphic';
 import { readGraphicPhoto } from './services/graphicPhoto';
 
@@ -12,29 +12,31 @@ export default function BestBetSubjectPicker({ sport, value, onChoose, children,
 }) {
   const [open, setOpen] = useState(false), [league, setLeague] = useState<RosterSport>(isRosterSport(sport) ? sport : 'NFL');
   const [teams, setTeams] = useState<ParlayTeam[]>([]), [season, setSeason] = useState(0), [teamId, setTeamId] = useState('');
-  const [type, setType] = useState<'player' | 'team'>(sport === 'UCL' ? 'team' : 'player'), [players, setPlayers] = useState<ParlayPlayer[]>([]);
+  const [type, setType] = useState<'player' | 'team'>(sport === 'UCL' || sport === 'Soccer' ? 'team' : 'player'), [players, setPlayers] = useState<ParlayPlayer[]>([]);
+  const [soccerLeague, setSoccerLeague] = useState<SoccerLeague>('eng.1');
+  const teamOnly = league === 'UCL' || league === 'Soccer';
   const [query, setQuery] = useState(''), [loading, setLoading] = useState(false), [error, setError] = useState(''), [warning, setWarning] = useState('');
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
     setTeams([]); setPlayers([]); setTeamId(''); setSeason(0); setError(''); setWarning(''); setLoading(true);
-    void loadParlayTeams(league, controller.signal).then(({ data, warning }) => {
+    void loadParlayTeams(league, controller.signal, soccerLeague).then(({ data, warning }) => {
       if (!controller.signal.aborted) { setTeams(data.teams); setSeason(data.season); setWarning(warning); }
     }).catch(cause => { if (!controller.signal.aborted) setError(message(cause)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [open, league, retry]);
+  }, [open, league, soccerLeague, retry]);
   useEffect(() => {
     setPlayers([]); setQuery('');
-    if (!open || !teamId || !season || type !== 'player' || league === 'UCL') return;
+    if (!open || !teamId || !season || type !== 'player' || teamOnly) return;
     const controller = new AbortController(); setError(''); setLoading(true);
     void loadParlayPlayers(league, teamId, season, controller.signal).then(({ data, warning }) => {
       if (!controller.signal.aborted) { setPlayers(data.players); setWarning(warning); }
     }).catch(cause => { if (!controller.signal.aborted) setError(message(cause)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [open, league, teamId, season, type, retry]);
+  }, [open, league, teamId, season, type, teamOnly, retry]);
   const team = teams.find(row => row.id === teamId);
   const choose = (player?: ParlayPlayer) => {
     if (!team) return;
@@ -61,17 +63,20 @@ export default function BestBetSubjectPicker({ sport, value, onChoose, children,
       <button type="button" onClick={() => onChoose(league, undefined)}>Remove player / team</button>
     </div>}
     <details open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{value ? 'Change' : 'Add'} player / team name</summary>
-      <p>Choose NBA, NFL or NHL players / teams, or UEFA Champions League teams. This fills the name and card colors only.{allowPhotos ? ' Attach your own photo with Add photo.' : ' This template does not include photos.'} Your bet text stays editable below.</p>
+      <p>Choose NBA, NFL, NHL or CFB players / teams, or Soccer and UEFA Champions League teams. This fills the name and card colors only.{allowPhotos ? ' Attach your own photo with Add photo.' : ' This template does not include photos.'} Your bet text stays editable below.</p>
       <div className="parlay-fields">
         <label>League<select value={league} onChange={event => {
           if (isRosterSport(event.target.value)) {
             setTeamId(''); setPlayers([]); setLeague(event.target.value);
-            if (event.target.value === 'UCL') setType('team');
+            if (event.target.value === 'UCL' || event.target.value === 'Soccer') setType('team');
           }
-        }}><option>NFL</option><option>NBA</option><option>NHL</option><option value="UCL">UEFA Champions League</option></select></label>
+        }}><option>NFL</option><option>NBA</option><option>NHL</option><option value="CFB">CFB / College Football</option><option>Soccer</option><option value="UCL">UEFA Champions League</option></select></label>
+        {league === 'Soccer' && <label>Soccer league<select value={soccerLeague} onChange={event => {
+          if (isSoccerLeague(event.target.value)) { setTeamId(''); setSoccerLeague(event.target.value); }
+        }}>{Object.entries(soccerLeagues).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>}
         <label>Subject type<select value={type} onChange={event => {
           if (event.target.value === 'player' || event.target.value === 'team') { setLoading(false); setType(event.target.value); }
-        }} disabled={league === 'UCL'}>{league !== 'UCL' && <option value="player">Player</option>}<option value="team">Team</option></select></label>
+        }} disabled={teamOnly}>{!teamOnly && <option value="player">Player</option>}<option value="team">Team</option></select></label>
         <label className="parlay-wide">Team<select value={teamId} disabled={loading && !teams.length} onChange={event => setTeamId(event.target.value)}>
           <option value="">Choose a team</option>{teams.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select></label>

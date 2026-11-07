@@ -163,7 +163,7 @@ function endpoint() {
 test('Roster endpoint supports NBA/NFL/NHL, including six-digit NHL IDs, rejects unsafe paths and surfaces upstream errors', async () => {
   const handle = endpoint(), urls = [];
   const fetcher = async (url) => { urls.push(url); return Response.json({ athletes: [{ items: [{ id: '1', displayName: 'Player', position: { abbreviation: 'WR' }, headshot: { href: 'https://example.test/player.png' } }] }] }); };
-  for (const sport of ['NBA', 'NFL', 'NHL']) {
+  for (const sport of ['NBA', 'NFL', 'NHL', 'CFB']) {
     const result = await handle(new Request(`https://test/?sport=${sport}&team=${sport === 'NHL' ? '129764' : '2'}&season=2026`), fetcher);
     assert.equal(result.status, 200);
     assert.equal((await result.json()).players[0].name, 'Player');
@@ -171,11 +171,23 @@ test('Roster endpoint supports NBA/NFL/NHL, including six-digit NHL IDs, rejects
   assert.ok(urls[0].includes('basketball/nba'));
   assert.ok(urls[1].includes('football/nfl'));
   assert.ok(urls[2].includes('hockey/nhl/teams/129764/roster'));
-  for (const query of ['sport=OTHER', 'sport=NBA&team=99&season=2026', 'sport=NHL&team=1234567&season=2026', 'sport=NFL&team=../secrets&season=2026', 'sport=NFL&team=1&season=no', 'sport=UCL&team=359&season=2026']) {
+  assert.ok(urls[3].includes('football/college-football/teams/2/roster'));
+  for (const query of ['sport=OTHER', 'sport=NBA&team=99&season=2026', 'sport=NHL&team=1234567&season=2026', 'sport=NFL&team=../secrets&season=2026', 'sport=NFL&team=1&season=no', 'sport=UCL&team=359&season=2026', 'sport=Soccer&league=../secrets', 'sport=Soccer&team=359&season=2026', 'sport=CFB&team=../secrets&season=2026']) {
     assert.equal((await handle(new Request(`https://test/?${query}`), fetcher)).status, 400);
   }
-  assert.equal(urls.length, 3);
+  assert.equal(urls.length, 4);
   assert.equal((await handle(new Request('https://test/?sport=NBA'), async () => new Response('', { status: 503 }))).status, 502);
+});
+test('CFB directory does not stop at 100 teams and Soccer routes all six allowlisted leagues', async () => {
+  const handle = endpoint();
+  for (const [sport, league] of [['CFB', ''], ...['eng.1','esp.1','ita.1','ger.1','fra.1','usa.1'].map(league => ['Soccer', league])]) {
+    const response = await handle(new Request(`https://test/?sport=${sport}&league=${league}`), async url => {
+      assert.ok(url.endsWith(sport === 'CFB' ? '/football/college-football/teams?limit=1000' : `/soccer/${league}/teams?limit=100`));
+      return Response.json({ sports: [{ leagues: [{ season: { year: 2026 }, teams: [{ team: { id: '1', displayName: 'Team', abbreviation: 'ABC', color: '123abc' } }] }] }] });
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).teams[0].name, 'Team');
+  }
 });
 test('Champions League returns its full team directory with soccer crests, not unsupported player rosters', async () => {
   const handle = endpoint();

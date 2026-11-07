@@ -12,14 +12,18 @@ export async function handleParlayRoster(request: Request, fetcher: typeof fetch
   const image = params.get('image');
   if (image !== null) return graphicImage(image, fetcher, cors);
   const sport = params.get('sport'), team = params.get('team'), season = params.get('season');
-  if (!['NBA', 'NFL', 'NHL', 'UCL'].includes(sport ?? '') || team !== null && (sport === 'UCL' || !/^[1-9]\d{0,5}$/.test(team)
+  const soccerLeague = params.get('league') ?? 'eng.1';
+  if (!['NBA', 'NFL', 'NHL', 'UCL', 'CFB', 'Soccer'].includes(sport ?? '')
+    || sport === 'Soccer' && !['eng.1','esp.1','ita.1','ger.1','fra.1','usa.1'].includes(soccerLeague)
+    || team !== null && (sport === 'UCL' || sport === 'Soccer' || !/^[1-9]\d{0,5}$/.test(team)
     || sport === 'NBA' && Number(team) > 30 || sport === 'NFL' && Number(team) > 34)
     || team !== null && (!season || !/^\d{4}$/.test(season) || Number(season) < 2000 || Number(season) > 2200)) {
-    return json({ error: 'Choose a valid NBA, NFL or NHL team and season, or the Champions League team directory.' }, 400);
+    return json({ error: 'Choose a valid NBA, NFL, NHL or CFB team and season, or a supported Soccer / Champions League team directory.' }, 400);
   }
-  const path = sport === 'NBA' ? 'basketball/nba' : sport === 'NHL' ? 'hockey/nhl' : sport === 'UCL' ? 'soccer/uefa.champions' : 'football/nfl';
+  const path = sport === 'NBA' ? 'basketball/nba' : sport === 'NHL' ? 'hockey/nhl' : sport === 'UCL' ? 'soccer/uefa.champions'
+    : sport === 'CFB' ? 'football/college-football' : sport === 'Soccer' ? `soccer/${soccerLeague}` : 'football/nfl';
   try {
-    const upstream = await fetcher(`https://site.api.espn.com/apis/site/v2/sports/${path}/teams${team ? `/${team}/roster?season=${season}` : '?limit=100'}`, {
+    const upstream = await fetcher(`https://site.api.espn.com/apis/site/v2/sports/${path}/teams${team ? `/${team}/roster?season=${season}` : sport === 'CFB' ? '?limit=1000' : '?limit=100'}`, {
       signal: AbortSignal.timeout(12_000), headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' },
     });
     if (!upstream.ok) throw new Error(`ESPN returned HTTP ${upstream.status}`);

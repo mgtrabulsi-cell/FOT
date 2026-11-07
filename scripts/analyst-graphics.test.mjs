@@ -247,8 +247,10 @@ test('Best Bet roster picker loads only on opening and stores verified player/te
       if (!dependencies[i] || next.some((value, index) => value !== dependencies[i][index])) effects.push(callback);
       dependencies[i] = next; },
   } : {
-    isRosterSport: value => ['NBA', 'NFL', 'NHL', 'UCL'].includes(value),
-    loadParlayTeams: async league => { calls.push(['teams', league]); if (failed) throw new Error('Roster unavailable');
+    isRosterSport: value => ['NBA', 'NFL', 'NHL', 'UCL', 'CFB', 'Soccer'].includes(value),
+    soccerLeagues: { 'eng.1': 'Premier League', 'esp.1': 'La Liga', 'ita.1': 'Serie A', 'ger.1': 'Bundesliga', 'fra.1': 'Ligue 1', 'usa.1': 'MLS' },
+    isSoccerLeague: value => ['eng.1','esp.1','ita.1','ger.1','fra.1','usa.1'].includes(value),
+    loadParlayTeams: async (league, signal, soccerLeague) => { calls.push(['teams', league, soccerLeague]); if (failed) throw new Error('Roster unavailable');
       return { data: { teams: [team], season: 2026 }, warning: 'Using a saved roster' }; },
     loadParlayPlayers: async (...args) => { calls.push(['players', ...args.slice(0, 3)]); return { data: { players: [player] }, warning: '' }; },
   } });
@@ -291,7 +293,32 @@ test('Best Bet roster picker loads only on opening and stores verified player/te
   tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Use ').props.onClick();
   assert.equal(selections[3][0], 'UCL'); assert.equal(selections[3][1].type, 'team');
   tree = render();
-  failed = true; tree.find(node => node.type === 'select' && node.props.value === 'UCL').props.onChange({ target: { value: 'NBA' } });
+  tree.find(node => node.type === 'select' && node.props.value === 'UCL').props.onChange({ target: { value: 'CFB' } });
+  tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
+  render(); await flush(); tree = render();
+  tree.find(node => node.type === 'select' && node.props.value === '').props.onChange({ target: { value: '1' } });
+  tree.find(node => node.type === 'select' && node.props.value === 'team').props.onChange({ target: { value: 'player' } });
+  render(); await flush(); tree = render();
+  tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Test Player').props.onClick();
+  assert.equal(selections[4][0], 'CFB'); assert.equal(selections[4][1].type, 'player');
+  tree = render();
+  tree.find(node => node.type === 'select' && node.props.value === 'CFB').props.onChange({ target: { value: 'Soccer' } });
+  tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
+  render(); await flush(); tree = render();
+  const beforeSoccerPlayers = calls.filter(row => row[0] === 'players').length;
+  for (const league of ['eng.1','esp.1','ita.1','ger.1','fra.1','usa.1']) {
+    tree.find(node => node.type === 'select' && node.props.value === states.find(value => ['eng.1','esp.1','ita.1','ger.1','fra.1','usa.1'].includes(value))).props.onChange({ target: { value: league } });
+    render(); await flush(); tree = render();
+    assert.ok(calls.some(call => call[0] === 'teams' && call[1] === 'Soccer' && call[2] === league));
+  }
+  tree.find(node => node.type === 'select' && node.props.value === '').props.onChange({ target: { value: '1' } });
+  render(); await flush(); tree = render();
+  assert.equal(calls.filter(row => row[0] === 'players').length, beforeSoccerPlayers);
+  tree.find(node => node.type === 'button' && Array.isArray(node.props.children) && node.props.children[0] === 'Use ').props.onClick();
+  assert.equal(selections[5][0], 'Soccer'); assert.equal(selections[5][1].type, 'team');
+  assert.equal(selections[5][1].subject.image, '');
+  tree = render();
+  failed = true; tree.find(node => node.type === 'select' && node.props.value === 'Soccer').props.onChange({ target: { value: 'NBA' } });
   tree.find(node => node.type === 'details').props.onToggle({ currentTarget: { open: true } });
   render(); await flush(); tree = render();
   assert.ok(tree.some(node => node.props?.role === 'alert'));

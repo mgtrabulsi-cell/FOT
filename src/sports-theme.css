@@ -249,6 +249,13 @@
   .sports-theme .nba-matchup.matchup-scoreboard > .matchup-home { grid-template-columns: minmax(0, 1fr) 38px; }
   .sports-theme .matchup-away .nba-favorite { grid-column: 2; justify-self: start; }
   .sports-theme .matchup-home .nba-favorite { grid-column: 1; justify-self: end; }
+  .sports-theme .wire-matchup-grid.matchup-scoreboard { grid-template-columns: minmax(0, 1fr); }
+  .sports-theme .wire-matchup-grid.matchup-scoreboard .wire-matchup-team { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
+  .sports-theme .matchup-scoreboard .wire-matchup-mark-wrapper { grid-column: 1; grid-row: 1; flex-direction: row; gap: 8px; }
+  .sports-theme .matchup-scoreboard .wire-matchup-mark-wrapper .favorite-star-button { width: 30px; height: 30px; min-width: 30px; min-height: 30px; }
+  .sports-theme .wire-matchup-grid.matchup-scoreboard .wire-matchup-team-details { grid-column: 2; grid-row: 1; min-width: 0; margin: 0; text-align: left; justify-items: start; }
+  .sports-theme .wire-matchup-grid.matchup-scoreboard .wire-matchup-team-details h2 { font-size: 15px; overflow-wrap: normal; word-break: normal; }
+  .sports-theme .matchup-scoreboard .wire-matchup-score { grid-column: auto; grid-row: auto; }
 }
 .sports-theme .nba-wheel-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin: 16px 3px 8px; color: #e4effb; }
 .sports-theme .nba-wheel-heading strong { font-size: 16px; font-weight: 600; }

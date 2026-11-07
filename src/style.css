@@ -1776,11 +1776,11 @@ td:first-child { color: #828c84; }
   .wire-matchup-center .wire-status-pill { font-size: 11px; padding: 4px 11px; }
   .wire-matchup-center .wire-venue-line { justify-content: center; font-size: 11px; }
   .wire-matchup-center .wire-stathub-link { min-height: 24px; }
-  .wire-team-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .wire-team-bar { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .wire-team-half { padding: 8px; gap: 6px; min-width: 0; }
   .wire-team-half-content, .wire-team-half-left { min-width: 0; gap: 6px; }
   .wire-team-half-copy { min-width: 0; }
-  .wire-team-half-name { font-size: 12px; overflow-wrap: anywhere; }
+  .wire-team-half-name { font-size: 14px; overflow-wrap: normal; word-break: normal; }
   .wire-team-half-sub { font-size: 9px; }
   .wire-team-half-score { font-size: 18px; }
   .wire-team-half .team-mark { width: 22px; height: 22px; flex: 0 0 22px; }
