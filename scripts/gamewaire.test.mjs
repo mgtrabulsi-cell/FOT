@@ -341,7 +341,7 @@ test('Matchup history uses verified opponent matches only and never counts prior
   assert.doesNotMatch(engine.pickBlurb({ ...pick, samples: pick.samples.slice(1) }), /recorded current-season meeting/);
 });
 
-test('Top Picks rank conservative value before probability, with deterministic ties', () => {
+test('Top Picks rank model win probability before value, with deterministic ties', () => {
   const base = evaluate().picks[0];
   const candidate = (key, probability, extra = {}) => ({ ...base, key, probability, ...extra });
   const picks = [
@@ -352,7 +352,7 @@ test('Top Picks rank conservative value before probability, with deterministic t
     candidate('lower-usage', 0.739, { rotation: { label: 'Core rotation', minutes: 32, involvement: 14 } }),
   ];
   assert.deepEqual(engine.rankTopPicks(picks).map((pick) => pick.key),
-    ['moneyline', 'famous-lower-band', 'high-usage', 'lower-usage', 'highest']);
+    ['highest', 'lower-usage', 'high-usage', 'moneyline', 'famous-lower-band']);
   assert.equal(picks[0].key, 'famous-lower-band', 'Ranking does not mutate saved reports');
   for (const a of picks) for (const b of picks) {
     const forward = engine.rankTopPicks([a, b]), backward = engine.rankTopPicks([b, a]);
@@ -366,11 +366,25 @@ test('Top Picks rank conservative value before probability, with deterministic t
   ]);
   const result = engine.evaluate(q, data, settings, now, 8);
   assert.equal(result.picks.length, 2);
-  assert.equal(result.picks[0].key, 'high-payout', 'Generation prioritizes conservative expected value, not raw hit probability');
-  assert.ok(result.picks[0].conservativeEV > result.picks[1].conservativeEV);
+  assert.equal(result.picks[0].key, 'high-probability', 'Generation prioritizes model hit probability rather than higher payout');
+  assert.ok(result.picks[0].probability > result.picks[1].probability);
+  assert.ok(result.picks[0].conservativeEV < result.picks[1].conservativeEV);
   const ml = { ...quote, key: 'unqualified-ml', market: 'h2h', side: 'Boston Celtics', line: null, american: -10000 };
   assert.equal(engine.evaluate([ml], new Map([[ml.key, evidence]]), { ...settings, markets: ['h2h'] }, now).picks.length, 0,
     'Moneyline focus never bypasses value thresholds');
+});
+
+test('Game leans choose highest model probability even when a lower-probability alternative passes value screens', () => {
+  const quotes = [
+    { ...quote, key: 'likely', market: 'h2h', subject: quote.home, side: quote.home, line: null, american: -10000 },
+    { ...quote, key: 'valuable', market: 'spreads', subject: quote.away, side: quote.away, line: 4.5, american: 300 },
+  ];
+  const lower = { ...evidence, samples: evidence.samples.map((row, i) => ({ ...row, value: i < 21 ? 20 : -20 })) };
+  const result = engine.evaluate(quotes, new Map([[quotes[0].key, evidence], [quotes[1].key, lower]]), settings, now);
+  assert.equal(result.teamLean.pick.key, 'likely');
+  assert.equal(result.teamLean.qualifies, false);
+  assert.match(result.teamLean.reason, /Highest supported model win probability/);
+  assert.ok(result.teamLean.pick.probability > engine.evaluate([quotes[1]], new Map([[quotes[1].key, lower]]), settings, now).teamLean.pick.probability);
 });
 
 test('NBA rotation pool keeps five high-minute players per team and verified high-usage reserves only', () => {
@@ -772,7 +786,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const pickSummary = admin.slice(admin.indexOf('<summary class="gai-pick-summary"'), admin.indexOf('</summary>', admin.indexOf('<summary class="gai-pick-summary"')));
   assert.doesNotMatch(pickSummary, /<input|<button/, 'The expandable pick is separate from the admin publication checkbox');
   assert.match(pickSummary, /gai-pick-identity gai-history-pick/, 'Top Picks share the results row identity styling');
-  assert.match(pickSummary, /class="gai-history-price"><b>\+150<\/b><small>Book A<\/small>/);
+  assert.match(pickSummary, /class="gai-history-price"><b>87.4%<\/b><small>Model win probability<\/small><small>\+150 · Book A<\/small>/);
   assert.match(pickSummary, /Probability grade/);
   assert.match(pickSummary, /aria-label="Rank 1"/);
   assert.match(pickSummary, /Atlanta Hawks @ Boston Celtics/);
@@ -1049,7 +1063,7 @@ test('Member scoreboard shortlist ranks every saved matchup, exposes only three 
     const report = evaluate([moneyline, spread], evidence, { ...settings, markets: ['h2h', 'spreads'] });
     assert.equal(report.winnerLean.pick.market, 'h2h');
     assert.equal(report.winnerLean.qualifies, false);
-    assert.equal(report.teamLean.pick.market, 'spreads');
+    assert.equal(report.teamLean.pick.market, 'h2h');
     assert.ok(report.picks.every(pick => pick.key !== moneyline.key), 'Coverage must not turn a lean into a qualifying bet');
   });
   test('NBA daily coverage fills three distinct games with labeled winner leans, but short slates get one winner total', () => {

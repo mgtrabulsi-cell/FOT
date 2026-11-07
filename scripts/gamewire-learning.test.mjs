@@ -3,6 +3,7 @@ import test from 'node:test';
 import { learnAdjustment, adjustedPrediction, adjustedPickProbability, pickLearningKey } from '../supabase/functions/_shared/gamewireLearning.ts';
 import { finalPlayerStats, archivePlayerForecast, settleForecasts } from '../supabase/functions/_shared/gamewireForecasts.ts';
 import { loadPickLearning } from '../supabase/functions/_shared/gamewirePickLearning.ts';
+import { modelVersion, probabilityModelVersion } from '../supabase/functions/_shared/gamewaire.ts';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -22,6 +23,12 @@ test('Stat learning requires 30 training and 10 later games; validated adjustmen
   assert.equal(result.active, true); assert.equal(result.adjustment, 1.1);
   assert.equal(result.baselineError, 10); assert.ok(result.adjustedError < .0001);
   assert.equal(learnAdjustment(samples(40, 200), 'stat', cutoff).adjustment, 1.1);
+});
+test('Insufficient learning evidence reports sample progress without activating a correction', () => {
+  const result = learnAdjustment(samples(20), 'stat', cutoff);
+  assert.equal(result.active, false); assert.equal(result.adjustment, 1);
+  assert.equal(result.trainingGames, 15); assert.equal(result.validationGames, 5);
+  assert.equal(result.sampleIds.length, 20); assert.ok(result.through);
 });
 test('Later-game failures reject a training improvement rather than overfitting missed predictions', () => {
   const rows = samples(); rows.slice(30).forEach(row => row.actual = 90);
@@ -136,10 +143,12 @@ test('Archival uses independent bases, does not mutate cached estimates and neve
 test('Game-pick adapter uses original pre-correction probabilities, ignores model changes and paginates verified settled picks', async () => {
   const rows = samples(40, 1, .5).map(sample => ({ id: sample.id, event_id: sample.eventId, event_start: sample.start, created_at: sample.recordedAt,
     settled_at: sample.settledAt, probability: .9, push_probability: 0, result: 'win', market: 'h2h', side: 'Team',
-    data: { modelVersion: 'base+adjusted', learning: { baseModelVersion: 'base', baseConditional: .5 } } }));
+    data: { modelVersion, learning: { baseModelVersion: probabilityModelVersion, baseConditional: .5 } } }));
+  rows[0].probability = .5;
+  rows[0].data = { modelVersion: probabilityModelVersion };
   const calls = [];
   const builder = new Proxy({}, { get: (_, method) => method === 'then' ? resolve => resolve({ data: rows, error: null }) : (...args) => { calls.push([method, ...args]); return builder; } });
-  const result = await loadPickLearning({ from: () => builder }, 'NFL', 'base', cutoff);
+  const result = await loadPickLearning({ from: () => builder }, 'NFL', probabilityModelVersion, cutoff);
   assert.equal(result.get('h2h:team').active, true); assert.equal(result.get('h2h:team').adjustment, .05);
   assert.ok(calls.some(call => call[0] === 'eq' && call[1] === 'withdrawn' && call[2] === false));
   assert.ok(calls.some(call => call[0] === 'in' && call[1] === 'result'));

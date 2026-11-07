@@ -46,12 +46,13 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
           <h3>{title}</h3>
           <small>{pick.away} @ {pick.home} · {stamp(pick.start)}</small></div>
       </div>
-      <div className="gai-history-price"><b>{odds(pick.american)}</b><small>{pick.book}</small></div>
+      <div className="gai-history-price"><b>{percent(pick.probability)}</b><small>Model win probability</small><small>{odds(pick.american)} · {pick.book}</small></div>
       <span className={`gai-grade ${pick.probability >= 0.5 ? 'gai-grade-positive' : 'gai-grade-neutral'}`}>Probability grade {grade}</span>
     </div>
     <div className="gai-pick-footer">
       {pick.valueClass && <span className="gai-tag">{pick.valueClass} · Experimental</span>}
       {lean && <span className="gai-tag">Game Lean · Not a Top Pick</span>}
+      {lean && pick.probability < .6 && <span className="gai-tag">Low-confidence lean</span>}
       {stretch && <span className="gai-stretch">Stretch · only you</span>}
       {record?.withdrawn && <span className="gai-tag">Withdrawn · not an active selection</span>}
       {record && <span className={`gai-result gai-result-${record.result}`}>{resultLabels[record.result]}</span>}
@@ -107,7 +108,7 @@ function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun;
   const [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const stale = candidates.some((pick) => Date.now() - Date.parse(pick.updatedAt) > 600_000) || Date.parse(report.event_start) <= Date.now();
-  const legacy = candidates.some((pick) => (pick.learning?.baseModelVersion ?? pick.modelVersion) !== modelVersion);
+  const legacy = candidates.some((pick) => !pick.modelVersion.startsWith(modelVersion));
   return <section className="gai-publish" aria-label="Choose member picks"><h4>Choose up to four props / totals</h4>
     <p className="gai-note">Player props publish as Top Picks; full-game totals publish as Game Leans. Moneylines and spreads belong in Game Leans. Tap for reasoning, then select up to four picks.</p>
     <div className="gai-picks">{candidates.map((pick, index) => <PickCard key={pick.key} pick={pick} rank={index + 1} technical stretch={report.payload.stretchKeys?.includes(pick.key)}
@@ -138,7 +139,7 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
   const started = Date.parse(report.event_start) <= Date.now();
   const invalid = !lean || !Number.isFinite(Date.parse(lean.pick.updatedAt)) || !Number.isFinite(Date.parse(lean.pick.dataAt))
     || Date.parse(lean.pick.updatedAt) > Date.now() + 60_000 || Date.parse(lean.pick.dataAt) > Date.now() + 60_000
-    || (lean.pick.learning?.baseModelVersion ?? lean.pick.modelVersion) !== modelVersion;
+    || !lean.pick.modelVersion.startsWith(modelVersion);
   const analyze = async (players: boolean) => {
     setBusy(true); setError(''); setNotice('');
     try {
@@ -521,7 +522,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           {report && report.event_id === eventId && !events.some((event) => event.id === eventId) && <option value={eventId}>{report.matchup} · {stamp(report.event_start)} · Saved report</option>}
           {events.map((event) => <option key={event.id} value={event.id}>{event.away} @ {event.home} · {stamp(event.start)}</option>)}</select></label>
         <details className="gai-advanced"><summary>Analysis settings</summary>
-        <p className="gai-note">Moneyline and spread evidence is always checked for a separate game lean. Failed-value leans never enter Top Picks.</p>
+        <p className="gai-note">Game leans prioritize supported model win probability, not payout or the sportsbook favorite. Leans below 60% remain labeled low confidence. Failed-value leans never enter Top Picks.</p>
         <fieldset className="gai-market-switches"><legend>Analysis settings</legend>
           {[
             { label: 'Moneyline (game winner)', group: ['h2h'] },

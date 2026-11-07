@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isNFLPrimetime, markets, modelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
+import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isNFLPrimetime, markets, modelVersion, probabilityModelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport, TeamLean } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses } from '../_shared/gamewaireSchedule.ts';
@@ -334,7 +334,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const anchor: Quote = quotes[0];
       const matchup = await resolveMatchup(anchor, fetcher);
       const data = await collectEvidence(allQuotes, matchup, Date.now(), fetcher);
-      const learning = await loadPickLearning(admin, sport, modelVersion, Date.now());
+      const learning = await loadPickLearning(admin, sport, probabilityModelVersion, Date.now());
       const forecast = sport === 'NFL' ? await savedNFLGameSimulation(admin, matchup.eventId, start) : undefined;
       const alignedQuotes = sport === 'NFL' ? quotes.filter(quote => simulationAllowsMoneyline(quote, forecast)) : quotes;
       report = { ...evaluate(alignedQuotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks, learning), warnings: data.warnings, coverage: data.coverage,

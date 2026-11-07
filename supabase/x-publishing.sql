@@ -2,6 +2,7 @@ begin;
 
 alter table public.angles add column if not exists post_to_x boolean not null default false;
 alter table public.angles alter column post_to_x set default false;
+grant update (post_to_x) on public.angles to authenticated;
 
 create table if not exists public.x_publishing_settings (
   id boolean primary key default true check(id),

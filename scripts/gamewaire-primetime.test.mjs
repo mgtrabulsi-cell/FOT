@@ -68,13 +68,13 @@ test('Situational records use real consecutive games within each season, not ATS
   assert.equal(form.latestResult, 'tie');
   assert.deepEqual(form.primetime, { wins: 2, losses: 2, ties: 1 });
 });
-test('Opponent yardage weakness breaks probability-band ties without changing probabilities or forcing a market', () => {
+test('Opponent yardage weakness breaks equal-probability ties but does not override higher model probability', () => {
   const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];
   const opponent = { team: 'Away', pointsAllowed: 25, pointsScored: 22, games: 7, rank: 24, leagueSize: 32, season: 2026, fetchedAt: new Date(now).toISOString() };
   const weak = { ...base, key: 'z', opponents: [{ ...opponent, yardage: { receiving: { perGame: 280, rank: 30 } } }] };
   const strong = { ...base, key: 'a', opponents: [{ ...opponent, yardage: { receiving: { perGame: 180, rank: 3 } } }] };
   assert.equal(rankTopPicks([strong, weak])[0].key, 'z');
-  assert.equal(rankTopPicks([{ ...strong, probability: base.probability + 0.02 }, weak])[0].key, 'z', 'Raw probability does not override value and matchup evidence');
+  assert.equal(rankTopPicks([{ ...strong, probability: base.probability + 0.02 }, weak])[0].key, 'a', 'Supported model probability leads matchup tiebreakers');
   assert.equal(rankTopPicks([{ ...strong, side: 'Under' }, { ...weak, side: 'Under' }])[0].key, 'a');
   assert.equal(weak.probability, base.probability);
   assert.match(pickBlurb(weak), /280\.0 receiving yards per game/);

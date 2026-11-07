@@ -32,11 +32,13 @@ export function learnAdjustment(samples: LearningSample[], mode: LearningAdjustm
     if (!events.has(row.eventId)) events.set(row.eventId, row);
   }
   const rows = [...events.values()].sort((a, b) => Date.parse(a.start) - Date.parse(b.start)).slice(-160);
-  if (rows.length < 40) return result;
+  if (!rows.length) return result;
   const split = Math.floor(rows.length * .75), validation = rows.slice(split), validationStart = Date.parse(validation[0].start);
   const training = rows.slice(0, split).filter(row => Date.parse(row.settledAt) < validationStart);
   result.trainingGames = training.length; result.validationGames = validation.length;
-  if (training.length < 30 || validation.length < 10) return result;
+  result.through = rows[rows.length - 1].settledAt;
+  result.sampleIds = [...training, ...validation].map(row => row.id);
+  if (rows.length < 40 || training.length < 30 || validation.length < 10) return result;
   const error = (sample: LearningSample[], adjustment: number) => average(sample.map(row => {
     const difference = adjustedPrediction(row.prediction, mode, adjustment) - row.actual;
     return mode === 'stat' ? Math.abs(difference) : difference ** 2;
@@ -48,8 +50,6 @@ export function learnAdjustment(samples: LearningSample[], mode: LearningAdjustm
   const candidates = Array.from({ length: 21 }, (_, index) => mode === 'stat' ? .9 + index * .01 : -.05 + index * .005);
   const best = candidates.sort((a, b) => error(training, a) - error(training, b) || Math.abs(a - neutral) - Math.abs(b - neutral))[0];
   result.baselineError = error(validation, neutral); result.adjustedError = error(validation, best);
-  result.through = rows[rows.length - 1].settledAt;
-  result.sampleIds = [...training, ...validation].map(row => row.id);
   const requiredImprovement = mode === 'stat' ? .05 : .02;
   result.active = Math.abs(best - neutral) > 1e-8 && result.baselineError > 0
     && result.adjustedError <= result.baselineError * (1 - requiredImprovement)

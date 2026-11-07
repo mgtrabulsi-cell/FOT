@@ -5,6 +5,7 @@ import type { NFLGameSimulation } from './nflSimulation.ts';
 import { advanceSimulation, prepareSimulation } from './nflSimulationSources.ts';
 import type { SimulationCache, SimulationJob } from './nflSimulationSources.ts';
 import { currentBotWeek, readBotWeek } from './gamewireBot.ts';
+import { loadSimulationLearning } from './nflSimulationLearning.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const migration = 'NFL simulation storage is unavailable. Apply supabase/nfl-game-simulations.sql before enabling this endpoint.';
@@ -91,7 +92,8 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
         }
       }
     }
-    let result = await advanceSimulation(game, job, cache, get, now);
+    const learning = await loadSimulationLearning(admin, now);
+    let result = await advanceSimulation(game, job, cache, get, now, learning);
     result = readNFLGameSimulation(result, game.id, game.date, { home: game.home.id, away: game.away.id });
     if (result.status === 'ready') {
       const verified = simulationGame(await get(`${site}/summary?event=${eventId}`), eventId, Date.now());

@@ -242,6 +242,13 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
           {scenario?.issue && <p>{scenario.issue}</p>}
           <p className="nfl-simulation-caption">Evidence checked {new Date(displayed.checkedAt).toLocaleString()} · Forecast saved {new Date(displayed.forecastAt!).toLocaleString()} · {displayed.history.home} home-team / {displayed.history.away} away-team completed games (target: 100 each).</p>
           {displayed.evidenceMode && <p>Coverage: {displayed.evidenceMode}. {displayed.refreshing ? 'Additional history is collecting.' : 'Collection complete.'}</p>}
+          {displayed.learning && <div>
+            <h3>Results-based simulation learning</h3>
+            {Object.entries(displayed.learning.adjustments).map(([metric, adjustment]) => <p key={metric}>
+              {metric}: {adjustment.active ? `${Math.round((adjustment.adjustment - 1) * 100)}% validated correction` : 'No validated correction active'}
+              {' · '}{adjustment.trainingGames} training / {adjustment.validationGames} validation games
+            </p>)}
+          </div>}
           {displayed.version === legacyNFLSimulationVersion && <p>This earlier forecast has no touchdown estimates.</p>}
             <p>Questionable players are assumed to participate at observed usage. Listed out/inactive players are excluded. Offensive-line and defensive injury impacts are not numerically estimated without validated participation evidence.</p>
             {displayed.injuries.length ? <ul>{displayed.injuries.map((injury, i) => <li key={i}>{injury.name} ({injury.position}, {injury.teamId === game.home.id ? game.home.abbr : game.away.abbr}): {injury.status}</li>)}</ul> : <p>No complete confirmed game-day injury report is available. Refer to evidence issues for source availability.</p>}

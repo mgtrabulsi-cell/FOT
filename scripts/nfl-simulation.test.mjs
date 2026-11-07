@@ -11,6 +11,7 @@ import { archivePlayerForecast } from '../supabase/functions/_shared/gamewireFor
 import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import { advanceSimulation, prepareSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
 import { loadNFLGameSimulation, runNFLGameSimulation, savedNFLGameSimulation, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
+import { loadSimulationLearning, simulationLearningBaselines } from '../supabase/functions/_shared/nflSimulationLearning.ts';
 
 const now = Date.parse('2026-11-05T18:00:00Z');
 const game = { id: '90000', date: '2026-11-15T18:00:00Z', season: 2026, seasonType: 2,
@@ -20,6 +21,55 @@ const partial = (passingAttempts, completions, passingYards, rushingAttempts, ru
   Object.fromEntries(Object.entries({ passingAttempts, completions, passingYards, passingTouchdowns: passingAttempts === undefined ? undefined : 2,
     rushingAttempts, rushingYards, rushingTouchdowns: rushingAttempts === undefined ? undefined : 1,
     receptions, receivingYards, receivingTouchdowns: receptions === undefined ? undefined : 1 }).filter(([, n]) => n !== undefined));
+
+test('Simulation learning uses realized settled games, original baselines and later-game validation without counting scenarios twice', async () => {
+  const clock = Date.parse('2026-11-07T12:00:00Z');
+  const rows = Array.from({ length: 50 }, (_, i) => {
+    const start = new Date(clock - (60 - i) * 86400000).toISOString();
+    const teams = [{ id: '1', score: 20, passingYards: 200, rushingYards: 100 }, { id: '2', score: 20, passingYards: 200, rushingYards: 100 }];
+    const scenarios = [0, 1].map(id => ({ id: String(id), home: { id: '1', totals: {}, score: { mean: 22 } }, away: { id: '2', totals: {}, score: { mean: 22 } } }));
+    return { event_id: String(i), event_start: start, settled_at: new Date(Date.parse(start) + 4 * 3600000).toISOString(),
+      payload: { forecastAt: new Date(Date.parse(start) - 3600000).toISOString(), scenarios,
+        learning: { version: 'simulation-walk-forward-v1', baselines: scenarios.map(scenario => ({ scenarioId: scenario.id, teams })) } },
+      actuals: { realized: scenarios.map(scenario => ({ scenarioId: scenario.id })),
+        teams: teams.map(team => ({ id: team.id, points: 22, passingYards: 220, rushingYards: 110 })) } };
+  });
+  const admin = { from(table) {
+    assert.equal(table, 'gamewire_game_forecasts');
+    const query = { select: () => query, eq: () => query, not: () => query, lt: () => query, gt: () => query,
+      order: () => query, range: async () => ({ data: rows, error: null }) };
+    return query;
+  } };
+  const learned = await loadSimulationLearning(admin, clock);
+  for (const adjustment of Object.values(learned)) {
+    assert.equal(adjustment.active, true); assert.equal(adjustment.adjustment, 1.1);
+    assert.equal(adjustment.trainingGames + adjustment.validationGames, 50);
+  }
+  rows.slice(37).forEach(row => row.actuals.teams.forEach(team => { team.points = 18; team.passingYards = 180; team.rushingYards = 90; }));
+  assert.ok(Object.values(await loadSimulationLearning(admin, clock)).every(adjustment => !adjustment.active));
+  rows.forEach(row => row.actuals.realized = []);
+  assert.ok(Object.values(await loadSimulationLearning(admin, clock)).every(adjustment => !adjustment.active));
+});
+
+test('Learned simulation yardage retains passing/receiving equality, TD accounting and independent score correction', () => {
+  const f = fixture();
+  const baseline = simulateNFLGame(game, f.history, f.players, f.observations, 500);
+  const neutral = simulateNFLGame(game, f.history, f.players, f.observations, 500, { score: 1, passingYards: 1, rushingYards: 1 });
+  assert.deepEqual(neutral, baseline);
+  const learned = simulateNFLGame(game, f.history, f.players, f.observations, 500, { score: 1, passingYards: 1.1, rushingYards: .9 });
+  for (let i = 0; i < learned.length; i++) for (const side of ['home', 'away']) {
+    if (!learned[i][side]) continue;
+    const team = learned[i][side], box = roundedSimulationBox(team);
+    assert.deepEqual(team.score, baseline[i][side].score, 'Yardage learning must not compound an independently validated score correction');
+    assert.equal(box.totals.passingYards, box.listed.receivingYards);
+    assert.equal(box.totals.passingTouchdowns, box.listed.receivingTouchdowns + box.remainder.otherReceivingTouchdowns);
+    assert.ok(team.totals.passingYards.mean >= baseline[i][side].totals.passingYards.mean);
+    assert.ok(team.totals.rushingYards.mean <= baseline[i][side].totals.rushingYards.mean);
+  }
+  assert.equal(simulationLearningBaselines(baseline).length, baseline.filter(scenario => scenario.home && scenario.away).length);
+  assert.throws(() => simulateNFLGame(game, f.history, f.players, f.observations, 500,
+    { score: 1.2, passingYards: 1, rushingYards: 1 }), /ten percent/);
+});
 function side(id, home, i = 0, scale = 1) {
   const passingYards = Math.round((220 + i % 7 * 18) * scale), completions = 20 + i % 5, rushingYards = 100 + i % 6 * 8;
   return { id, home, points: 17 + i % 7 * 3, passingAttempts: 32 + i % 5, completions, passingYards,
@@ -530,13 +580,15 @@ function backendFixture({ ready = false, locked = false, archiveFailure = false,
     from(table) {
       let keys = [], update;
       const builder = {
-        select: () => builder, eq: () => builder, gt: () => builder, order: () => builder, limit: () => builder, in: (_field, values) => { keys = values; return builder; },
+        select: () => builder, eq: () => builder, gt: () => builder, lt: () => builder, not: () => builder, range: () => builder,
+        order: () => builder, limit: () => builder, in: (_field, values) => { keys = values; return builder; },
         update: value => { update = value; return builder; },
         maybeSingle: async () => ({ data: table === 'gamewire_game_forecasts' ? ready ? { payload: initial, event_start: kickoff } : null
           : missing ? null : { payload: job, response: response([], { status: 'collecting', forecastAt: null, kickoff }), model_version: nflSimulationVersion }, error: null }),
         then: resolve => {
           if (update) updates.push(update);
-          return Promise.resolve({ data: table === 'gamewire_bot_cache' ? keys.filter(key => cache.has(key)).map(key => ({ cache_key: key, payload: cache.get(key) })) : [{ event_id: game.id }], error: null }).then(resolve);
+          return Promise.resolve({ data: table === 'gamewire_bot_cache' ? keys.filter(key => cache.has(key)).map(key => ({ cache_key: key, payload: cache.get(key) }))
+            : table === 'gamewire_game_forecasts' ? [] : [{ event_id: game.id }], error: null }).then(resolve);
         },
         upsert: async () => ({ error: null }),
       };
@@ -590,6 +642,16 @@ test('Archived team-only preparation remains eligible for minute-by-minute backf
   const update = api.updates.find(update => update.response);
   assert.equal(update.response.refreshing, true);
   assert.ok(Date.parse(update.next_run_at) >= started + 60000 && Date.parse(update.next_run_at) < Date.now() + 65000);
+});
+test('Background simulations archive learning diagnostics and neutral baselines even before sufficient results exist', async () => {
+  const api = backendFixture();
+  const data = await runNFLGameSimulation(api.admin, game.id, api.get);
+  assert.equal(data.learning.version, 'simulation-walk-forward-v1');
+  assert.ok(Object.values(data.learning.adjustments).every(adjustment => !adjustment.active && adjustment.adjustment === 1));
+  assert.ok(data.learning.baselines.length > 0);
+  assert.equal(readNFLGameSimulation(data, game.id, api.kickoff, { home: '1', away: '2' }).learning.version, 'simulation-walk-forward-v1');
+  const invalid = structuredClone(data); invalid.learning.adjustments.score.adjustment = 2;
+  assert.throws(() => readNFLGameSimulation(invalid, game.id, api.kickoff, { home: '1', away: '2' }), /invalid/i);
 });
 test('Missing results enqueue once with quota, not foreground backfill; denied requests cannot enqueue', async () => {
   const api = backendFixture({ missing: true });
@@ -671,6 +733,7 @@ test('Stale completed simulations refresh current-season player logs without res
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
     }).outputText;
     const context = vm.createContext({ exports: {}, crypto, Date, Error, console, require(name) {
+      if (name.includes('nflSimulationLearning')) return { loadSimulationLearning };
       if (name.includes('nflSimulationSources')) return {
         prepareSimulation: async () => ({ ...api.job, version: nflSimulationVersion, createdAt: new Date().toISOString(), logs: {} }),
         advanceSimulation: async (_game, job) => { refreshed = structuredClone(job.logs); return response([], { status: 'collecting', forecastAt: null, kickoff: api.kickoff }); },
@@ -692,6 +755,7 @@ test('Feed-stalled partial backfills retain progress and increasing retry state 
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const context = vm.createContext({ exports: {}, crypto, Date, Error, console: { error() {} }, require(name) {
+    if (name.includes('nflSimulationLearning')) return { loadSimulationLearning };
     if (name.includes('nflSimulationSources')) return { advanceSimulation: async () => response([], {
       status: 'collecting', forecastAt: null, kickoff: api.kickoff, stage: 'Team history',
       progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 }, warnings: ['10001: Feed issue'],
@@ -1073,7 +1137,7 @@ test('Saved NFL simulation alignment validates archival identities, kickoff and 
 test('Automatic NFL scoreboard picks cannot promote a losing moneyline or force a replacement value pick', () => {
   const f = fixture(), forecast = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   forecast.scenarios[0].home.score.mean = 27; forecast.scenarios[0].away.score.mean = 20;
-  const candidate = { key: 'home-ml', sport: 'NFL', market: 'h2h', modelVersion: 'evidence-value-v9', home: game.home.name, away: game.away.name,
+  const candidate = { key: 'home-ml', sport: 'NFL', market: 'h2h', modelVersion: 'evidence-value-v10', home: game.home.name, away: game.away.name,
     subject: game.home.name, side: game.home.name, start: game.date, line: null, american: -110, noVig: .5, quality: .9, probability: .7,
     ev: .3, edge: .15, conservativeEV: .1, updatedAt: new Date(now - 1000).toISOString(), dataAt: new Date(now).toISOString(),
     sampleSize: 20, samples: [], risks: [], facts: [], identifiers: { espnEventId: game.id } };

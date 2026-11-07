@@ -1,7 +1,8 @@
-import { adjustedPickProbability, pickLearningKey } from './gamewireLearning.ts';
+import { adjustedPickProbability, learnAdjustment, pickLearningKey } from './gamewireLearning.ts';
 import type { LearningAdjustment } from './gamewireLearning.ts';
 export type Sport = 'NFL' | 'NBA';
-export const modelVersion = 'evidence-value-v9';
+export const modelVersion = 'evidence-value-v10';
+export const probabilityModelVersion = 'evidence-value-v9';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -267,13 +268,13 @@ export function pickBlurb(pick: Candidate) {
   return [...sentences.slice(0, 4), `${takeaway.slice(0, -1)}${caveat}${recentAgainst ? '; recent production is a counterpoint, not supporting evidence' : ''}${player ? '; sportsbook lines may vary' : ''}.`].join(' ');
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
-  return [...picks].sort((a, b) => b.conservativeEV - a.conservativeEV
-    || b.ev - a.ev || b.edge - a.edge || b.quality - a.quality
+  return [...picks].sort((a, b) => b.probability - a.probability || b.quality - a.quality
+    || b.conservativeEV - a.conservativeEV || b.ev - a.ev || b.edge - a.edge
     || Number(b.market === 'h2h') - Number(a.market === 'h2h')
     || matchupPreference(b) - matchupPreference(a)
     || (b.rotation?.involvement ?? 0) - (a.rotation?.involvement ?? 0)
     || (b.rotation?.minutes ?? 0) - (a.rotation?.minutes ?? 0)
-    || b.probability - a.probability || gamewaireGrade(b).score - gamewaireGrade(a).score
+    || gamewaireGrade(b).score - gamewaireGrade(a).score
     || a.key.localeCompare(b.key));
 }
 export function matchupPreference(pick: Candidate) {
@@ -428,7 +429,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const conditionalWin = 1 - push > 0 ? Math.min(1, wins / (1 - push)) : 0;
     const decisiveSample = effectiveSample * (1 - push);
     const baseConditional = (conditionalWin * decisiveSample + quote.noVig * 4) / (decisiveSample + 4);
-    const adjustment = learning.get(pickLearningKey(quote.market, quote.side));
+    const adjustment = learning.get(pickLearningKey(quote.market, quote.side)) ?? learnAdjustment([], 'probability', now);
     const conditional = adjustment?.active ? adjustedPickProbability(baseConditional, quote.market, quote.side, adjustment.adjustment) : baseConditional;
     const probability = conditional * (1 - push);
     const uncertainty = Math.sqrt(Math.max(baseConditional * (1 - baseConditional), conditional * (1 - conditional)) / (decisiveSample + 5));
@@ -450,7 +451,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       fairAmerican: fairAmericanOdds(conditional), noVigEdge: conditional - quote.noVig,
       median: empiricalQuantile(values, .5), lowerQuartile: empiricalQuantile(values, .25), upperQuartile: empiricalQuantile(values, .75),
       last20: mean(current.slice(0, 20).map(row => row.value)),
-      ...(adjustment ? { learning: { ...adjustment, baseModelVersion: modelVersion, baseConditional },
+      ...(adjustment ? { learning: { ...adjustment, baseModelVersion: probabilityModelVersion, baseConditional },
         ...(adjustment.active ? { modelVersion: `${modelVersion}+wf1:${adjustment.adjustment}:${adjustment.through}` } : {}) } : {}),
       sampleSize: samples.length, effectiveSample, last5: mean(current.slice(0, 5).map((row) => row.value)), last10: mean(current.slice(0, 10).map((row) => row.value)), seasonAverage: mean(current.map((row) => row.value)),
       quality: data.quality, dataAt: data.fetchedAt, samples, risks: baseline ? [...data.risks, baseline, 'Previous-season roles, teammates and team strength may differ. Small current samples increase uncertainty.'] : data.risks,
@@ -477,9 +478,13 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     picks.push(candidate); subjects.add(identity); if (!player) teamMarket = true;
     if (picks.length === limit) break;
   }
-  const teamLean = [...teamOptions].sort((a, b) => Number(b.qualifies) - Number(a.qualifies)
-    || b.pick.conservativeEV - a.pick.conservativeEV || b.pick.ev - a.pick.ev || b.pick.edge - a.pick.edge
-    || b.pick.quality - a.pick.quality || a.pick.key.localeCompare(b.pick.key))[0];
+  const selectedLean = [...teamOptions].sort((a, b) => b.pick.probability - a.pick.probability
+    || b.pick.quality - a.pick.quality || b.pick.conservativeEV - a.pick.conservativeEV
+    || b.pick.ev - a.pick.ev || b.pick.edge - a.pick.edge || a.pick.key.localeCompare(b.pick.key))[0];
+  const teamLean = selectedLean ? { ...selectedLean,
+    reason: `Highest supported model win probability for this game (${(selectedLean.pick.probability * 100).toFixed(1)}%). ${
+      selectedLean.pick.probability < .6 ? 'Low-confidence lean; retained for game coverage, not a high-confidence selection. ' : ''
+    }${selectedLean.reason}` } : undefined;
   if (teamLean?.qualifies && !picks.some((pick) => pick.key === teamLean.pick.key)) {
     const existing = picks.findIndex((pick) => !pick.market.startsWith('player_'));
     const displaced = existing >= 0 ? picks.splice(existing, 1)[0] : picks.length >= limit ? picks.pop() : undefined;

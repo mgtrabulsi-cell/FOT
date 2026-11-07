@@ -2,6 +2,7 @@ import { array, object, text } from './gamewaire.ts';
 import { readBotDepth } from './gamewireBotProjections.ts';
 import { readBotRoster } from './gamewireBot.ts';
 import { nflSimulationRuns, nflSimulationVersion, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from './nflSimulation.ts';
+import { simulationLearningBaselines, simulationLearningFactors } from './nflSimulationLearning.ts';
 import type { NFLGameSimulation, SimulationBox, SimulationGame, SimulationPlayer, SimulationReference } from './nflSimulation.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
@@ -140,7 +141,8 @@ async function boxBatch(refs: SimulationReference[], cache: SimulationCache, get
     return box ? [[ref.id, box] as const] : [];
   })), completed: saved.size, total: required.length, issues };
 }
-export async function advanceSimulation(game: SimulationGame, job: SimulationJob, cache: SimulationCache, get: (url: string) => Promise<unknown>, now: number): Promise<NFLGameSimulation> {
+export async function advanceSimulation(game: SimulationGame, job: SimulationJob, cache: SimulationCache, get: (url: string) => Promise<unknown>, now: number,
+  learning?: import('./nflSimulationLearning.ts').SimulationLearning['adjustments']): Promise<NFLGameSimulation> {
   const result: NFLGameSimulation & { preparationIssues: string[] } = { status: 'collecting', version: nflSimulationVersion, eventId: game.id, kickoff: game.date, checkedAt: job.createdAt,
     forecastAt: null, stage: 'Team history', progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 },
     runs: nflSimulationRuns, calibrated: false, preparationIssues: [...job.preparationIssues ?? []], warnings: [...job.warnings], injuries: job.injuries, scenarios: [] };
@@ -211,10 +213,17 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     console.error('Simulation player observation excluded', issue);
     result.warnings.push(issue);
   })]));
-  result.scenarios = simulateNFLGame(game, {
+  const history = {
     home: job.history.home.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
     away: job.history.away.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
-  }, job.players, observations, result.runs);
+  };
+  result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs);
+  if (learning) {
+    result.learning = { version: 'simulation-walk-forward-v1', adjustments: learning, baselines: simulationLearningBaselines(result.scenarios) };
+    if (Object.values(learning).some(adjustment => adjustment.active)) {
+      result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs, simulationLearningFactors(learning));
+    }
+  }
   result.warnings.push(...result.scenarios.flatMap(scenario => scenario.issue ? [scenario.issue] : []));
   result.scenarios = result.scenarios.filter(scenario => scenario.home && scenario.away);
   if (!result.scenarios.length) {
@@ -230,12 +239,13 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
   result.warnings.push(
     'Experimental joint empirical bootstrap; probabilities and 10th–90th percentile ranges are not calibrated or betting recommendations.',
     `Team history: ${result.history.home} home-team and ${result.history.away} away-team completed regular-season/playoff games, targeting 100 each; recency half-life 24 games and matching home/away weight 1.5×.`,
-    'Player history: up to 30 verified production appearances across teams; recency half-life 10 appearances and same-opponent samples receive 1.5× weight.',
+    'Player history: up to 100 verified production appearances across teams; recent and current-season production receives stronger weight, and same-opponent samples receive 1.5× weight.',
     'Defensive adjustments use observed passing/rushing yards per opportunity and points per yard, relative to historical opponent samples; coefficients are heuristic, not fitted injury effects.',
     'Every QB pairing is conditional, not a confirmed starter. Player markets require at least four verified category appearances; fewer than eight are labeled limited evidence. Listed questionable players are assumed to participate at observed usage.',
     'Reported out/inactive players are excluded from current allocations. Unmodeled players retain a team remainder; no specific injured-player replacement or numerical OL/defensive injury penalty is invented.',
     'Touchdowns use verified per-opportunity player production and opponent allowances. Passing/receiving touchdowns reconcile and scoring is bounded below by six points per offensive touchdown in every draw.',
     'Scores use joint yardage/scoring-rate outcomes, not drive-by-drive, kicker or overtime simulations. Rounded box-score lines are reconciled; expand details for expectations and uncalibrated ranges.',
   );
+  if (result.learning) result.warnings.push('Results-based corrections use original archived forecasts and verified realized-game outcomes. Corrections stay inactive until they improve on later held-out games; no continual performance improvement is guaranteed.');
   return result;
 }
