@@ -170,15 +170,17 @@ const boxColumns: Array<{ label: string; key: NBAPlayerStatKey; display?: string
   { label: '3PT', key: 'threePointersMade', display: '3PT' }, { label: 'STL', key: 'steals' }, { label: 'BLK', key: 'blocks' },
   { label: 'TO', key: 'turnovers' }, { label: 'PF', key: 'fouls' }, { label: '+/−', key: 'plusMinus', display: '+/-' },
 ];
-function PlayerBox({ team, box, favorites, toggle, open }: { team: Team; box?: NBABoxTeam; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void }) {
-  const players = [...box?.players ?? []].sort((a, b) => Number(b.starter) - Number(a.starter));
+function PlayerBox({ team, box, favorites, toggle, open, live = false }: { team: Team; box?: NBABoxTeam; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team) => void; live?: boolean }) {
+  const points = (player: NBABoxTeam['players'][number]) => !player.didNotPlay && typeof player.stats.points === 'number'
+    && Number.isFinite(player.stats.points) && player.stats.points >= 0 ? player.stats.points : -1;
+  const players = [...box?.players ?? []].sort((a, b) => live ? points(b) - points(a) : Number(b.starter) - Number(a.starter));
   return <section><TeamHeading team={team} favorites={favorites} toggle={toggle} />
-    <p className="nba-box-scroll-hint">Swipe or drag for more stats. Select a player for details.</p><TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box">
+    <p className="nba-box-scroll-hint">{live && 'Sorted by points, highest first. '}Swipe or drag for more stats. Select a player for details.</p><TableScroll label={`${team.name} player box score`}><table className="nba-table nba-box">
     {!players.length && <><thead><tr><th scope="col">Player</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody><tr><td colSpan={boxColumns.length + 1}><span role="status">Waiting for reported player statistics. This box score will update automatically.</span></td></tr></tbody></>}
-    {[true, false].map((starter) => {
-      const group = players.filter((player) => player.starter === starter);
+    {(live ? [null] : [true, false]).map((starter) => {
+      const group = live ? players : players.filter((player) => player.starter === starter);
       if (!group.length) return null;
-      const label = starter ? group.length === 5 ? 'Starting five' : 'Reported starters' : 'Bench';
+      const label = live ? 'Players by points' : starter ? group.length === 5 ? 'Starting five' : 'Reported starters' : 'Bench';
       return <tbody key={String(starter)} aria-label={label}><tr className="nba-box-group"><th scope="col">{label}</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr>{group.map((player) => <tr key={player.id}>
       <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" aria-label={`${player.name}, ${player.position}, player details`} onClick={() => open(player, team)}><span><span className="nba-box-full-name">{player.name}</span><small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
       {player.didNotPlay ? <td className="nba-dnp" colSpan={boxColumns.length}>DNP{player.reason ? ` · ${player.reason}` : ''}</td> : boxColumns.map((column) => <td data-label={column.label} key={column.key}>{column.display ? player.display[column.display] ?? '—' : format(player.stats[column.key])}</td>)}
@@ -476,7 +478,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
       {currentSummary?.plays.length ? <LatestPlay play={currentSummary.plays[currentSummary.plays.length - 1]} game={game} /> : <p className="nba-note" role="status">{upcoming ? 'Latest play will appear when the game starts.' : summary.loading ? 'Loading data…' : 'No recent play is available yet.'}</p>}
       <div className="nba-segments" role="group" aria-label="NBA game detail views">{([{ key: 'players', label: 'Player Box Score' }, { key: 'teams', label: 'Team Comparison' }, { key: 'plays', label: 'Play-by-Play' }] as const).map((item) => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}</div>
       {tab === 'players' && boxTeam && <><div className="nba-segments nba-team-toggle" role="group" aria-label="Box score team">{[game.away, game.home].map((side) => <button type="button" key={side.id} style={{ '--team-bar-color': side.color ? `#${side.color.replace(/^#/, '')}` : '#4a6385' } as CSSProperties} aria-pressed={boxTeam.id === side.id} onClick={() => setBoxTeamId(side.id)}><TeamAbbrMark abbr={side.abbr} color={side.color} name={side.name} />{side.name}</button>)}</div>
-        {upcoming ? <><p className="nba-note">Pregame rosters · open a player for actual season statistics. Starters are not confirmed.</p><Roster key={`${boxTeam.id}:${game.seasonYear}`} team={boxTeam} season={game.seasonYear} query={query} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} /></> : <PlayerBox key={boxTeam.id} team={boxTeam} box={currentSummary?.teams.find((item) => item.id === boxTeam.id)} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} />}
+        {upcoming ? <><p className="nba-note">Pregame rosters · open a player for actual season statistics. Starters are not confirmed.</p><Roster key={`${boxTeam.id}:${game.seasonYear}`} team={boxTeam} season={game.seasonYear} query={query} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} /></> : <PlayerBox key={boxTeam.id} team={boxTeam} box={currentSummary?.teams.find((item) => item.id === boxTeam.id)} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} live={game.status === 'LIVE'} />}
       </>}
       {tab === 'teams' && (upcoming ? <PregameComparison game={game} /> : <Comparison away={game.away} home={game.home} awayStats={currentSummary?.teams.find((item) => item.id === game.away.id)?.stats ?? []} homeStats={currentSummary?.teams.find((item) => item.id === game.home.id)?.stats ?? []} />)}
       {tab === 'plays' && <PlayByPlay plays={currentSummary?.plays ?? []} game={game} upcoming={upcoming} />}

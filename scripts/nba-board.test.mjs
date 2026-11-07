@@ -660,6 +660,24 @@ function descendants(tree) {
   visit(tree); return found;
 }
 
+test('Live NBA box ranks starters and bench together by points and reorders after score updates', () => {
+  const app = setup();
+  const player = (id, points, extra = {}) => ({ id, name: id, position: 'G', starter: false, stats: { points },
+    display: {}, didNotPlay: false, ...extra });
+  const players = [player('Starter', 4, { starter: true }), player('Bench scorer', 22), player('Same points', 22),
+    player('Zero', 0), player('Missing', undefined), player('DNP', 99, { didNotPlay: true })];
+  const props = { team: away, box: { players }, favorites: [], toggle() {}, open() {}, live: true };
+  const names = () => descendants(app.components.PlayerBox(props)).filter(node => node.props?.className === 'nba-box-full-name').map(node => node.props.children);
+  assert.deepEqual(Array.from(names()), ['Bench scorer', 'Same points', 'Starter', 'Zero', 'Missing', 'DNP']);
+  assert.deepEqual(players.map(row => row.name), ['Starter', 'Bench scorer', 'Same points', 'Zero', 'Missing', 'DNP']);
+  players[0].stats.points = 25;
+  assert.deepEqual(Array.from(names()), ['Starter', 'Bench scorer', 'Same points', 'Zero', 'Missing', 'DNP']);
+  const bodies = descendants(app.components.PlayerBox(props)).filter(node => node.type === 'tbody');
+  assert.equal(bodies.length, 1, 'Live scoring order is not separated into starter/bench sections');
+  assert.equal(bodies[0].props['aria-label'], 'Players by points');
+  app.unmount();
+});
+
 test('NBA player box stably places all reported starters ahead of bench, retaining DNP and real zeros', () => {
   const app = setup();
   const player = (id, starter, extra = {}) => ({ id, name: `Player ${id}`, position: 'G', starter, stats: { points: 0 },

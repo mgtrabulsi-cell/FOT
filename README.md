@@ -24,6 +24,8 @@ Each time The Angle is opened, its pinned post expands and scrolls to the top wi
 
 Mobile NBA player box scores size columns to the table viewport so 3PT is the final visible statistic in the initial view. Full player names, player-detail links and favorites remain available, with horizontal scrolling for steals and the remaining statistics. Desktop table sizing is unchanged.
 
+Live NBA box scores rank all players together by reported points, highest first, and reorder on each stats refresh. Equal scores retain feed order; missing stats and DNP players follow reported scores. Final-game starter/bench grouping is unchanged.
+
 Mobile NFL box-score headers group each team into a full-width row below the centered score, with names wrapping only between words. Phone-sized team selectors also use full-width rows. Desktop layouts are unchanged.
 
 GamewAIre pick breakdowns share a selection heading, verified matchup/statistical narrative, model-versus-sportsbook probability comparison, and **GamewAIre Verdict** across pick cards, automatic scoreboard/sidebar selections, published bot props, and graphic exports. Prices are explicitly saved prices, not current quotes; probability edges are percentage points and exclude pushes when present. Missing efficiency, offensive-yardage or turnover data is never invented or described as a model input. The NBA matchup wheel uses larger high-contrast status/team/score text, an explicit viewing state, and a visible horizontal scrollbar; drag, swipe and keyboard selection remain available.
