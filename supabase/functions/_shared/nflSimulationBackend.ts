@@ -6,9 +6,18 @@ import { advanceSimulation, prepareSimulation } from './nflSimulationSources.ts'
 import type { SimulationCache, SimulationJob } from './nflSimulationSources.ts';
 import { currentBotWeek, readBotWeek } from './gamewireBot.ts';
 import { loadSimulationLearning } from './nflSimulationLearning.ts';
+import { buildSimulationAccuracy } from './nflSimulationAccuracy.ts';
+import type { SimulationAccuracyScope } from './nflSimulationAccuracy.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const migration = 'NFL simulation storage is unavailable. Apply supabase/nfl-game-simulations.sql before enabling this endpoint.';
+export async function loadNFLSimulationAccuracy(admin: SupabaseClient, scopes: SimulationAccuracyScope[], now = Date.now()) {
+  const saved = await admin.from('gamewire_game_forecasts').select('event_id,event_start,payload,actuals,settled_at,model_version')
+    .in('event_id', scopes.map(row => row.eventId)).in('model_version', readableNFLSimulationVersions)
+    .order('model_version', { ascending: false }).limit(160);
+  if (saved.error) throw new Error('Could not load verified NFL simulation accuracy results.');
+  return buildSimulationAccuracy(scopes, saved.data ?? [], now);
+}
 export async function savedNFLGameSimulation(admin: SupabaseClient, eventId: string, kickoff: string, now = Date.now()): Promise<NFLGameSimulation | undefined> {
   const saved = await admin.from('gamewire_game_forecasts').select('payload,event_start')
     .eq('event_id', eventId).in('model_version', readableNFLSimulationVersions)
@@ -165,8 +174,10 @@ export async function warmNFLGameSimulations(admin: SupabaseClient, get: (url: s
   return { queued: upcoming.length, stage: 'Upcoming NFL games queued for automatic preparation', issues: [] };
 }
 export async function settleNFLGameSimulations(admin: SupabaseClient, get: (url: string) => Promise<unknown>, now = Date.now()) {
-  const pending = await admin.from('gamewire_game_forecasts').select('event_id,event_start,payload,model_version,season,season_type').is('settled_at', null)
-    .lt('event_start', new Date(now).toISOString()).gt('event_start', new Date(now - 21 * 86400000).toISOString()).order('event_start').limit(40);
+  const pending = await admin.from('gamewire_game_forecasts').select('event_id,event_start,payload,model_version,season,season_type,actuals,settled_at')
+    .or('settled_at.is.null,actuals->>regulationOnly.is.null')
+    .lt('event_start', new Date(now).toISOString()).gt('event_start', new Date(now - 21 * 86400000).toISOString())
+    .order('settled_at', { ascending: true, nullsFirst: true }).order('event_start').limit(40);
   if (pending.error) throw new Error(migration);
   const issues: string[] = [];
   let settled = 0;
@@ -197,10 +208,13 @@ export async function settleNFLGameSimulations(admin: SupabaseClient, get: (url:
       return { scenarioId: scenario.id, homeScoreError: scenario.home!.score.mean - home.points, awayScoreError: scenario.away!.score.mean - away.points,
         meanAbsoluteScoreError: (Math.abs(scenario.home!.score.mean - home.points) + Math.abs(scenario.away!.score.mean - away.points)) / 2 };
     });
-    const saved = await admin.from('gamewire_game_forecasts').update({ actuals: { teams: box.teams, realized }, settled_at: new Date(now).toISOString() })
-      .eq('event_id', row.event_id).eq('model_version', row.model_version).is('settled_at', null);
+    const update = row.settled_at
+      ? { actuals: { ...object(row.actuals), regulationOnly: box.regulationOnly === true } }
+      : { actuals: { teams: box.teams, realized, regulationOnly: box.regulationOnly === true }, settled_at: new Date(now).toISOString() };
+    const target = admin.from('gamewire_game_forecasts').update(update).eq('event_id', row.event_id).eq('model_version', row.model_version);
+    const saved = await (row.settled_at ? target.eq('settled_at', row.settled_at) : target.is('settled_at', null));
     if (saved.error) throw new Error('Could not save verified NFL simulation results.');
-    settled++;
+    if (!row.settled_at) settled++;
   }
   return { settled, issues };
 }

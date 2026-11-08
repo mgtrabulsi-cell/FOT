@@ -437,3 +437,17 @@
 .wire-scoring-plays ol { list-style: none; margin: 12px 0 0; padding: 0; }
 .wire-scoring-plays li { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .wire-scoring-plays li p { margin: 8px 0; line-height: 1.5; }
+.nfl-simulation-accuracy { margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.nfl-simulation-accuracy header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.nfl-simulation-accuracy h3 { margin: 0; }
+.nfl-simulation-accuracy p { color: var(--muted); line-height: 1.5; }
+.nfl-simulation-accuracy label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.nfl-accuracy-table-wrap { width: 100%; overflow-x: auto; }
+.nfl-simulation-accuracy table { width: 100%; border-collapse: collapse; }
+.nfl-simulation-accuracy th, .nfl-simulation-accuracy td { padding: 10px; border-bottom: 1px solid var(--line); text-align: left; }
+.nfl-simulation-accuracy td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nfl-simulation-accuracy th small { display: block; margin-top: 4px; color: var(--muted); font-weight: 400; }
+.wire-scoring-quarter { margin-top: 16px; }
+.wire-scoring-quarter h4 { margin: 0; padding: 10px 12px; border-left: 3px solid var(--coral); background: var(--paper); font-size: 14px; }
+.wire-simulation-results > label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wire-simulation-results > label select { max-width: 100%; min-height: 44px; }

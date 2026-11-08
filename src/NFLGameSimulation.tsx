@@ -3,6 +3,7 @@ import type { Game } from './services/sportsData';
 import { loadGameSimulation } from './services/gamewireBot';
 import { supabase } from './services/supabaseClient';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
+import NFLSimulationAccuracy from './NFLSimulationAccuracy';
 import { renderSimulationGraphic } from './services/nflSimulationGraphic';
 import { legacyNFLSimulationVersion, roundedSimulationBox } from '../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation, SimulationStat, SimulationTeamResult } from '../supabase/functions/_shared/nflSimulation';
@@ -171,6 +172,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
   }, []);
   return (
     <section className="nfl-simulation" aria-labelledby="nfl-simulation-heading">
+      {game.status === 'FINAL' && <NFLSimulationAccuracy key={`${game.eventId}:${game.date}`} games={[game]} />}
       {scenario?.home && scenario.away && <div className="nfl-simulation-scores" aria-label="Projected final score">
         {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{Math.round(team.score.mean)}</strong><span>{team.name}</span></div>)}
       </div>}

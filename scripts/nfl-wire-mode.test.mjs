@@ -55,6 +55,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
     if (name.includes('nflSituation')) return nflSituation;
     if (name.includes('useNFLBoardSimulations')) return { useNFLBoardSimulations: () => ({ simulations: availableSnapshot ? { [game.eventId]: availableSnapshot } : {}, errors: {}, rememberSimulation() {} }) };
     if (name.includes('NFLGameSimulation')) return { default: 'SimulationPanel' };
+    if (name.includes('NFLSimulationAccuracy')) return { NFLSimulationResults: 'ResultsArea' };
     if (name.includes('useSwipeBack')) return { useSwipeBack: () => ({ current: null }) };
     if (name.includes('uiScale')) return { getInterfaceScale: () => 1 };
     if (name.includes('usePublicDataRevision')) return { usePublicDataRevision: () => 0 };
@@ -110,6 +111,13 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.ok(!tree.some(node => node.type === 'SimulationPanel'));
   assert.ok(tree.some(node => node.props.value === 12) && tree.some(node => node.props.value === 17));
   assert.ok(tree.some(node => node.type?.name === 'ScoringPlays'));
+  toggle('Simulation Results').props.onClick(); tree = render();
+  assert.equal(toggle('Simulation Results').props['aria-pressed'], true);
+  assert.ok(tree.some(node => node.type === 'ResultsArea'));
+  assert.ok(!tree.some(node => node.props.className === 'wire-board-score' || node.type === 'SimulationPanel'));
+  toggle('Pregame stats').props.onClick(); tree = render();
+  assert.equal(toggle('Simulation Results').props['aria-pressed'], false);
+  assert.ok(tree.some(node => node.props.className === 'wire-board-score'));
 });
 test('Opening a simulation panel after kickoff loads its saved archive on reload', async () => {
   const h = hooks(), timers = new Map(), loaded = [];
@@ -176,7 +184,11 @@ test('Live scoring area polls all plays, preserves them offline and cleans up on
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('sportsData')) return { fetchNFLScoringPlays: async () => {
       if (fail) throw new Error('Offline');
-      return [{ id: 'score', type: 'Field Goal Good', text: 'A reported field goal', period: 1, clock: '11:45', awayScore: 3, homeScore: 0 }];
+      return [
+        { id: 'score', type: 'Rushing Touchdown', text: 'A reported rushing touchdown', period: 1, clock: '11:45', awayScore: 3, homeScore: 0 },
+        { id: 'score2', type: 'Passing Touchdown', text: 'A reported passing touchdown', period: 2, clock: '6:00', awayScore: 10, homeScore: 0 },
+        { id: 'score3', type: 'Field Goal Good', text: 'Overtime field goal', period: 5, clock: '4:00', awayScore: 13, homeScore: 10 },
+      ];
     } };
     return {};
   } });
@@ -187,13 +199,16 @@ test('Live scoring area polls all plays, preserves them offline and cleans up on
   const stop = h.effects[0]();
   await new Promise(resolve => setImmediate(resolve));
   let tree = render();
-  assert.equal(tree.filter(node => node.type === 'li').length, 1);
+  assert.equal(tree.filter(node => node.type === 'li').length, 3);
+  assert.deepEqual(tree.filter(node => node.type === 'h4').map(node => node.props.children), ['Quarter 1', 'Quarter 2', 'Overtime']);
+  assert.ok(tree.some(node => node.type === 'b' && node.props.children === 'RUSHING TOUCHDOWN'));
+  assert.ok(tree.some(node => node.type === 'b' && node.props.children === 'PASSING TOUCHDOWN'));
   assert.ok(tree.some(node => node.type === 'small' && node.props.children.join('') === 'AWY 3 – 0 HOM'));
   fail = true;
   const [id, reload] = [...timers][0]; timers.delete(id); reload();
   await new Promise(resolve => setImmediate(resolve));
   tree = render();
-  assert.equal(tree.filter(node => node.type === 'li').length, 1);
+  assert.equal(tree.filter(node => node.type === 'li').length, 3);
   assert.ok(tree.some(node => node.props.role === 'alert'));
   stop(); assert.equal(timers.size, 0);
   fail = false;
@@ -203,4 +218,59 @@ test('Live scoring area polls all plays, preserves them offline and cleans up on
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(timers.size, 0);
   stopFinal();
+});
+test('Accuracy UI shows simulated and actual lines and ranks players only within the chosen statistic', async () => {
+  const h = hooks(), timers = new Map(), jsx = (type, props) => ({ type, props });
+  const report = { pending: 0, issues: [], games: [{ eventId: game.eventId, kickoff: game.date, scenario: 'Verified QB',
+    away: { abbr: 'AWY', projected: 22.5, actual: 21 }, home: { abbr: 'HOM', projected: 28.5, actual: 28 }, error: 1, issues: [],
+    players: [
+      { playerId: '2', name: 'Less close', stat: 'passingYards', projected: 280, actual: 250, error: 30, team: 'HOM', position: 'QB' },
+      { playerId: '1', name: 'Closest passer', stat: 'passingYards', projected: 244, actual: 250, error: 6, team: 'AWY', position: 'QB' },
+      { playerId: '3', name: 'Receiver', stat: 'receptions', projected: 7, actual: 8, error: 1, team: 'AWY', position: 'WR' },
+    ] }] };
+  const context = vm.createContext({ exports: {}, AbortController, console, window: {
+    setTimeout: fn => { timers.set(1, fn); return 1; }, clearTimeout: id => timers.delete(id),
+  }, require(name) {
+    if (name === 'react') return h.react;
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name.includes('gamewireBot')) return { loadSimulationAccuracy: async () => report };
+    if (name.includes('nflSimulationAccuracy')) return { simulationAccuracyStats: { passingYards: 'Passing yards', receptions: 'Receptions' } };
+    return {};
+  } });
+  vm.runInContext(compile('../src/NFLSimulationAccuracy.tsx'), context);
+  const props = { games: [{ ...game, status: 'FINAL' }], weekly: true };
+  const render = () => { h.reset(); return elements(context.exports.default(props)); };
+  render(); const stop = h.effects[0]();
+  await new Promise(resolve => setImmediate(resolve));
+  let tree = render();
+  const playerNames = () => tree.filter(node => node.type === 'th' && node.props.scope === 'row').map(node => node.props.children.filter(value => typeof value === 'string').join(''));
+  assert.match(playerNames()[1], /Closest passer/);
+  assert.match(playerNames()[2], /Less close/);
+  assert.equal(playerNames().length, 3);
+  assert.ok(tree.some(node => node.type === 'td' && node.props.children === '244.0'));
+  assert.ok(tree.some(node => node.type === 'td' && node.props.children === 250));
+  tree.find(node => node.type === 'select').props.onChange({ target: { value: 'receptions' } });
+  tree = render();
+  assert.match(playerNames()[1], /Receiver/);
+  assert.equal(playerNames().length, 2);
+  stop(); assert.equal(timers.size, 0);
+});
+test('Dedicated results area selects individual games and explains games that have not finished', () => {
+  const h = hooks(), jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, require(name) {
+    if (name === 'react') return h.react;
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    return {};
+  } });
+  vm.runInContext(compile('../src/NFLSimulationAccuracy.tsx'), context);
+  const props = { games: [{ ...game, status: 'FINAL' }, { ...game, eventId: '456', status: 'LIVE' }] };
+  const render = () => { h.reset(); return elements(context.exports.NFLSimulationResults(props)); };
+  let tree = render();
+  const area = () => tree.find(node => node.type?.name === 'NFLSimulationAccuracy');
+  assert.equal(area().props.games.length, 2); assert.equal(area().props.weekly, true);
+  tree.find(node => node.type === 'select').props.onChange({ target: { value: game.eventId } }); tree = render();
+  assert.equal(area().props.games.length, 1); assert.equal(area().props.games[0].eventId, game.eventId);
+  assert.equal(area().props.weekly, false);
+  tree.find(node => node.type === 'select').props.onChange({ target: { value: '456' } }); tree = render();
+  assert.ok(tree.some(node => node.props.role === 'status' && /after a game finishes/.test(node.props.children)));
 });

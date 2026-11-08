@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import TeamAbbrMark from './TeamAbbrMark';
 import NFLGameSimulationPanel from './NFLGameSimulation';
+import { NFLSimulationResults } from './NFLSimulationAccuracy';
 import { useNFLBoardSimulations } from './useNFLBoardSimulations';
 import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
@@ -288,19 +289,23 @@ function ScoringPlays({ game }: { game: Game }) {
     void load();
     return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); };
   }, [game.eventId, game.feedPath, game.status, retry]);
+  const periods = [...new Set(plays?.map(play => play.period) ?? [])].sort((a, b) => (a ?? Infinity) - (b ?? Infinity));
+  const periodLabel = (period: number | undefined) => period ? period > 4 ? `Overtime${period > 5 ? ` ${period - 4}` : ''}` : `Quarter ${period}` : 'Quarter unavailable';
   return <section className="wire-scoring-plays" aria-label="Scoring plays">
     <header><h3>Scoring plays</h3><span>{game.status === 'LIVE' ? 'Updates every 30s' : 'Final scoring summary'}</span></header>
     {error && <p role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!plays && !error && <p role="status">Loading scoring plays…</p>}
     {plays?.length === 0 && <p>No scoring plays reported yet.</p>}
-    {!!plays?.length && <ol>{plays.map(play => {
+    {periods.map(period => <section className="wire-scoring-quarter" key={period ?? 'unknown'} aria-label={periodLabel(period)}>
+      <h4>{periodLabel(period)}</h4>
+      <ol>{plays?.filter(play => play.period === period).map(play => {
       const team = [game.away, game.home].find(side => side.id === play.teamId);
       return <li key={play.id}>
-        <div className="wire-scoring-play-meta"><b>{play.type}</b><span>{play.period ? play.period > 4 ? `OT${play.period > 5 ? ` ${play.period - 4}` : ''}` : `Q${play.period}` : 'Period unavailable'}{play.clock ? ` · ${play.clock}` : ''}{team ? ` · ${team.abbr}` : ''}</span></div>
+        <div className="wire-scoring-play-meta"><b>{play.type.toUpperCase()}</b><span><time>{play.clock || 'Clock unavailable'}</time>{team ? ` · ${team.abbr}` : ''}</span></div>
         <p>{play.text}</p>
         <small>{game.away.abbr} {play.awayScore ?? '—'} – {play.homeScore ?? '—'} {game.home.abbr}</small>
       </li>;
-    })}</ol>}
+    })}</ol></section>)}
   </section>;
 }
 
@@ -340,8 +345,9 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const returnToGameRef = useRef<string | null>(null);
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
   const [pregameView, setPregameView] = useState<'stats' | 'simulation'>('stats');
+  const [resultsOpen, setResultsOpen] = useState(false);
   const [simulationScenarioId, setSimulationScenarioId] = useState('');
-  const { simulations: boardSimulations, errors: simulationErrors, rememberSimulation } = useNFLBoardSimulations(nflGames, pregameView === 'simulation' && !detailOpen);
+  const { simulations: boardSimulations, errors: simulationErrors, rememberSimulation } = useNFLBoardSimulations(nflGames, pregameView === 'simulation' && !detailOpen && !resultsOpen);
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>('boxscore');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [playerStatMode, setPlayerStatMode] = useState<'total' | 'average'>('total');
@@ -402,6 +408,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
     if (!openRequest) return;
     userSelectedRef.current = true;
     setSelectedGameId(openRequest);
+    setResultsOpen(false);
     setSubTab(pregameView === 'simulation' ? 'simulation' : 'boxscore');
     setDetailOpen(true);
   }, [openRequest]);
@@ -443,15 +450,17 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
 
   const selectedGame = nflGames.find((g) => g.id === selectedGameId) ?? nflGames[0];
   const changePregameView = (view: 'stats' | 'simulation') => {
+    setResultsOpen(false);
     setPregameView(view);
     setSubTab(view === 'simulation' ? 'simulation' : 'boxscore');
   };
   const pregameToggle = <section className="wire-pregame-mode" aria-label="NFL pregame display">
     <div role="group" aria-label="NFL pregame view">
-      <button type="button" aria-pressed={pregameView === 'stats'} onClick={() => changePregameView('stats')}>Pregame stats</button>
-      <button type="button" className="wire-simulation-toggle" aria-pressed={pregameView === 'simulation'} onClick={() => changePregameView('simulation')}>GamewAIre simulations</button>
+      <button type="button" aria-pressed={!resultsOpen && pregameView === 'stats'} onClick={() => changePregameView('stats')}>Pregame stats</button>
+      <button type="button" className="wire-simulation-toggle" aria-pressed={!resultsOpen && pregameView === 'simulation'} onClick={() => changePregameView('simulation')}>GamewAIre simulations</button>
+      <button type="button" aria-pressed={resultsOpen} onClick={() => { setResultsOpen(true); setDetailOpen(false); }}>Simulation Results</button>
     </div>
-    {pregameView === 'simulation' && <p>Saved pregame projections remain visible after kickoff. Live scores and actual statistics are available in the stats view. Quarterback participation is conditional, not confirmed.</p>}
+    {!resultsOpen && pregameView === 'simulation' && <p>Saved pregame projections remain visible after kickoff. Live scores and actual statistics are available in the stats view. Quarterback participation is conditional, not confirmed.</p>}
   </section>;
   const selectedPrimetime = selectedGame ? getPrimetimeLabel(selectedGame) : null;
   const selectedIntl = selectedGame ? internationalVenue(selectedGame) : null;
@@ -914,6 +923,10 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
     </div>
   );
 
+  if (resultsOpen) return <div className="the-wire-container">
+    {pregameToggle}
+    <NFLSimulationResults key={nflGames.map(game => `${game.eventId}:${game.date}`).sort().join(',')} games={nflGames} />
+  </div>;
   if (!detailOpen) {
     const liveCount = nflGames.filter((g) => g.status === 'LIVE').length;
     const finalCount = nflGames.filter((g) => g.status === 'FINAL').length;

@@ -10,7 +10,8 @@ import { reconcileSimulationProjections, simulationAllowsMoneyline } from '../su
 import { archivePlayerForecast } from '../supabase/functions/_shared/gamewireForecasts.ts';
 import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import { advanceSimulation, prepareSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
-import { loadNFLGameSimulation, runNFLGameSimulation, savedNFLGameSimulation, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
+import { loadNFLGameSimulation, loadNFLSimulationAccuracy, runNFLGameSimulation, savedNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
+import { buildSimulationAccuracy, compareSimulationAccuracy, readSimulationAccuracyScope, readSimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 import { loadSimulationLearning, simulationLearningBaselines } from '../supabase/functions/_shared/nflSimulationLearning.ts';
 import { readOvertimeDrives, simulateOvertime, validateOvertimeEvidence } from '../supabase/functions/_shared/nflSimulationOvertime.ts';
 import { PGlite } from '@electric-sql/pglite';
@@ -222,6 +223,80 @@ function scoreReferences(boxes) {
     teamId: box.teams[0].id, opponentId: box.teams[1].id,
     scores: { own: box.teams[0].points, opponent: box.teams[1].points, home: box.teams[0].home } }));
 }
+test('Accuracy uses the realized pregame scenario, exact team errors and reported player stats without DNP zeros', () => {
+  const f = fixture(), forecast = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  const scenario = forecast.scenarios.find(row => row.home && row.away);
+  const actuals = { regulationOnly: true, realized: [{ scenarioId: scenario.id }], teams: [
+    { id: scenario.home.id, points: 28, players: {} }, { id: scenario.away.id, points: 14, players: {} },
+  ] };
+  const player = scenario.home.players.find(row => row.stats.passingYards);
+  actuals.teams[0].players[player.id] = { passingYards: 250, passingTouchdowns: 0 };
+  const result = compareSimulationAccuracy(forecast, actuals, new Date(Date.parse(game.date) + 60000).toISOString());
+  assert.equal(result.error, (Math.abs(scenario.home.score.mean - 28) + Math.abs(scenario.away.score.mean - 14)) / 2);
+  assert.equal(result.players.find(row => row.stat === 'passingYards').error, Math.abs(player.stats.passingYards.mean - 250));
+  assert.equal(result.players.find(row => row.stat === 'passingTouchdowns').actual, 0);
+  assert.ok(result.players.every(row => row.playerId === player.id));
+  assert.ok(result.issues.some(issue => /missing stats and DNPs/.test(issue)));
+  actuals.regulationOnly = false;
+  const overtime = compareSimulationAccuracy(forecast, actuals, result.settledAt);
+  assert.equal(overtime.error, result.error);
+  assert.deepEqual(overtime.players, []);
+  forecast.version = previousNFLSimulationVersion;
+  assert.ok(compareSimulationAccuracy(forecast, actuals, result.settledAt).players.length > 0);
+  actuals.realized = [];
+  assert.match(compareSimulationAccuracy(forecast, actuals, result.settledAt), /hypothetical scenarios are not ranked/);
+  actuals.realized = forecast.scenarios.filter(row => row.home && row.away).slice(0, 2).map(row => ({ scenarioId: row.id }));
+  assert.match(compareSimulationAccuracy(forecast, actuals, result.settledAt), /uniquely verified/);
+});
+test('Accuracy archive API is read-only, keeps the current model, reports pending results and validates identity', async () => {
+  const api = backendFixture({ ready: true }), scenario = api.initial.scenarios.find(row => row.home && row.away);
+  const scope = [{ eventId: game.id, kickoff: api.kickoff, homeTeamId: scenario.home.id, awayTeamId: scenario.away.id }];
+  const settledAt = new Date(Date.parse(api.kickoff) + 60000).toISOString(), cutoff = Date.parse(settledAt) + 1000;
+  const row = { event_id: game.id, event_start: api.kickoff, payload: api.initial, model_version: nflSimulationVersion,
+    settled_at: settledAt, actuals: { regulationOnly: true, realized: [{ scenarioId: scenario.id }],
+      teams: [{ id: scenario.home.id, points: 28, players: {} }, { id: scenario.away.id, points: 20, players: {} }] } };
+  const admin = { from(table) {
+    assert.equal(table, 'gamewire_game_forecasts');
+    const query = { select() { return this; }, in() { return this; }, order() { return this; },
+      async limit(n) { assert.equal(n, 160); return { data: [row], error: null }; } };
+    return query;
+  }, rpc() { throw new Error('Accuracy must never mutate or generate forecasts'); } };
+  const report = await loadNFLSimulationAccuracy(admin, scope, cutoff);
+  assert.equal(report.games.length, 1);
+  assert.equal(readSimulationAccuracyReport(report, scope), report);
+  assert.equal(buildSimulationAccuracy(scope, [{ ...row, settled_at: null }], cutoff).pending, 1);
+  assert.deepEqual(buildSimulationAccuracy(scope, [{ ...row, settled_at: null }, row], cutoff).games, []);
+  assert.throws(() => buildSimulationAccuracy(scope, [{ ...row, event_start: new Date(cutoff).toISOString() }], cutoff), /kickoff/);
+  assert.throws(() => readSimulationAccuracyReport({ ...report, games: [{ ...report.games[0], eventId: 'wrong' }] }, scope), /invalid or mismatched/);
+  assert.throws(() => readSimulationAccuracyScope([...scope, ...scope]), /duplicate/);
+  assert.throws(() => readSimulationAccuracyScope([{ ...scope[0], homeTeamId: scope[0].awayTeamId }]), /valid NFL/);
+});
+test('Settlement backfills regulation verification without changing saved forecasts, actual stats or settlement time', async () => {
+  const f = fixture(), box = f.history.home[0], raw = rawBox(box);
+  const scenario = { id: 'team-only', label: 'Team', home: { id: box.teams[0].id, teamOnly: true, score: { mean: 28 } },
+    away: { id: box.teams[1].id, teamOnly: true, score: { mean: 21 } } };
+  const original = { teams: box.teams, realized: [{ scenarioId: 'team-only' }] };
+  const row = { event_id: box.id, event_start: box.date, season: box.season, season_type: box.seasonType,
+    model_version: nflSimulationVersion, payload: { scenarios: [scenario] }, actuals: original,
+    settled_at: new Date(Date.parse(box.date) + 3600000).toISOString() };
+  let update, prioritized = false;
+  const admin = { from() {
+    return { select() { return this; }, or(value) { assert.match(value, /regulationOnly/); return this; },
+      lt() { return this; }, gt() { return this; }, order(key, options) {
+        if (key === 'settled_at') { assert.equal(options.nullsFirst, true); prioritized = true; }
+        return this;
+      }, async limit() { return { data: [row], error: null }; },
+      update(value) { update = value; return { eq() { return this; }, then(resolve) { return Promise.resolve({ error: null }).then(resolve); } }; } };
+  } };
+  const result = await settleNFLGameSimulations(admin, async () => raw, Date.parse(row.settled_at) + 1000);
+  assert.equal(result.settled, 0);
+  assert.equal(prioritized, true);
+  assert.equal(update.actuals.regulationOnly, true);
+  assert.equal(update.actuals.teams, original.teams);
+  assert.equal(update.actuals.realized, original.realized);
+  assert.equal(update.settled_at, undefined);
+  assert.equal(update.payload, undefined);
+});
 function simulationCache(values = new Map()) {
   return { readMany: async keys => new Map(keys.filter(key => values.has(key)).map(key => [key, values.get(key)])),
     write: async (key, value) => { values.set(key, value); } };

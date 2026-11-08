@@ -3,6 +3,7 @@ import type { BotDirectory, BotFormat, BotPlayer, BotReport, PlayerWeekHistory }
 import { readRankingList } from '../../supabase/functions/_shared/gamewireRankings';
 import type { RankingList } from '../../supabase/functions/_shared/gamewireRankings';
 import { readNFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
+import { readSimulationAccuracyReport } from '../../supabase/functions/_shared/nflSimulationAccuracy';
 import type { Game } from './sportsData';
 export type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supabase/functions/_shared/gamewireBot';
 export type { PlayerWeekHistory } from '../../supabase/functions/_shared/gamewireBot';
@@ -11,6 +12,12 @@ export async function loadGameSimulation(game: Game, signal: AbortSignal) {
   const value = await request<unknown>({ action: 'simulation', eventId: game.eventId, kickoff: game.date,
     homeTeamId: game.home.id, awayTeamId: game.away.id }, signal);
   return readNFLGameSimulation(value, game.eventId, game.date, { home: game.home.id, away: game.away.id });
+}
+
+export async function loadSimulationAccuracy(games: Game[], signal: AbortSignal) {
+  const scope = games.map(game => ({ eventId: game.eventId, kickoff: game.date, homeTeamId: game.home.id, awayTeamId: game.away.id }));
+  const value = await request<unknown>({ action: 'simulation-accuracy', games: scope }, signal);
+  return readSimulationAccuracyReport(value, scope);
 }
 
 export async function loadBotHistory(playerId: string, season: number, format: BotFormat, signal: AbortSignal): Promise<PlayerWeekHistory> {

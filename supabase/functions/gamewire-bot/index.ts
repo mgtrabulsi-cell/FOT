@@ -11,7 +11,8 @@ import { rankingPlayers, rankingScope } from '../_shared/gamewireRankings.ts';
 import type { BotDirectory, BotFormat, BotProp, BotReport } from '../_shared/gamewireBot.ts';
 import { archivePlayerForecast, finalPlayerStats, loadPlayerHistory, settleForecasts } from '../_shared/gamewireForecasts.ts';
 import type { PlayerForecast } from '../_shared/gamewireForecasts.ts';
-import { loadNFLGameSimulation, runNFLGameSimulation, savedNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../_shared/nflSimulationBackend.ts';
+import { loadNFLGameSimulation, loadNFLSimulationAccuracy, runNFLGameSimulation, savedNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../_shared/nflSimulationBackend.ts';
+import { readSimulationAccuracyScope } from '../_shared/nflSimulationAccuracy.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -53,7 +54,13 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
     let raw: unknown;
     try { raw = await request.json(); } catch { return json({ error: 'Invalid bot request.' }, 400); }
     const input = object(raw);
-    if (!['directory', 'breakdown', 'history', 'rankings', 'save-rankings', 'simulation'].includes(text(input.action))) return json({ error: 'Choose player search, a player breakdown or an NFL simulation.' }, 400);
+    if (!['directory', 'breakdown', 'history', 'rankings', 'save-rankings', 'simulation', 'simulation-accuracy'].includes(text(input.action))) return json({ error: 'Choose player search, a player breakdown or an NFL simulation.' }, 400);
+    if (input.action === 'simulation-accuracy') {
+      let scopes;
+      try { scopes = readSimulationAccuracyScope(input.games); }
+      catch (cause) { return json({ error: cause instanceof Error ? cause.message : 'Invalid simulation accuracy scope.' }, 400); }
+      return json(await loadNFLSimulationAccuracy(admin, scopes));
+    }
     if (input.action === 'simulation' && (!/^\d{1,12}$/.test(text(input.eventId)) || !Number.isFinite(Date.parse(text(input.kickoff)))
       || !/^\d{1,12}$/.test(text(input.homeTeamId)) || !/^\d{1,12}$/.test(text(input.awayTeamId)) || input.homeTeamId === input.awayTeamId))
       return json({ error: 'Choose a valid NFL event, teams and kickoff for simulation.' }, 400);
