@@ -104,14 +104,13 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
     return () => { if (timer !== undefined) window.clearTimeout(timer); };
   }, [game.date]);
   useEffect(() => {
-    if (locked) return;
     const controller = new AbortController();
     let timer: number | undefined, attempts = 0, failures = 0, inFlight = false;
     setError('');
     setResponse(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) ? previous : null);
     setForecast(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) ? previous : null);
     const load = async () => {
-      if (inFlight || controller.signal.aborted || Date.parse(game.date) <= Date.now()) return;
+      if (inFlight || controller.signal.aborted) return;
       inFlight = true;
       setLoading(true);
       try {
@@ -122,8 +121,9 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
         setResponse(result);
         if (result.status === 'ready') onForecast?.(result);
         if (result.status === 'ready') setForecast(result);
+        if (locked && result.status === 'ready') return;
         const delay = ++attempts >= 60 || result.status === 'ready' && !result.refreshing ? 300000 : result.status === 'collecting' ? 30000 : 60000;
-        timer = window.setTimeout(() => { void load(); }, delay);
+        if (!locked) timer = window.setTimeout(() => { void load(); }, delay);
       } catch (cause) {
         if (controller.signal.aborted) return;
         console.error('NFL game simulation failed', game.eventId, cause);
@@ -176,13 +176,13 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
       </div>}
       <header className="nfl-simulation-header">
         <div><h2 id="nfl-simulation-heading">GamewAIre Game Simulation</h2><p>Experimental · Production across teams · Not a betting recommendation</p></div>
-        {!locked && <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)}>{error ? 'Retry' : 'Refresh'}</button>}
+        {(!locked || error) && <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)}>{error ? locked ? 'Retry saved forecast' : 'Retry' : 'Refresh'}</button>}
       </header>
-      {locked && <p role="status">Kickoff has passed. This pregame simulator is locked; no new forecast will be generated.</p>}
+      {locked && <p role="status">Kickoff has passed. Only saved pregame simulations can be viewed; projections are not regenerated or replaced with live statistics.</p>}
       {error && !displayed && <div className="nfl-simulation-caption">
-        <p role="status">{forecast ? 'Your saved simulation remains available while updates reconnect.' : 'Preparing your simulation. A feed interruption is delaying updates.'} Automatic retries continue, including when your connection returns.</p>
+        <p role={locked ? 'alert' : 'status'}>{locked ? error : `${forecast ? 'Your saved simulation remains available while updates reconnect.' : 'Preparing your simulation. A feed interruption is delaying updates.'} Automatic retries continue, including when your connection returns.`}</p>
       </div>}
-      {!response && !error && !locked && <p role="status">Loading the saved GamewAIre simulation…</p>}
+      {!response && !error && <p role="status">Loading the saved GamewAIre simulation…</p>}
       {!displayed && response && !error && !locked && <p role="status">Preparing your GamewAIre simulation. Updates load automatically.</p>}
       {displayed && (
         <>

@@ -23,16 +23,23 @@ export async function savedNFLGameSimulation(admin: SupabaseClient, eventId: str
 }
 export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: string, kickoff: string, teams: { home: string; away: string },
   claim: () => Promise<boolean>, now = Date.now()): Promise<NFLGameSimulation> {
-  if (!/^\d{1,12}$/.test(eventId) || !Number.isFinite(Date.parse(kickoff)) || Date.parse(kickoff) <= now)
-    throw new Error('Choose an upcoming NFL game to view its pregame simulation.');
+  if (!/^\d{1,12}$/.test(eventId) || !Number.isFinite(Date.parse(kickoff)))
+    throw new Error('Choose a valid NFL game to view its saved pregame simulation.');
   const snapshot = await admin.from('gamewire_game_forecasts').select('payload,event_start').eq('event_id', eventId)
     .in('model_version', readableNFLSimulationVersions).order('model_version', { ascending: false }).limit(1).maybeSingle();
   if (snapshot.error) throw new Error(migration);
-  if (snapshot.data && Date.parse(snapshot.data.event_start) <= now) throw new Error('This game’s original forecast is locked after kickoff, even if the feed reschedules it.');
-  const waiting = await admin.from('gamewire_simulation_jobs').select('response,next_run_at,last_error,model_version').eq('event_id', eventId).maybeSingle();
-  if (waiting.error) throw new Error('Could not read NFL simulation progress.');
   const saved = snapshot.data && Date.parse(snapshot.data.event_start) === Date.parse(kickoff)
     ? readNFLGameSimulation(snapshot.data.payload, eventId, kickoff, teams) : null;
+  if (Date.parse(kickoff) <= now || snapshot.data && Date.parse(snapshot.data.event_start) <= now) {
+    if (snapshot.data && Date.parse(snapshot.data.event_start) !== Date.parse(kickoff))
+      throw new Error('This game’s original forecast is locked after kickoff, even if the feed reschedules it.');
+    if (!saved || saved.status !== 'ready' || !Number.isFinite(Date.parse(saved.forecastAt ?? ''))
+      || Date.parse(saved.forecastAt ?? '') >= Date.parse(kickoff))
+      throw new Error('No saved pregame simulation is available for this game. Forecasts are not generated after kickoff.');
+    return { ...saved, refreshing: false };
+  }
+  const waiting = await admin.from('gamewire_simulation_jobs').select('response,next_run_at,last_error,model_version').eq('event_id', eventId).maybeSingle();
+  if (waiting.error) throw new Error('Could not read NFL simulation progress.');
   if (saved?.status === 'ready') return { ...saved, refreshing: saved.refreshing === true || saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000,
     warnings: waiting.data?.last_error ? [...saved.warnings, `Background preparation issue: ${waiting.data.last_error}`] : saved.warnings };
   if (!waiting.data || waiting.data.model_version !== nflSimulationVersion) {

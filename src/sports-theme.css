@@ -430,3 +430,10 @@
   .notification-game-card.is-simulation-game .wire-board-team-label { flex-basis: 100%; white-space: normal; overflow-wrap: normal; word-break: normal; }
   .sports-theme .wire-matchup-team-details h2, .nfl-simulation-team-title h3, .nfl-simulation-scores span { min-width: 0; overflow-wrap: normal; word-break: normal; }
 }
+.wire-scoring-plays { margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.wire-scoring-plays header, .wire-scoring-play-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.wire-scoring-plays h3 { margin: 0; }
+.wire-scoring-plays header span, .wire-scoring-play-meta span, .wire-scoring-plays small { color: var(--muted); font-size: 12px; }
+.wire-scoring-plays ol { list-style: none; margin: 12px 0 0; padding: 0; }
+.wire-scoring-plays li { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.wire-scoring-plays li p { margin: 8px 0; line-height: 1.5; }

@@ -729,6 +729,39 @@ test('Fresh and stale forecasts load from storage without feed requests, CPU wor
   assert.equal(await runNFLGameSimulation(locked.admin, game.id, locked.get), null);
   assert.deepEqual(locked.calls, ['gamewire_claim_simulation']); assert.equal(locked.fetched, 0);
 });
+test('Started games read original v4/v5 archives without jobs, quota, regeneration or live data', async () => {
+  for (const version of ['nfl-joint-bootstrap-v4', nflSimulationVersion]) {
+    const api = backendFixture({ ready: true });
+    api.initial.version = version;
+    api.initial.refreshing = true;
+    const from = api.admin.from;
+    api.admin.from = table => {
+      assert.equal(table, 'gamewire_game_forecasts');
+      return from(table);
+    };
+    const result = await loadNFLGameSimulation(api.admin, game.id, api.kickoff, { home: '1', away: '2' },
+      async () => { throw new Error('Archived reads must not consume quota'); }, Date.parse(api.kickoff) + 1000);
+    assert.equal(result.version, version);
+    assert.equal(result.refreshing, false);
+    assert.deepEqual(result.scenarios, api.initial.scenarios);
+    assert.equal(result.forecastAt, api.initial.forecastAt);
+    assert.deepEqual(api.calls, []);
+    assert.equal(api.fetched, 0);
+  }
+});
+test('Started games never manufacture missing forecasts or unlock a rescheduled archive', async () => {
+  const missing = backendFixture();
+  await assert.rejects(loadNFLGameSimulation(missing.admin, game.id, missing.kickoff, { home: '1', away: '2' },
+    async () => { throw new Error('No quota'); }, Date.parse(missing.kickoff) + 1000), /No saved pregame simulation/);
+  assert.deepEqual(missing.calls, []);
+  const saved = backendFixture({ ready: true });
+  await assert.rejects(loadNFLGameSimulation(saved.admin, game.id, new Date(Date.parse(saved.kickoff) + 86400000).toISOString(),
+    { home: '1', away: '2' }, async () => { throw new Error('No quota'); }, Date.parse(saved.kickoff) + 1000), /locked after kickoff/);
+  saved.initial.forecastAt = saved.kickoff;
+  await assert.rejects(loadNFLGameSimulation(saved.admin, game.id, saved.kickoff, { home: '1', away: '2' },
+    async () => { throw new Error('No quota'); }, Date.parse(saved.kickoff) + 1000), /invalid or mismatched forecast/);
+  assert.deepEqual(saved.calls, []);
+});
 test('Fresh provisional snapshots keep background-refresh status; legacy v2 TD snapshots remain readable', async () => {
   const api = backendFixture({ ready: true });
   api.initial.refreshing = true;

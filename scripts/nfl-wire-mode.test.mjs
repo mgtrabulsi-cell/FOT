@@ -47,12 +47,13 @@ test('Simulation toggle remains red in both states and mobile cards reserve read
 });
 test('Wire toggle shows simulated scores, opens the simulation directly, and restores normal pregame/live views', () => {
   const h = hooks(), jsx = (type, props) => ({ type, props });
+  let availableSnapshot = snapshot;
   const context = vm.createContext({ exports: {}, window: { scrollTo() {} }, console, require(name) {
     if (name === 'react') return h.react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('sportsData')) return sports;
     if (name.includes('nflSituation')) return nflSituation;
-    if (name.includes('useNFLBoardSimulations')) return { useNFLBoardSimulations: () => ({ simulations: { [game.eventId]: snapshot }, errors: {}, rememberSimulation() {} }) };
+    if (name.includes('useNFLBoardSimulations')) return { useNFLBoardSimulations: () => ({ simulations: availableSnapshot ? { [game.eventId]: availableSnapshot } : {}, errors: {}, rememberSimulation() {} }) };
     if (name.includes('NFLGameSimulation')) return { default: 'SimulationPanel' };
     if (name.includes('useSwipeBack')) return { useSwipeBack: () => ({ current: null }) };
     if (name.includes('uiScale')) return { getInterfaceScale: () => 1 };
@@ -73,6 +74,16 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.equal(toggle('GamewAIre simulations').props.className, 'wire-simulation-toggle');
   assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card is-simulation-game'));
   assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [22, 28]);
+  for (const status of ['LIVE', 'FINAL']) {
+    props.games = [{ ...game, status, away: { ...game.away, score: 12 }, home: { ...game.home, score: 17 } }];
+    tree = render();
+    assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [22, 28]);
+    assert.ok(!tree.some(node => node.props.value === 12 || node.props.value === 17));
+    availableSnapshot = null; tree = render();
+    assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), ['—', '—']);
+    availableSnapshot = snapshot;
+  }
+  props.games = [game]; tree = render();
   tree.find(node => node.props['data-game-id'] === game.id).props.onClick(); tree = render();
   const panel = tree.find(node => node.type === 'SimulationPanel');
   assert.equal(panel.props.game.eventId, game.eventId); assert.equal(panel.props.initialSimulation, snapshot);
@@ -86,8 +97,47 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === 'vs'));
   props.games = [{ ...game, status: 'LIVE', away: { ...game.away, score: 12 }, home: { ...game.home, score: 17 } }];
   tree = render(); toggle('GamewAIre simulations').props.onClick(); tree = render();
+  assert.ok(tree.some(node => node.type === 'SimulationPanel'));
+  assert.ok(!tree.some(node => node.type?.name === 'ScoringPlays'));
+  assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '— – —'));
+  tree.find(node => node.type === 'SimulationPanel').props.onScenarioChange('fixture'); tree = render();
+  assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '22 – 28'));
+  props.games = [{ ...props.games[0], status: 'FINAL' }];
+  tree = render();
+  assert.ok(tree.some(node => node.type === 'SimulationPanel'));
+  assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '22 – 28'));
+  toggle('Pregame stats').props.onClick(); tree = render();
   assert.ok(!tree.some(node => node.type === 'SimulationPanel'));
   assert.ok(tree.some(node => node.props.value === 12) && tree.some(node => node.props.value === 17));
+  assert.ok(tree.some(node => node.type?.name === 'ScoringPlays'));
+});
+test('Opening a simulation panel after kickoff loads its saved archive on reload', async () => {
+  const h = hooks(), timers = new Map(), loaded = [];
+  let nextTimer = 0, requests = 0;
+  const pastGame = { ...game, date: new Date(Date.now() - 60000).toISOString(), status: 'LIVE' };
+  const archive = { ...snapshot, kickoff: pastGame.date };
+  const jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, AbortController, Error, console, window: {
+    setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id),
+    addEventListener() {}, removeEventListener() {},
+  }, require(name) {
+    if (name === 'react') return h.react;
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name.includes('supabaseClient')) return { supabase: null };
+    if (name.includes('gamewireBot')) return { loadGameSimulation: async received => {
+      assert.equal(received.date, pastGame.date); requests++;
+      return archive;
+    } };
+    return {};
+  } });
+  vm.runInContext(compile('../src/NFLGameSimulation.tsx'), context);
+  context.exports.default({ game: pastGame, onForecast: forecast => loaded.push(forecast) });
+  const stop = h.effects[1]();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, 1);
+  assert.equal(loaded[0], archive);
+  assert.equal(timers.size, 0);
+  stop();
 });
 test('Scoreboard simulation loading is bounded, preserves saved results on failure and stops on cleanup', async () => {
   const h = hooks(), timers = new Map();
@@ -104,13 +154,53 @@ test('Scoreboard simulation loading is bounded, preserves saved results on failu
     } };
   } });
   vm.runInContext(compile('../src/useNFLBoardSimulations.ts'), context);
-  const games = Array.from({ length: 7 }, (_, i) => ({ ...game, eventId: String(i) }));
+  const games = Array.from({ length: 7 }, (_, i) => ({ ...game, eventId: String(i), status: ['UPCOMING', 'LIVE', 'FINAL'][i % 3] }));
   context.exports.useNFLBoardSimulations(games, true);
   const stop = h.effects[0]();
   for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve));
   assert.equal(peak, 3); assert.equal(Object.keys(h.state[0]).length, 7);
+  assert.equal(h.state[0]['1'].status, 'ready');
+  assert.equal(h.state[0]['2'].status, 'ready');
   fail = true; const [id, reload] = [...timers][0]; timers.delete(id); reload();
   for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.state[0]['0'].status, 'ready'); assert.equal(h.state[1]['0'], 'Offline');
   stop(); assert.equal(timers.size, 0);
+});
+test('Live scoring area polls all plays, preserves them offline and cleans up on navigation', async () => {
+  const h = hooks(), timers = new Map(), jsx = (type, props) => ({ type, props });
+  let nextTimer = 0, fail = false;
+  const context = vm.createContext({ exports: {}, AbortController, Error, console: { error() {} }, window: {
+    setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id),
+  }, require(name) {
+    if (name === 'react') return h.react;
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name.includes('sportsData')) return { fetchNFLScoringPlays: async () => {
+      if (fail) throw new Error('Offline');
+      return [{ id: 'score', type: 'Field Goal Good', text: 'A reported field goal', period: 1, clock: '11:45', awayScore: 3, homeScore: 0 }];
+    } };
+    return {};
+  } });
+  vm.runInContext(compile('../src/TheWire.tsx') + '\nexports.ScoringPlays = ScoringPlays;', context);
+  const props = { game: { ...game, status: 'LIVE' } };
+  const render = () => { h.reset(); return elements(context.exports.ScoringPlays(props)); };
+  render();
+  const stop = h.effects[0]();
+  await new Promise(resolve => setImmediate(resolve));
+  let tree = render();
+  assert.equal(tree.filter(node => node.type === 'li').length, 1);
+  assert.ok(tree.some(node => node.type === 'small' && node.props.children.join('') === 'AWY 3 – 0 HOM'));
+  fail = true;
+  const [id, reload] = [...timers][0]; timers.delete(id); reload();
+  await new Promise(resolve => setImmediate(resolve));
+  tree = render();
+  assert.equal(tree.filter(node => node.type === 'li').length, 1);
+  assert.ok(tree.some(node => node.props.role === 'alert'));
+  stop(); assert.equal(timers.size, 0);
+  fail = false;
+  props.game = { ...props.game, status: 'FINAL' };
+  render();
+  const stopFinal = h.effects[0]();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(timers.size, 0);
+  stopFinal();
 });

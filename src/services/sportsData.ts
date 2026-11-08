@@ -1679,6 +1679,43 @@ export type NFLBoxScoreTeam = {
   teamStats: NFLBoxScoreTeamStat[];
 };
 
+export type NFLScoringPlay = {
+  id: string;
+  text: string;
+  type: string;
+  teamId: string;
+  period?: number;
+  clock: string;
+  awayScore?: number;
+  homeScore?: number;
+};
+
+export function readNFLScoringPlays(value: unknown): NFLScoringPlay[] {
+  return [...new Map(asArray(asObject(value).scoringPlays).map(asObject).map(play => {
+    const id = text(play.id), description = text(play.text);
+    if (!id || !description) throw new Error('The scoring feed returned an incomplete play. Retry for the complete scoring summary.');
+    return [id, {
+      id, text: description, type: text(asObject(play.type).text, 'Scoring play'),
+      teamId: text(asObject(play.team).id), period: parseBoxscoreNumber(asObject(play.period).number),
+      clock: text(asObject(play.clock).displayValue),
+      awayScore: parseBoxscoreNumber(play.awayScore), homeScore: parseBoxscoreNumber(play.homeScore),
+    }] as const;
+  })).values()];
+}
+
+export async function fetchNFLScoringPlays(game: Game, signal?: AbortSignal): Promise<NFLScoringPlay[]> {
+  const cached = game.status === 'FINAL' ? finalSummaryCache.get(game.eventId) : undefined;
+  if (cached) return readNFLScoringPlays(cached.summary);
+  const response = await fetch(`${apiBase}/${game.feedPath}/summary?event=${encodeURIComponent(game.eventId)}`, {
+    signal, cache: 'no-store', headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error(`NFL scoring summary returned HTTP ${response.status}`);
+  const summary = asObject(await response.json());
+  const plays = readNFLScoringPlays(summary);
+  if (game.status === 'FINAL') finalSummaryCache.set(game.eventId, { summary, cachedAt: Date.now() });
+  return plays;
+}
+
 export type NFLBoxScoreData = {
   eventId: string;
   status: string;

@@ -13,11 +13,13 @@ import type {
   NFLPlayerSeasonBoxScore,
   NFLTeamSeasonAverages,
   NFLSkillPlayer,
+  NFLScoringPlay,
   Team,
 } from './services/sportsData';
 import {
   averageNFLPlayerSeasonCategory,
   fetchNFLBoxScore,
+  fetchNFLScoringPlays,
   fetchNFLGameDetails,
   fetchNFLPlayerSeasonBoxScore,
   fetchNFLTeamSeasonAverages,
@@ -263,6 +265,45 @@ function areColorsSimilar(color1?: string, color2?: string): boolean {
   return false;
 }
 
+function ScoringPlays({ game }: { game: Game }) {
+  const [plays, setPlays] = useState<NFLScoringPlay[] | null>(null);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: number | undefined;
+    const load = async () => {
+      try {
+        const data = await fetchNFLScoringPlays(game, controller.signal);
+        if (controller.signal.aborted) return;
+        setPlays(data);
+        setError('');
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        console.error('Could not load NFL scoring plays', game.eventId, cause);
+        setError('Scoring plays could not refresh. Previously loaded plays remain visible. Retry or wait for the next update.');
+      }
+      if (!controller.signal.aborted && game.status === 'LIVE') timer = window.setTimeout(() => { void load(); }, 30000);
+    };
+    void load();
+    return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); };
+  }, [game.eventId, game.feedPath, game.status, retry]);
+  return <section className="wire-scoring-plays" aria-label="Scoring plays">
+    <header><h3>Scoring plays</h3><span>{game.status === 'LIVE' ? 'Updates every 30s' : 'Final scoring summary'}</span></header>
+    {error && <p role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
+    {!plays && !error && <p role="status">Loading scoring plays…</p>}
+    {plays?.length === 0 && <p>No scoring plays reported yet.</p>}
+    {!!plays?.length && <ol>{plays.map(play => {
+      const team = [game.away, game.home].find(side => side.id === play.teamId);
+      return <li key={play.id}>
+        <div className="wire-scoring-play-meta"><b>{play.type}</b><span>{play.period ? play.period > 4 ? `OT${play.period > 5 ? ` ${play.period - 4}` : ''}` : `Q${play.period}` : 'Period unavailable'}{play.clock ? ` · ${play.clock}` : ''}{team ? ` · ${team.abbr}` : ''}</span></div>
+        <p>{play.text}</p>
+        <small>{game.away.abbr} {play.awayScore ?? '—'} – {play.homeScore ?? '—'} {game.home.abbr}</small>
+      </li>;
+    })}</ol>}
+  </section>;
+}
+
 function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
   const team = play.teamId === game.away.id ? game.away : play.teamId === game.home.id ? game.home : null;
   const text = play.text.replace(/^(\([^)]*\)\s*)+/, '').replace(/([.)])(?=[A-Z]{2,})/g, '$1 ');
@@ -332,8 +373,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
     userSelectedRef.current = true;
     setSelectedGameId(gameId);
     if (gameId !== selectedGameId) setSimulationScenarioId('');
-    if (nflGames.find(game => game.id === gameId)?.status === 'UPCOMING') setSubTab(pregameView === 'simulation' ? 'simulation' : 'boxscore');
-    else if (subTab === 'simulation') setSubTab('boxscore');
+    if (pregameView === 'simulation') setSubTab('simulation');
+    else if (nflGames.find(game => game.id === gameId)?.status === 'UPCOMING' || subTab === 'simulation') setSubTab('boxscore');
     onSelectGame?.(gameId);
   };
 
@@ -361,7 +402,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
     if (!openRequest) return;
     userSelectedRef.current = true;
     setSelectedGameId(openRequest);
-    if (nflGames.find(game => game.id === openRequest)?.status === 'UPCOMING') setSubTab(pregameView === 'simulation' ? 'simulation' : 'boxscore');
+    setSubTab(pregameView === 'simulation' ? 'simulation' : 'boxscore');
     setDetailOpen(true);
   }, [openRequest]);
 
@@ -403,18 +444,15 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const selectedGame = nflGames.find((g) => g.id === selectedGameId) ?? nflGames[0];
   const changePregameView = (view: 'stats' | 'simulation') => {
     setPregameView(view);
-    if (selectedGame?.status === 'UPCOMING') setSubTab(view === 'simulation' ? 'simulation' : 'boxscore');
+    setSubTab(view === 'simulation' ? 'simulation' : 'boxscore');
   };
   const pregameToggle = <section className="wire-pregame-mode" aria-label="NFL pregame display">
     <div role="group" aria-label="NFL pregame view">
       <button type="button" aria-pressed={pregameView === 'stats'} onClick={() => changePregameView('stats')}>Pregame stats</button>
       <button type="button" className="wire-simulation-toggle" aria-pressed={pregameView === 'simulation'} onClick={() => changePregameView('simulation')}>GamewAIre simulations</button>
     </div>
-    {pregameView === 'simulation' && <p>Projected scores for upcoming NFL games; live and final scores stay actual. Quarterback participation is conditional, not confirmed.</p>}
+    {pregameView === 'simulation' && <p>Saved pregame projections remain visible after kickoff. Live scores and actual statistics are available in the stats view. Quarterback participation is conditional, not confirmed.</p>}
   </section>;
-  useEffect(() => {
-    if (selectedGame?.status !== 'UPCOMING' && subTab === 'simulation') setSubTab('boxscore');
-  }, [selectedGame?.status, subTab]);
   const selectedPrimetime = selectedGame ? getPrimetimeLabel(selectedGame) : null;
   const selectedIntl = selectedGame ? internationalVenue(selectedGame) : null;
   const livePrimetimeGame = nflGames.find((g) => g.status === 'LIVE' && isPrimetimeGame(g))
@@ -683,11 +721,11 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const awayScore = awayBoxTeam?.score ?? selectedGame?.away.score;
   const homeScore = homeBoxTeam?.score ?? selectedGame?.home.score;
   const selectedForecast = boardSimulations[selectedGame?.eventId ?? ''];
-  const projectedMatchup = isUpcoming && subTab === 'simulation' && selectedForecast?.status === 'ready' && Date.parse(selectedForecast.kickoff) === Date.parse(selectedGame?.date ?? '')
+  const projectedMatchup = subTab === 'simulation' && selectedForecast?.status === 'ready' && Date.parse(selectedForecast.kickoff) === Date.parse(selectedGame?.date ?? '')
     ? selectedForecast.scenarios.find(scenario => scenario.id === simulationScenarioId)
       ?? selectedForecast.scenarios.find(scenario => scenario.home && scenario.away) : undefined;
-  const awayLost = finalScore && awayScore !== undefined && homeScore !== undefined && awayScore < homeScore;
-  const homeLost = finalScore && awayScore !== undefined && homeScore !== undefined && homeScore < awayScore;
+  const awayLost = subTab !== 'simulation' && finalScore && awayScore !== undefined && homeScore !== undefined && awayScore < homeScore;
+  const homeLost = subTab !== 'simulation' && finalScore && awayScore !== undefined && homeScore !== undefined && homeScore < awayScore;
   const activeBoxTeam = selectedTeamSide === 'away' ? awayBoxTeam : homeBoxTeam;
   const activeGameTeam: Team | undefined = selectedGame ? (selectedTeamSide === 'away' ? selectedGame.away : selectedGame.home) : undefined;
 
@@ -884,8 +922,9 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
       const live = game.status === 'LIVE';
       const final = game.status === 'FINAL';
       const upcoming = game.status === 'UPCOMING';
+      const simulationMode = pregameView === 'simulation';
       const savedSimulation = boardSimulations[game.eventId];
-      const simulation = pregameView === 'simulation' && upcoming && savedSimulation?.status === 'ready' && Date.parse(savedSimulation.kickoff) === Date.parse(game.date)
+      const simulation = simulationMode && savedSimulation?.status === 'ready' && Date.parse(savedSimulation.kickoff) === Date.parse(game.date)
         ? savedSimulation.scenarios.find(scenario => scenario.home && scenario.away) : undefined;
       const intl = internationalVenue(game);
       const savedPick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
@@ -894,7 +933,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
           || teamPicks[`${game.eventId}:${Math.round(simulation.away.score.mean) > Math.round(simulation.home.score.mean) ? game.away.id : game.home.id}`] !== savedPick)
         ? undefined : savedPick;
       return (
-        <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : final ? ' is-final-game' : upcoming && pregameView === 'simulation' ? ' is-simulation-game' : ''}`}>
+        <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : final ? ' is-final-game' : ''}${simulationMode ? ' is-simulation-game' : ''}`}>
           <NotificationBell />
           <button
             type="button"
@@ -911,12 +950,12 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 <span>{formatGameTime(game)}</span>
               )}
               {live && (game.period || game.clock) && <small>{gameClockLabel(game.period, game.clock)}</small>}
-              {upcoming && pregameView === 'simulation' && <small>{simulation ? 'SIM SCORE' : 'Pending'}</small>}
+              {simulationMode && <small>{simulation ? 'SIM SCORE' : upcoming ? 'Pending' : 'No saved forecast'}</small>}
             </span>
             <span className="wire-board-teams">
               {[game.away, game.home].map((team, index) => {
                 const opponent = index === 0 ? game.home : game.away;
-                const lost = final && team.score < opponent.score;
+                const lost = !simulationMode && final && team.score < opponent.score;
                 const simulatedTeam = [simulation?.away, simulation?.home].find(side => side?.id === team.id);
                 return (
                   <span className={`wire-board-team${lost ? ' is-loser' : ''}`} key={team.id}>
@@ -926,13 +965,13 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                         <span className="wire-board-team-label">{team.name}</span>
                         {pick && teamPicks[`${game.eventId}:${team.id}`] === pick && <span className="wire-team-pick-note">GamewAIre Pick</span>}
                         {isTeamFavorite(team.id, game.feedPath) && <span className="wire-board-favorite" role="img" aria-label="Favorite team"><Star size={12} fill="currentColor" aria-hidden="true" /></span>}
-                        {live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
+                        {!simulationMode && live && game.situation?.possessionTeamId === team.id && <span className="possession-football" role="img" aria-label={`${team.name} has possession`}>🏈</span>}
                       </b>
                       <small>{team.abbr}{team.record ? ` · ${team.record}` : ''}</small>
                     </span>
-                    <strong className="wire-board-score" aria-label={upcoming && pregameView === 'simulation' ? `${team.abbr} projected score${simulatedTeam ? ` ${Math.round(simulatedTeam.score.mean)}` : ' preparing'}` : undefined}>{upcoming
-                      ? pregameView === 'simulation' ? simulatedTeam ? Math.round(simulatedTeam.score.mean) : '—' : ''
-                      : <ScoreTicker value={team.score} gameKey={`${game.id}:${team.id}`} />}</strong>
+                    <strong className="wire-board-score" aria-label={simulationMode ? `${team.abbr} projected score${simulatedTeam ? ` ${Math.round(simulatedTeam.score.mean)}` : upcoming ? ' preparing' : ' unavailable'}` : undefined}>{simulationMode
+                      ? simulatedTeam ? Math.round(simulatedTeam.score.mean) : '—'
+                      : upcoming ? '' : <ScoreTicker value={team.score} gameKey={`${game.id}:${team.id}`} />}</strong>
                   </span>
                 );
               })}
@@ -942,7 +981,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 {live ? nflFieldPosition(game.situation) : <><MapPin size={12} aria-hidden="true" /> {game.venue || 'Venue TBD'}{intl ? `, ${intl.city ?? intl.country}` : ''}</>}
               </span>
               <span className="wire-board-open">
-                {upcoming ? pregameView === 'simulation' ? 'GamewAIre simulation' : 'Pregame stats' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
+                {simulationMode ? 'GamewAIre simulation' : upcoming ? 'Pregame stats' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
               </span>
             </span>
           </button>
@@ -1146,11 +1185,11 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
               {/* Center Game State */}
               <div className="wire-matchup-center">
                 <div className="wire-matchup-score" aria-live="polite">
-                  {selectedGame.status === 'UPCOMING' ? subTab === 'simulation'
-                    ? `${projectedMatchup?.away ? Math.round(projectedMatchup.away.score.mean) : '—'} – ${projectedMatchup?.home ? Math.round(projectedMatchup.home.score.mean) : '—'}` : 'vs'
+                  {subTab === 'simulation'
+                    ? `${projectedMatchup?.away ? Math.round(projectedMatchup.away.score.mean) : '—'} – ${projectedMatchup?.home ? Math.round(projectedMatchup.home.score.mean) : '—'}` : selectedGame.status === 'UPCOMING' ? 'vs'
                     : <><span className={awayLost ? 'is-loser' : undefined}><ScoreTicker value={awayBoxTeam?.score ?? selectedGame.away.score} gameKey={`${selectedGame.id}:away`} /></span>{' – '}<span className={homeLost ? 'is-loser' : undefined}><ScoreTicker value={homeBoxTeam?.score ?? selectedGame.home.score} gameKey={`${selectedGame.id}:home`} /></span></>}
                 </div>
-                {isUpcoming && subTab === 'simulation' && <small>Simulated final score · Conditional QB participation</small>}
+                {subTab === 'simulation' && <small>Saved pregame score · Conditional QB participation</small>}
                 <span className={`wire-status-pill${isLive ? ' is-live' : ''}`}>
                   {isLive && <i />}
                   {isLive
@@ -1192,6 +1231,9 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
             </div>
             {isLive && selectedGame.situation?.lastPlay && (
               <LatestPlay play={selectedGame.situation.lastPlay} game={selectedGame} />
+            )}
+            {subTab !== 'simulation' && (isLive || selectedGame.status === 'FINAL') && (
+              <ScoringPlays key={`${selectedGame.eventId}:${selectedGame.date}`} game={selectedGame} />
             )}
 
             {/* Quarter-by-Quarter Linescore */}
@@ -1328,7 +1370,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
               >
                 Team Comparison
               </button>
-              {isUpcoming && <button className={subTab === 'simulation' ? 'active' : ''} aria-pressed={subTab === 'simulation'} onClick={() => setSubTab('simulation')}>GamewAIre Simulation</button>}
+              <button className={subTab === 'simulation' ? 'active' : ''} aria-pressed={subTab === 'simulation'} onClick={() => setSubTab('simulation')}>GamewAIre Simulation</button>
             </div>
 
             {subTab === 'boxscore' && !isUpcoming && (
@@ -1358,7 +1400,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
           )}
 
           {/* Main Body */}
-          {subTab === 'simulation' && isUpcoming ? (
+          {subTab === 'simulation' ? (
             <NFLGameSimulationPanel key={`${selectedGame.eventId}:${selectedGame.date}`} game={selectedGame}
               onForecast={rememberSimulation}
               onScenarioChange={setSimulationScenarioId}
