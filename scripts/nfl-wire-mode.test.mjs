@@ -23,7 +23,7 @@ function hooks() {
   return { state, effects, reset() { slot = 0; effects.length = 0; }, react: {
     useState(initial) { const index = slot++; if (!(index in state)) state[index] = typeof initial === 'function' ? initial() : initial; return [state[index], value => { state[index] = typeof value === 'function' ? value(state[index]) : value; }]; },
     useRef(initial) { const index = slot++; if (!(index in state)) state[index] = { current: initial }; return state[index]; },
-    useMemo: fn => fn(), useCallback: fn => fn, useEffect: effect => effects.push(effect),
+    useMemo: fn => fn(), useCallback: fn => fn, useEffect: effect => effects.push(effect), useId: () => 'test-accuracy',
   } };
 }
 const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements)
@@ -229,8 +229,12 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
     players: [
       { playerId: '2', name: 'Less close', stat: 'passingYards', projected: 280, actual: 250, error: 30, team: 'HOM', position: 'QB' },
       { playerId: '1', name: 'Closest passer', stat: 'passingYards', projected: 244, actual: 250, error: 6, team: 'AWY', position: 'QB' },
+      { playerId: '4', name: 'Third passer', stat: 'passingYards', projected: 290, actual: 250, error: 40, team: 'AWY', position: 'QB' },
+      { playerId: '5', name: 'Fourth passer', stat: 'passingYards', projected: 300, actual: 250, error: 50, team: 'HOM', position: 'QB' },
       { playerId: '3', name: 'Receiver', stat: 'receptions', projected: 7, actual: 8, error: 1, team: 'AWY', position: 'WR' },
     ] }] };
+  const firstGame = report.games[0];
+  report.games.push(...Array.from({ length: 3 }, (_, index) => ({ ...firstGame, eventId: String(700 + index), error: index + 2, players: [] })));
   const context = vm.createContext({ exports: {}, AbortController, console, window: {
     setTimeout: fn => { timers.set(1, fn); return 1; }, clearTimeout: id => timers.delete(id),
   }, require(name) {
@@ -241,21 +245,37 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
     return {};
   } });
   vm.runInContext(compile('../src/NFLSimulationAccuracy.tsx'), context);
-  const props = { games: [{ ...game, status: 'FINAL' }], weekly: true };
+  const props = { games: report.games.map(row => ({ ...game, eventId: row.eventId, status: 'FINAL' })), weekly: true };
   const render = () => { h.reset(); return elements(context.exports.default(props)); };
   render(); const stop = h.effects[0]();
   await new Promise(resolve => setImmediate(resolve));
   let tree = render();
   const playerNames = () => tree.filter(node => node.type === 'th' && node.props.scope === 'row').map(node => node.props.children.filter(value => typeof value === 'string').join(''));
-  assert.match(playerNames()[1], /Closest passer/);
-  assert.match(playerNames()[2], /Less close/);
-  assert.equal(playerNames().length, 3);
+  assert.match(playerNames()[4], /Closest passer/);
+  assert.match(playerNames()[5], /Less close/);
+  assert.equal(playerNames().length, 8);
+  assert.ok(tree.some(node => node.type === 'td' && node.props.children.join?.('') === '23 – 29'));
+  const gameCard = () => tree.find(node => node.type === 'button' && node.props['aria-controls'] === 'test-accuracy-games');
+  const playerCard = () => tree.find(node => node.type === 'button' && node.props['aria-controls'] === 'test-accuracy-players');
+  assert.equal(gameCard().props['aria-expanded'], false);
+  assert.equal(playerCard().props['aria-expanded'], false);
+  assert.equal(elements(gameCard()).filter(node => node.props.role === 'listitem').length, 3);
+  const playerPreview = elements(playerCard()).filter(node => node.props.role === 'listitem');
+  assert.equal(playerPreview.length, 3);
+  assert.ok(!elements(playerCard()).some(node => typeof node.props.children === 'string' && /Fourth passer/.test(node.props.children)));
+  assert.equal(tree.find(node => node.props.id === 'test-accuracy-games').props.hidden, true);
+  gameCard().props.onClick(); tree = render();
+  assert.equal(gameCard().props['aria-expanded'], true);
+  assert.equal(tree.find(node => node.props.id === 'test-accuracy-games').props.hidden, false);
+  playerCard().props.onClick(); tree = render();
+  assert.equal(playerCard().props['aria-expanded'], true);
+  assert.equal(tree.find(node => node.props.id === 'test-accuracy-players').props.hidden, false);
   assert.ok(tree.some(node => node.type === 'td' && node.props.children === '244.0'));
   assert.ok(tree.some(node => node.type === 'td' && node.props.children === 250));
   tree.find(node => node.type === 'select').props.onChange({ target: { value: 'receptions' } });
   tree = render();
-  assert.match(playerNames()[1], /Receiver/);
-  assert.equal(playerNames().length, 2);
+  assert.match(playerNames()[4], /Receiver/);
+  assert.equal(playerNames().length, 5);
   stop(); assert.equal(timers.size, 0);
 });
 test('Dedicated results area selects individual games and explains games that have not finished', () => {
@@ -276,4 +296,16 @@ test('Dedicated results area selects individual games and explains games that ha
   assert.equal(area().props.weekly, false);
   tree.find(node => node.type === 'select').props.onChange({ target: { value: '456' } }); tree = render();
   assert.ok(tree.some(node => node.props.role === 'status' && /after a game finishes/.test(node.props.children)));
+});
+test('Results controls have explicit dark surfaces, readable contrast and mobile-stacked cards', () => {
+  const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
+  const rule = css.match(/\.wire-simulation-results :is\(button, select\), \.nfl-simulation-accuracy :is\(button, select\) \{[^}]*background: (#[\da-f]+); color: (#[\da-f]+);/);
+  assert.ok(rule);
+  const luminance = hex => hex.slice(1).match(/../g).map(value => Number.parseInt(value, 16) / 255)
+    .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4)
+    .reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+  const background = luminance(rule[1]), foreground = luminance(rule[2]);
+  assert.ok((Math.max(background, foreground) + .05) / (Math.min(background, foreground) + .05) >= 4.5);
+  assert.match(css, /\.wire-simulation-results option, \.nfl-simulation-accuracy option \{ background: #102137; color: #e8f4ff;/);
+  assert.match(css, /@media \(max-width: 760px\) \{ \.nfl-accuracy-cards \{ grid-template-columns: minmax\(0, 1fr\);/);
 });

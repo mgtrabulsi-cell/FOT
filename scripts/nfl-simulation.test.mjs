@@ -232,7 +232,9 @@ test('Accuracy uses the realized pregame scenario, exact team errors and reporte
   const player = scenario.home.players.find(row => row.stats.passingYards);
   actuals.teams[0].players[player.id] = { passingYards: 250, passingTouchdowns: 0 };
   const result = compareSimulationAccuracy(forecast, actuals, new Date(Date.parse(game.date) + 60000).toISOString());
-  assert.equal(result.error, (Math.abs(scenario.home.score.mean - 28) + Math.abs(scenario.away.score.mean - 14)) / 2);
+  assert.equal(result.error, (Math.abs(Math.round(scenario.home.score.mean) - 28) + Math.abs(Math.round(scenario.away.score.mean) - 14)) / 2);
+  assert.equal(result.home.projected, Math.round(scenario.home.score.mean));
+  assert.equal(result.away.projected, Math.round(scenario.away.score.mean));
   assert.equal(result.players.find(row => row.stat === 'passingYards').error, Math.abs(player.stats.passingYards.mean - 250));
   assert.equal(result.players.find(row => row.stat === 'passingTouchdowns').actual, 0);
   assert.ok(result.players.every(row => row.playerId === player.id));

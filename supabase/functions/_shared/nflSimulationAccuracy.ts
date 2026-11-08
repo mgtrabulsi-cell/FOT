@@ -66,9 +66,9 @@ export function compareSimulationAccuracy(forecast: NFLGameSimulation, actualVal
   if (missing) issues.push(`${missing} player/stat comparisons omitted because projections or reported actuals were unavailable; missing stats and DNPs are not treated as zero.`);
   return { eventId: forecast.eventId, kickoff: forecast.kickoff, forecastAt: forecast.forecastAt, version: forecast.version,
     settledAt, scenario: scenario.label,
-    home: { id: home.id, name: home.name, abbr: home.abbr, projected: home.score.mean, actual: actualHome.points },
-    away: { id: away.id, name: away.name, abbr: away.abbr, projected: away.score.mean, actual: actualAway.points },
-    error: (Math.abs(home.score.mean - actualHome.points) + Math.abs(away.score.mean - actualAway.points)) / 2,
+    home: { id: home.id, name: home.name, abbr: home.abbr, projected: Math.round(home.score.mean), actual: actualHome.points },
+    away: { id: away.id, name: away.name, abbr: away.abbr, projected: Math.round(away.score.mean), actual: actualAway.points },
+    error: (Math.abs(Math.round(home.score.mean) - actualHome.points) + Math.abs(Math.round(away.score.mean) - actualAway.points)) / 2,
     players, issues };
 }
 
