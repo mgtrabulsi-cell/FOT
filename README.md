@@ -120,7 +120,7 @@ Validate locally with `node --test scripts/gamewaire-soccer.test.mjs scripts/gam
 
 ### NFL game simulations
 
-NFL scoring quarters are collapsed by default with a play count and native keyboard-accessible expand/collapse controls. Expanded scoring rows use compact spacing; every reported play remains available, and polling does not reset opened quarters.
+NFL scoring quarters and all reported scoring plays are always visible when opening a game, without dropdowns or expand/collapse controls. Quarter headings include play counts, and headings and rows use compact spacing.
 
 The Wire's **Simulation Results** button opens a dedicated area with an all-games weekly ranking and a game selector for individual score/player comparisons. Results also remain available inside each completed game's simulation tab. Only the saved pregame forecast's uniquely verified realized QB scenario counts; hypothetical or ambiguous scenarios are excluded. Game rankings use mean absolute score error across both teams; player rankings are separated by statistic and use absolute error. Tables show unrounded model means to one decimal, actual values and differences, not sportsbook lines or bet grades. Missing player stats/DNPs are not zeros. v5 regulation-only player projections require verified non-overtime actuals; overtime or unverified games are excluded from player rankings (game-score comparisons remain eligible).
 

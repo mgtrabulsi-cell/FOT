@@ -296,8 +296,8 @@ function ScoringPlays({ game }: { game: Game }) {
     {error && <p role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!plays && !error && <p role="status">Loading scoring plays…</p>}
     {plays?.length === 0 && <p>No scoring plays reported yet.</p>}
-    {periods.map(period => <details className="wire-scoring-quarter" key={period ?? 'unknown'} aria-label={periodLabel(period)}>
-      <summary><b>{periodLabel(period)}</b><small>{plays?.filter(play => play.period === period).length} scoring plays</small></summary>
+    {periods.map(period => <section className="wire-scoring-quarter" key={period ?? 'unknown'} aria-label={periodLabel(period)}>
+      <h4><b>{periodLabel(period)}</b><small>{plays?.filter(play => play.period === period).length} scoring plays</small></h4>
       <ol>{plays?.filter(play => play.period === period).map(play => {
       const team = [game.away, game.home].find(side => side.id === play.teamId);
       return <li key={play.id}>
@@ -305,7 +305,7 @@ function ScoringPlays({ game }: { game: Game }) {
         <p>{play.text}</p>
         <small>{game.away.abbr} {play.awayScore ?? '—'} – {play.homeScore ?? '—'} {game.home.abbr}</small>
       </li>;
-    })}</ol></details>)}
+    })}</ol></section>)}
   </section>;
 }
 

@@ -448,7 +448,7 @@
 .nfl-simulation-accuracy td { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .nfl-simulation-accuracy th small { display: block; margin-top: 4px; color: var(--muted); font-weight: 400; }
 .wire-scoring-quarter { margin-top: 6px; }
-.wire-scoring-quarter summary { min-height: 44px; padding: 10px 8px; border-left: 3px solid var(--coral); background: var(--paper); font-size: 14px; cursor: pointer; }
-.wire-scoring-quarter summary small { margin-left: 10px; }
+.wire-scoring-quarter h4 { margin: 0; padding: 6px 8px; border-left: 3px solid var(--coral); background: var(--paper); font-size: 14px; }
+.wire-scoring-quarter h4 small { margin-left: 10px; font-weight: 400; }
 .wire-simulation-results > label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wire-simulation-results > label select { max-width: 100%; min-height: 44px; }
