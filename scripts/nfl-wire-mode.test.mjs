@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as sports from '../src/services/sportsData.ts';
 import * as nflSituation from '../src/services/nflSituation.ts';
+import { featuredSimulationMinimums, isFeaturedSimulationPlayer } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 
 const compile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -227,6 +228,7 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
   const report = { pending: 0, issues: [], games: [{ eventId: game.eventId, kickoff: game.date, scenario: 'Verified QB',
     away: { abbr: 'AWY', projected: 22.5, actual: 21 }, home: { abbr: 'HOM', projected: 28.5, actual: 28 }, error: 1, issues: [],
     players: [
+      { playerId: '6', name: 'Low volume passer', stat: 'passingYards', projected: 100, actual: 100, error: 0, team: 'AWY', position: 'QB' },
       { playerId: '2', name: 'Less close', stat: 'passingYards', projected: 280, actual: 250, error: 30, team: 'HOM', position: 'QB' },
       { playerId: '1', name: 'Closest passer', stat: 'passingYards', projected: 244, actual: 250, error: 6, team: 'AWY', position: 'QB' },
       { playerId: '4', name: 'Third passer', stat: 'passingYards', projected: 290, actual: 250, error: 40, team: 'AWY', position: 'QB' },
@@ -241,7 +243,7 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
     if (name === 'react') return h.react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('gamewireBot')) return { loadSimulationAccuracy: async () => report };
-    if (name.includes('nflSimulationAccuracy')) return { simulationAccuracyStats: { passingYards: 'Passing yards', receptions: 'Receptions' } };
+    if (name.includes('nflSimulationAccuracy')) return { featuredSimulationMinimums, isFeaturedSimulationPlayer, simulationAccuracyStats: { passingYards: 'Passing yards', receptions: 'Receptions' } };
     return {};
   } });
   vm.runInContext(compile('../src/NFLSimulationAccuracy.tsx'), context);
@@ -251,9 +253,10 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
   await new Promise(resolve => setImmediate(resolve));
   let tree = render();
   const playerNames = () => tree.filter(node => node.type === 'th' && node.props.scope === 'row').map(node => node.props.children.filter(value => typeof value === 'string').join(''));
-  assert.match(playerNames()[4], /Closest passer/);
-  assert.match(playerNames()[5], /Less close/);
-  assert.equal(playerNames().length, 8);
+  assert.match(playerNames()[4], /Low volume passer/);
+  assert.match(playerNames()[5], /Closest passer/);
+  assert.match(playerNames()[6], /Less close/);
+  assert.equal(playerNames().length, 9);
   assert.ok(tree.some(node => node.type === 'td' && node.props.children.join?.('') === '23 – 29'));
   const gameCard = () => tree.find(node => node.type === 'button' && node.props['aria-controls'] === 'test-accuracy-games');
   const playerCard = () => tree.find(node => node.type === 'button' && node.props['aria-controls'] === 'test-accuracy-players');
@@ -262,6 +265,7 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
   assert.equal(elements(gameCard()).filter(node => node.props.role === 'listitem').length, 3);
   const playerPreview = elements(playerCard()).filter(node => node.props.role === 'listitem');
   assert.equal(playerPreview.length, 3);
+  assert.ok(!elements(playerCard()).some(node => typeof node.props.children === 'string' && /Low volume passer/.test(node.props.children)));
   assert.ok(!elements(playerCard()).some(node => typeof node.props.children === 'string' && /Fourth passer/.test(node.props.children)));
   assert.equal(tree.find(node => node.props.id === 'test-accuracy-games').props.hidden, true);
   gameCard().props.onClick(); tree = render();

@@ -13,6 +13,15 @@ export type SimulationAccuracyPlayer = {
   playerId: string; name: string; position: string; team: string; stat: keyof SimulationStat;
   projected: number; actual: number; error: number;
 };
+export const featuredSimulationMinimums: Partial<Record<keyof SimulationStat, number>> = {
+  rushingYards: 30, receivingYards: 30, passingYards: 200, passingTouchdowns: 2,
+  receptions: 3, receivingTouchdowns: 1, rushingTouchdowns: 1,
+};
+export function isFeaturedSimulationPlayer(player: SimulationAccuracyPlayer): boolean {
+  if ((player.stat === 'passingYards' || player.stat === 'passingTouchdowns') && player.position !== 'QB') return false;
+  const minimum = featuredSimulationMinimums[player.stat];
+  return minimum === undefined || player.projected >= minimum && player.actual >= minimum;
+}
 export type SimulationAccuracyGame = {
   eventId: string; kickoff: string; forecastAt: string; version: string; settledAt: string; scenario: string;
   home: { id: string; name: string; abbr: string; projected: number; actual: number };

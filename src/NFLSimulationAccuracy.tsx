@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { Game } from './services/sportsData';
 import { loadSimulationAccuracy } from './services/gamewireBot';
-import { simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy';
+import { featuredSimulationMinimums, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
 
@@ -57,6 +57,8 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
   if (!hasFinished) return null;
   const playerRows = report?.games.flatMap(game => game.players.filter(player => player.stat === stat).map(player => ({ ...player, game })))
     .sort((a, b) => a.error - b.error || a.game.eventId.localeCompare(b.game.eventId) || a.playerId.localeCompare(b.playerId)) ?? [];
+  const playerHighlights = playerRows.filter(isFeaturedSimulationPlayer).slice(0, 3);
+  const featuredMinimum = featuredSimulationMinimums[stat];
   return <section className="nfl-simulation-accuracy" aria-label={weekly ? 'Selected week simulation accuracy' : 'Game simulation accuracy'}>
     <header><h3>{weekly ? 'This slate’s simulation accuracy' : 'Simulation vs. final results'}</h3>
       <button type="button" onClick={() => setRetry(value => value + 1)}>Refresh results</button></header>
@@ -94,12 +96,13 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
         if (Object.prototype.hasOwnProperty.call(simulationAccuracyStats, value)) setStat(value as keyof SimulationStat);
       }}>{Object.entries(simulationAccuracyStats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <button type="button" className="nfl-accuracy-card-toggle" aria-expanded={playersExpanded} aria-controls={`${id}-players`} onClick={() => setPlayersExpanded(value => !value)}>
-        <span className="nfl-accuracy-card-title">Player props <small>Top {Math.min(3, playerRows.length)} · {simulationAccuracyStats[stat]}</small></span>
-        <span className="nfl-accuracy-card-list" role="list">{playerRows.slice(0, 3).map((player, index) => <span className="nfl-accuracy-card-row" role="listitem" key={`${player.game.eventId}:${player.playerId}`}>
+        <span className="nfl-accuracy-card-title">Player props <small>Top {playerHighlights.length} · {simulationAccuracyStats[stat]}</small></span>
+        {featuredMinimum !== undefined && <span className="nfl-accuracy-highlight-minimum">Featured minimum: {featuredMinimum} in both simulated and actual results.</span>}
+        <span className="nfl-accuracy-card-list" role="list">{playerHighlights.map((player, index) => <span className="nfl-accuracy-card-row" role="listitem" key={`${player.game.eventId}:${player.playerId}`}>
           <b>{index + 1}. {player.name} · {player.team}</b>
           <span>Sim {number(player.projected)} · Actual {player.actual}</span><small>{number(player.error)} difference</small>
         </span>)}</span>
-        {!playerRows.length && <span>No eligible reported actuals for {simulationAccuracyStats[stat].toLowerCase()} yet.</span>}
+        {!playerHighlights.length && <span>No eligible highlights meet the featured minimums yet. Expand to view all available comparisons.</span>}
         <span className="nfl-accuracy-card-action">{playersExpanded ? 'Hide full results' : 'View all player results'}</span>
       </button>
       <div id={`${id}-players`} hidden={!playersExpanded}>

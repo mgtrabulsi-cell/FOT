@@ -120,6 +120,8 @@ Validate locally with `node --test scripts/gamewaire-soccer.test.mjs scripts/gam
 
 ### NFL game simulations
 
+Player Props top-three highlights require both the unrounded simulated value and verified actual value to meet these minimums: 30 rushing/receiving yards, 200 passing yards or two passing touchdowns for QBs, three receptions, and one rushing/receiving touchdown. Thresholds filter featured highlights only; expanded tables retain all eligible comparisons. Statistics without a specified minimum retain their existing highlight behavior.
+
 Simulation Results uses site-themed, readable controls and two clickable top-three cards: Game results and Player props for the selected statistic. Selecting a card expands its complete comparison table. Game scores and game-error rankings use the same rounded whole-number scores as the published simulation; archived model means and learning inputs remain unchanged. Player-stat means retain decimal precision.
 
 NFL scoring quarters and all reported scoring plays are always visible when opening a game, without dropdowns or expand/collapse controls. Quarter headings include play counts, and headings and rows use compact spacing.

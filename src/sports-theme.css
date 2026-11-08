@@ -468,3 +468,4 @@
 .nfl-accuracy-card-row > span { font-size: 13px; font-variant-numeric: tabular-nums; }
 .nfl-accuracy-card-action { display: block; margin-top: 12px; color: #8ce2ff; font-weight: 600; }
 @media (max-width: 760px) { .nfl-accuracy-cards { grid-template-columns: minmax(0, 1fr); } .wire-simulation-results { padding: 12px; } }
+.nfl-accuracy-highlight-minimum { display: block; margin-top: 10px; color: #b6c8dd; font-size: 12px; line-height: 1.5; }
