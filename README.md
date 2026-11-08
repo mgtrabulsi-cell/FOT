@@ -120,6 +120,8 @@ Validate locally with `node --test scripts/gamewaire-soccer.test.mjs scripts/gam
 
 ### NFL game simulations
 
+In Simulation Results, select **All games** to download separate Instagram portrait PNGs (1080 x 1350) for the top three game-score comparisons and featured player projections in the selected statistic. The downloads reuse GameWire's simulation theme and logo. Each click fetches fresh verified selected-slate results before freezing the graphic, including the full selected-week winner record, pending/excluded coverage and download timestamp. Published-score ties have no winner forecast; actual ties are tracked separately from wins/losses. Fewer than three available qualifying results are shown honestly, and an empty export reports an error rather than inventing entries.
+
 Player Props top-three highlights require both the unrounded simulated value and verified actual value to meet these minimums: 30 rushing/receiving yards, 200 passing yards or two passing touchdowns for QBs, three receptions, and one rushing/receiving touchdown. Thresholds filter featured highlights only; expanded tables retain all eligible comparisons. Statistics without a specified minimum retain their existing highlight behavior.
 
 Simulation Results uses site-themed, readable controls and two clickable top-three cards: Game results and Player props for the selected statistic. Selecting a card expands its complete comparison table. Game scores and game-error rankings use the same rounded whole-number scores as the published simulation; archived model means and learning inputs remain unchanged. Player-stat means retain decimal precision.

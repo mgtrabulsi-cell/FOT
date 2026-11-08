@@ -469,3 +469,9 @@
 .nfl-accuracy-card-action { display: block; margin-top: 12px; color: #8ce2ff; font-weight: 600; }
 @media (max-width: 760px) { .nfl-accuracy-cards { grid-template-columns: minmax(0, 1fr); } .wire-simulation-results { padding: 12px; } }
 .nfl-accuracy-highlight-minimum { display: block; margin-top: 10px; color: #b6c8dd; font-size: 12px; line-height: 1.5; }
+.nfl-simulation-results-downloads { margin-top: 16px; padding: 14px; border: 1px solid #345d80; border-radius: 12px; background: #10243c; }
+.nfl-simulation-results-downloads > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.nfl-simulation-results-downloads .gai-results-download { min-width: 0; }
+.nfl-simulation-results-downloads .gai-results-download img { display: block; width: 100%; max-width: 360px; height: auto; }
+.nfl-simulation-results-downloads a { color: #8ce2ff; }
+@media (max-width: 760px) { .nfl-simulation-results-downloads > div { grid-template-columns: minmax(0, 1fr); } }

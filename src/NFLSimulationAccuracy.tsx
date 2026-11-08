@@ -4,6 +4,7 @@ import { loadSimulationAccuracy } from './services/gamewireBot';
 import { featuredSimulationMinimums, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
+import NFLSimulationResultsDownloads from './NFLSimulationResultsDownloads';
 
 const number = (value: number) => value.toFixed(1);
 export function NFLSimulationResults({ games }: { games: Game[] }) {
@@ -66,6 +67,7 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
     {error && <p role="alert">{error} Saved results remain visible when available.</p>}
     {!report && !error && <p role="status">Loading verified results…</p>}
     {report && <>
+      {weekly && <NFLSimulationResultsDownloads games={games} stat={stat} />}
       {report.pending > 0 && <p>{report.pending} game{report.pending === 1 ? '' : 's'} awaiting a final result or verification.</p>}
       <div className="nfl-accuracy-cards">
       <section className="nfl-accuracy-card" aria-label="Game results">

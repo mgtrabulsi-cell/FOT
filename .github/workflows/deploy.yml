@@ -38,7 +38,7 @@ jobs:
       - name: Test API-Sports live feed
         run: node --test scripts/live-feed.test.mjs scripts/nfl-team-map.test.mjs
       - name: Test GamewAIre analyses and scheduling
-        run: node --test scripts/gamewaire*.test.mjs scripts/gamewire-*.test.mjs scripts/wire-top-picks.test.mjs scripts/nfl-simulation.test.mjs scripts/nfl-simulation-highlights.test.mjs scripts/nfl-wire-mode.test.mjs
+        run: node --test scripts/gamewaire*.test.mjs scripts/gamewire-*.test.mjs scripts/wire-top-picks.test.mjs scripts/nfl-simulation.test.mjs scripts/nfl-simulation-highlights.test.mjs scripts/nfl-simulation-results-graphic.test.mjs scripts/nfl-wire-mode.test.mjs
       - name: Test foreground score refresh
         run: node --test scripts/foreground-refresh.test.mjs scripts/site-opens*.test.mjs scripts/post-viewers.test.mjs scripts/notification-onboarding.test.mjs scripts/notification-bell.test.mjs
       - name: Test NBA scores, stats and Locker Room
