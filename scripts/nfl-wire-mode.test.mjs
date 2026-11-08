@@ -200,7 +200,10 @@ test('Live scoring area polls all plays, preserves them offline and cleans up on
   await new Promise(resolve => setImmediate(resolve));
   let tree = render();
   assert.equal(tree.filter(node => node.type === 'li').length, 3);
-  assert.deepEqual(tree.filter(node => node.type === 'h4').map(node => node.props.children), ['Quarter 1', 'Quarter 2', 'Overtime']);
+  const quarters = tree.filter(node => node.type === 'details' && node.props.className === 'wire-scoring-quarter');
+  assert.deepEqual(quarters.map(node => node.props['aria-label']), ['Quarter 1', 'Quarter 2', 'Overtime']);
+  assert.ok(quarters.every(node => node.props.open === undefined));
+  assert.equal(tree.filter(node => node.type === 'summary').length, 3);
   assert.ok(tree.some(node => node.type === 'b' && node.props.children === 'RUSHING TOUCHDOWN'));
   assert.ok(tree.some(node => node.type === 'b' && node.props.children === 'PASSING TOUCHDOWN'));
   assert.ok(tree.some(node => node.type === 'small' && node.props.children.join('') === 'AWY 3 – 0 HOM'));

@@ -430,13 +430,13 @@
   .notification-game-card.is-simulation-game .wire-board-team-label { flex-basis: 100%; white-space: normal; overflow-wrap: normal; word-break: normal; }
   .sports-theme .wire-matchup-team-details h2, .nfl-simulation-team-title h3, .nfl-simulation-scores span { min-width: 0; overflow-wrap: normal; word-break: normal; }
 }
-.wire-scoring-plays { margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.wire-scoring-plays { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
 .wire-scoring-plays header, .wire-scoring-play-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .wire-scoring-plays h3 { margin: 0; }
 .wire-scoring-plays header span, .wire-scoring-play-meta span, .wire-scoring-plays small { color: var(--muted); font-size: 12px; }
-.wire-scoring-plays ol { list-style: none; margin: 12px 0 0; padding: 0; }
-.wire-scoring-plays li { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
-.wire-scoring-plays li p { margin: 8px 0; line-height: 1.5; }
+.wire-scoring-plays ol { list-style: none; margin: 4px 0 0; padding: 0; }
+.wire-scoring-plays li { padding: 8px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.wire-scoring-plays li p { margin: 4px 0; line-height: 1.4; font-size: 14px; }
 .nfl-simulation-accuracy { margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
 .nfl-simulation-accuracy header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .nfl-simulation-accuracy h3 { margin: 0; }
@@ -447,7 +447,8 @@
 .nfl-simulation-accuracy th, .nfl-simulation-accuracy td { padding: 10px; border-bottom: 1px solid var(--line); text-align: left; }
 .nfl-simulation-accuracy td { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .nfl-simulation-accuracy th small { display: block; margin-top: 4px; color: var(--muted); font-weight: 400; }
-.wire-scoring-quarter { margin-top: 16px; }
-.wire-scoring-quarter h4 { margin: 0; padding: 10px 12px; border-left: 3px solid var(--coral); background: var(--paper); font-size: 14px; }
+.wire-scoring-quarter { margin-top: 6px; }
+.wire-scoring-quarter summary { min-height: 44px; padding: 10px 8px; border-left: 3px solid var(--coral); background: var(--paper); font-size: 14px; cursor: pointer; }
+.wire-scoring-quarter summary small { margin-left: 10px; }
 .wire-simulation-results > label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wire-simulation-results > label select { max-width: 100%; min-height: 44px; }
