@@ -18,32 +18,52 @@
 <main>
   <p><a href="./">&larr; Back to GameWire</a></p>
   <h1>Privacy Policy</h1>
-  <p class="muted">Effective October 19, 2026</p>
-  <p>GameWire ("we", "us") provides NFL scores, player statistics, news, and analysis at gamewire.us and in the GameWire app. This policy explains what information we collect and how we use it.</p>
+  <p class="muted">Effective November 9, 2026</p>
+  <p>GameWire ("we", "us") provides sports scores, player statistics, news, simulations, and analysis, including NFL and NBA coverage, at gamewire.us and in the GameWire app. This policy covers our website and app and explains what information we collect, who can see it, and your choices.</p>
 
   <h2>Information we collect</h2>
   <ul>
-    <li><strong>Account information.</strong> If you create an account, we store your email address, the username you choose, and a securely hashed password. You can use GameWire as a guest without an account.</li>
-    <li><strong>Your preferences.</strong> Favorite teams and players, and which posts you have read, so they sync across your devices.</li>
-    <li><strong>Push notification token.</strong> Only if you turn on notifications, we store a device token so we can send the alerts you chose. You can turn them off at any time in your profile or device settings.</li>
-    <li><strong>Content you post.</strong> If you are an approved GameWire contributor, the posts and photos you publish are stored and shown publicly.</li>
+    <li><strong>Account information.</strong> If you register, we store your email address, chosen display name, account ID, and account creation and sign-in timestamps. Supabase Authentication handles your password and stores its protected hash, not a readable password. You can browse as a guest without registering.</li>
+    <li><strong>Preferences and saved history.</strong> Favorite teams and players, notification choices, read/unread state, and saved Locker Room selections and history are used to personalize your experience. Supported account preferences and history are stored with your account; other settings and drafts are stored only on your device.</li>
+    <li><strong>Visits and post views.</strong> We record first-party usage information. For signed-in members, this includes account-linked visit counts and timestamps, and which LIVEWIRE posts and Storylines were viewed, with view counts and timestamps. Guest visits use a random identifier stored in browser session storage, with visit counts and timestamps. Guest post views are recorded without an account ID. Views can be counted again when content becomes visible again; they are not necessarily unique people.</li>
+    <li><strong>Browser notifications.</strong> If you enable Web Push, we store your browser's push subscription endpoint and encryption keys, selected alert settings, and subscription update time with your account. Browser push services process the subscription and notifications to deliver alerts. Web Push is currently disabled in the native app; this is not an implemented native Apple push-token service.</li>
+    <li><strong>Contributor content.</strong> Authorized contributors can upload photos and publish posts and graphics. Published content is public. Working graphic drafts and selected photos may also be saved on your device for recovery and offline editing. Do not publish information or images you intend to keep private.</li>
+    <li><strong>Support correspondence.</strong> If you email us, we receive your email address, message, and any attachments or device details you choose to provide. Do not email passwords or API keys.</li>
+    <li><strong>Technical information.</strong> Hosting, database, authentication, and delivery providers may process IP addresses, request times, browser/device metadata, and operational or security logs when handling requests. This is separate from the visit and post-view records described above.</li>
   </ul>
-  <p>We do not collect your location, contacts, or payment information. We do not use advertising or third-party tracking, and we do not sell or share your personal information for advertising.</p>
+  <p>We do not request precise device location, contacts, microphone access, or payment card information. GameWire does not sell personal information, run advertising, or use cross-app or cross-website advertising tracking. We do use the first-party usage analytics described in this policy; guest browsing does not mean that no usage information is recorded.</p>
 
-  <h2>Information stored on your device</h2>
-  <p>To load quickly and work offline, GameWire saves recent scores, statistics, team logos, and player photos on your device. This data contains public sports information and your preferences; it stays on your device and is removed when you delete your account or clear the app's data.</p>
+  <h2>Who can see your information</h2>
+  <p>Authorized GameWire owners and administrators can view registered members' email addresses, display names, joining and last sign-in times, visit counts and last-visit times, and counts of registered notification subscriptions and score-alert subscriptions. For LIVEWIRE posts and Storylines, they can see signed-in viewers' display names, account IDs, view counts, and most recent view times, along with guest and unattributed totals. Ordinary readers do not receive this administrator-only viewer list. Public posts, graphics, and any public view totals are visible to readers.</p>
 
   <h2>How we use information</h2>
-  <p>We use your information only to provide GameWire: signing you in, syncing your favorites, showing unread updates, sending notifications you requested, and keeping the service secure.</p>
+  <p>We use information to authenticate accounts, sync supported preferences, personalize sports content, maintain saved history and drafts, show unread updates, deliver requested notifications, publish authorized content, provide support, measure visits and readership, improve the service, and maintain security. Administrators use account and usage information to manage the service and understand engagement.</p>
 
-  <h2>Service providers</h2>
-  <p>Accounts, preferences, and posts are stored with Supabase, our database and authentication provider. Sports scores and statistics are loaded from ESPN's public data feeds; we do not send your personal information to ESPN. Our website is hosted on GitHub Pages, which may keep standard server logs such as IP addresses.</p>
+  <h2>Providers and external services</h2>
+  <ul>
+    <li><strong>Supabase</strong> provides authentication, databases, file storage, and server-side functions for accounts, preferences, history, usage records, notification subscriptions, and published content.</li>
+    <li><strong>GitHub Pages</strong> hosts the public website and may process standard request and hosting logs.</li>
+    <li><strong>ESPN, API-Sports, and The Odds API</strong> provide sports data, news references, and betting-market information. Server-side requests use sports event, player, team, or market information. Direct browser requests to sports providers or other content hosts can expose your IP address and ordinary browser/request metadata to those providers.</li>
+    <li><strong>OpenAI</strong> may be used for GamewAIre analysis to select supporting evidence from sports-selection identifiers, verified facts, and risks. That request is built from sports evidence, not your account email, password, favorites, or private graphic drafts. It does not calculate the model's probabilities.</li>
+    <li><strong>X</strong> receives post text and uploaded graphic images when an authorized publisher chooses the X publishing option. Those posts become public on X. Deleting content or your account in GameWire does not automatically remove an already published X post.</li>
+    <li><strong>Browser push services</strong> process notification subscriptions and delivery when you opt into supported browser notifications.</li>
+  </ul>
+  <p>Providers process information under their own applicable terms and privacy policies. Following external news, social, or other links takes you to services governed by their own policies. We may also disclose information when legally required or necessary to protect the service and its users.</p>
 
-  <h2>Deleting your account</h2>
-  <p>You can permanently delete your account and associated data at any time from your Profile in the app. You can also email us at <a href="mailto:mgtrabulsi@gmail.com">mgtrabulsi@gmail.com</a> to request deletion.</p>
+  <h2>Information stored on your device</h2>
+  <p>GameWire uses browser storage, session storage, service-worker caches, or native app files to retain sign-in sessions, preferences, read state, working graphic drafts and selected uploads, and downloaded public sports and post content. These stores support faster loading, draft recovery, and offline use. Public caches are separate from private account data. Some settings and drafts are device-specific and are not synced to your account.</p>
+  <p>Clearing site/app data can remove local drafts, settings, and offline copies and may sign you out. It does not delete your server account, published posts, or previously recorded usage. Signing out alone does not erase every local draft or public cache. Other devices have their own storage.</p>
+
+  <h2>Retention and account deletion</h2>
+  <p>Account information, preferences, and saved history are generally retained while your account exists; published content remains until it is removed. We do not currently apply a fixed automatic expiry to visit counters or post-view receipts. Local drafts and caches remain until replaced, evicted, or cleared by you or the device.</p>
+  <p>To permanently delete your account, open Profile and choose Delete my account. You must enter your current password and type DELETE. The process removes your account, associated account-linked preferences and history, notification subscriptions, owned uploads, authored LIVEWIRE posts, and account-linked visit counts. Retained post-view receipts have their account ID removed; guest, aggregate, and unattributed usage counts may remain.</p>
+  <p>After successful deletion, GameWire also attempts to clear its local data on the device used for deletion and reports cleanup problems. It cannot immediately erase downloaded graphics, copies in another person's browser or another device, delivered notifications, external X posts, or all provider backups and operational logs. Provider backup/log retention follows the provider's policies, and information may be retained where legally required. Deletion is not complete if the app reports an error; retry or contact support.</p>
+
+  <h2>Your choices and requests</h2>
+  <p>You can browse without an account, change supported profile and favorite settings, manage notification choices in Profile, and revoke notification permission in your browser or device settings. Turning off notifications does not delete your account or past usage records. To ask about access, correction, deletion, or other privacy rights available where you live, email <a href="mailto:mgtrabulsi@gmail.com">mgtrabulsi@gmail.com</a>. We may need to verify account ownership before handling a request. Contact us if in-app deletion is unavailable.</p>
 
   <h2>Children</h2>
-  <p>GameWire is not directed to children under 13, and we do not knowingly collect personal information from them.</p>
+  <p>GameWire is not directed to children under 13, and we do not knowingly collect personal information from them. If you believe a child has provided personal information, contact us so we can investigate and address it.</p>
 
   <h2>Changes</h2>
   <p>If we update this policy, we will post the new version on this page with a new effective date.</p>
