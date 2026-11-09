@@ -32,7 +32,7 @@ function graphicHarness() {
       const width = this.measureText(value).width;
       const left = this.textAlign === 'center' ? x - width / 2 : x;
       assert.ok(left >= 0 && left + width <= 768 && y > 0 && y < canvas.height * 768 / 1080);
-      labels.push({ value, left, right: left + width, y });
+      labels.push({ value, left, right: left + width, y, font: this.font });
       drawn.push(value); fontSizes.push(this.font); coloredText.push({ value, color: this.fillStyle });
     },
   }, { get: (target, key) => key in target ? target[key] : () => {} });
@@ -85,7 +85,7 @@ test('Player graphic uses only qualifying selected-stat results and preserves th
   await renderSimulationResultsGraphic(snapshot);
   assert.ok(drawn.includes('PASSING YARDS'));
   assert.ok(drawn.includes('250.0'));
-  assert.ok(drawn.includes('re Sim'));
+  assert.ok(drawn.includes('Sim'));
   assert.ok(drawn.includes('Sim & actual >= 200'));
 });
 test('Instagram PNG is portrait, contains the current record and timestamp, and exports explicit errors', async () => {
@@ -97,11 +97,11 @@ test('Instagram PNG is portrait, contains the current record and timestamp, and 
   assert.ok(h.drawn.some(text => /Downloaded .* ET/.test(text)));
   assert.ok(h.drawn.some(text => /1 no winner forecast/.test(text)));
   assert.deepEqual(h.scales[0], [1080 / 768, 1350 / 960]);
-  assert.equal(h.panels.filter(panel => panel.width === 182 && panel.height === 77).length, 3);
+  assert.equal(h.panels.filter(panel => panel.width === 182 && panel.height === 96).length, 3);
   assert.ok(h.drawn.includes('ACTUAL'));
   assert.ok(h.drawn.includes('AWY 21 - HOM 28'));
   assert.ok(h.drawn.includes('AWY 24 - HOM 24'));
-  assert.equal(h.drawn.filter(value => value === 're Sim').length, 3);
+  assert.equal(h.drawn.filter(value => value === 'Sim').length, 3);
   assert.equal(h.coloredText.filter(({ value, color }) => value === 'AI' && color === '#ff2347').length, 4);
   assert.deepEqual(h.accents, ['#06caff', '#35d48a', '#35d48a', '#35d48a']);
   assert.ok(h.fontSizes.some(font => font.startsWith('italic')));
@@ -280,9 +280,9 @@ test('Result checkmarks occupy their own padded area below the score underline a
   assert.equal(h.circles.length, 3);
   h.circles.forEach((circle, index) => {
     const cardY = 300 + index * 178;
-    assert.ok(circle.y - circle.radius >= cardY + 139);
-    assert.ok(circle.y + circle.radius <= cardY + 160);
-    const label = h.labels.find(row => row.value === snapshot.rows[index].difference && Math.abs(row.y - (cardY + 153)) < 1);
+    assert.ok(circle.y - circle.radius >= cardY + 145);
+    assert.ok(circle.y + circle.radius <= cardY + 165);
+    const label = h.labels.find(row => row.value === snapshot.rows[index].difference && Math.abs(row.y - (cardY + 158)) < 1);
     assert.ok(label.left >= circle.x + circle.radius + 14);
     assert.ok(label.right < 546, 'Do not overlap the actual-score box');
   });
@@ -385,21 +385,21 @@ test('Four-section player snapshot includes exactly three per category, paired r
   assert.deepEqual(Array.from(snapshot.sections, section => section.rows.length), [3, 3, 3, 3]);
   assert.equal(snapshot.sections[0].rows[0].title, 'Passer 0');
   assert.equal(snapshot.sections[1].rows[1].difference, '15.0% mean absolute percentage error');
-  assert.equal(snapshot.sections[1].rows[0].simulated, '5.0 REC | 80.0 YD');
+  assert.equal(snapshot.sections[1].rows[0].simulated, '5 REC | 80 YD');
   assert.equal(snapshot.sections[1].rows[0].actual, '5 REC | 80 YD');
   assert.equal(snapshot.sections[2].rows[0].title, 'Runner 0');
-  assert.equal(snapshot.sections[3].rows[0].simulated, '1.0 TD');
+  assert.equal(snapshot.sections[3].rows[0].simulated, '1 TD');
   assert.equal(snapshot.sections[3].rows[0].actual, '1 TD');
   assert.equal(snapshot.record.wins, 2); assert.equal(snapshot.verified, 5);
   data.games[0].players[0].projected = 999;
-  assert.equal(snapshot.sections[0].rows[0].simulated, '250.0 YD', 'Freeze copied stat strings');
+  assert.equal(snapshot.sections[0].rows[0].simulated, '250 YD', 'Freeze copied stat strings');
   await h.renderSimulationResultsGraphic(snapshot);
   assert.equal(h.canvas.width, 1080);
-  assert.equal(h.canvas.height, Math.round((415 + 4 * (80 + 3 * 138)) * 1080 / 768));
-  assert.equal(h.panels.filter(panel => panel.width === 708 && panel.height === 128).length, 12);
+  assert.equal(h.canvas.height, Math.round((415 + 4 * (80 + 3 * 158)) * 1080 / 768));
+  assert.equal(h.panels.filter(panel => panel.width === 708 && panel.height === 148).length, 12);
   assert.ok(h.drawn.includes('RECEPTIONS + RECEIVING YARDS - TOP 3'));
   assert.ok(h.drawn.includes('RUSHING + RECEIVING TOUCHDOWNS - TOP 3'));
-  assert.equal(h.drawn.filter(value => value === 're Sim').length, 12);
+  assert.equal(h.drawn.filter(value => value === 'Sim').length, 12);
   assert.ok(h.drawn.includes('5 REC')); assert.ok(h.drawn.includes('80 YD'));
 });
 test('Combined receiving ranks mean percentage error, and cannot pair different players, games, teams or ambiguous rows', () => {
@@ -446,4 +446,52 @@ test('Category minimums preserve QB/yard thresholds and require both touchdown c
   assert.ok(h.drawn.some(text => text.startsWith('No verified players meet')));
   data.games[0].players = [];
   assert.throws(() => h.simulationPlayerSummarySnapshot(data, scopes, now), /No verified players/);
+});
+
+test('Player-category displays round each stat and summed touchdowns, without rounding ranking errors or minimums', () => {
+  const h = graphicHarness(), data = report();
+  data.games.forEach(game => { game.players = []; });
+  data.games[0].players = [
+    playerLine('lower error', 'passingYards', 250.49, 250, 'QB'),
+    playerLine('higher error', 'passingYards', 250.51, 250, 'QB'),
+    playerLine('below minimum', 'passingYards', 199.99, 200, 'QB'),
+    playerLine('receiver', 'receptions', 5.51, 5), playerLine('receiver', 'receivingYards', 80.49, 80),
+    playerLine('runner', 'rushingYards', 49.5, 50, 'RB'),
+    playerLine('scorer', 'rushingTouchdowns', .6, 1), playerLine('scorer', 'receivingTouchdowns', .6, 0),
+  ];
+  const snapshot = h.simulationPlayerSummarySnapshot(data, scopes, now);
+  assert.deepEqual(Array.from(snapshot.sections[0].rows, row => row.title), ['lower error', 'higher error']);
+  assert.equal(snapshot.sections[0].rows[0].simulated, '250 YD');
+  assert.equal(snapshot.sections[0].rows[1].simulated, '251 YD');
+  assert.equal(snapshot.sections[0].rows[0].difference, '0.5 yard difference');
+  assert.equal(snapshot.sections[1].rows[0].simulated, '6 REC | 80 YD');
+  assert.equal(snapshot.sections[2].rows[0].simulated, '50 YD');
+  assert.equal(snapshot.sections[3].rows[0].simulated, '1 TD', 'Round the summed mean, not each component before adding');
+  assert.equal(snapshot.sections[3].rows[0].difference, '0.2 TD difference');
+  assert.ok(snapshot.rows.every(row => !/\d+\.\d+/.test(row.simulated)));
+});
+
+test('Every simulation-result graphic uses the same label font and natural word space, with padded stat baselines', async () => {
+  for (const kind of ['games', 'players', 'performances', 'player-summary', 'slate', 'winners']) {
+    const h = graphicHarness(), data = categoryReport();
+    data.games[0].players.push(playerLine('performer', 'receptions', 5, 5),
+      playerLine('performer', 'receivingYards', 60, 60), playerLine('performer', 'receivingTouchdowns', .5, 1));
+    const games = [slateGame('1')];
+    const snapshot = kind === 'player-summary' ? h.simulationPlayerSummarySnapshot(data, scopes, now)
+      : kind === 'slate' || kind === 'winners' ? h.simulationSlateGraphicSnapshot(data, games, [], now, kind, closingFor(games))
+      : h.simulationResultsGraphicSnapshot(data, scopes, kind, 'passingYards', now);
+    await h.renderSimulationResultsGraphic(snapshot);
+    const labels = h.labels.filter(label => label.value === 'Sim');
+    assert.ok(labels.length > 0, kind);
+    for (const label of labels) {
+      assert.equal(label.font, 'italic 700 14px "DM Sans"');
+      const ending = h.labels.find(candidate => candidate.value === 're' && candidate.y === label.y);
+      assert.ok(Math.abs(label.left - ending.right - 14 * .55) < 1e-9, `${kind}: use one measured word space`);
+    }
+    if (kind === 'slate' || kind === 'winners') continue;
+    const first = labels[0], simulated = h.labels.find(label => label.left < 540 && label.value === (kind === 'games'
+      ? `${snapshot.rows[0].away} ${snapshot.rows[0].simulated.replace(' - ', ` - ${snapshot.rows[0].home} `)}`
+      : snapshot.rows[0].simulated));
+    assert.ok(simulated.y - first.y >= 36, `${kind}: leave space between the caption and its value`);
+  }
 });

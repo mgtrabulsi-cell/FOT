@@ -44,7 +44,7 @@ export function simulationPlayerSummarySnapshot(report: SimulationAccuracyReport
     const error = mode === 'receiving' ? rows.reduce((sum, row) => sum + Math.abs(row.projected - row.actual) / row.actual, 0) / rows.length
       : mode === 'touchdowns' ? Math.abs(projected - actual) : Math.abs(rows[0].projected - rows[0].actual);
     const format = (side: 'projected' | 'actual') => {
-      const number = (value: number) => side === 'projected' ? value.toFixed(1) : String(value);
+      const number = (value: number) => String(side === 'projected' ? Math.round(value) : value);
       return mode === 'receiving' ? `${number(rows[0][side])} REC | ${number(rows[1][side])} YD`
         : mode === 'touchdowns' ? `${number(side === 'projected' ? projected : actual)} TD`
         : `${number(rows[0][side])} YD`;
@@ -201,7 +201,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     throw new Error('Choose between one and three verified simulation results.');
   await loadGamewireGraphicAssets();
   const canvas = document.createElement('canvas');
-  const playerRowStep = 138;
+  const playerRowStep = 158;
   const height = playerSummary ? 415 + snapshot.sections!.reduce((sum, section) => sum + 80 + Math.max(section.rows.length * playerRowStep, 48), 0)
     : fullSlate ? Math.max(960, 430 + snapshot.rows.length * 100) : 960;
   canvas.width = 1080; canvas.height = Math.round(height * 1080 / 768);
@@ -238,10 +238,12 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     fill.addColorStop(0, '#fff'); fill.addColorStop(.6, '#f3f6ff'); fill.addColorStop(1, '#aabdd4');
     return fill;
   };
-  const simLabel = (x: number, y: number, size: number) => {
-    const word = text('Gamew', x, y, size, 100, white, true, 'left', '"DM Sans"');
+  const simLabel = (x: number, y: number, color = white) => {
+    const size = 14;
+    const word = text('Gamew', x, y, size, 100, color, true, 'left', '"DM Sans"');
     const ai = text('AI', x + word, y, size, 40, red, true, 'left', '"DM Sans"');
-    text('re Sim', x + word + ai, y, size, 100, white, true, 'left', '"DM Sans"');
+    const ending = text('re', x + word + ai, y, size, 40, color, true, 'left', '"DM Sans"');
+    text('Sim', x + word + ai + ending + ctx.measureText(' ').width, y, size, 60, color, true, 'left', '"DM Sans"');
   };
   const background = ctx.createLinearGradient(0, 0, 768, height);
   background.addColorStop(0, '#00162d'); background.addColorStop(.4, '#020a15'); background.addColorStop(1, '#001a32');
@@ -290,23 +292,23 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
       }
       section.rows.forEach((row, index) => {
         const y = cursor + index * playerRowStep;
-        panel(y, 128, green);
+        panel(y, 148, green);
         text(`#${index + 1} ${row.title}`, 64, y + 28, 24, 458, metallic(y + 28), true);
         text(row.context, 64, y + 49, 14, 458, muted);
-        simLabel(64, y + 72, 14);
-        text(row.simulated, 64, y + 96, 24, 458, white, true);
-        text(row.difference, 64, y + 114, 12, 458, muted);
-        box(546, y + 12, 182, 96, 9);
-        text('ACTUAL', 637, y + 35, 14, 162, muted, false, 'center');
+        simLabel(64, y + 76);
+        text(row.simulated, 64, y + 112, 28, 458, white, true);
+        text(row.difference, 64, y + 136, 12, 458, muted);
+        box(546, y + 12, 182, 116, 9);
+        text('ACTUAL', 637, y + 38, 13, 162, muted, false, 'center');
         const actual = row.actual.split(' | ');
-        actual.forEach((value, lineIndex) => text(value, 637, y + (actual.length === 1 ? 77 : 61 + lineIndex * 25),
-          24, 162, white, true, 'center'));
+        actual.forEach((value, lineIndex) => text(value, 637, y + (actual.length === 1 ? 91 : 72 + lineIndex * 32),
+          actual.length === 1 ? 28 : 22, 162, white, true, 'center'));
       });
       cursor += section.rows.length * playerRowStep + 20;
     }
     line([[35, cursor], [733, cursor]], '#4a82aa', 1);
     text(`${snapshot.rows.length} qualifying results | ${snapshot.pending} pending games | ${snapshot.excluded} excluded`, 36, cursor + 26, 14, 696, muted);
-    text('Verified category accuracy, not fantasy projections or betting recommendations.', 36, cursor + 49, 12, 696, muted);
+    text('Simulated stat displays are rounded; rankings and errors use original means.', 36, cursor + 49, 12, 696, muted);
     text('Receiving ranks average each stat’s absolute error divided by its actual value.', 36, cursor + 70, 12, 696, muted);
     text(`Downloaded ${new Date(snapshot.capturedAt).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET`, 36, cursor + 105, 11, 500, muted);
     text('gamewire.us', 604, cursor + 105, 18, 130, white, true);
@@ -315,9 +317,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   }
   if (fullSlate) {
     text('MATCHUP', 60, 289, 14, 230, muted);
-    const word = text('Gamew', 278, 289, 14, 70, blue);
-    const ai = text('AI', 278 + word, 289, 14, 30, red);
-    text('re Sim', 278 + word + ai, 289, 14, 70, blue);
+    simLabel(278, 289, blue);
     text('FINAL', 455, 289, 14, 90, muted, false, 'center');
     text(snapshot.kind === 'winners' ? 'WINNER PICK' : 'CLOSING ATS PICK', 630, 289, 14, 180, muted, false, 'center');
   }
@@ -353,35 +353,33 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
       return;
     }
     const y = 300 + index * 178;
-    panel(y, 170, green);
+    panel(y, 174, green);
     box(44, y, 68, 44, 10);
     text(`#${index + 1}`, 62, y + 34, 30, 48, blue, true);
     text(row.title, 138, y + 34, 30, 580, metallic(y + 34), true);
     text(row.context, 138, y + 58, 16, 390, muted);
-    box(546, y + 56, 182, 77, 9);
-    text('ACTUAL', 637, y + 80, 15, 162, muted, false, 'center');
+    box(546, y + 56, 182, 96, 9);
+    text('ACTUAL', 637, y + 76, 13, 162, muted, false, 'center');
     const teamScores = (scores: string) => `${row.away} ${scores.replace(' - ', ` - ${row.home} `)}`;
     if (snapshot.kind === 'performances') {
-      row.actual.split(' | ').forEach((value, index) => text(value, 637, y + 96 + index * 16, 16, 162, white, false, 'center'));
+      row.actual.split(' | ').forEach((value, index) => text(value, 637, y + 100 + index * 21, 16, 162, white, false, 'center'));
     } else {
       text(snapshot.kind === 'games' ? teamScores(row.actual) : row.actual,
-        637, y + 116, 34, 162, metallic(y + 116), true, 'center');
+        637, y + 120, 30, 162, metallic(y + 120), true, 'center');
     }
-    const labelX = snapshot.kind === 'players' ? 300 : 76;
-    const labelY = y + (snapshot.kind === 'players' ? 92 : 85);
-    simLabel(labelX, labelY, 17);
+    simLabel(76, y + 84);
     if (snapshot.kind === 'games') {
-      text(teamScores(row.simulated), 76, y + 118, 32, 440, metallic(y + 118), true);
+      text(teamScores(row.simulated), 76, y + 120, 28, 440, metallic(y + 120), true);
     } else if (snapshot.kind === 'players') {
-      text(snapshot.statistic.toUpperCase(), 76, y + 92, 17, 210, blue);
-      text(row.simulated, 76, y + 123, 32, 440, metallic(y + 123), true);
+      text(snapshot.statistic.toUpperCase(), 300, y + 84, 14, 216, blue);
+      text(row.simulated, 76, y + 120, 28, 440, metallic(y + 120), true);
     } else {
-      text(row.simulated, 76, y + 118, 26, 440, metallic(y + 118), true);
+      text(row.simulated, 76, y + 120, 28, 440, metallic(y + 120), true);
     }
-    line([[76, y + 129], [516, y + 129]], green, 3);
-    ctx.beginPath(); ctx.arc(82, y + 148, 8, 0, Math.PI * 2); ctx.fillStyle = blue; ctx.fill();
-    line([[78, y + 148], [81, y + 151], [86, y + 144]], '#05203a', 2);
-    text(row.difference, 104, y + 153, 14, 412, muted);
+    line([[76, y + 133], [516, y + 133]], green, 3);
+    ctx.beginPath(); ctx.arc(82, y + 153, 8, 0, Math.PI * 2); ctx.fillStyle = blue; ctx.fill();
+    line([[78, y + 153], [81, y + 156], [86, y + 149]], '#05203a', 2);
+    text(row.difference, 104, y + 158, 12, 412, muted);
   });
   if (fullSlate) {
     const footer = height - 115;
