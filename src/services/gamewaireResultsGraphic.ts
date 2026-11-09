@@ -13,7 +13,8 @@ export function resultsGraphicSections(picks: StoredPick[]) {
   });
 }
 export async function loadGamewireGraphicAssets() {
-  const fonts = ['700 48px Oswald', '400 22px "DM Sans"', '700 22px "DM Sans"'];
+  const fonts = ['700 48px Oswald', '400 22px "DM Sans"', '700 22px "DM Sans"',
+    'italic 700 48px Oswald', 'italic 700 54px "DM Sans"'];
   let fontTimeout: ReturnType<typeof setTimeout> | undefined;
   const loadedFonts = await Promise.race([Promise.all(fonts.map((font) => document.fonts.load(font))), new Promise<never>((_, reject) => {
     fontTimeout = setTimeout(() => reject(new Error('GameWire fonts timed out. Reconnect and retry the results graphic.')), 15_000);

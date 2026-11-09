@@ -9,7 +9,7 @@ export type SimulationWinnerRecord = { wins: number; losses: number; ties: numbe
 export type SimulationResultsGraphicSnapshot = {
   kind: SimulationResultsGraphicKind; capturedAt: string; slate: string; statistic: string; minimum?: number;
   record: SimulationWinnerRecord; verified: number; pending: number; excluded: number;
-  rows: Array<{ title: string; context: string; simulated: string; actual: string; difference: string }>;
+  rows: Array<{ title: string; context: string; away: string; home: string; simulated: string; actual: string; difference: string }>;
 };
 
 export function simulationWinnerRecord(games: SimulationAccuracyGame[]): SimulationWinnerRecord {
@@ -37,6 +37,7 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
   const rows = kind === 'games'
     ? [...report.games].sort((a, b) => a.error - b.error || a.eventId.localeCompare(b.eventId)).slice(0, 3).map(game => ({
       title: `${game.away.abbr} at ${game.home.abbr}`, context: `${game.away.name} / ${game.home.name}`,
+      away: game.away.abbr, home: game.home.abbr,
       simulated: `${Math.round(game.away.projected)} - ${Math.round(game.home.projected)}`,
       actual: `${game.away.actual} - ${game.home.actual}`, difference: `${game.error.toFixed(1)} average points missed`,
     }))
@@ -45,6 +46,7 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
       .sort((a, b) => a.error - b.error || a.game.eventId.localeCompare(b.game.eventId) || a.playerId.localeCompare(b.playerId))
       .slice(0, 3).map(player => ({
         title: player.name, context: `${player.position} | ${player.team} | ${player.game.away.abbr} at ${player.game.home.abbr}`,
+        away: player.game.away.abbr, home: player.game.home.abbr,
         simulated: player.projected.toFixed(1), actual: String(player.actual), difference: `${player.error.toFixed(1)} difference`,
       }));
   if (!rows.length) throw new Error(kind === 'games'
@@ -57,61 +59,119 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
 
 export async function renderSimulationResultsGraphic(snapshot: SimulationResultsGraphicSnapshot): Promise<Blob> {
   if (snapshot.rows.length < 1 || snapshot.rows.length > 3) throw new Error('Choose between one and three verified simulation results.');
-  const logo = await loadGamewireGraphicAssets();
+  await loadGamewireGraphicAssets();
   const canvas = document.createElement('canvas');
   canvas.width = 1080; canvas.height = 1350;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Your browser could not create the simulation results graphic.');
-  const white = '#f2f6fc', muted = '#b7c8db', red = '#ff354c', blue = '#8ce2ff';
-  const text = (value: string, x: number, y: number, size: number, width: number, color = white, display = false) => {
-    const font = () => `700 ${size}px ${display ? 'Oswald' : '"DM Sans"'}`;
+  ctx.scale(1080 / 768, 1350 / 960);
+  const white = '#f2f6fc', muted = '#a8bfdc', red = '#ff2347', blue = '#36baff';
+  const text = (value: string, x: number, y: number, size: number, width: number,
+    color: string | CanvasGradient = white, display = false, align: CanvasTextAlign = 'left', family = display ? 'Oswald' : '"DM Sans"') => {
+    const font = () => `${display ? 'italic ' : ''}700 ${size}px ${family}`;
     ctx.font = font();
-    while (ctx.measureText(value).width > width && size > 16) { size--; ctx.font = font(); }
+    while (ctx.measureText(value).width > width && size > 10) { size--; ctx.font = font(); }
     if (ctx.measureText(value).width > width) throw new Error('A simulation results label is too long to fit the Instagram graphic.');
-    ctx.fillStyle = color; ctx.fillText(value, x, y);
+    ctx.textAlign = align; ctx.fillStyle = color; ctx.fillText(value, x, y);
+    return ctx.measureText(value).width;
+  };
+  const line = (points: number[][], color: string, width = 1) => {
+    ctx.beginPath(); points.forEach(([x, y], index) => index ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+  };
+  const box = (x: number, y: number, width: number, height: number, radius = 12) => {
+    ctx.beginPath(); ctx.roundRect(x, y, width, height, radius);
+    const fill = ctx.createLinearGradient(x, y, x + width, y + height);
+    fill.addColorStop(0, '#0a2038'); fill.addColorStop(.48, '#030d19'); fill.addColorStop(1, '#0b213a');
+    ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = '#47799f'; ctx.lineWidth = 1; ctx.stroke();
   };
   const panel = (y: number, height: number, accent: string) => {
-    ctx.save(); ctx.beginPath(); ctx.roundRect(56, y, 968, height, 16);
-    const fill = ctx.createLinearGradient(56, y, 1024, y + height);
-    fill.addColorStop(0, '#142c47'); fill.addColorStop(1, '#081526');
-    ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = '#345b7e'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.clip(); ctx.fillStyle = accent; ctx.fillRect(56, y, 4, height); ctx.restore();
+    ctx.save(); box(30, y, 708, height, 18); ctx.clip();
+    ctx.fillStyle = accent; ctx.shadowColor = accent; ctx.shadowBlur = 15; ctx.fillRect(30, y, 8, height);
+    ctx.shadowBlur = 0; ctx.fillStyle = '#93c7ff12'; ctx.fillRect(38, y, 700, 36); ctx.restore();
   };
-  const background = ctx.createLinearGradient(0, 0, 1080, 1350);
-  background.addColorStop(0, '#09182b'); background.addColorStop(.5, '#071323'); background.addColorStop(1, '#040b16');
-  ctx.fillStyle = background; ctx.fillRect(0, 0, 1080, 1350);
-  const logoWidth = Math.min(244, 138 * logo.naturalWidth / logo.naturalHeight);
-  ctx.drawImage(logo, 1024 - logoWidth, 30, logoWidth, logoWidth * logo.naturalHeight / logo.naturalWidth);
-  ctx.fillStyle = red; ctx.fillRect(56, 40, 84, 6);
-  text('GamewAIre', 56, 106, 54, 690, white, true);
-  text(`TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 56, 164, 36, 968, white, true);
-  text(snapshot.slate, 56, 205, 22, 968, muted);
-  panel(234, 132, blue);
-  text('SELECTED-WEEK WINNER RECORD', 84, 273, 23, 900, blue);
+  const metallic = (y: number) => {
+    const fill = ctx.createLinearGradient(0, y - 48, 0, y + 4);
+    fill.addColorStop(0, '#fff'); fill.addColorStop(.6, '#f3f6ff'); fill.addColorStop(1, '#aabdd4');
+    return fill;
+  };
+  const background = ctx.createLinearGradient(0, 0, 768, 960);
+  background.addColorStop(0, '#00162d'); background.addColorStop(.4, '#020a15'); background.addColorStop(1, '#001a32');
+  ctx.fillStyle = background; ctx.fillRect(0, 0, 768, 960);
+  for (let index = -2; index < 8; index++) {
+    const x = index * 105;
+    line([[x, 0], [x - 480, 480]], index % 2 ? '#0b4a7b25' : '#096caa18', 26);
+    line([[x + 730, 700], [x + 470, 960]], '#0c538430', 24);
+  }
+  ctx.save(); ctx.shadowColor = blue; ctx.shadowBlur = 12;
+  line([[0, 60], [60, 0]], '#39cfff', 2); line([[648, 960], [768, 840]], '#39cfff', 2); ctx.restore();
+  const brandStart = text('Gamew', 60, 84, 54, 224, metallic(84), true, 'left', '"DM Sans"');
+  const aiWidth = text('AI', 60 + brandStart, 84, 54, 76, red, true, 'left', '"DM Sans"');
+  text('re', 60 + brandStart + aiWidth, 84, 54, 68, metallic(84), true, 'left', '"DM Sans"');
+  line([[418, 43], [418, 86]], white, 2);
+  ctx.save(); ctx.shadowColor = red; ctx.shadowBlur = 12;
+  line([[445, 73], [478, 73], [487, 56], [493, 91], [499, 36], [506, 84], [513, 65], [519, 73], [754, 73]], red, 2); ctx.restore();
+  ctx.letterSpacing = '4px';
+  text(`TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 60, 126, 25, 678, muted, true);
+  ctx.letterSpacing = '0px';
+  text(snapshot.slate, 60, 153, 17, 678, muted);
+  panel(178, 94, '#06caff');
+  ctx.fillStyle = blue; ctx.beginPath(); ctx.moveTo(71, 204); ctx.lineTo(96, 204); ctx.lineTo(92, 225); ctx.lineTo(84, 236); ctx.lineTo(75, 225); ctx.closePath(); ctx.fill();
+  line([[71, 211], [62, 211], [65, 224], [76, 231]], blue, 4);
+  line([[96, 211], [107, 211], [103, 224], [92, 231]], blue, 4);
+  ctx.fillRect(80, 232, 8, 13); ctx.fillRect(72, 245, 24, 6);
+  line([[142, 195], [142, 255]], '#7cbce0', 1);
+  line([[571, 195], [571, 255]], '#7cbce0', 1);
+  text('SELECTED-WEEK WINNER RECORD', 174, 208, 17, 385, blue);
   const record = snapshot.record;
-  text(`${record.wins}W - ${record.losses}L - ${record.ties}T`, 84, 325, 40, 550, white, true);
-  text(`${snapshot.verified} verified games`, 680, 315, 21, 312, muted);
+  text(`${record.wins}W - ${record.losses}L - ${record.ties}T`, 174, 255, 48, 385, metallic(255), true);
+  text(`${snapshot.verified} VERIFIED`, 650, 223, 17, 138, muted, true, 'center');
+  text('GAMES', 650, 242, 17, 138, muted, true, 'center');
   snapshot.rows.forEach((row, index) => {
-    const y = 396 + index * 240;
-    panel(y, 224, red);
-    text(`#${index + 1}`, 82, y + 41, 25, 66, red, true);
-    text(row.title, 150, y + 41, 34, 842, white, true);
-    text(row.context, 84, y + 76, 19, 908, muted);
-    text(snapshot.kind === 'players' ? snapshot.statistic.toUpperCase() : 'PUBLISHED SCORE', 84, y + 111, 21, 908, blue);
-    text(`SIM ${row.simulated}`, 84, y + 163, 38, 436, white, true);
-    text(`ACTUAL ${row.actual}`, 562, y + 163, 38, 430, white, true);
-    text(row.difference, 84, y + 202, 22, 908, muted);
+    const y = 300 + index * 178, accent = index === 2 ? '#e6b94e' : '#0acaff';
+    panel(y, 160, accent);
+    box(44, y, 68, 44, 10);
+    text(`#${index + 1}`, 62, y + 34, 30, 48, blue, true);
+    text(row.title, 138, y + 34, 30, 580, metallic(y + 34), true);
+    text(row.context, 138, y + 58, 16, 390, muted);
+    box(546, y + 56, 182, 77, 9);
+    text('ACTUAL', 637, y + 80, 15, 162, muted, false, 'center');
+    text(row.actual, 637, y + 116, 34, 162, metallic(y + 116), true, 'center');
+    if (snapshot.kind === 'games') {
+      text(row.away, 76, y + 104, 24, 70, white, true);
+      text(`SIM ${row.simulated}`, 174, y + 110, 36, 225, metallic(y + 110), true);
+      line([[409, y + 80], [409, y + 113]], '#78a7c8', 1);
+      text(row.home, 446, y + 104, 24, 75, white, true);
+      line([[72, y + 114], [125, y + 114]], blue, 3);
+      line([[444, y + 114], [497, y + 114]], accent, 3);
+    } else {
+      text(snapshot.statistic.toUpperCase(), 76, y + 92, 17, 440, blue);
+      text(`SIM ${row.simulated}`, 76, y + 123, 32, 440, metallic(y + 123), true);
+    }
+    ctx.beginPath(); ctx.arc(82, y + 140, 11, 0, Math.PI * 2); ctx.fillStyle = blue; ctx.fill();
+    line([[76, y + 140], [80, y + 144], [88, y + 135]], '#05203a', 2);
+    text(row.difference, 104, y + 146, 16, 424, muted);
   });
-  const coverage = `${snapshot.pending} pending | ${snapshot.excluded} excluded | ${record.noWinner} no winner forecast`;
-  text(coverage, 56, 1163, 21, 968, muted);
+  line([[35, 838], [733, 838]], '#4a82aa', 1);
+  line([[35, 895], [733, 895]], '#4a82aa', 1);
+  for (let index = 0; index < 4; index++) { ctx.fillStyle = blue; ctx.fillRect(38 + index * 8, 878 - index * 5, 5, 9 + index * 5); }
+  text(`${snapshot.pending} pending | ${snapshot.excluded} excluded`, 84, 873, 14, 165, muted);
+  line([[266, 853], [266, 881]], '#71a9d0', 1);
+  ctx.fillStyle = blue; ctx.beginPath(); ctx.moveTo(295, 858); ctx.lineTo(305, 854); ctx.lineTo(315, 858); ctx.lineTo(313, 870); ctx.lineTo(305, 879); ctx.lineTo(297, 870); ctx.closePath(); ctx.fill();
+  line([[300, 866], [304, 870], [310, 862]], '#05203a', 2);
+  text(`${record.noWinner} no winner forecast`, 330, 873, 14, 146, muted);
+  line([[492, 853], [492, 881]], '#71a9d0', 1);
+  box(523, 856, 20, 21, 3);
+  line([[525, 862], [541, 862]], blue, 2);
   text(snapshot.kind === 'players' && snapshot.minimum !== undefined
-    ? `Featured minimum: ${snapshot.minimum} in both simulation and actual result.`
-    : 'Closest published scores; verified realized QB scenarios only.', 56, 1200, 20, 968, muted);
+    ? `Sim & actual >= ${snapshot.minimum}`
+    : 'Verified scenarios only', 559, 873, 13, 171, muted);
   const captured = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(snapshot.capturedAt));
-  text(`Downloaded ${captured} ET`, 56, 1240, 21, 968, muted);
-  text('Verified results, not guarantees or bet grades.', 56, 1292, 18, 740, muted);
-  text('gamewire.us', 810, 1292, 25, 214, white, true);
+  text(`Downloaded ${captured} ET`, 36, 923, 14, 500, muted);
+  text('gamewire.us', 604, 925, 24, 130, white, true);
+  line([[604, 934], [732, 934]], red, 2);
+  text('Verified results, not guarantees or bet grades.', 36, 945, 10, 550, muted);
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
     : reject(new Error('Your browser could not export the Instagram PNG. Retry.')), 'image/png'));
 }

@@ -59,6 +59,8 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
   assert.ok(r.texts.every((row) => row.y > 0 && row.y < 1350 && row.x >= 60 && row.x < 1020));
   assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.color === '#86d9ad'));
   assert.ok(r.fontLoads.includes('700 48px Oswald'));
+  assert.ok(r.fontLoads.includes('italic 700 48px Oswald'));
+  assert.ok(r.fontLoads.includes('italic 700 54px "DM Sans"'));
   assert.ok(r.fontLoads.includes('400 22px "DM Sans"'));
   assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.font === '700 48px Oswald'));
   assert.ok(r.texts.filter((row) => row.text === 'Record').every((row) => row.font === '400 22px "DM Sans"'));
