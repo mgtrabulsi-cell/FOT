@@ -40,8 +40,13 @@ const compiled = ts.transpileModule(source, {
   .replace(/import \{ ScoreTicker \} from ['"].\/ScoreTicker.tsx['"];/, 'const ScoreTicker = ({ value }) => value;')
   .replace(/import \{ getInterfaceScale \} from ['"].\/uiScale['"];/, 'const getInterfaceScale = () => 1;')
   .replace(/import \{ usePublicDataRevision \} from ['"].\/usePublicDataRevision['"];/, 'const usePublicDataRevision = () => 0;');
-const { default: TheWire } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
-const { default: TeamComparison } = await import(`data:text/javascript;base64,${Buffer.from(compiled.replace("useState('boxscore')", "useState('teamStats')")).toString('base64')}`);
+// These snapshots exercise the stats toggle; simulation-first openings have separate Wire mode tests.
+assert.equal((compiled.match(/useState\('simulation'\)/g) ?? []).length, 2);
+const statsCompiled = compiled
+  .replace("useState('simulation')", "useState('stats')")
+  .replace("useState('simulation')", "useState('boxscore')");
+const { default: TheWire } = await import(`data:text/javascript;base64,${Buffer.from(statsCompiled).toString('base64')}`);
+const { default: TeamComparison } = await import(`data:text/javascript;base64,${Buffer.from(statsCompiled.replace("useState('boxscore')", "useState('teamStats')")).toString('base64')}`);
 
 function withStorage(run) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
