@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { Game } from './services/sportsData';
 import { loadSimulationAccuracy } from './services/gamewireBot';
-import { featuredSimulationMinimums, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy';
+import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
 import NFLSimulationResultsDownloads from './NFLSimulationResultsDownloads';
@@ -59,6 +59,7 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
   const playerRows = report?.games.flatMap(game => game.players.filter(player => player.stat === stat).map(player => ({ ...player, game })))
     .sort((a, b) => a.error - b.error || a.game.eventId.localeCompare(b.game.eventId) || a.playerId.localeCompare(b.playerId)) ?? [];
   const playerHighlights = playerRows.filter(isFeaturedSimulationPlayer).slice(0, 3);
+  const performances = report ? fullPlayerPerformances(report) : [];
   const featuredMinimum = featuredSimulationMinimums[stat];
   return <section className="nfl-simulation-accuracy" aria-label={weekly ? 'Selected week simulation accuracy' : 'Game simulation accuracy'}>
     <header><h3>{weekly ? 'This slate’s simulation accuracy' : 'Simulation vs. final results'}</h3>
@@ -118,6 +119,23 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
       </div>
       </section>
       </div>
+      <section className="nfl-full-performances" aria-label="Full Player Performances">
+        <h4>Full Player Performances <small>{performances.length} qualifying</small></h4>
+        <p>Receiving performance calls matched, even when exact yardage differed. Both simulation and actual must have at least 60 receiving yards and 5 catches, with simulated receiving TDs at least 0.5 and actual receiving TDs at least 1. Projected TDs are expected counts, not probabilities or guaranteed touchdowns.</p>
+        <p>Ordered by actual receiving touchdowns, then yards, then catches—not exact-stat accuracy. All qualifying players are included regardless of the statistic selected above.</p>
+        <div className="nfl-full-performance-grid">{performances.map(player => <article className="nfl-accuracy-card" key={`${player.game.eventId}:${player.team}:${player.playerId}`}>
+          <h5>{player.name}</h5>
+          <p>{player.position} · {player.team} · {player.game.away.abbr} – {player.game.home.abbr}</p>
+          <strong className="nfl-performance-match">Receiving performance call matched</strong>
+          <div className="nfl-accuracy-table-wrap"><table aria-label={`${player.name} full receiving performance`}>
+            <thead><tr><th scope="col">Statistic</th><th scope="col">Sim</th><th scope="col">Actual</th><th scope="col">Difference</th></tr></thead>
+            <tbody>{[player.catches, player.yards, player.touchdowns].map(row => <tr key={row.stat}>
+              <th scope="row">{simulationAccuracyStats[row.stat]}</th><td>{number(row.projected)}</td><td>{row.actual}</td><td>{number(Math.abs(row.projected - row.actual))}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </article>)}</div>
+        {!performances.length && <p>No verified players meet all three receiving-performance criteria yet. Missing or excluded statistics are never filled in.</p>}
+      </section>
       <p>Not sportsbook lines or bet grades. Player comparisons never mix units or count missing/DNP stats as zero. Regulation-only projections exclude overtime or unverified regulation actuals.</p>
       {(report.issues.length > 0 || report.games.some(game => game.issues.length > 0)) && <details><summary>Coverage and exclusions</summary>
         {report.issues.map(issue => <p key={issue}>{issue}</p>)}

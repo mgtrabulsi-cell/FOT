@@ -29,6 +29,31 @@ export type SimulationAccuracyGame = {
   error: number; players: SimulationAccuracyPlayer[]; issues: string[];
 };
 export type SimulationAccuracyReport = { games: SimulationAccuracyGame[]; issues: string[]; pending: number };
+export function fullPlayerPerformances(report: SimulationAccuracyReport) {
+  return report.games.flatMap(game => {
+    const players = new Map<string, SimulationAccuracyPlayer[]>();
+    for (const player of game.players) {
+      if (!['receivingYards', 'receptions', 'receivingTouchdowns'].includes(player.stat)) continue;
+      const key = JSON.stringify([player.playerId, player.team]);
+      const rows = players.get(key) ?? [];
+      rows.push(player); players.set(key, rows);
+    }
+    return [...players.values()].flatMap(rows => {
+      const yards = rows.find(row => row.stat === 'receivingYards');
+      const catches = rows.find(row => row.stat === 'receptions');
+      const touchdowns = rows.find(row => row.stat === 'receivingTouchdowns');
+      if (rows.length !== 3 || !yards || !catches || !touchdowns
+        || !rows.every(row => row.name === yards.name && row.position === yards.position
+          && Number.isFinite(row.projected) && Number.isFinite(row.actual))
+        || yards.projected < 60 || yards.actual < 60 || catches.projected < 5 || catches.actual < 5
+        || touchdowns.projected < .5 || touchdowns.actual < 1) return [];
+      return [{ game, playerId: yards.playerId, name: yards.name, position: yards.position, team: yards.team,
+        yards, catches, touchdowns }];
+    });
+  }).sort((a, b) => b.touchdowns.actual - a.touchdowns.actual || b.yards.actual - a.yards.actual
+    || b.catches.actual - a.catches.actual || a.game.kickoff.localeCompare(b.game.kickoff)
+    || a.name.localeCompare(b.name) || a.playerId.localeCompare(b.playerId));
+}
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 export function readSimulationAccuracyScope(value: unknown): SimulationAccuracyScope[] {

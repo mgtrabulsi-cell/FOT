@@ -8,7 +8,7 @@ import * as accuracy from '../supabase/functions/_shared/nflSimulationAccuracy.t
 const now = Date.parse('2026-11-08T23:00:00Z');
 const scopes = [{ date: '2026-11-05T23:00:00Z' }, { date: '2026-11-09T23:00:00Z' }];
 const result = (id, projectedHome, projectedAway, actualHome, actualAway, error = 0) => ({
-  eventId: id, error, home: { name: 'Home Team', abbr: 'HOM', projected: projectedHome, actual: actualHome },
+  eventId: id, kickoff: '2026-11-08T18:00:00Z', error, home: { name: 'Home Team', abbr: 'HOM', projected: projectedHome, actual: actualHome },
   away: { name: 'Away Team', abbr: 'AWY', projected: projectedAway, actual: actualAway }, players: [],
 });
 const report = () => ({
@@ -103,6 +103,28 @@ test('Instagram PNG is portrait, contains the current record and timestamp, and 
   assert.throws(() => h.simulationResultsGraphicSnapshot({ games: [], issues: [], pending: 0 }, scopes, 'games', 'passingYards', now), /No verified game/);
   assert.throws(() => h.simulationResultsGraphicSnapshot(report(), scopes, 'players', 'passingYards', now), /No player simulations/);
 });
+test('Full-performance PNG snapshots three complete receiving lines, fresh overall record, and honest qualification labels', async () => {
+  const h = graphicHarness(), data = report();
+  data.games[0].players = Array.from({ length: 4 }, (_, i) => [
+    { stat: 'receptions', projected: 5, actual: 7 },
+    { stat: 'receivingYards', projected: 130, actual: 60 + i },
+    { stat: 'receivingTouchdowns', projected: .5, actual: 1 },
+  ].map(row => ({ ...row, playerId: String(i), name: `Receiver ${i}`, position: 'WR', team: 'HOM', error: Math.abs(row.projected - row.actual) }))).flat();
+  const snapshot = h.simulationResultsGraphicSnapshot(data, scopes, 'performances', 'passingYards', now);
+  assert.equal(snapshot.rows.length, 3);
+  assert.equal(snapshot.rows[0].title, 'Receiver 3');
+  assert.equal(snapshot.rows[0].simulated, '5.0 REC | 130.0 YD | 0.5 TD');
+  assert.equal(snapshot.rows[0].actual, '7 REC | 63 YD | 1 TD');
+  assert.equal(snapshot.record.wins, 2);
+  data.games[0].players[0].projected = 999;
+  assert.equal(snapshot.rows[0].simulated, '5.0 REC | 130.0 YD | 0.5 TD');
+  const blob = await h.renderSimulationResultsGraphic(snapshot);
+  assert.equal(blob.type, 'image/png');
+  for (const text of ['3 FULL PLAYER PERFORMANCES', '7 REC', '63 YD', '1 TD',
+    'Both: 60+ YD / 5+ REC', 'TD: sim 0.5+ / actual 1+', 'Receiving performance call matched']) assert.ok(h.drawn.includes(text), text);
+  assert.ok(h.drawn.some(text => text.includes('not exact accuracy')));
+  assert.throws(() => h.simulationResultsGraphicSnapshot(report(), scopes, 'performances', 'receptions', now), /all three receiving-performance criteria/);
+});
 test('Each download refreshes the entire selected week and uses the fresh winner record rather than cached UI results', async () => {
   const h = graphicHarness(), effects = [], requests = [];
   let calls = 0;
@@ -115,7 +137,11 @@ test('Each download refreshes the entire selected week and uses the fresh winner
       assert.equal(games, scopes); assert.equal(signal.aborted, false); requests.push(signal); calls++;
       const data = report();
       if (calls > 1) data.games[0].home.actual = 14;
-      data.games[0].players = [{ playerId: '1', name: 'Receiver', position: 'WR', team: 'HOM', stat: 'receptions', projected: 3, actual: 3, error: 0 }];
+      data.games[0].players = [
+        { stat: 'receptions', projected: 5, actual: 5 },
+        { stat: 'receivingYards', projected: 100, actual: 60 },
+        { stat: 'receivingTouchdowns', projected: .5, actual: 1 },
+      ].map(row => ({ ...row, playerId: '1', name: 'Receiver', position: 'WR', team: 'HOM', error: Math.abs(row.projected - row.actual) }));
       return data;
     } };
     if (name.includes('nflSimulationResultsGraphic')) return { simulationResultsGraphicSnapshot: h.simulationResultsGraphicSnapshot,
@@ -133,6 +159,10 @@ test('Each download refreshes the entire selected week and uses the fresh winner
   const players = JSON.parse(await (await buttons[1].props.generate()).text());
   assert.equal(players.kind, 'players'); assert.equal(players.statistic, 'Receptions');
   assert.equal(players.rows[0].title, 'Receiver'); assert.equal(players.record.wins, 1);
-  assert.equal(calls, 3);
+  const performances = JSON.parse(await (await buttons[2].props.generate()).text());
+  assert.equal(performances.kind, 'performances');
+  assert.equal(performances.rows[0].simulated, '5.0 REC | 100.0 YD | 0.5 TD');
+  assert.equal(performances.record.wins, 1);
+  assert.equal(calls, 4);
   effects[0]()();
 });

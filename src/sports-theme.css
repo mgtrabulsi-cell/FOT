@@ -437,16 +437,27 @@
 .wire-scoring-plays ol { list-style: none; margin: 4px 0 0; padding: 0; }
 .wire-scoring-plays li { padding: 8px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .wire-scoring-plays li p { margin: 4px 0; line-height: 1.4; font-size: 14px; }
-.nfl-simulation-accuracy { margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.nfl-simulation-accuracy { margin: 16px 0; padding: 16px; border: 1px solid #345d80; border-radius: 14px; background: #0b192a; color: #e8f4ff; }
 .nfl-simulation-accuracy header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .nfl-simulation-accuracy h3 { margin: 0; }
-.nfl-simulation-accuracy p { color: var(--muted); line-height: 1.5; }
+.nfl-simulation-accuracy p { color: #b6c8dd; line-height: 1.5; }
 .nfl-simulation-accuracy label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .nfl-accuracy-table-wrap { width: 100%; overflow-x: auto; }
 .nfl-simulation-accuracy table { width: 100%; border-collapse: collapse; }
 .nfl-simulation-accuracy th, .nfl-simulation-accuracy td { padding: 10px; border-bottom: 1px solid var(--line); text-align: left; }
 .nfl-simulation-accuracy td { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.nfl-simulation-accuracy th small { display: block; margin-top: 4px; color: var(--muted); font-weight: 400; }
+.nfl-simulation-accuracy th small { display: block; margin-top: 4px; color: #b6c8dd; font-weight: 400; }
+.nfl-simulation-accuracy .nfl-accuracy-table-wrap :is(th, td) { background: #0b192a; color: #e8f4ff; border-color: #345d80; }
+.nfl-simulation-accuracy .nfl-accuracy-table-wrap thead th { background: #15334d; color: #bceaff; }
+.nfl-simulation-accuracy .nfl-accuracy-table-wrap tbody tr:nth-child(even) > * { background: #10243c; }
+.nfl-simulation-accuracy .nfl-accuracy-table-wrap tbody tr:hover > * { background: #15334d; }
+.nfl-simulation-accuracy .nfl-accuracy-table-wrap { border: 1px solid #345d80; border-radius: 8px; scrollbar-color: #69caff #10243c; }
+.nfl-full-performances { margin-top: 20px; }
+.nfl-full-performances h4 small { color: #b6c8dd; font-size: 13px; font-weight: 400; }
+.nfl-full-performance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; }
+.nfl-full-performance-grid h5 { margin: 0; font-size: 18px; color: #e8f4ff; }
+.nfl-full-performance-grid .nfl-accuracy-table-wrap { margin-top: 12px; }
+.nfl-performance-match { color: #7ee6b2; font-size: 13px; }
 .wire-scoring-quarter { margin-top: 6px; }
 .wire-scoring-quarter h4 { margin: 0; padding: 6px 8px; border-left: 3px solid var(--coral); background: var(--paper); font-size: 14px; }
 .wire-scoring-quarter h4 small { margin-left: 10px; font-weight: 400; }
@@ -460,6 +471,7 @@
 .wire-simulation-results :is(button, select, summary):focus-visible, .nfl-simulation-accuracy :is(button, select, summary):focus-visible { outline: 3px solid #8ce2ff; outline-offset: 3px; }
 .nfl-accuracy-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .nfl-accuracy-card { min-width: 0; padding: 12px; border: 1px solid #345d80; border-radius: 12px; background: linear-gradient(135deg, #162e48, #0b192a); }
+.nfl-accuracy-cards > .nfl-accuracy-card:has(.nfl-accuracy-card-toggle[aria-expanded="true"]) { grid-column: 1 / -1; }
 .nfl-simulation-accuracy .nfl-accuracy-card-toggle { display: block; width: 100%; padding: 14px; text-align: left; cursor: pointer; background: #10243c; }
 .nfl-accuracy-card-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 18px; }
 .nfl-accuracy-card-title small, .nfl-accuracy-card-row small { color: #b6c8dd; font-size: 12px; font-weight: 400; }

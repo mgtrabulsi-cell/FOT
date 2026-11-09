@@ -1,10 +1,10 @@
 import { loadGamewireGraphicAssets } from './gamewaireResultsGraphic';
-import { featuredSimulationMinimums, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../../supabase/functions/_shared/nflSimulationAccuracy';
+import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationAccuracyGame, SimulationAccuracyReport } from '../../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../../supabase/functions/_shared/nflSimulation';
 import type { Game } from './sportsData';
 
-export type SimulationResultsGraphicKind = 'games' | 'players';
+export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances';
 export type SimulationWinnerRecord = { wins: number; losses: number; ties: number; noWinner: number };
 export type SimulationResultsGraphicSnapshot = {
   kind: SimulationResultsGraphicKind; capturedAt: string; slate: string; statistic: string; minimum?: number;
@@ -41,6 +41,13 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
       simulated: `${Math.round(game.away.projected)} - ${Math.round(game.home.projected)}`,
       actual: `${game.away.actual} - ${game.home.actual}`, difference: `${game.error.toFixed(1)} average points missed`,
     }))
+    : kind === 'performances' ? fullPlayerPerformances(report).slice(0, 3).map(player => ({
+      title: player.name, context: `${player.position} | ${player.team} | ${player.game.away.abbr} at ${player.game.home.abbr}`,
+      away: player.game.away.abbr, home: player.game.home.abbr,
+      simulated: `${player.catches.projected.toFixed(1)} REC | ${player.yards.projected.toFixed(1)} YD | ${player.touchdowns.projected.toFixed(1)} TD`,
+      actual: `${player.catches.actual} REC | ${player.yards.actual} YD | ${player.touchdowns.actual} TD`,
+      difference: 'Receiving performance call matched',
+    }))
     : report.games.flatMap(game => game.players.filter(player => player.stat === stat && isFeaturedSimulationPlayer(player))
       .map(player => ({ ...player, game })))
       .sort((a, b) => a.error - b.error || a.game.eventId.localeCompare(b.game.eventId) || a.playerId.localeCompare(b.playerId))
@@ -51,6 +58,7 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
       }));
   if (!rows.length) throw new Error(kind === 'games'
     ? 'No verified game simulations are available for this week yet.'
+    : kind === 'performances' ? 'No verified players meet all three receiving-performance criteria yet.'
     : 'No player simulations meet the selected statistic’s featured minimums yet.');
   return { kind, capturedAt: new Date(now).toISOString(), slate, statistic: simulationAccuracyStats[stat],
     minimum: kind === 'players' ? featuredSimulationMinimums[stat] : undefined,
@@ -112,7 +120,8 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   ctx.save(); ctx.shadowColor = red; ctx.shadowBlur = 12;
   line([[445, 73], [478, 73], [487, 56], [493, 91], [499, 36], [506, 84], [513, 65], [519, 73], [754, 73]], red, 2); ctx.restore();
   ctx.letterSpacing = '4px';
-  text(`TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 60, 126, 25, 678, muted, true);
+  text(snapshot.kind === 'performances' ? `${snapshot.rows.length} FULL PLAYER PERFORMANCES`
+    : `TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 60, 126, 25, 678, muted, true);
   ctx.letterSpacing = '0px';
   text(snapshot.slate, 60, 153, 17, 678, muted);
   panel(178, 94, '#06caff');
@@ -137,18 +146,24 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     box(546, y + 56, 182, 77, 9);
     text('ACTUAL', 637, y + 80, 15, 162, muted, false, 'center');
     const teamScores = (scores: string) => `${row.away} ${scores.replace(' - ', ` - ${row.home} `)}`;
-    text(snapshot.kind === 'games' ? teamScores(row.actual) : row.actual,
-      637, y + 116, 34, 162, metallic(y + 116), true, 'center');
-    const labelX = snapshot.kind === 'games' ? 76 : 300;
-    const labelY = y + (snapshot.kind === 'games' ? 85 : 92);
+    if (snapshot.kind === 'performances') {
+      row.actual.split(' | ').forEach((value, index) => text(value, 637, y + 96 + index * 16, 16, 162, white, false, 'center'));
+    } else {
+      text(snapshot.kind === 'games' ? teamScores(row.actual) : row.actual,
+        637, y + 116, 34, 162, metallic(y + 116), true, 'center');
+    }
+    const labelX = snapshot.kind === 'players' ? 300 : 76;
+    const labelY = y + (snapshot.kind === 'players' ? 92 : 85);
     const wordWidth = text('Gamew', labelX, labelY, 17, 100, white, true, 'left', '"DM Sans"');
     const aiWidth = text('AI', labelX + wordWidth, labelY, 17, 40, red, true, 'left', '"DM Sans"');
     text('re Sim', labelX + wordWidth + aiWidth, labelY, 17, 100, white, true, 'left', '"DM Sans"');
     if (snapshot.kind === 'games') {
       text(teamScores(row.simulated), 76, y + 118, 32, 440, metallic(y + 118), true);
-    } else {
+    } else if (snapshot.kind === 'players') {
       text(snapshot.statistic.toUpperCase(), 76, y + 92, 17, 210, blue);
       text(row.simulated, 76, y + 123, 32, 440, metallic(y + 123), true);
+    } else {
+      text(row.simulated, 76, y + 118, 26, 440, metallic(y + 118), true);
     }
     line([[76, y + 129], [516, y + 129]], green, 3);
     ctx.beginPath(); ctx.arc(82, y + 140, 11, 0, Math.PI * 2); ctx.fillStyle = blue; ctx.fill();
@@ -166,15 +181,21 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   line([[492, 853], [492, 881]], '#71a9d0', 1);
   box(523, 856, 20, 21, 3);
   line([[525, 862], [541, 862]], blue, 2);
-  text(snapshot.kind === 'players' && snapshot.minimum !== undefined
-    ? `Sim & actual >= ${snapshot.minimum}`
-    : 'Verified scenarios only', 559, 873, 13, 171, muted);
+  if (snapshot.kind === 'performances') {
+    text('Both: 60+ YD / 5+ REC', 559, 865, 12, 171, muted);
+    text('TD: sim 0.5+ / actual 1+', 559, 883, 12, 171, muted);
+  } else {
+    text(snapshot.kind === 'players' && snapshot.minimum !== undefined
+      ? `Sim & actual >= ${snapshot.minimum}`
+      : 'Verified scenarios only', 559, 873, 13, 171, muted);
+  }
   const captured = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(snapshot.capturedAt));
   text(`Downloaded ${captured} ET`, 36, 923, 14, 500, muted);
   text('gamewire.us', 604, 925, 24, 130, white, true);
   line([[604, 934], [732, 934]], red, 2);
-  text('Verified results, not guarantees or bet grades.', 36, 945, 10, 550, muted);
+  text(snapshot.kind === 'performances' ? 'Performance match, not exact accuracy. Projected TDs are means.'
+    : 'Verified results, not guarantees or bet grades.', 36, 945, 10, 550, muted);
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
     : reject(new Error('Your browser could not export the Instagram PNG. Retry.')), 'image/png'));
 }

@@ -23,12 +23,12 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
   };
   return <section className="nfl-simulation-results-downloads" aria-label="Instagram simulation results graphics">
     <h4>Instagram graphics</h4>
-    <p>Each download refreshes verified results for the entire selected slate and snapshots its winner record. Player graphics use the selected statistic and featured minimums.</p>
-    <div>{(['games', 'players'] as const).map(kind => <ResultsGraphicDownload key={kind} generate={() => generate(kind)} disabled={false}
-      filename={`GameWire-Weekly-Simulation-${kind === 'games' ? 'Games' : stat}.png`}
-      label={kind === 'games' ? 'Download Instagram · Game results' : 'Download Instagram · Player props'}
-      description="1080 x 1350 PNG · top three available qualifying results · selected-week winner record"
-      alt={`Selected-week ${kind === 'games' ? 'game-score' : 'player-projection'} simulation results and overall winner record`}
+    <p>Each download refreshes verified results for the entire selected slate and snapshots its winner record. Player props use the selected statistic; Full Player Performances use all three receiving criteria and show up to three players ordered by actual touchdowns, yards, then catches—not exact-stat accuracy.</p>
+    <div>{(['games', 'players', 'performances'] as const).map(kind => <ResultsGraphicDownload key={kind} generate={() => generate(kind)} disabled={false}
+      filename={`GameWire-Weekly-Simulation-${kind === 'games' ? 'Games' : kind === 'performances' ? 'Full-Player-Performances' : stat}.png`}
+      label={kind === 'games' ? 'Download Instagram · Game results' : kind === 'performances' ? 'Download Instagram · Full Player Performances' : 'Download Instagram · Player props'}
+      description="1080 x 1350 PNG · up to three qualifying results · selected-week winner record"
+      alt={`Selected-week ${kind === 'games' ? 'game-score' : kind === 'performances' ? 'full receiving performance' : 'player-projection'} simulation results and overall winner record`}
       snapshotNote="Results and winner record were refreshed when this graphic was downloaded. Download again for newly verified finals." />)}</div>
   </section>;
 }

@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as sports from '../src/services/sportsData.ts';
 import * as nflSituation from '../src/services/nflSituation.ts';
-import { featuredSimulationMinimums, isFeaturedSimulationPlayer } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
+import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 
 const compile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -243,7 +243,7 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
     if (name === 'react') return h.react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('gamewireBot')) return { loadSimulationAccuracy: async () => report };
-    if (name.includes('nflSimulationAccuracy')) return { featuredSimulationMinimums, isFeaturedSimulationPlayer, simulationAccuracyStats: { passingYards: 'Passing yards', receptions: 'Receptions' } };
+    if (name.includes('nflSimulationAccuracy')) return { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats };
     return {};
   } });
   vm.runInContext(compile('../src/NFLSimulationAccuracy.tsx'), context);
@@ -280,6 +280,21 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
   tree = render();
   assert.match(playerNames()[4], /Receiver/);
   assert.equal(playerNames().length, 5);
+  firstGame.players.push(...[
+    { stat: 'receivingYards', projected: 100, actual: 60, error: 40 },
+    { stat: 'receivingTouchdowns', projected: .5, actual: 1, error: .5 },
+  ].map(row => ({ ...row, playerId: '3', name: 'Receiver', team: 'AWY', position: 'WR' })));
+  tree = render();
+  const full = tree.find(node => node.props['aria-label'] === 'Full Player Performances');
+  assert.ok(full);
+  const fullTree = elements(full);
+  assert.ok(fullTree.some(node => node.type === 'h5' && node.props.children === 'Receiver'));
+  assert.ok(fullTree.some(node => node.type === 'td' && node.props.children === '40.0'));
+  assert.ok(fullTree.some(node => node.type === 'p' && /not exact-stat accuracy/.test(node.props.children)));
+  tree.find(node => node.type === 'select').props.onChange({ target: { value: 'passingYards' } });
+  tree = render();
+  assert.ok(elements(tree.find(node => node.props['aria-label'] === 'Full Player Performances'))
+    .some(node => node.type === 'h5' && node.props.children === 'Receiver'));
   stop(); assert.equal(timers.size, 0);
 });
 test('Dedicated results area selects individual games and explains games that have not finished', () => {
@@ -312,4 +327,11 @@ test('Results controls have explicit dark surfaces, readable contrast and mobile
   assert.ok((Math.max(background, foreground) + .05) / (Math.min(background, foreground) + .05) >= 4.5);
   assert.match(css, /\.wire-simulation-results option, \.nfl-simulation-accuracy option \{ background: #102137; color: #e8f4ff;/);
   assert.match(css, /@media \(max-width: 760px\) \{ \.nfl-accuracy-cards \{ grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(css, /\.nfl-simulation-accuracy \.nfl-accuracy-table-wrap :is\(th, td\) \{ background: #0b192a; color: #e8f4ff;/);
+  assert.match(css, /\.nfl-simulation-accuracy \.nfl-accuracy-table-wrap thead th \{ background: #15334d; color: #bceaff;/);
+  assert.match(css, /\.nfl-accuracy-cards > \.nfl-accuracy-card:has\(\.nfl-accuracy-card-toggle\[aria-expanded="true"\]\) \{ grid-column: 1 \/ -1; \}/);
+  for (const [bg, fg] of [['#0b192a', '#e8f4ff'], ['#15334d', '#bceaff'], ['#10243c', '#e8f4ff'],
+    ['#0b192a', '#b6c8dd'], ['#162e48', '#7ee6b2']]) {
+    assert.ok((luminance(fg) + .05) / (luminance(bg) + .05) >= 4.5, `${fg} on ${bg}`);
+  }
 });
