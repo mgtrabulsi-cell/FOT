@@ -169,6 +169,11 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   const render = () => { h.reset(); return elements(context.exports.default(props)); };
   let tree = render();
   const toggle = label => tree.find(node => node.type === 'button' && node.props.children === label);
+  assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
+  assert.equal(toggle('Pregame stats').props['aria-pressed'], false);
+  assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card is-simulation-game'));
+  assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [22, 28]);
+  toggle('Pregame stats').props.onClick(); tree = render();
   assert.equal(toggle('Pregame stats').props['aria-pressed'], true);
   assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card'));
   toggle('GamewAIre simulations').props.onClick(); tree = render();
@@ -232,6 +237,13 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   toggle('Pregame stats').props.onClick(); tree = render();
   assert.equal(toggle('Simulation Results').props['aria-pressed'], false);
   assert.ok(tree.some(node => node.props.className === 'wire-board-score'));
+  h.state.length = 0;
+  props.openGameId = game.id;
+  props.games = [game];
+  availableSnapshot = snapshot;
+  tree = render();
+  assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
+  assert.ok(tree.some(node => node.type === 'SimulationPanel'), 'A directly opened game also starts in simulation mode before effects run');
 });
 test('Opening a simulation panel after kickoff loads its saved archive on reload', async () => {
   const h = hooks(), timers = new Map(), loaded = [];

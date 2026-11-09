@@ -345,10 +345,10 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const boardRef = useRef<HTMLDivElement>(null);
   const returnToGameRef = useRef<string | null>(null);
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
-  const [pregameView, setPregameView] = useState<'stats' | 'simulation'>('stats');
+  const [pregameView, setPregameView] = useState<'stats' | 'simulation'>('simulation');
   const [resultsOpen, setResultsOpen] = useState(false);
   const { simulations: boardSimulations, errors: simulationErrors, rememberSimulation } = useNFLBoardSimulations(nflGames, pregameView === 'simulation' && !detailOpen && !resultsOpen);
-  const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>('boxscore');
+  const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>('simulation');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [playerStatMode, setPlayerStatMode] = useState<'total' | 'average'>('total');
   const [loadedBoxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);
