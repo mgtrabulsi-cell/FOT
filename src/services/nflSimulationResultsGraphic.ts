@@ -3,14 +3,73 @@ import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulatio
 import type { SimulationAccuracyGame, SimulationAccuracyReport } from '../../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../../supabase/functions/_shared/nflSimulation';
 import type { Game } from './sportsData';
+import { projectedSimulationScore, selectedSimulationScenario } from '../../supabase/functions/_shared/nflSimulation';
+import type { NFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
 
-export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances';
+export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances' | 'slate';
 export type SimulationWinnerRecord = { wins: number; losses: number; ties: number; noWinner: number };
+type SimulationSpreadGrade = 'covered' | 'missed' | 'push' | 'pending' | 'unavailable';
 export type SimulationResultsGraphicSnapshot = {
   kind: SimulationResultsGraphicKind; capturedAt: string; slate: string; statistic: string; minimum?: number;
   record: SimulationWinnerRecord; verified: number; pending: number; excluded: number;
-  rows: Array<{ title: string; context: string; away: string; home: string; simulated: string; actual: string; difference: string }>;
+  rows: Array<{ title: string; context: string; away: string; home: string; simulated: string; actual: string; difference: string;
+    spread?: { margin: number | null; favorite: string | null; actualMargin: number | null;
+      grade: SimulationSpreadGrade; awayName: string; homeName: string;
+      awayColor: string; homeColor: string; projectedAway: number | null; projectedHome: number | null;
+      actualAway: number | null; actualHome: number | null } }>;
 };
+
+export type SimulationSlateForecast = { eventId: string; forecast?: NFLGameSimulation; error?: string };
+
+export function simulationSlateGraphicSnapshot(report: SimulationAccuracyReport, games: Game[],
+  forecasts: SimulationSlateForecast[], now = Date.now()): SimulationResultsGraphicSnapshot {
+  if (!games.length || !Number.isFinite(now) || games.some(game => !Number.isFinite(Date.parse(game.date)))
+    || new Set(games.map(game => game.eventId)).size !== games.length)
+    throw new Error('Choose a valid, unique NFL slate before downloading its simulated spreads.');
+  const dates = games.map(game => Date.parse(game.date)).sort((a, b) => a - b);
+  const date = (value: number) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }).format(value);
+  const rows = [...games].sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.eventId.localeCompare(b.eventId)).map(game => {
+    const verified = report.games.find(row => row.eventId === game.eventId);
+    const saved = forecasts.find(row => row.eventId === game.eventId);
+    const forecast = saved?.forecast;
+    if (forecast && (forecast.eventId !== game.eventId || Date.parse(forecast.kickoff) !== Date.parse(game.date)))
+      throw new Error('A saved simulation does not match the selected slate.');
+    const scenario = forecast ? selectedSimulationScenario(forecast) : undefined;
+    const score = scenario ? projectedSimulationScore(scenario) : null;
+    const published = score && !score.archiveExtension ? score : null;
+    const home = verified ? Math.round(verified.home.projected) : published?.home ?? null;
+    const away = verified ? Math.round(verified.away.projected) : published?.away ?? null;
+    const actualHome = verified?.home.actual ?? (game.status === 'FINAL' ? game.home.score : null);
+    const actualAway = verified?.away.actual ?? (game.status === 'FINAL' ? game.away.score : null);
+    if ([home, away, actualHome, actualAway].some(value => value !== null && !Number.isFinite(value)))
+      throw new Error('Valid published and final scores are required to grade simulated spreads.');
+    const margin = home !== null && away !== null && home !== away ? Math.abs(home - away) : null;
+    const favorite = margin === null ? null : home! > away! ? game.home.abbr : game.away.abbr;
+    const actualMargin = margin !== null && actualHome !== null && actualAway !== null
+      ? (home! > away! ? actualHome - actualAway : actualAway - actualHome) : null;
+    const grade: SimulationSpreadGrade = margin === null ? 'unavailable' : actualMargin === null ? 'pending'
+      : actualMargin > margin ? 'covered' : actualMargin === margin ? 'push' : 'missed';
+    const difference = grade === 'unavailable' ? saved?.error ?? 'No published decisive simulation'
+      : grade === 'pending' ? `${game.status === 'LIVE' ? 'Live' : 'Upcoming'} - not graded`
+      : grade === 'push' ? 'Push - exact margin' : grade === 'covered' ? 'Covered simulated spread' : 'Did not cover simulated spread';
+    return { title: `${game.away.abbr} at ${game.home.abbr}`, context: difference, away: game.away.abbr, home: game.home.abbr,
+      simulated: margin === null ? 'Unavailable' : `${away} - ${home}${verified?.overtime || published?.overtime ? ' F/OT' : ''}`,
+      actual: actualHome === null || actualAway === null ? 'Pending' : `${actualAway} - ${actualHome}`, difference,
+      spread: { margin, favorite, actualMargin, grade, awayName: game.away.name, homeName: game.home.name,
+        awayColor: game.away.color, homeColor: game.home.color, projectedAway: margin === null ? null : away,
+        projectedHome: margin === null ? null : home, actualAway, actualHome } };
+  });
+  const graded = rows.filter(row => row.spread.actualMargin !== null);
+  return { kind: 'slate', capturedAt: new Date(now).toISOString(),
+    slate: dates[0] === dates[dates.length - 1] ? `${date(dates[0])} ET` : `${date(dates[0])} - ${date(dates[dates.length - 1])} ET`,
+    statistic: 'Simulation-derived spreads', record: {
+      wins: rows.filter(row => row.spread.grade === 'covered').length,
+      losses: rows.filter(row => row.spread.grade === 'missed').length,
+      ties: rows.filter(row => row.spread.grade === 'push').length,
+      noWinner: rows.filter(row => row.spread.grade === 'unavailable').length,
+    }, verified: graded.length,
+    pending: rows.filter(row => row.spread.grade === 'pending').length, excluded: rows.filter(row => row.spread.grade === 'unavailable').length, rows };
+}
 
 export function simulationWinnerRecord(games: SimulationAccuracyGame[]): SimulationWinnerRecord {
   const record = { wins: 0, losses: 0, ties: 0, noWinner: 0 };
@@ -28,7 +87,7 @@ export function simulationWinnerRecord(games: SimulationAccuracyGame[]): Simulat
 }
 
 export function simulationResultsGraphicSnapshot(report: SimulationAccuracyReport, games: Game[],
-  kind: SimulationResultsGraphicKind, stat: keyof SimulationStat, now = Date.now()): SimulationResultsGraphicSnapshot {
+  kind: Exclude<SimulationResultsGraphicKind, 'slate'>, stat: keyof SimulationStat, now = Date.now()): SimulationResultsGraphicSnapshot {
   if (!games.length || !Number.isFinite(now) || games.some(game => !Number.isFinite(Date.parse(game.date))))
     throw new Error('Choose a valid NFL slate before downloading simulation results.');
   const dates = games.map(game => Date.parse(game.date)).sort((a, b) => a - b);
@@ -66,13 +125,15 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
 }
 
 export async function renderSimulationResultsGraphic(snapshot: SimulationResultsGraphicSnapshot): Promise<Blob> {
-  if (snapshot.rows.length < 1 || snapshot.rows.length > 3) throw new Error('Choose between one and three verified simulation results.');
+  if (snapshot.rows.length < 1 || (snapshot.kind !== 'slate' && snapshot.rows.length > 3))
+    throw new Error('Choose between one and three verified simulation results.');
   await loadGamewireGraphicAssets();
   const canvas = document.createElement('canvas');
-  canvas.width = 1080; canvas.height = 1350;
+  const height = snapshot.kind === 'slate' ? Math.max(960, 430 + snapshot.rows.length * 100) : 960;
+  canvas.width = 1080; canvas.height = Math.round(height * 1080 / 768);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Your browser could not create the simulation results graphic.');
-  ctx.scale(1080 / 768, 1350 / 960);
+  ctx.scale(1080 / 768, 1080 / 768);
   const white = '#f2f6fc', muted = '#a8bfdc', red = '#ff2347', blue = '#36baff', green = '#35d48a';
   const text = (value: string, x: number, y: number, size: number, width: number,
     color: string | CanvasGradient = white, display = false, align: CanvasTextAlign = 'left', family = display ? 'Oswald' : '"DM Sans"') => {
@@ -103,9 +164,9 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     fill.addColorStop(0, '#fff'); fill.addColorStop(.6, '#f3f6ff'); fill.addColorStop(1, '#aabdd4');
     return fill;
   };
-  const background = ctx.createLinearGradient(0, 0, 768, 960);
+  const background = ctx.createLinearGradient(0, 0, 768, height);
   background.addColorStop(0, '#00162d'); background.addColorStop(.4, '#020a15'); background.addColorStop(1, '#001a32');
-  ctx.fillStyle = background; ctx.fillRect(0, 0, 768, 960);
+  ctx.fillStyle = background; ctx.fillRect(0, 0, 768, height);
   for (let index = -2; index < 8; index++) {
     const x = index * 105;
     line([[x, 0], [x - 480, 480]], index % 2 ? '#0b4a7b25' : '#096caa18', 26);
@@ -120,7 +181,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   ctx.save(); ctx.shadowColor = red; ctx.shadowBlur = 12;
   line([[445, 73], [478, 73], [487, 56], [493, 91], [499, 36], [506, 84], [513, 65], [519, 73], [754, 73]], red, 2); ctx.restore();
   ctx.letterSpacing = '4px';
-  text(snapshot.kind === 'performances' ? `${snapshot.rows.length} FULL PLAYER PERFORMANCES`
+  text(snapshot.kind === 'slate' ? `FULL SLATE - ${snapshot.rows.length} GAMES` : snapshot.kind === 'performances' ? `${snapshot.rows.length} FULL PLAYER PERFORMANCES`
     : `TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 60, 126, 25, 678, muted, true);
   ctx.letterSpacing = '0px';
   text(snapshot.slate, 60, 153, 17, 678, muted);
@@ -131,14 +192,47 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   ctx.fillRect(80, 232, 8, 13); ctx.fillRect(72, 245, 24, 6);
   line([[142, 195], [142, 255]], '#7cbce0', 1);
   line([[571, 195], [571, 255]], '#7cbce0', 1);
-  text('SELECTED-WEEK WINNER RECORD', 174, 208, 17, 385, blue);
+  text(snapshot.kind === 'slate' ? 'SIMULATED-SPREAD RECORD' : 'SELECTED-WEEK WINNER RECORD', 174, 208, 17, 385, blue);
   const record = snapshot.record;
-  text(`${record.wins}W - ${record.losses}L - ${record.ties}T`, 174, 255, 48, 385, metallic(255), true);
-  text(`${snapshot.verified} VERIFIED`, 650, 223, 17, 138, muted, true, 'center');
+  text(snapshot.kind === 'slate' ? `${record.wins}C - ${record.losses}M - ${record.ties}P`
+    : `${record.wins}W - ${record.losses}L - ${record.ties}T`, 174, 255, 48, 385, metallic(255), true);
+  text(`${snapshot.verified} ${snapshot.kind === 'slate' ? 'GRADED' : 'VERIFIED'}`, 650, 223, 17, 138, muted, true, 'center');
   text('GAMES', 650, 242, 17, 138, muted, true, 'center');
+  if (snapshot.kind === 'slate') {
+    text('MATCHUP', 60, 289, 14, 230, muted);
+    const word = text('Gamew', 278, 289, 14, 70, blue);
+    const ai = text('AI', 278 + word, 289, 14, 30, red);
+    text('re Sim', 278 + word + ai, 289, 14, 70, blue);
+    text('FINAL', 455, 289, 14, 90, muted, false, 'center');
+    text('SIMULATED SPREAD', 630, 289, 14, 180, muted, false, 'center');
+  }
   snapshot.rows.forEach((row, index) => {
+    if (snapshot.kind === 'slate') {
+      const spread = row.spread;
+      if (!spread) throw new Error('A slate row is missing its simulated spread.');
+      const y = 302 + index * 100;
+      const accent = spread.grade === 'covered' ? green : spread.grade === 'missed' ? red : spread.grade === 'push' ? blue : muted;
+      panel(y, 88, accent);
+      for (const [side, offset] of [['away', 0], ['home', 36]] as const) {
+        const color = side === 'away' ? spread.awayColor : spread.homeColor;
+        box(48, y + 10 + offset, 48, 28, 6);
+        ctx.fillStyle = /^#[0-9a-f]{6}$/i.test(color) ? color : '#244361';
+        ctx.fillRect(48, y + 10 + offset, 4, 28);
+        text(row[side], 72, y + 30 + offset, 15, 40, white, false, 'center');
+        text(side === 'away' ? spread.awayName : spread.homeName, 108, y + 30 + offset, 17, 170, white);
+        text(String((side === 'away' ? spread.projectedAway : spread.projectedHome) ?? '—'), 330, y + 32 + offset, 26, 80, white, true, 'center');
+        text(String((side === 'away' ? spread.actualAway : spread.actualHome) ?? '—'), 455, y + 32 + offset, 26, 80, muted, true, 'center');
+      }
+      if (row.simulated.endsWith(' F/OT')) text('F/OT', 389, y + 50, 10, 42, blue, false, 'center');
+      box(540, y + 10, 182, 68, 8);
+      text(spread.margin === null ? 'UNAVAILABLE' : `${spread.favorite} -${spread.margin}`, 631, y + 35, 26, 160, accent, true, 'center');
+      text(spread.grade === 'pending' ? 'NOT GRADED' : spread.grade.toUpperCase(), 631, y + 54, 13, 160, accent, false, 'center');
+      text(spread.actualMargin === null ? (spread.grade === 'pending' ? row.context : 'Archive/score unavailable')
+        : `Actual margin: ${spread.actualMargin > 0 ? '+' : ''}${spread.actualMargin}`, 631, y + 71, 12, 160, muted, false, 'center');
+      return;
+    }
     const y = 300 + index * 178;
-    panel(y, 160, green);
+    panel(y, 170, green);
     box(44, y, 68, 44, 10);
     text(`#${index + 1}`, 62, y + 34, 30, 48, blue, true);
     text(row.title, 138, y + 34, 30, 580, metallic(y + 34), true);
@@ -166,10 +260,22 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
       text(row.simulated, 76, y + 118, 26, 440, metallic(y + 118), true);
     }
     line([[76, y + 129], [516, y + 129]], green, 3);
-    ctx.beginPath(); ctx.arc(82, y + 140, 11, 0, Math.PI * 2); ctx.fillStyle = blue; ctx.fill();
-    line([[76, y + 140], [80, y + 144], [88, y + 135]], '#05203a', 2);
-    text(row.difference, 104, y + 146, 16, 424, muted);
+    ctx.beginPath(); ctx.arc(82, y + 148, 8, 0, Math.PI * 2); ctx.fillStyle = blue; ctx.fill();
+    line([[78, y + 148], [81, y + 151], [86, y + 144]], '#05203a', 2);
+    text(row.difference, 104, y + 153, 14, 412, muted);
   });
+  if (snapshot.kind === 'slate') {
+    const footer = height - 115;
+    line([[35, footer], [733, footer]], '#4a82aa', 1);
+    text('GREEN: COVERED   RED: MISSED   BLUE: PUSH', 36, footer + 26, 15, 696, white);
+    text(`${snapshot.verified} graded | ${snapshot.pending} pending | ${snapshot.excluded} unavailable`, 36, footer + 48, 14, 696, muted);
+    text('Predicted winner must win by MORE than its simulated margin. Equal margin = push.', 36, footer + 69, 12, 696, muted);
+    text('Simulation-derived spreads, not sportsbook odds or betting recommendations.', 36, footer + 88, 12, 696, muted);
+    text(`Downloaded ${new Date(snapshot.capturedAt).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET`, 36, footer + 105, 11, 500, muted);
+    text('gamewire.us', 604, footer + 105, 18, 130, white, true);
+    return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
+      : reject(new Error('Your browser could not export the slate PNG. Retry.')), 'image/png'));
+  }
   line([[35, 838], [733, 838]], '#4a82aa', 1);
   line([[35, 895], [733, 895]], '#4a82aa', 1);
   for (let index = 0; index < 4; index++) { ctx.fillStyle = blue; ctx.fillRect(38 + index * 8, 878 - index * 5, 5, 9 + index * 5); }
