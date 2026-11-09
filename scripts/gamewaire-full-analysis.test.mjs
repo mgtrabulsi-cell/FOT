@@ -72,7 +72,7 @@ test('Full schedule SQL preserves jobs, refreshes once at 60 minutes, bounds ret
     let job = await claim();
     assert.equal(job.phase, 'initial');
     assert.equal(job.attempts, 1);
-    await db.exec("update public.gamewaire_schedule_jobs set status='completed',finished_at=now()");
+    await db.exec("update public.gamewaire_schedule_jobs set status='failed',finished_at=now()");
     assert.equal(await claim(), null, 'No early refresh');
     await db.exec("update public.gamewaire_schedule_jobs set event_start=now()+interval '59 minutes',started_at=now()-interval '2 hours'");
     job = await claim();
@@ -91,6 +91,13 @@ test('Full schedule SQL preserves jobs, refreshes once at 60 minutes, bounds ret
         (select jsonb_agg(jsonb_build_object('event_id',event_id,'event_start',event_start,'matchup',matchup,'selection_note',selection_note))
           from public.gamewaire_schedule_jobs),null,'Full','probability-first-v11')`);
     assert.equal((await db.query('select attempts,status,phase from public.gamewaire_schedule_jobs')).rows[0].attempts, 2, 'Hourly planning never resets attempts');
+    await db.exec(`insert into public.gamewaire_schedule_jobs(batch_id,sport,event_id,event_start,matchup,selection_note,status,started_at,finished_at)
+      select id,'NBA','successful',now()+interval '59 minutes','E @ F','Successful initial','completed',now()-interval '2 hours',now()
+        from public.gamewaire_schedule_batches`);
+    const successful = await claim();
+    assert.equal(successful.event_id, 'successful');
+    assert.equal(successful.phase, 'pregame', 'Successful and failed initial runs both retain their pregame refresh');
+    await db.exec("update public.gamewaire_schedule_jobs set status='completed',finished_at=now() where event_id='successful'");
     await db.exec(`insert into public.gamewaire_schedule_jobs(batch_id,sport,event_id,event_start,matchup,selection_note)
       select id,'NBA','late',now()+interval '30 minutes','C @ D','Late first run' from public.gamewaire_schedule_batches`);
     assert.equal((await claim()).event_id, 'late');

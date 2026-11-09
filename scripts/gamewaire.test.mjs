@@ -1447,8 +1447,8 @@ test('Private subscription probe checks live credit headers without claiming wor
 });
 test('Exhausted quota preserves the provider error code rather than mislabeling the key as invalid', async () => {
   const api = endpoint({ configured: true });
-  await assert.rejects(api.exports.oddsJSON('sports/basketball_nba/events/event/odds?markets=h2h,spreads,player_points', 'test-key',
-    async () => Response.json({ error_code: 'OUT_OF_USAGE_CREDITS' }, { status: 403,
+  for (const status of [401, 403]) await assert.rejects(api.exports.oddsJSON('sports/basketball_nba/events/event/odds?markets=h2h,spreads,player_points', 'test-key',
+    async () => Response.json({ error_code: 'OUT_OF_USAGE_CREDITS' }, { status,
       headers: { 'x-requests-used': '499', 'x-requests-remaining': '1' } })), /1 credits remaining.*up to 3.*OUT_OF_USAGE_CREDITS/);
 });
 test('Quota-free game lists remain available when the paid analysis budget is exhausted', async () => {

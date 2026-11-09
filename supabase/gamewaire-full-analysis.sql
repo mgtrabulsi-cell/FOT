@@ -33,7 +33,7 @@ grant execute on function public.gamewaire_reserve_credits(integer) to service_r
 create or replace function public.gamewaire_schedule_refresh_time()
 returns trigger language plpgsql set search_path=public,pg_temp as $$
 begin
-  if new.sport in ('NBA','NFL') and new.phase='initial' and new.status='completed' then
+  if new.sport in ('NBA','NFL') and new.phase='initial' and new.status in ('completed','failed') then
     new.refresh_at := case when coalesce(new.started_at,now())<new.event_start-interval '60 minutes'
       then new.event_start-interval '60 minutes' else null end;
   elsif new.phase='pregame' then new.refresh_at := null;
@@ -43,6 +43,9 @@ end $$;
 drop trigger if exists gamewaire_schedule_refresh_time on public.gamewaire_schedule_jobs;
 create trigger gamewaire_schedule_refresh_time before insert or update on public.gamewaire_schedule_jobs
   for each row execute function public.gamewaire_schedule_refresh_time();
+update public.gamewaire_schedule_jobs set refresh_at=event_start-interval '60 minutes'
+  where sport in ('NBA','NFL') and phase='initial' and status='failed' and event_start>now()
+    and started_at<event_start-interval '60 minutes' and refresh_at is null;
 
 create or replace function public.gamewaire_schedule_plan(
   target_sport text, target_date date, games jsonb, problem text, plan_note text, target_model text
@@ -118,7 +121,7 @@ begin
   if exists(select 1 from public.gamewaire_schedule_jobs where status='running') then return null; end if;
   update public.gamewaire_schedule_jobs set status='pending',phase='pregame',attempts=0,next_attempt_at=now(),
     run_id=null,started_at=null,finished_at=null,error=null,provider_usage=null
-    where sport in ('NBA','NFL') and status='completed' and phase='initial' and refresh_at<=now() and event_start>now();
+    where sport in ('NBA','NFL') and status in ('completed','failed') and phase='initial' and refresh_at<=now() and event_start>now();
   update public.gamewaire_schedule_jobs set status='pending',next_attempt_at=now()
     where sport in ('NBA','NFL') and status='failed' and attempts<2
       and finished_at<=now()-interval '15 minutes' and event_start>now();

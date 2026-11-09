@@ -35,8 +35,8 @@ export async function oddsJSON(path: string, key: string, fetcher: typeof fetch 
     const body = response.headers.get('content-type')?.includes('application/json') ? object(await response.json()) : {};
     const code = /^[A-Z_]{1,60}$/.test(text(body.error_code)) ? ` Provider code: ${text(body.error_code)}.` : '';
     const requested = new Set((url.searchParams.get('markets') ?? '').split(',').filter(Boolean)).size;
-    if (response.status === 403 && usage.creditsRemaining !== null && requested > usage.creditsRemaining)
-      throw new Error(`Odds provider reports ${usage.creditsRemaining} credits remaining; this request needs up to ${requested}. Verify the upgraded subscription is active for the configured server key.${code}`);
+    if (body.error_code === 'OUT_OF_USAGE_CREDITS' || response.status === 403 && usage.creditsRemaining !== null && requested > usage.creditsRemaining)
+      throw new Error(`Odds provider reports ${usage.creditsRemaining ?? 'unknown'} credits remaining; this request needs up to ${requested}. Verify the upgraded subscription is active for the configured server key.${code}`);
     throw new Error((response.status === 429 ? 'Odds provider rate limit reached. Retry later.'
     : response.status === 401 || response.status === 403 ? 'Odds provider credentials or market subscription are unavailable.'
     : `Odds provider returned HTTP ${response.status}.`) + code);
