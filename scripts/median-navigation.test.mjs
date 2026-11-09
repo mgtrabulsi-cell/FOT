@@ -5,6 +5,16 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { connectMedianNavigation, hashForView, viewFromHash } from '../src/services/medianNavigation.ts';
 
+test('sign-in and profile expose public privacy and support links without replacing the app', () => {
+  for (const file of ['AuthScreen.tsx', 'ProfilePage.tsx']) {
+    const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
+    assert.match(source, /aria-label="Privacy and support"/);
+    for (const page of ['privacy', 'support']) {
+      assert.ok(source.includes(`href="https://gamewire.us/${page}.html" target="_blank" rel="noopener noreferrer"`));
+    }
+  }
+});
+
 test('section routes and nested notification links preserve their destination', () => {
   for (const [view, hash] of [['Wire', '#wire'], ['Players', '#stat-hub'], ['Analyst', '#analyst-desk'], ['Gamewaire', '#gamewaire'], ['Den', '#locker-room'], ['Profile', '#profile']]) {
     assert.equal(viewFromHash(hash), view);

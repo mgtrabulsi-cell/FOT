@@ -637,6 +637,22 @@ The iOS [privacy manifest](ios/App/App/PrivacyInfo.xcprivacy) declares account-l
 
 Before submitting, rebuild/sync the native app and use Xcode's archive privacy report to review these declarations and linked SDK manifests against the shipped binary. Separately complete **App Store Connect > App Privacy**: reflect the categories above, their purposes and account linkage (including administrator-only contributor features), supply `https://gamewire.us/privacy.html`, and review the current build's provider/SDK processing. Anonymous guest counts do not make signed-in usage unlinked. Website deployment does not update App Store Connect or an installed iOS binary. Review additional categories if new diagnostics, native notifications, advertising, or other collection is introduced; do not mark the entire app as "Data Not Collected." These updates do not guarantee App Store acceptance or replace legal review.
 
+### Median iOS submission
+
+The Median app loads `https://gamewire.us/`. Verified website deployments therefore update its web content, but permission descriptions, icons, native navigation, SDKs, and other wrapper changes require a new Median build. Privacy Policy and Support links are available from sign-in and Profile. Account deletion remains in Profile; guest browsing remains available.
+
+Median is a separate build pipeline from the Capacitor projects below. Changing `ios/App/App/PrivacyInfo.xcprivacy` or running `npm run native:sync` does **not** update Median's IPA, native plugins, privacy manifests, background refresh, or push implementation. Review the actual Median-generated archive and SDK privacy report with Median/Xcode before submission. The repository's native offline bridges and background jobs apply to Capacitor builds, not automatically to Median.
+
+Submission checklist:
+
+- Keep the Median website URL on the production HTTPS site, not a local preview or stale release-specific URL. Confirm the current web build and both public policy/support pages load.
+- Save wrapper changes and rebuild the **iOS IPA** with the correct existing bundle ID and Distribution profile. Preserve signing credentials and the existing Apple app identity. Use a new build number (or an appropriate new version) when App Store Connect already has the previous upload. A simulator rebuild is not an IPA upload.
+- Review enabled plugins and their data collection. Do not enable OneSignal, Firebase messaging/analytics, tracking, location, microphone, or background audio just to satisfy a checklist. Photo/camera descriptions must explain the user-initiated contributor/graphic upload workflow.
+- Complete App Store Connect App Privacy from the actual Median binary plus the website's collection described above. Set Privacy Policy URL to `https://gamewire.us/privacy.html` and Support URL to `https://gamewire.us/support.html`. Repository manifests and website changes do not fill in Apple's questionnaire.
+- Complete listing copy, screenshots, age/content ratings reflecting sports odds and betting analysis, content rights, export-compliance questions, review contact details, and reviewer access for account-required features. Do not claim real-money wagering or native notifications that are not implemented. Assess contributor-content moderation requirements for the actual publishing access.
+- Install the new upload through TestFlight on a physical iPhone. Verify guest use, login/password reset, privacy/support links and return navigation, account deletion using a disposable account, image upload/download/sharing, offline recovery, and small-screen navigation. Use actual device results rather than the browser simulator as release evidence.
+- Resolve any App Store Connect validation errors and review the generated privacy manifests before submitting. Uploading for TestFlight is not submitting for App Review; neither a successful build nor this checklist guarantees approval.
+
 ### Native iPhone and Android apps
 
 The Capacitor projects in [`ios/`](ios/) and [`android/`](android/) bundle the React interface rather than loading the website remotely. Native tooling requires Node.js 22 or newer. Run `npm run native:sync` to build `dist-native` and copy it to both projects, then `npm run native:ios` (on a Mac with Xcode) or `npm run native:android` (Android Studio/JDK 21/SDK 36). Normal `npm run build` and GitHub Pages deployment remain separate. `us.gamewire.app` is the initial bundle/application identifier; confirm its availability under your developer accounts before signing or publishing.

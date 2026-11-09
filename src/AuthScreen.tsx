@@ -132,6 +132,10 @@ export default function AuthScreen({ onContinueGuest }: { onContinueGuest?: () =
           </button>
         )}
       </>}
+      <nav className="account-policy-links" aria-label="Privacy and support">
+        <a href="https://gamewire.us/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+        <a href="https://gamewire.us/support.html" target="_blank" rel="noopener noreferrer">Support</a>
+      </nav>
     </section>
   </main>;
 }

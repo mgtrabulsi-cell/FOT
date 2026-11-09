@@ -230,5 +230,9 @@ export default function ProfilePage({ user, onBack, onDeleted }: { user: User; o
     <AdminAccessSettings key={user.id} userId={user.id} />
     <OwnerUserActivity user={user} />
     <DeleteAccountSettings onDeleted={onDeleted} />
+    <nav className="account-policy-links" aria-label="Privacy and support">
+      <a href="https://gamewire.us/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+      <a href="https://gamewire.us/support.html" target="_blank" rel="noopener noreferrer">Support</a>
+    </nav>
   </section>;
 }
