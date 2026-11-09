@@ -30,6 +30,102 @@ function hooks() {
 }
 const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements)
   : [node, ...elements(node.props?.children)];
+test('Simulation graphic access fails closed and only owner/admin roles can display downloads', async () => {
+  for (const role of ['owner', 'admin', 'member', null, 'query-error']) {
+    const h = hooks(), timers = [], listeners = new Map(), errors = [];
+    let session = { user: { id: 'signed-in' } }, changed, resolveRole;
+    const client = {
+      auth: { getSession: async () => ({ data: { session }, error: null }),
+        onAuthStateChange: fn => { changed = fn; return { data: { subscription: { unsubscribe() {} } } }; } },
+      from(table) {
+        assert.equal(table, 'livewire_roles');
+        const q = { select: () => q, eq: (_key, id) => { assert.equal(id, 'signed-in'); return q; },
+          maybeSingle: () => new Promise(resolve => { resolveRole = resolve; }) };
+        return q;
+      },
+    };
+    const context = vm.createContext({ exports: {}, console: { error: (...args) => errors.push(args) },
+      window: { setTimeout: fn => timers.push(fn), addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener: key => listeners.delete(key) },
+      require(name) { if (name === 'react') return h.react; return { supabase: client }; } });
+    vm.runInContext(compile('../src/useSimulationGraphicAccess.ts'), context);
+    assert.equal(context.exports.useSimulationGraphicAccess().allowed, false);
+    const stop = h.effects[0]();
+    await new Promise(resolve => setImmediate(resolve));
+    resolveRole({ data: role ? { role } : null, error: role === 'query-error' ? new Error('Unavailable') : null });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.state[0], role === 'owner' || role === 'admin');
+    assert.equal(!!h.state[1], role === 'query-error');
+    assert.equal(errors.length, role === 'query-error' ? 1 : 0);
+    listeners.get('focus')();
+    assert.equal(h.state[0], role === 'owner' || role === 'admin', 'Focus rechecks must not tear down an existing admin graphic preview');
+    await new Promise(resolve => setImmediate(resolve));
+    session = null; changed();
+    assert.equal(h.state[0], false, 'Sign-out hides controls immediately');
+    resolveRole({ data: { role: 'owner' }, error: null });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.state[0], false, 'A stale permission response cannot restore access after sign-out');
+    timers.forEach(fn => fn());
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.state[0], false);
+    stop();
+    assert.equal(listeners.size, 0);
+  }
+});
+
+test('Selecting a simulation player toggles an inline game log for the exact player and game', () => {
+  const h = hooks(), jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, require(name) {
+    if (name === 'react') return h.react;
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name.includes('NFLSimulationPlayerLog')) return { default: 'PlayerLog' };
+    if (name.includes('/nflSimulation')) return simulation;
+    return {};
+  } });
+  vm.runInContext(compile('../src/NFLGameSimulation.tsx') + '\nexports.TeamSimulation = TeamSimulation;', context);
+  const range = value => ({ mean: value, p10: value, median: value, p90: value });
+  const player = { id: '4362628', name: 'Receiver', position: 'WR', issue: null,
+    stats: { receptions: range(6), receivingYards: range(80), receivingTouchdowns: range(1) } };
+  const team = { id: '1', name: 'Team', abbr: 'HOM', score: range(24), players: [player],
+    totals: Object.fromEntries(['passingYards', 'rushingYards', 'receptions', 'otherReceivingYards', 'otherReceptions', 'otherRushingYards'].map(key => [key, range(10)])) };
+  const render = () => { h.reset(); return elements(context.exports.TeamSimulation({ team, game })); };
+  let tree = render();
+  const trigger = () => tree.find(node => node.props['aria-label'] === 'View Receiver game log');
+  assert.equal(trigger().props['aria-expanded'], false);
+  trigger().props.onClick(); tree = render();
+  assert.equal(trigger().props['aria-expanded'], true);
+  const log = tree.find(node => node.type === 'PlayerLog');
+  assert.equal(log.props.player, player); assert.equal(log.props.game, game);
+  log.props.onClose(); tree = render();
+  assert.ok(!tree.some(node => node.type === 'PlayerLog'));
+});
+
+test('Player log renders actual zero TDs and missing values distinctly and handles loading, failure and cancellation', async () => {
+  const h = hooks(), jsx = (type, props) => ({ type, props });
+  let resolveRequest, signal;
+  const context = vm.createContext({ exports: {}, AbortController, Date, console: { error() {} }, require(name) {
+    if (name === 'react') return h.react;
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    return { fetchPlayerGameLog: (_id, _game, received) => { signal = received; return new Promise(resolve => { resolveRequest = resolve; }); } };
+  } });
+  vm.runInContext(compile('../src/NFLSimulationPlayerLog.tsx'), context);
+  const props = { player: { id: '1', name: 'Receiver', position: 'WR' }, game, onClose() {} };
+  const render = () => { h.reset(); return elements(context.exports.default(props)); };
+  assert.ok(render().some(node => node.props.children === 'Loading past games…'));
+  const stop = h.effects[0]();
+  resolveRequest([{ gameId: 'old', date: '2025-11-01T18:00:00Z', opponentAbbreviation: 'vs CLE', result: 'W', score: '24-20', stats: { receptions: 5, receivingYards: 80, receivingTouchdowns: 0 } }]);
+  await new Promise(resolve => setImmediate(resolve));
+  let tree = render();
+  assert.ok(tree.some(node => node.type === 'td' && node.props.children === 0));
+  assert.ok(tree.some(node => node.props['aria-label'] === 'Statistic unavailable'));
+  assert.ok(tree.some(node => node.type === 'th' && node.props.children === 'REC TD'));
+  h.state[2] = 'Feed unavailable'; h.state[0] = [];
+  tree = render();
+  assert.ok(tree.some(node => node.props.role === 'alert'));
+  tree.find(node => node.props.children === 'Retry game log').props.onClick();
+  assert.equal(h.state[3], 1);
+  stop(); assert.equal(signal.aborted, true);
+});
+
 test('Mobile box-score identities use full-width rows without an unused score column or broken words', () => {
   const theme = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
@@ -46,6 +142,8 @@ test('Simulation toggle remains red in both states and mobile cards reserve read
   assert.match(css, /\.wire-pregame-mode \.wire-simulation-toggle\[aria-pressed="true"\] \{[^}]*background: #c62836;[^}]*color: #fff/);
   assert.match(css, /grid-template-areas: "status status" "bell teams" "footer footer"/);
   assert.match(css, /\.is-simulation-game \.wire-board-team-label \{[^}]*white-space: normal; overflow-wrap: normal; word-break: normal/);
+  assert.match(css, /@media \(max-width: 640px\) \{\s*\.wire-pregame-mode \[role="group"\] \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.wire-pregame-mode button \{ min-width: 0; min-height: 48px;[^}]*white-space: normal/);
 });
 test('Wire toggle shows simulated scores, opens the simulation directly, and restores normal pregame/live views', () => {
   const h = hooks(), jsx = (type, props) => ({ type, props });
@@ -148,6 +246,7 @@ test('Opening a simulation panel after kickoff loads its saved archive on reload
     if (name === 'react') return h.react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('supabaseClient')) return { supabase: null };
+    if (name.includes('useSimulationGraphicAccess')) return { useSimulationGraphicAccess: () => ({ allowed: false, error: '' }) };
     if (name.includes('/nflSimulation')) return simulation;
     if (name.includes('gamewireBot')) return { loadGameSimulation: async received => {
       assert.equal(received.date, pastGame.date); requests++;

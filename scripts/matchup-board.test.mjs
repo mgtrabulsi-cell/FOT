@@ -5,7 +5,42 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import { readRenderSnapshot, saveRenderSnapshot } from '../src/services/renderSnapshots.ts';
-import { fetchPPRProjections, lastFiveAverage, matchupBreakdownWords, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPPRActuals, readPPRProjections } from '../src/services/matchupBoard.ts';
+import { fetchPPRProjections, fetchPlayerGameLog, lastFiveAverage, matchupBreakdownWords, moveMatchupPick, readMatchupPicks, readPlayerAverage, readPlayerGameLog, readPPRActuals, readPPRProjections } from '../src/services/matchupBoard.ts';
+
+test('Player log keeps full receiving/passing/rushing stats and true zeroes, excludes current/future/preseason games', async () => {
+  const game = { eventId: 'current', date: '2025-11-18T18:00:00Z', seasonYear: 2025 };
+  const event = (date, opponent = 'CLE') => ({ gameDate: date, opponent: { abbreviation: opponent, displayName: 'Opponent' }, atVs: 'vs', gameResult: 'W', score: '24-20' });
+  const payload = {
+    names: ['receptions', 'receivingYards', 'receivingTouchdowns', 'rushingAttempts', 'rushingYards', 'rushingTouchdowns', 'completions', 'passingAttempts', 'passingYards', 'passingTouchdowns', 'interceptions', 'receivingTargets'],
+    events: { old: event('2025-11-01T18:00:00Z'), recent: event('2025-11-10T18:00:00Z'), current: event(game.date), future: event('2025-11-20T18:00:00Z') },
+    seasonTypes: [{ categories: [
+      { splitType: '2', events: ['old', 'recent', 'current', 'future'].map(eventId => ({ eventId, stats: ['5', '1,001', '0', '3', '12', '--', '20', '30', '250', '2', '1', '8'] })) },
+      { splitType: '2', events: [{ eventId: 'old', stats: [] }] },
+      { splitType: '1', events: [{ eventId: 'preseason', stats: ['99'] }] },
+    ] }],
+  };
+  const rows = readPlayerGameLog(payload, game);
+  assert.deepEqual(rows.map(row => row.gameId), ['recent', 'old']);
+  assert.equal(rows[0].opponentAbbreviation, 'vs CLE');
+  assert.equal(rows[0].stats.receivingYards, 1001); assert.equal(rows[0].stats.receivingTouchdowns, 0);
+  assert.equal(rows[0].stats.rushingTouchdowns, undefined); assert.equal(rows[0].stats.carries, 3);
+  assert.equal(rows[0].stats.attempts, 30); assert.equal(rows[0].stats.targets, 8);
+  assert.equal(rows[0].stats.passingTouchdowns, 2);
+  assert.throws(() => readPlayerGameLog({}, game), /invalid player game log/);
+  const originalFetch = globalThis.fetch, controller = new AbortController();
+  try {
+    globalThis.fetch = async (url, options) => {
+      assert.match(url, /athletes\/4362628\/gamelog\?season=2025&seasontype=2$/);
+      assert.equal(options.signal, controller.signal);
+      return { ok: true, json: async () => payload };
+    };
+    assert.deepEqual(await fetchPlayerGameLog('4362628', game, controller.signal), rows);
+    globalThis.fetch = async () => ({ ok: false, status: 503 });
+    await assert.rejects(fetchPlayerGameLog('4362628', game, controller.signal), /HTTP 503/);
+    globalThis.fetch = async () => { throw new DOMException('Aborted', 'AbortError'); };
+    await assert.rejects(fetchPlayerGameLog('4362628', game, controller.signal), { name: 'AbortError' });
+  } finally { globalThis.fetch = originalFetch; }
+});
 
 const pick = (id, position) => ({ id, position, name: `Player ${id}`, teamId: '1', gameId: 'NFL:123', headshot: '' });
 

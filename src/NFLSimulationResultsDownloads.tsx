@@ -6,11 +6,14 @@ import type { SimulationResultsGraphicKind } from './services/nflSimulationResul
 import type { Game } from './services/sportsData';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
 import { fetchNFLClosingSpread } from './services/nflClosingSpread';
+import { useSimulationGraphicAccess } from './useSimulationGraphicAccess';
 
 export default function NFLSimulationResultsDownloads({ games, stat }: { games: Game[]; stat: keyof SimulationStat }) {
+  const access = useSimulationGraphicAccess();
   const requests = useRef(new Set<AbortController>());
-  useEffect(() => () => { for (const controller of requests.current) controller.abort(); }, []);
+  useEffect(() => () => { for (const controller of requests.current) controller.abort(); }, [access.allowed]);
   const generate = async (kind: SimulationResultsGraphicKind) => {
+    if (!access.allowed) throw new Error('Simulation graphics are restricted to the owner and admins.');
     const controller = new AbortController();
     requests.current.add(controller);
     try {
@@ -41,6 +44,7 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
       return blob;
     } finally { requests.current.delete(controller); }
   };
+  if (!access.allowed) return access.error ? <p role="alert">{access.error}</p> : null;
   return <section className="nfl-simulation-results-downloads" aria-label="Instagram simulation results graphics">
     <h4>Instagram graphics</h4>
     <p>Each download refreshes verified results for the entire selected slate and snapshots its winner record. Player props use the selected statistic; Full Player Performances use all three receiving criteria and show up to three players ordered by actual touchdowns, yards, then catches—not exact-stat accuracy.</p>

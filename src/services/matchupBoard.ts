@@ -56,13 +56,19 @@ function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
-export function readPlayerAverage(payload: unknown, position: MatchupPosition, game: Game) {
+export function readPlayerGameLog(payload: unknown, game: Pick<Game, 'eventId' | 'date'>): NFLPlayerGame[] {
   const data = object(payload);
   if (!Array.isArray(data.names) || !Array.isArray(data.seasonTypes) || !data.events) {
     throw new Error('The data feed returned an invalid player game log.');
   }
-  const index = data.names.indexOf(matchupStats[position].key);
-  if (index < 0) return { average: null, games: 0 };
+  const names = data.names;
+  const columns: Array<[NFLPlayerStatKey, string]> = [
+    ['passingYards', 'passingYards'], ['passingTouchdowns', 'passingTouchdowns'], ['interceptions', 'interceptions'],
+    ['completions', 'completions'], ['attempts', 'passingAttempts'], ['carries', 'rushingAttempts'],
+    ['rushingYards', 'rushingYards'], ['rushingTouchdowns', 'rushingTouchdowns'],
+    ['receptions', 'receptions'], ['targets', 'receivingTargets'], ['receivingYards', 'receivingYards'],
+    ['receivingTouchdowns', 'receivingTouchdowns'],
+  ];
   const events = object(data.events);
   const recentGames = data.seasonTypes.flatMap((season) => {
     const categories = object(season).categories;
@@ -72,23 +78,45 @@ export function readPlayerAverage(payload: unknown, position: MatchupPosition, g
       return group.events.flatMap((entry) => {
         const row = object(entry);
         const event = object(events[String(row.eventId)]);
-        const raw = Array.isArray(row.stats) ? row.stats[index] : undefined;
-        const value = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() && raw !== '--'
-          ? Number(raw.replace(/,/g, '')) : NaN;
+        const stats: NFLPlayerGame['stats'] = {};
+        for (const [key, name] of columns) {
+          const index = names.indexOf(name);
+          const raw = index >= 0 && Array.isArray(row.stats) ? row.stats[index] : undefined;
+          const value = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() && raw !== '--'
+            ? Number(raw.replace(/,/g, '')) : NaN;
+          if (Number.isFinite(value)) stats[key] = value;
+        }
+        const opponent = object(event.opponent);
         return [{
           gameId: String(row.eventId), date: typeof event.gameDate === 'string' ? event.gameDate : '',
-          stats: Number.isFinite(value) ? { [matchupStats[position].key]: value } : {},
+          opponent: typeof opponent.displayName === 'string' ? opponent.displayName : '',
+          opponentAbbreviation: `${typeof event.atVs === 'string' ? `${event.atVs} ` : ''}${typeof opponent.abbreviation === 'string' ? opponent.abbreviation : ''}`.trim(),
+          result: typeof event.gameResult === 'string' ? event.gameResult : '',
+          score: typeof event.score === 'string' ? event.score : '', stats,
         }];
       });
     }) : [];
   });
-  return lastFiveAverage({ recentGames }, position, game);
+  return recentGames.filter(row => row.gameId !== game.eventId && Date.parse(row.date) < Date.parse(game.date))
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    .filter((row, index, rows) => rows.findIndex(other => other.gameId === row.gameId) === index);
+}
+
+export function readPlayerAverage(payload: unknown, position: MatchupPosition, game: Game) {
+  return lastFiveAverage({ recentGames: readPlayerGameLog(payload, game) }, position, game);
+}
+
+export async function fetchPlayerGameLog(playerId: string, game: Game, signal: AbortSignal) {
+  const date = new Date(game.date);
+  const season = game.seasonYear ?? date.getUTCFullYear() - (date.getUTCMonth() < 2 ? 1 : 0);
+  if (!Number.isInteger(season)) throw new Error('The game log season is unavailable.');
+  const response = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${encodeURIComponent(playerId)}/gamelog?season=${season}&seasontype=2`, { signal });
+  if (!response.ok) throw new Error(`Player game log returned HTTP ${response.status}.`);
+  return readPlayerGameLog(await response.json(), game).filter(row => Date.parse(row.date) < Date.now());
 }
 
 export async function fetchPlayerAverage(pick: MatchupPick, game: Game, signal: AbortSignal) {
-  const response = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${encodeURIComponent(pick.id)}/gamelog?season=${game.seasonYear}&seasontype=2`, { signal });
-  if (!response.ok) throw new Error(`${pick.name}'s game log returned HTTP ${response.status}.`);
-  return readPlayerAverage(await response.json(), pick.position, game);
+  return lastFiveAverage({ recentGames: await fetchPlayerGameLog(pick.id, game, signal) }, pick.position, game);
 }
 
 export function readMatchupPicks(value: unknown): MatchupPick[] {

@@ -1368,6 +1368,7 @@ function simulationMarkup(data, error = '', scenarioId = '', admin = false, team
   const context = vm.createContext({ exports: {}, Date, console, require(name) {
     if (name === 'react') return { useState: () => [state[i++], () => {}], useEffect() {} };
     if (name === 'react/jsx-runtime') return jsxRuntime;
+    if (name === './useSimulationGraphicAccess') return { useSimulationGraphicAccess: () => ({ allowed: admin, error: '' }) };
     if (name === './GamewaireResultsDownload') return { ResultsGraphicDownload: props => jsxRuntime.jsx('button', { children: props.label }) };
     if (name.includes('nflSimulation')) return { selectedSimulationScenario, projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
     return {};
@@ -1404,7 +1405,7 @@ test('Simulation UI renders one automatic QB matchup, ranges, transfer coverage,
   assert.doesNotMatch(publicHtml, /nfl-simulation-scenario|<select/);
   assert.ok(html.indexOf('Admin:') > html.lastIndexOf('</table>'));
 });
-test('Projected receiver names are white and rows sort by displayed catches then receiving yards', () => {
+test('Projected receiver names open game logs and rows sort by displayed catches then receiving yards', () => {
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   const team = data.scenarios[0].away, receiver = team.players.find(player => player.position === 'WR');
   const range = mean => ({ mean, p10: mean, median: mean, p90: mean });
@@ -1421,7 +1422,7 @@ test('Projected receiver names are white and rows sort by displayed catches then
     || a.name.localeCompare(b.name)).map(player => player.name);
   const html = simulationMarkup(data);
   const body = html.match(/<caption>Receiving[\s\S]*?<tbody>([\s\S]*?)<\/tbody>/)[1];
-  const names = [...body.matchAll(/scope="row"><b>([^<]+)<\/b>/g)].map(match => match[1]);
+  const names = [...body.matchAll(/class="nfl-simulation-player-link"[^>]*>([^<]+)<\/button>/g)].map(match => match[1]);
   assert.deepEqual(names, expected);
   assert.equal(names[0], 'Highest catches');
   assert.equal(names.at(-1), 'Unavailable receiver');
@@ -1429,6 +1430,7 @@ test('Projected receiver names are white and rows sort by displayed catches then
   assert.deepEqual(team.players.map(player => player.id), originalOrder);
   const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
   assert.match(css, /\.nfl-simulation tbody th\[scope="row"\] > b, \.nfl-simulation td b \{ color: #fff; \}/);
+  assert.match(body, /aria-label="View Highest catches game log" aria-expanded="false"/);
 });
 
 test('Simulation graphic uses reconciled box values, usage-ranked players and both teams without modifying the forecast', async () => {
@@ -1541,6 +1543,7 @@ function panelRuntime(load, supabase) {
     };
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name.includes('supabaseClient')) return { supabase };
+    if (name.includes('useSimulationGraphicAccess')) return { useSimulationGraphicAccess: () => ({ allowed: false, error: '' }) };
     if (name.includes('nflSimulation')) return { selectedSimulationScenario, projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
     return { loadGameSimulation: load };
   } });

@@ -4,6 +4,8 @@ import { loadGameSimulation } from './services/gamewireBot';
 import { supabase } from './services/supabaseClient';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
 import NFLSimulationAccuracy from './NFLSimulationAccuracy';
+import NFLSimulationPlayerLog from './NFLSimulationPlayerLog';
+import { useSimulationGraphicAccess } from './useSimulationGraphicAccess';
 import { renderSimulationGraphic } from './services/nflSimulationGraphic';
 import { legacyNFLSimulationVersion, projectedSimulationScore, roundedSimulationBox, selectedSimulationScenario } from '../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation, SimulationStat, SimulationTeamResult } from '../supabase/functions/_shared/nflSimulation';
@@ -19,7 +21,9 @@ const groups: Array<{ title: string; positions: string[]; columns: Array<keyof S
   { title: 'Receiving', positions: ['WR', 'TE'], columns: ['receptions', 'receivingYards', 'receivingTouchdowns'] },
 ];
 
-function TeamSimulation({ team, projectedScore }: { team: SimulationTeamResult; projectedScore?: number }) {
+function TeamSimulation({ team, game, projectedScore }: { team: SimulationTeamResult; game: Game; projectedScore?: number }) {
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const selectedPlayer = team.players.find(player => player.id === selectedPlayerId);
   if (team.totals === null) return null;
   const box = roundedSimulationBox({ ...team, totals: team.totals }, projectedScore);
   return (
@@ -32,16 +36,22 @@ function TeamSimulation({ team, projectedScore }: { team: SimulationTeamResult; 
           || (box.players[b.id].receivingYards ?? -1) - (box.players[a.id].receivingYards ?? -1)
           || a.name.localeCompare(b.name));
         if (!players.length) return null;
-        return <div className="nfl-simulation-table-scroll" key={group.title} tabIndex={0} role="region" aria-label={`${team.name} ${group.title.toLowerCase()} projections`}>
+        return <div key={group.title}><div className="nfl-simulation-table-scroll" tabIndex={0} role="region" aria-label={`${team.name} ${group.title.toLowerCase()} projections`}>
           <table>
             <caption>{group.title} · Projected stat line{group.title === 'Receiving' ? ' · Most receptions first' : ''}</caption>
             <thead><tr><th scope="col">Player</th>{group.columns.map(key => <th scope="col" key={key}>{statLabels[key]}</th>)}</tr></thead>
             <tbody>{players.map(player => <tr key={player.id} className={player.issue ? 'nfl-simulation-unavailable' : undefined}>
-              <th scope="row"><b>{player.name}</b><small>{player.position}{player.issue ? ' · Unavailable' : ''}</small></th>
+              <th scope="row"><button type="button" className="nfl-simulation-player-link"
+                aria-label={`View ${player.name} game log`} aria-expanded={selectedPlayerId === player.id}
+                onClick={() => setSelectedPlayerId(current => current === player.id ? null : player.id)}>{player.name}</button>
+                <small>{player.position}{player.issue ? ' · Unavailable' : ''}</small></th>
               {group.columns.map(key => <td key={key}>{box.players[player.id][key] !== undefined
                 ? <b>{box.players[player.id][key]}</b> : <span aria-label="No supported projection">—</span>}</td>)}
             </tr>)}</tbody>
           </table>
+        </div>
+          {selectedPlayer && group.positions.includes(selectedPlayer.position) && <NFLSimulationPlayerLog key={`${game.eventId}:${game.date}:${selectedPlayer.id}`}
+            player={selectedPlayer} game={game} onClose={() => setSelectedPlayerId(null)} />}
         </div>;
       })}
       <details className="nfl-simulation-accounting" aria-label={`${team.name} projected team totals and score accounting`}>
@@ -87,6 +97,7 @@ function TeamEvidence({ team }: { team: SimulationTeamResult }) {
 }
 
 export default function NFLGameSimulationPanel({ game, initialSimulation, onForecast, onScenarioChange }: { game: Game; initialSimulation?: NFLGameSimulation; onForecast?: (forecast: NFLGameSimulation) => void; onScenarioChange?: (scenarioId: string) => void }) {
+  const graphicAccess = useSimulationGraphicAccess();
   const [response, setResponse] = useState<NFLGameSimulation | null>(initialSimulation ?? null);
   const [forecast, setForecast] = useState<NFLGameSimulation | null>(initialSimulation?.status === 'ready' ? initialSimulation : null);
   const [error, setError] = useState('');
@@ -207,7 +218,8 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                 {projectedScore?.archiveExtension && <> Added from original pregame evidence after kickoff; not the originally published score and not used to regrade historical accuracy.</>}
                 {!projectedScore && <> · Modeled OT final unavailable. No tied final or invented winner is shown.</>}
                 {scenario.overtime && <> · Player stats cover regulation only; real NFL ties remain represented in the model probabilities.</>}</p>
-              {admin && <div className="nfl-simulation-graphic-downloads">
+              {graphicAccess.error && <p role="alert">{graphicAccess.error}</p>}
+              {graphicAccess.allowed && <div className="nfl-simulation-graphic-downloads">
               <ResultsGraphicDownload key={`${game.eventId}-${scenario.id}`} label="Download game graphic" disabled={false}
                 generate={() => renderSimulationGraphic(scenario, game.date, { away: game.away.color, home: game.home.color })}
                 filename={`GameWire-Simulation-${scenario.away.abbr}-${scenario.home.abbr}-${game.eventId}.png`}
@@ -236,7 +248,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                       </button>)}
                     </div>
                     <div role="region" aria-label={`${selectedTeam.name} projected box score`}>
-                      <TeamSimulation key={selectedTeam.id} team={selectedTeam} projectedScore={projectedScore ? selectedTeam.id === scenario.home.id ? projectedScore.home : projectedScore.away : undefined} />
+                      <TeamSimulation key={`${game.eventId}:${selectedTeam.id}`} team={selectedTeam} game={game} projectedScore={projectedScore ? selectedTeam.id === scenario.home.id ? projectedScore.home : projectedScore.away : undefined} />
                     </div>
                   </div>}
             </>

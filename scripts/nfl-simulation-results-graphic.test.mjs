@@ -137,10 +137,12 @@ test('Each download refreshes the entire selected week and uses the fresh winner
   let calls = 0;
   let selectedGames = scopes;
   const jsx = (type, props) => ({ type, props });
+  let graphicAccess = true;
   const context = vm.createContext({ exports: {}, AbortController, Error, console: { error: (...args) => errors.push(args) }, require(name) {
     if (name === 'react') return { useRef: () => ({ current: new Set() }), useEffect: fn => effects.push(fn) };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('GamewaireResultsDownload')) return { ResultsGraphicDownload: 'Download' };
+    if (name.includes('useSimulationGraphicAccess')) return { useSimulationGraphicAccess: () => ({ allowed: graphicAccess, error: '' }) };
     if (name.includes('nflClosingSpread')) return { fetchNFLClosingSpread: async game =>
       ['1', '2'].includes(game.eventId) ? closingFor([game], -6.5)[0] : null };
     if (name.includes('gamewireBot')) return { loadSimulationAccuracy: async (games, signal) => {
@@ -204,6 +206,9 @@ test('Each download refreshes the entire selected week and uses the fresh winner
   assert.equal(categories.record.wins, 1);
   assert.equal(calls, 7);
   assert.match(categoryButton.props.filename, /Player-Top-3-Categories\.png$/);
+  graphicAccess = false;
+  assert.equal(context.exports.default({ games: scopes, stat: 'receptions' }), null);
+  assert.equal(calls, 7, 'Public viewers cannot mount or generate the weekly download controls');
   effects[0]()();
 });
 
