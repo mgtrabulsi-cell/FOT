@@ -7,7 +7,8 @@ import * as jsxRuntime from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { archivedProjectionOvertimeEvidence, modelProjectedOvertime, projectedSimulationScore, selectedSimulationScenario, legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerWeights, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
 import * as qbMatchup from '../supabase/functions/_shared/nflSimulationMatchup.ts';
-import { reconcileSimulationProjections, simulationAllowsMoneyline } from '../supabase/functions/_shared/nflSimulationAlignment.ts';
+import { alignSimulationEvidence, reconcileSimulationProjections, simulationAllowsMoneyline } from '../supabase/functions/_shared/nflSimulationAlignment.ts';
+import { modelVersion } from '../supabase/functions/_shared/gamewaire.ts';
 import { archivePlayerForecast } from '../supabase/functions/_shared/gamewireForecasts.ts';
 import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import { advanceSimulation, prepareSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
@@ -1759,7 +1760,7 @@ test('Saved NFL simulation alignment validates archival identities, kickoff and 
 test('Automatic NFL scoreboard picks cannot promote a losing moneyline or force a replacement value pick', () => {
   const f = fixture(), forecast = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   forecast.scenarios[0].home.score.mean = 27; forecast.scenarios[0].away.score.mean = 20;
-  const candidate = { key: 'home-ml', sport: 'NFL', market: 'h2h', modelVersion: 'evidence-value-v10', home: game.home.name, away: game.away.name,
+  const candidate = { key: 'home-ml', sport: 'NFL', market: 'h2h', modelVersion, home: game.home.name, away: game.away.name,
     subject: game.home.name, side: game.home.name, start: game.date, line: null, american: -110, noVig: .5, quality: .9, probability: .7,
     ev: .3, edge: .15, conservativeEV: .1, updatedAt: new Date(now - 1000).toISOString(), dataAt: new Date(now).toISOString(),
     sampleSize: 20, samples: [], risks: [], facts: [], identifiers: { espnEventId: game.id } };
@@ -1770,6 +1771,21 @@ test('Automatic NFL scoreboard picks cannot promote a losing moneyline or force 
   assert.equal(scoreboardPicks([candidate], now, { nflSimulations: new Map() }).length, 0);
   assert.equal(scoreboardPicks([{ ...candidate, market: 'spreads', line: 3.5, subject: game.away.name }], now, options).length, 1);
   assert.equal(scoreboardPicks([candidate], Date.parse(game.date) + 1, options).length, 1, 'Original picks are retained after kickoff');
+});
+
+test('Four-prop evidence resolves saved simulation players by verified team and athlete IDs, rejecting mismatches', () => {
+  const f = fixture(), forecast = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  const quote = { key: 'prop', sport: 'NFL', market: 'player_reception_yds', start: game.date, home: game.home.name, away: game.away.name };
+  const evidence = { eligible: true, identifiers: { teamId: '1', playerId: '14', espnEventId: game.id } };
+  const source = new Map([[quote.key, evidence]]);
+  const expected = roundedSimulationBox(forecast.scenarios[0].home).players['14'].receivingYards;
+  assert.equal(alignSimulationEvidence([quote], source, forecast).get(quote.key).simulationProjection, expected);
+  assert.equal(source.get(quote.key), evidence);
+  assert.equal(evidence.simulationProjection, undefined);
+  for (const invalid of [undefined, { ...forecast, kickoff: '2026-11-16T18:00:00Z' }])
+    assert.equal(alignSimulationEvidence([quote], source, invalid).get(quote.key).eligible, false);
+  assert.equal(alignSimulationEvidence([{ ...quote, home: 'Wrong Team' }], source, forecast).get(quote.key).eligible, false);
+  assert.equal(alignSimulationEvidence([quote], new Map([[quote.key, { ...evidence, identifiers: { teamId: '2', playerId: '14' } }]]), forecast).get(quote.key).eligible, false);
 });
 
 test('Simulation diagnostics permissions reset on account changes and ignore stale admin checks', async () => {

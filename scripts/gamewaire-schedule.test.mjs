@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { easternClock, scheduledNFLDate, scheduleWindow, scheduleEvents, planScheduledAnalyses, scheduledSports, scheduledMarkets } from '../supabase/functions/_shared/gamewaireSchedule.ts';
-import { isSoccer, modelVersion, soccerModelVersion } from '../supabase/functions/_shared/gamewaire.ts';
+import { isSoccer, markets, modelVersion, soccerModelVersion } from '../supabase/functions/_shared/gamewaire.ts';
 
 const now = Date.parse('2026-10-29T05:00:00Z');
 const game = (id, home, away, start = '2026-10-29T23:00:00Z', sport = 'NBA') => ({ id, home, away, start, sport });
@@ -124,7 +124,7 @@ test('All four soccer leagues use daily Eastern windows, two team markets and no
     assert.deepEqual(scheduledMarkets(args.target_sport), ['h2h', 'totals']);
     assert.match(args.plan_note, /40 attempts \/ 80 credits/);
   }
-  assert.deepEqual(scheduledMarkets('NBA'), ['h2h', 'spreads']);
+  assert.deepEqual(scheduledMarkets('NBA'), [...markets.NBA]);
   const before = planner();
   await planScheduledAnalyses(before.db, async () => { throw new Error('Before 1 AM'); }, fetch, now - 60000);
   assert.equal(before.calls.length, 0);
@@ -138,4 +138,21 @@ test('Oversized soccer slates save an explicit batch error instead of omitting g
   assert.match(batch.problem, /No games silently omitted/);
   assert.deepEqual(batch.games, []);
   assert.ok(fixture.calls.filter(call => call.args.target_sport !== 'EPL').every(call => call.args.problem === null));
+});
+test('NBA/NFL discover newly posted games hourly without re-planning unchanged soccer batches', async () => {
+  const saved = new Map(), calls = [];
+  const db = {
+    from() {
+      let sport;
+      return { select() { return this; }, eq(key, value) { if (key === 'sport') sport = value; return this; },
+        async maybeSingle() { return { data: { id: sport, model_version: isSoccer(sport) ? soccerModelVersion : modelVersion,
+          updated_at: new Date(saved.get(sport) ?? now - 3600001).toISOString() }, error: null }; } };
+    },
+    async rpc(name, args) { calls.push(args); saved.set(args.target_sport, now); return { data: 'batch', error: null }; },
+  };
+  await planScheduledAnalyses(db, async sport => [game('newly-posted', 'H', 'A', '2026-10-29T23:00:00Z', sport)], fetch, now);
+  assert.deepEqual(calls.map(call => call.target_sport), ['NBA', 'NFL']);
+  assert.ok(calls.every(call => call.games[0].event_id === 'newly-posted'));
+  await planScheduledAnalyses(db, async () => { throw new Error('Already rechecked'); }, fetch, now + 60000);
+  assert.equal(calls.length, 2);
 });

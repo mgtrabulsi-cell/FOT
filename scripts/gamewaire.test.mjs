@@ -791,10 +791,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   costState[10] = { ...settings, markets: ['player_points'] };
   fixture(costState);
   const propCost = renderToStaticMarkup(createElement(Page));
-  assert.match(propCost, /Run analysis · up to 3 credits/, 'One prop market also requests moneyline and spread');
+  assert.match(propCost, /Run analysis · up to 7 credits/, 'Full NBA analysis expands inherited settings to all supported markets');
   costState[10] = { ...settings, markets: ['h2h', 'spreads'] };
   fixture(costState);
-  assert.match(renderToStaticMarkup(createElement(Page)), /Run analysis · up to 2 credits/, 'Required team markets are not counted twice');
+  assert.match(renderToStaticMarkup(createElement(Page)), /Run analysis · up to 7 credits/, 'Run analysis expands lean-only settings to full NBA coverage');
   assert.match(admin, /Publish 0\/4 picks/);
   assert.match(admin, /ODDS_API_KEY/);
   assert.match(admin, /<details id="gai-analysis-workspace" class="gai-workspace"><summary>New analysis &amp; settings/);
@@ -852,7 +852,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(scheduledView, /0 credits to view picks and explanations/);
   assert.match(scheduledView, /Overnight shortlist · Standings-ranked matchup/);
   assert.match(scheduledView, /Odds API: 7 credits for this saved request · 479 remaining/);
-  assert.match(scheduledView, /Refresh prices &amp; review picks · up to 4 credits/);
+  assert.match(scheduledView, /Refresh prices &amp; review picks · up to 7 credits/);
   assert.match(scheduledView, /No game lean or Top Pick publishes automatically/);
   const finishedState = scheduledState.slice();
   finishedState[30] = { completed: ['NBA:event'], completionWarning: '' };
@@ -1061,7 +1061,7 @@ for (const sport of engine.soccerSports) test(`${sport} on-demand backend uses v
   assert.ok(fixture.rpc.some(call => call.name === 'gamewaire_finish'));
   assert.ok(fixture.rpc.every(call => !call.name.includes('publish') && !call.name.includes('schedule')));
 });
-function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
+function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, creditBudget = true, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
   scoreboardRows = [], scoreboardError = null, scoreboardJobs = [], scoreboardJobsError = null,
   settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
@@ -1094,7 +1094,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
     },
     rpc: async (name, args) => {
       if (name === 'gamewaire_can_admin') return { data: allowed, error: null };
-      rpc.push({ name, args }); return { data: name === 'gamewaire_claim' ? !failClaim
+      rpc.push({ name, args }); return { data: name === 'gamewaire_reserve_credits' ? creditBudget : name === 'gamewaire_claim' ? !failClaim
       : name === 'gamewaire_analysis_lock' ? lockBusy ? null : 'lock-fixture'
       : name === 'gamewaire_schedule_claim' ? scheduledJob : null, error: null }; },
   };
@@ -1230,9 +1230,9 @@ test('Scoreboard summaries paginate saved reports, reject invalid slate scopes a
 test('Full NFL analysis upgrades inherited lean-only settings before cache and provider requests while explicit lean refresh stays cheap', async () => {
   const leanSettings = { ...engine.defaultSettings, markets: ['h2h', 'spreads'] };
   const full = engine.fullAnalysisSettings(leanSettings, 'NFL');
-  assert.deepEqual(full.markets, ['h2h', 'spreads', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions']);
+  assert.deepEqual(full.markets, [...engine.markets.NFL]);
   assert.deepEqual(leanSettings.markets, ['h2h', 'spreads']);
-  assert.equal(engine.fullAnalysisSettings(leanSettings, 'NBA'), leanSettings);
+  assert.deepEqual(engine.fullAnalysisSettings(leanSettings, 'NBA').markets, [...engine.markets.NBA]);
   const sunday = '2026-11-01T18:00:00Z';
   const cachedRun = { id: 'lean-cache', sport: 'NFL', event_id: 'event', event_start: sunday, created_at: new Date(now - 1000).toISOString(),
     settings: leanSettings, status: 'no_qualifying', payload: { modelVersion: engine.modelVersion, playerPropMinimum: 0, picks: [] } };
@@ -1252,8 +1252,8 @@ test('Full NFL analysis upgrades inherited lean-only settings before cache and p
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.notEqual(body.cached, true, 'Fresh lean-only cache must not swallow a full-player request');
-  assert.equal(body.run.payload.playerPropMinimum, 3, 'Sunday daytime game targets three distinct props');
-  assert.equal(body.run.payload.picks.filter((pick) => pick.market.startsWith('player_')).length, 3);
+  assert.equal(body.run.payload.playerPropMinimum, 4, 'Every full game targets four distinct props');
+  assert.equal(body.run.payload.picks.filter((pick) => pick.market.startsWith('player_')).length, 0, 'Missing saved simulation blocks conflicting NFL props');
   for (const market of full.markets) assert.ok(requested.split(',').includes(market));
   const leanOnly = endpoint({ configured: true });
   await leanOnly.run({ action: 'analyze', sport: 'NFL', eventId: 'event', settings: leanSettings }, true, fetcher);
@@ -1360,9 +1360,9 @@ test('Endpoint rate limits before paid API calls and persists deterministic comp
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.run.status, 'completed');
-  assert.equal(body.run.payload.playerPropMinimum, 3);
+  assert.equal(body.run.payload.playerPropMinimum, 4);
   assert.ok(Array.isArray(body.run.payload.stretchKeys));
-  assert.ok(body.run.payload.warnings.some((warning) => warning.includes('Fewer than 3 distinct players')));
+  assert.ok(body.run.payload.warnings.some((warning) => warning.includes('Fewer than 4 distinct players')));
   assert.equal(api.rpc.at(-1).name, 'gamewaire_finish');
   assert.ok(api.rpc.at(-1).args.candidates.length > 0);
   const requested = new URL(api.fetches[0]);
@@ -1374,7 +1374,7 @@ test('Endpoint rate limits before paid API calls and persists deterministic comp
   assert.equal(filtered.status, 200);
   assert.equal((await filtered.json()).run.status, 'no_qualifying', 'An empty player filter is an abstention, not a provider failure');
 });
-test('NFL primetime endpoint expands the full analysis to eight distinct props and persists its target', async () => {
+test('NFL primetime uses the four-prop target and excludes props without a matching saved simulation', async () => {
   const api = endpoint({ configured: true });
   const response = await api.run({ action: 'analyze', sport: 'NFL', eventId: 'event',
     settings: { ...engine.defaultSettings, markets: ['player_receptions'], minEdge: 0.3 } }, true, async () => Response.json({
@@ -1387,15 +1387,44 @@ test('NFL primetime endpoint expands the full analysis to eight distinct props a
     }));
   assert.equal(response.status, 200);
   const { run } = await response.json();
-  assert.equal(run.payload.playerPropMinimum, 8);
-  assert.equal(run.payload.picks.filter((p) => p.market.startsWith('player_')).length, 8);
-  assert.ok(!run.payload.warnings.some((warning) => warning.includes('Fewer than 8')));
+  assert.equal(run.payload.playerPropMinimum, 4);
+  assert.equal(run.payload.picks.filter((p) => p.market.startsWith('player_')).length, 0);
+  assert.ok(run.payload.warnings.some((warning) => warning.includes('Fewer than 4')));
   const cached = endpoint({ configured: true, cachedRun: { ...run, created_at: new Date(now).toISOString(),
     event_start: '2026-10-30T00:15:00Z' } });
   const reused = await cached.run({ action: 'analyze', sport: 'NFL', eventId: 'event',
     settings: { ...engine.defaultSettings, markets: ['player_receptions'], minEdge: 0.3 } });
   assert.equal((await reused.json()).cached, true);
   assert.equal(cached.fetches.length, 0, 'Reopening a fresh primetime report does not spend more credits');
+});
+test('Shared credit reservation stops paid requests explicitly and covers the expanded scheduled market cost', async () => {
+  const manual = endpoint({ configured: true, creditBudget: false });
+  const response = await manual.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings, fullAnalysis: true });
+  assert.equal(response.status, 502);
+  assert.match((await response.json()).error, /20,000-credit/);
+  assert.equal(manual.fetches.length, 0);
+  assert.equal(manual.rpc.find(row => row.name === 'gamewaire_reserve_credits').args.max_cost, 7);
+  const scheduled = endpoint({ configured: true, creditBudget: false, scheduledJob: {
+    id: 'budget-job', sport: 'NBA', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Full',
+  } });
+  assert.equal((await scheduled.cron()).status, 502);
+  assert.equal(scheduled.fetches.length, 0);
+  assert.ok(scheduled.writes.some(row => row.table === 'gamewaire_schedule_jobs' && row.value.status === 'failed'));
+});
+test('Scheduled pregame refresh cannot reuse an initial report from just outside the 60-minute window', async () => {
+  const start = new Date(now + 55 * 60000).toISOString();
+  const cachedRun = { id: 'initial', status: 'no_qualifying', event_start: start, created_at: new Date(now - 9 * 60000).toISOString(),
+    settings: { ...engine.defaultSettings, markets: [...engine.markets.NBA] },
+    payload: { modelVersion: engine.modelVersion, playerPropMinimum: 4, picks: [] } };
+  const job = { id: 'refresh', sport: 'NBA', event_id: 'event', event_start: start, matchup: 'Away @ Home', selection_note: 'Pregame' };
+  const api = endpoint({ configured: true, scheduledJob: job, cachedRun });
+  const response = await api.cron();
+  assert.equal(response.status, 200);
+  assert.notEqual((await response.json()).cached, true);
+  assert.equal(api.fetches.length, 1, 'A genuine paid refresh occurs at the pregame boundary');
+  const recent = endpoint({ configured: true, scheduledJob: job, cachedRun: { ...cachedRun, created_at: new Date(now - 4 * 60000).toISOString() } });
+  assert.equal((await (await recent.cron()).json()).cached, true);
+  assert.equal(recent.fetches.length, 0, 'A manual full refresh already inside the pregame window avoids duplicate charges');
 });
 test('Quota-free game lists remain available when the paid analysis budget is exhausted', async () => {
   const upcoming = { id: 'event', sport: 'NBA', home: quote.home, away: quote.away, start: quote.start };
@@ -1432,23 +1461,23 @@ test('Scheduled worker requires the private cron secret, bypasses only manual ca
     assert.equal(result.status, 200);
     const body = await result.json();
     assert.equal(body.run.payload.scheduled.jobId, 'job');
-    assert.equal(body.run.payload.playerPropMinimum, 0);
-    assert.equal(body.run.payload.stretchKeys, undefined);
-    assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), ['h2h', 'spreads']);
-    assert.deepEqual([...body.run.settings.markets], ['h2h', 'spreads']);
-    assert.ok((body.run.payload.picks ?? []).every((pick) => ['h2h', 'spreads'].includes(pick.market)));
+    assert.equal(body.run.payload.playerPropMinimum, 4);
+    assert.deepEqual(body.run.payload.stretchKeys, []);
+    assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), [...engine.markets.NBA]);
+    assert.deepEqual([...body.run.settings.markets], [...engine.markets.NBA]);
+    assert.ok((body.run.payload.picks ?? []).some((pick) => pick.market === 'player_points'));
     assert.ok(!api.rpc.some(({ name }) => ['gamewaire_claim', 'gamewaire_publish', 'gamewaire_publish_lean'].includes(name)));
     assert.ok(api.writes.some(({ table, value }) => table === 'gamewaire_schedule_jobs' && value.status === 'completed'));
     const idle = endpoint({ configured: true });
     assert.equal((await idle.cron()).status, 200);
     assert.equal(idle.fetches.length, 0, 'No claimed job means no paid call');
   });
-test('NFL scheduled requests use only team markets; explicit lean publication uses no provider credits', async () => {
+test('NFL scheduled requests include all game/player markets; explicit lean publication uses no provider credits', async () => {
   const api = endpoint({ configured: true, scheduledJob: {
     id: 'nfl-job', sport: 'NFL', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Weekly slate.',
   } });
   assert.equal((await api.cron()).status, 200);
-  assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), ['h2h', 'spreads']);
+  assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), [...engine.markets.NFL]);
   assert.ok(api.rpc.every((call) => !['gamewaire_publish', 'gamewaire_publish_lean'].includes(call.name)), 'Scheduled NFL never publishes');
   const publish = endpoint();
   assert.equal((await publish.run({ action: 'publishLean', runId: '00000000-0000-0000-0000-000000000001' })).status, 200);
@@ -1585,7 +1614,7 @@ for (const sport of ['NBA', 'NFL']) test(`${sport} review buttons publish freely
   test('Fresh reports are reused for ten minutes only while actual quote and data timestamps remain valid', async () => {
     const candidate = evaluate().picks[0];
     const cachedRun = { id: 'cached', status: 'completed', event_start: quote.start, created_at: new Date(now - 9 * 60_000).toISOString(),
-      settings, payload: { modelVersion: engine.modelVersion, playerPropMinimum: 3, picks: [candidate] } };
+      settings, payload: { modelVersion: engine.modelVersion, playerPropMinimum: 4, picks: [candidate] } };
     const api = endpoint({ configured: true, failClaim: true, cachedRun });
     const response = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
     assert.equal(response.status, 200);

@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isNFLPrimetime, markets, modelVersion, probabilityModelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
+import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, markets, modelVersion, probabilityModelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport, TeamLean } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses, scheduledMarkets } from '../_shared/gamewaireSchedule.ts';
@@ -8,7 +8,7 @@ import type { ScheduledJob } from '../_shared/gamewaireSchedule.ts';
 import { loadPickLearning } from '../_shared/gamewirePickLearning.ts';
 import { scoreboardPicks } from '../_shared/gamewaireScoreboard.ts';
 import { savedNFLGameSimulation } from '../_shared/nflSimulationBackend.ts';
-import { simulationAllowsMoneyline } from '../_shared/nflSimulationAlignment.ts';
+import { alignSimulationEvidence, simulationAllowsMoneyline } from '../_shared/nflSimulationAlignment.ts';
 import type { NFLGameSimulation } from '../_shared/nflSimulation.ts';
 import { isSoccer, soccerModelVersion } from '../_shared/gamewaire.ts';
 import { collectSoccerEvidence, evaluateSoccer, resolveSoccerMatchup } from '../_shared/gamewaireSoccer.ts';
@@ -276,14 +276,14 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (body.action !== 'analyze' || !/^[a-zA-Z0-9_-]{1,100}$/.test(text(body.eventId))) return json({ error: 'Choose an event to analyze.' }, 400);
     let settings;
     try { settings = readSettings(body.settings, sport); } catch (error) { return json({ error: message(error) }, 400); }
-    if (!scheduledJob && body.fullAnalysis === true) settings = fullAnalysisSettings(settings, sport);
-    const playerAnalysis = !scheduledJob && !isSoccer(sport) && settings.markets.some((market) => market.startsWith('player_'));
+    if (body.fullAnalysis === true || scheduledJob && !isSoccer(sport)) settings = fullAnalysisSettings(settings, sport);
+    const playerAnalysis = !isSoccer(sport) && settings.markets.some((market) => market.startsWith('player_'));
     const expired = await admin.from('gamewaire_runs').update({ status: 'provider_error', payload: { error: 'Prior analysis was interrupted. Retry with fresh provider data.' }, finished_at: new Date().toISOString() })
       .eq('sport', sport).eq('event_id', body.eventId).eq('status', 'in_progress').lt('created_at', new Date(Date.now() - 180_000).toISOString());
     if (expired.error) throw new Error('Could not clear an interrupted analysis.');
     const cached = await admin.from('gamewaire_runs').select('*').eq('sport', sport).eq('event_id', body.eventId).order('created_at', { ascending: false }).limit(1).maybeSingle();
     if (cached.error) throw new Error('Could not read the shared analysis cache.');
-    let minimumPlayerPicks: 0 | 3 | 8 = playerAnalysis ? sport === 'NFL' && cached.data && isNFLPrimetime(cached.data.event_start) ? 8 : 3 : 0;
+    const minimumPlayerPicks: 0 | 4 = playerAnalysis ? 4 : 0;
     if (cached.data?.status === 'in_progress' && Date.now() - Date.parse(cached.data.created_at) < 180_000) {
       await finishScheduled(null, 'This game was already being analyzed. Review the saved report; no scheduled paid retry.');
       return json({ error: 'This game is already being analyzed. Reopen its saved report shortly.' }, 409);
@@ -292,6 +292,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       && object(cached.data.payload).modelVersion === (isSoccer(sport) ? soccerModelVersion : modelVersion)
       && (!isSoccer(sport) || !playerAnalysis || object(cached.data.payload).soccerPropCoverageVersion === 'single-sided-v1')
       && (!minimumPlayerPicks || object(cached.data.payload).playerPropMinimum === minimumPlayerPicks)
+      && (!scheduledJob || Date.now() < Date.parse(cached.data.event_start) - 3_600_000
+        || Date.parse(cached.data.created_at) >= Date.parse(cached.data.event_start) - 3_600_000)
       && Date.parse(cached.data.event_start) > Date.now() && Date.now() - Date.parse(cached.data.created_at) < 600_000
       && array(object(cached.data.payload).picks).every((value) => {
         const pick = object(value);
@@ -317,10 +319,12 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         retryAt: retryAt.toISOString() }, 429);
     }
     const requestedMarkets = [...new Set([...settings.markets, 'h2h', ...(isSoccer(sport) ? [] : ['spreads'])])];
+    const budget = await admin.rpc('gamewaire_reserve_credits', { max_cost: requestedMarkets.length });
+    if (budget.error) throw new Error('Could not verify the shared Odds API credit budget.');
+    if (!budget.data) throw new Error('The shared 20,000-credit rolling 31-day analysis budget is exhausted. Saved reports remain available; no paid request was made.');
     const raw = await oddsJSON(`sports/${oddsSport[sport]}/events/${encodeURIComponent(text(body.eventId))}/odds?regions=us&oddsFormat=american&markets=${requestedMarkets.join(',')}`, oddsKey, fetcher,
       (usage) => { providerUsage = usage; });
     const event = object(raw), start = text(event.commence_time);
-    minimumPlayerPicks = playerAnalysis ? sport === 'NFL' && isNFLPrimetime(start) ? 8 : 3 : 0;
     if (text(event.id) !== body.eventId) throw new Error('Odds provider returned a different event than requested.');
     if (!Number.isFinite(Date.parse(start)) || Date.parse(start) <= Date.now()) {
       await finishScheduled(null, 'Only upcoming games can be analyzed.');
@@ -342,9 +346,11 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const learning = isSoccer(sport) ? new Map() : await loadPickLearning(admin, sport, probabilityModelVersion, Date.now());
       const forecast = sport === 'NFL' ? await savedNFLGameSimulation(admin, matchup.eventId, start) : undefined;
       const alignedQuotes = sport === 'NFL' ? quotes.filter(quote => simulationAllowsMoneyline(quote, forecast)) : quotes;
-      report = { ...(isSoccer(sport) ? evaluateSoccer(alignedQuotes, data.evidence, settings, Date.now()) : evaluate(alignedQuotes, data.evidence, settings, Date.now(), minimumPlayerPicks === 8 ? 9 : 8, minimumPlayerPicks, learning)), warnings: data.warnings, coverage: data.coverage,
+      const alignedEvidence = playerAnalysis && sport === 'NFL' ? alignSimulationEvidence(alignedQuotes, data.evidence, forecast) : data.evidence;
+      report = { ...(isSoccer(sport) ? evaluateSoccer(alignedQuotes, data.evidence, settings, Date.now()) : evaluate(alignedQuotes, alignedEvidence, settings, Date.now(), playerAnalysis ? 5 : 8, minimumPlayerPicks, learning)), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (alignedQuotes.length !== quotes.length) report.warnings.push('NFL moneyline markets opposing the saved simulation winner were excluded. If the simulation is missing or tied, moneyline selections wait; no replacement value pick is forced.');
+      if (playerAnalysis) report.warnings.push('Probability-first analysis: positive EV is not required. Estimates are experimental, not guarantees or betting recommendations. NFL player distributions follow the saved game simulation; NBA props must agree with the weighted analysis projection.');
       if (aiKey && !isSoccer(sport) && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }

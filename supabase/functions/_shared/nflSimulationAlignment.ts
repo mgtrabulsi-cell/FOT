@@ -1,5 +1,5 @@
 import { normalize } from './gamewaire.ts';
-import type { Quote } from './gamewaire.ts';
+import type { Evidence, Quote } from './gamewaire.ts';
 import { projectedSimulationScore, roundedSimulationBox, selectedSimulationScenario } from './nflSimulation.ts';
 import type { NFLGameSimulation, SimulationScenario, SimulationStat } from './nflSimulation.ts';
 import { forecastDistribution } from './gamewireBotIntelligence.ts';
@@ -24,6 +24,24 @@ const projectionStats: Record<string, keyof SimulationStat> = {
   player_pass_yds: 'passingYards', player_rush_yds: 'rushingYards',
   player_reception_yds: 'receivingYards', player_receptions: 'receptions',
 };
+export function alignSimulationEvidence(quotes: Quote[], evidence: Map<string, Evidence>, forecast: NFLGameSimulation | undefined) {
+  const aligned = new Map(evidence), scenario = forecast && defaultSimulationScenario(forecast);
+  for (const quote of quotes) {
+    if (quote.sport !== 'NFL' || !quote.market.startsWith('player_')) continue;
+    const data = evidence.get(quote.key);
+    if (!data) continue;
+    const team = [scenario?.home, scenario?.away].find(row => row?.id === data.identifiers?.teamId);
+    const playerId = data.identifiers?.playerId, stat = projectionStats[quote.market];
+    const player = team?.players.find(row => row.id === playerId);
+    const estimate = team?.totals && playerId && stat && player && !player.issue
+      ? roundedSimulationBox({ ...team, totals: team.totals }).players[playerId]?.[stat] : undefined;
+    const matches = forecast && scenario?.home && scenario.away && Date.parse(forecast.kickoff) === Date.parse(quote.start)
+      && normalize(scenario.home.name) === normalize(quote.home) && normalize(scenario.away.name) === normalize(quote.away);
+    aligned.set(quote.key, matches && estimate !== undefined ? { ...data, simulationProjection: estimate }
+      : { ...data, eligible: false, reason: 'Matching saved GamewAIre player simulation unavailable; no conflicting prop was substituted.' });
+  }
+  return aligned;
+}
 export function reconcileSimulationProjections(projections: BotProjection[], forecast: NFLGameSimulation, teamId: string, playerId: string): BotProjection[] {
   const scenario = defaultSimulationScenario(forecast);
   const team = [scenario?.home, scenario?.away].find(row => row?.id === teamId);
