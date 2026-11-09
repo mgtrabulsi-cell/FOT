@@ -1334,8 +1334,6 @@ function App() {
               <span>This Eastern date has no scheduled matchups. Use the date arrows or Today to pick another day.</span>
             </div>
           )}
-          {!teamLogsOpen && (view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.sharedSavedAt) && <p className="feed-warning" role="status">Showing the saved schedule. Scores and game status may be out of date while live data refreshes.</p>}
-          {!teamLogsOpen && (view === 'Wire' || view === 'Players') && (sportLeague === 'NBA' ? nbaGames : games).some((game) => game.liveSource === 'api-sports') && <p className="feed-source" role="status">Live scores and game status provided by API-Sports.</p>}
           {!teamLogsOpen && sportLeague === 'NBA' && (view === 'Wire' || view === 'Players' || view === 'Den') && nbaError && <p className="feed-warning" role="alert">{nbaError} <button type="button" onClick={() => setNBARetry((value) => value + 1)}>Retry NBA games</button></p>}
         {view === 'Players' && <div className="player-mode-tabs" role="group" aria-label="Stat Hub view">
           <button type="button" className={statHubMode === 'Players' ? 'active' : ''} aria-pressed={statHubMode === 'Players'} onClick={() => { setStatHubMode('Players'); setWirePlayerCard(null); }}>Players</button>

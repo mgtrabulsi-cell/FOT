@@ -1400,9 +1400,6 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
               </div>
             )}
           </div>
-          {subTab === 'boxscore' && !isUpcoming && boxScore?.source === 'api-sports' && (
-            <p className="feed-source" role="status">Player stats provided by API-Sports.</p>
-          )}
           {isUpcoming && subTab === 'boxscore' && (
             <div className="wire-stat-mode wire-subtabs" role="group" aria-label="Player season statistics display">
               <button aria-pressed={playerStatMode === 'total'} className={playerStatMode === 'total' ? 'active' : ''} onClick={() => setPlayerStatMode('total')}>Total stats</button>
@@ -1424,9 +1421,6 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
           ) : subTab === 'teamStats' ? (
             /* Team Comparison View */
             <div className="wire-team-comparison-view">
-              {seasonAverages?.teams.length === 2 && seasonAverages.teams.every((team) => team.source === 'api-sports') && (
-                <p className="feed-source" role="status">Season team averages provided by API-Sports.</p>
-              )}
               <div className="wire-comparison-card">
                 <header className="wire-comparison-header">
                   <div className="wire-comp-team">

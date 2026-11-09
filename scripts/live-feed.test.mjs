@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   decideLiveFeedPoll, decideNFLDetailTargets, liveFeedQueryDates, nflSeasonYear, normalizeNBAGames,
@@ -8,6 +9,13 @@ import {
   apiSportsBoxScore, applyLiveFeed, completedPeriodScores, fetchLiveFeed, fetchLiveFeedGameDetails,
   fetchNFLSeasonAveragesFeed, readLiveFeedRows,
 } from '../src/services/liveFeed.ts';
+
+test('scoreboard and matchup views omit saved-schedule and provider banners', () => {
+  for (const file of ['App.tsx', 'TheWire.tsx']) {
+    const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /Showing the saved schedule|className="feed-source"/);
+  }
+});
 
 const nflGame = (overrides = {}) => ({
   game: {
