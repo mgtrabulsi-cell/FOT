@@ -1,13 +1,13 @@
 import { loadGamewireGraphicAssets } from './gamewaireResultsGraphic';
 import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../../supabase/functions/_shared/nflSimulationAccuracy';
-import type { SimulationAccuracyGame, SimulationAccuracyReport } from '../../supabase/functions/_shared/nflSimulationAccuracy';
+import type { SimulationAccuracyGame, SimulationAccuracyReport, SimulationAccuracyPlayer } from '../../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../../supabase/functions/_shared/nflSimulation';
 import type { Game } from './sportsData';
 import { projectedSimulationScore, selectedSimulationScenario } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLClosingSpread } from './nflClosingSpread';
 
-export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances' | 'slate' | 'winners';
+export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances' | 'slate' | 'winners' | 'player-summary';
 export type SimulationWinnerRecord = { wins: number; losses: number; ties: number; noWinner: number };
 type SimulationSpreadGrade = 'covered' | 'missed' | 'push' | 'pending' | 'unavailable' | 'win' | 'loss' | 'tie';
 export type SimulationResultsGraphicSnapshot = {
@@ -18,9 +18,57 @@ export type SimulationResultsGraphicSnapshot = {
       grade: SimulationSpreadGrade; awayName: string; homeName: string;
       awayColor: string; homeColor: string; projectedAway: number | null; projectedHome: number | null;
       actualAway: number | null; actualHome: number | null; closingLine: number | null; closingProvider: string | null } }>;
+  sections?: Array<{ title: string; note: string; rows: SimulationResultsGraphicSnapshot['rows'] }>;
 };
 
 export type SimulationSlateForecast = { eventId: string; forecast?: NFLGameSimulation; error?: string };
+
+export function simulationPlayerSummarySnapshot(report: SimulationAccuracyReport, games: Game[],
+  now = Date.now()): SimulationResultsGraphicSnapshot {
+  const groups = report.games.flatMap(game => {
+    const grouped = new Map<string, SimulationAccuracyPlayer[]>();
+    for (const player of game.players) {
+      const key = JSON.stringify([player.playerId, player.team]);
+      const rows = grouped.get(key) ?? [];
+      rows.push(player); grouped.set(key, rows);
+    }
+    return [...grouped.values()].map(rows => ({ game, rows }));
+  });
+  const top = (stats: Array<keyof SimulationStat>, mode: 'yards' | 'receiving' | 'touchdowns') => groups.flatMap(group => {
+    const rows = stats.flatMap(stat => group.rows.filter(row => row.stat === stat));
+    if (rows.length !== stats.length || !stats.every(stat => rows.filter(row => row.stat === stat).length === 1)
+      || !rows.every(row => row.name === rows[0].name && row.position === rows[0].position
+        && Number.isFinite(row.projected) && Number.isFinite(row.actual) && row.projected >= 0 && row.actual >= 0)) return [];
+    const projected = rows.reduce((sum, row) => sum + row.projected, 0), actual = rows.reduce((sum, row) => sum + row.actual, 0);
+    if (mode === 'touchdowns' ? projected < 1 || actual < 1 : !rows.every(isFeaturedSimulationPlayer)) return [];
+    const error = mode === 'receiving' ? rows.reduce((sum, row) => sum + Math.abs(row.projected - row.actual) / row.actual, 0) / rows.length
+      : mode === 'touchdowns' ? Math.abs(projected - actual) : Math.abs(rows[0].projected - rows[0].actual);
+    const format = (side: 'projected' | 'actual') => {
+      const number = (value: number) => side === 'projected' ? value.toFixed(1) : String(value);
+      return mode === 'receiving' ? `${number(rows[0][side])} REC | ${number(rows[1][side])} YD`
+        : mode === 'touchdowns' ? `${number(side === 'projected' ? projected : actual)} TD`
+        : `${number(rows[0][side])} YD`;
+    };
+    return [{ error, game: group.game, player: rows[0], row: {
+      title: rows[0].name, context: `${rows[0].position} | ${rows[0].team} | ${group.game.away.abbr} at ${group.game.home.abbr}`,
+      away: group.game.away.abbr, home: group.game.home.abbr, simulated: format('projected'), actual: format('actual'),
+      difference: mode === 'receiving' ? `${(error * 100).toFixed(1)}% mean absolute percentage error`
+        : `${error.toFixed(1)} ${mode === 'touchdowns' ? 'TD' : 'yard'} difference`,
+    } }];
+  }).sort((a, b) => a.error - b.error || a.game.eventId.localeCompare(b.game.eventId)
+    || a.player.playerId.localeCompare(b.player.playerId) || a.player.team.localeCompare(b.player.team)).slice(0, 3).map(row => row.row);
+  const sections = [
+    { title: 'Passing yards', note: 'QB only; sim & actual 200+ YD; ranked by yard error', rows: top(['passingYards'], 'yards') },
+    { title: 'Receptions + receiving yards', note: 'Both: 3+ REC / 30+ YD; ranked by mean percentage error', rows: top(['receptions', 'receivingYards'], 'receiving') },
+    { title: 'Rushing yards', note: 'Sim & actual 30+ YD; ranked by yard error', rows: top(['rushingYards'], 'yards') },
+    { title: 'Rushing + receiving touchdowns', note: 'Both stat lines verified; sim & actual total 1+ TD; ranked by TD error',
+      rows: top(['rushingTouchdowns', 'receivingTouchdowns'], 'touchdowns') },
+  ];
+  const rows = sections.flatMap(section => section.rows);
+  if (!rows.length) throw new Error('No verified players meet the four-section graphic minimums yet.');
+  const base = simulationResultsGraphicSnapshot(report, games, 'games', 'passingYards', now);
+  return { ...base, kind: 'player-summary', statistic: 'Player category leaders', rows, sections };
+}
 
 export function simulationSlateGraphicSnapshot(report: SimulationAccuracyReport, games: Game[],
   forecasts: SimulationSlateForecast[], now = Date.now(), kind: 'slate' | 'winners' = 'slate',
@@ -105,7 +153,7 @@ export function simulationWinnerRecord(games: SimulationAccuracyGame[]): Simulat
 }
 
 export function simulationResultsGraphicSnapshot(report: SimulationAccuracyReport, games: Game[],
-  kind: Exclude<SimulationResultsGraphicKind, 'slate' | 'winners'>, stat: keyof SimulationStat, now = Date.now()): SimulationResultsGraphicSnapshot {
+  kind: Exclude<SimulationResultsGraphicKind, 'slate' | 'winners' | 'player-summary'>, stat: keyof SimulationStat, now = Date.now()): SimulationResultsGraphicSnapshot {
   if (!games.length || !Number.isFinite(now) || games.some(game => !Number.isFinite(Date.parse(game.date))))
     throw new Error('Choose a valid NFL slate before downloading simulation results.');
   const dates = games.map(game => Date.parse(game.date)).sort((a, b) => a - b);
@@ -144,11 +192,18 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
 
 export async function renderSimulationResultsGraphic(snapshot: SimulationResultsGraphicSnapshot): Promise<Blob> {
   const fullSlate = snapshot.kind === 'slate' || snapshot.kind === 'winners';
-  if (snapshot.rows.length < 1 || (!fullSlate && snapshot.rows.length > 3))
+  const playerSummary = snapshot.kind === 'player-summary';
+  if (playerSummary && (!snapshot.sections || snapshot.sections.length !== 4
+    || snapshot.sections.some(section => section.rows.length > 3)
+    || snapshot.sections.reduce((sum, section) => sum + section.rows.length, 0) !== snapshot.rows.length))
+    throw new Error('The player graphic requires four complete category sections with up to three results each.');
+  if (snapshot.rows.length < 1 || (!fullSlate && !playerSummary && snapshot.rows.length > 3))
     throw new Error('Choose between one and three verified simulation results.');
   await loadGamewireGraphicAssets();
   const canvas = document.createElement('canvas');
-  const height = fullSlate ? Math.max(960, 430 + snapshot.rows.length * 100) : 960;
+  const playerRowStep = 138;
+  const height = playerSummary ? 415 + snapshot.sections!.reduce((sum, section) => sum + 80 + Math.max(section.rows.length * playerRowStep, 48), 0)
+    : fullSlate ? Math.max(960, 430 + snapshot.rows.length * 100) : 960;
   canvas.width = 1080; canvas.height = Math.round(height * 1080 / 768);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Your browser could not create the simulation results graphic.');
@@ -183,6 +238,11 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     fill.addColorStop(0, '#fff'); fill.addColorStop(.6, '#f3f6ff'); fill.addColorStop(1, '#aabdd4');
     return fill;
   };
+  const simLabel = (x: number, y: number, size: number) => {
+    const word = text('Gamew', x, y, size, 100, white, true, 'left', '"DM Sans"');
+    const ai = text('AI', x + word, y, size, 40, red, true, 'left', '"DM Sans"');
+    text('re Sim', x + word + ai, y, size, 100, white, true, 'left', '"DM Sans"');
+  };
   const background = ctx.createLinearGradient(0, 0, 768, height);
   background.addColorStop(0, '#00162d'); background.addColorStop(.4, '#020a15'); background.addColorStop(1, '#001a32');
   ctx.fillStyle = background; ctx.fillRect(0, 0, 768, height);
@@ -200,7 +260,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   ctx.save(); ctx.shadowColor = red; ctx.shadowBlur = 12;
   line([[445, 73], [478, 73], [487, 56], [493, 91], [499, 36], [506, 84], [513, 65], [519, 73], [754, 73]], red, 2); ctx.restore();
   ctx.letterSpacing = '4px';
-  text(fullSlate ? `FULL SLATE - ${snapshot.rows.length} GAMES` : snapshot.kind === 'performances' ? `${snapshot.rows.length} FULL PLAYER PERFORMANCES`
+  text(playerSummary ? 'PLAYER RESULTS - TOP 3 PER CATEGORY' : fullSlate ? `FULL SLATE - ${snapshot.rows.length} GAMES` : snapshot.kind === 'performances' ? `${snapshot.rows.length} FULL PLAYER PERFORMANCES`
     : `TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 60, 126, 25, 678, muted, true);
   ctx.letterSpacing = '0px';
   text(snapshot.slate, 60, 153, 17, 678, muted);
@@ -217,6 +277,42 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     : `${record.wins}W - ${record.losses}L - ${record.ties}T`, 174, 255, 48, 385, metallic(255), true);
   text(`${snapshot.verified} ${fullSlate ? 'GRADED' : 'VERIFIED'}`, 650, 223, 17, 138, muted, true, 'center');
   text('GAMES', 650, 242, 17, 138, muted, true, 'center');
+  if (playerSummary) {
+    let cursor = 300;
+    for (const section of snapshot.sections!) {
+      text(`${section.title.toUpperCase()} - TOP ${section.rows.length}`, 36, cursor + 24, 23, 696, blue, true);
+      text(section.note, 36, cursor + 46, 13, 696, muted);
+      cursor += 60;
+      if (!section.rows.length) {
+        panel(cursor, 48, muted);
+        text('No verified players meet this category’s minimums yet.', 60, cursor + 30, 15, 650, muted);
+        cursor += 48;
+      }
+      section.rows.forEach((row, index) => {
+        const y = cursor + index * playerRowStep;
+        panel(y, 128, green);
+        text(`#${index + 1} ${row.title}`, 64, y + 28, 24, 458, metallic(y + 28), true);
+        text(row.context, 64, y + 49, 14, 458, muted);
+        simLabel(64, y + 72, 14);
+        text(row.simulated, 64, y + 96, 24, 458, white, true);
+        text(row.difference, 64, y + 114, 12, 458, muted);
+        box(546, y + 12, 182, 96, 9);
+        text('ACTUAL', 637, y + 35, 14, 162, muted, false, 'center');
+        const actual = row.actual.split(' | ');
+        actual.forEach((value, lineIndex) => text(value, 637, y + (actual.length === 1 ? 77 : 61 + lineIndex * 25),
+          24, 162, white, true, 'center'));
+      });
+      cursor += section.rows.length * playerRowStep + 20;
+    }
+    line([[35, cursor], [733, cursor]], '#4a82aa', 1);
+    text(`${snapshot.rows.length} qualifying results | ${snapshot.pending} pending games | ${snapshot.excluded} excluded`, 36, cursor + 26, 14, 696, muted);
+    text('Verified category accuracy, not fantasy projections or betting recommendations.', 36, cursor + 49, 12, 696, muted);
+    text('Receiving ranks average each stat’s absolute error divided by its actual value.', 36, cursor + 70, 12, 696, muted);
+    text(`Downloaded ${new Date(snapshot.capturedAt).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET`, 36, cursor + 105, 11, 500, muted);
+    text('gamewire.us', 604, cursor + 105, 18, 130, white, true);
+    return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
+      : reject(new Error('Your browser could not export the player category PNG. Retry.')), 'image/png'));
+  }
   if (fullSlate) {
     text('MATCHUP', 60, 289, 14, 230, muted);
     const word = text('Gamew', 278, 289, 14, 70, blue);
@@ -273,9 +369,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     }
     const labelX = snapshot.kind === 'players' ? 300 : 76;
     const labelY = y + (snapshot.kind === 'players' ? 92 : 85);
-    const wordWidth = text('Gamew', labelX, labelY, 17, 100, white, true, 'left', '"DM Sans"');
-    const aiWidth = text('AI', labelX + wordWidth, labelY, 17, 40, red, true, 'left', '"DM Sans"');
-    text('re Sim', labelX + wordWidth + aiWidth, labelY, 17, 100, white, true, 'left', '"DM Sans"');
+    simLabel(labelX, labelY, 17);
     if (snapshot.kind === 'games') {
       text(teamScores(row.simulated), 76, y + 118, 32, 440, metallic(y + 118), true);
     } else if (snapshot.kind === 'players') {

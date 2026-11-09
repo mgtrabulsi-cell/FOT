@@ -160,6 +160,7 @@ test('Each download refreshes the entire selected week and uses the fresh winner
     } };
     if (name.includes('nflSimulationResultsGraphic')) return { simulationResultsGraphicSnapshot: h.simulationResultsGraphicSnapshot,
       simulationSlateGraphicSnapshot: h.simulationSlateGraphicSnapshot,
+      simulationPlayerSummarySnapshot: h.simulationPlayerSummarySnapshot,
       renderSimulationResultsGraphic: async snapshot => new Blob([JSON.stringify(snapshot)]) };
     return {};
   } });
@@ -195,6 +196,14 @@ test('Each download refreshes the entire selected week and uses the fresh winner
   assert.equal(winners.record.wins, 1); assert.equal(winners.record.losses, 1);
   assert.equal(calls, 6);
   assert.match(winnerButton.props.filename, /Full-Slate-Winners\.png$/);
+  const categoryButton = slateTree.props.children.find(node => node.type === 'div').props.children[5];
+  const categories = JSON.parse(await (await categoryButton.props.generate()).text());
+  assert.equal(categories.kind, 'player-summary');
+  assert.equal(categories.sections.length, 4);
+  assert.equal(categories.sections[1].rows[0].title, 'Receiver');
+  assert.equal(categories.record.wins, 1);
+  assert.equal(calls, 7);
+  assert.match(categoryButton.props.filename, /Player-Top-3-Categories\.png$/);
   effects[0]()();
 });
 
@@ -352,4 +361,89 @@ test('Closing reader accepts explicit finalized provider close fields only, neve
   summary.pickcenter[0].pointSpread.away.close.line = '+6.5';
   assert.equal(readNFLClosingSpread(summary, { ...game, nflMarket: { provider: 'Different book' } }), null);
   assert.throws(() => readNFLClosingSpread(summary, { ...game, eventId: 'wrong' }), /match the selected game/);
+});
+
+const playerLine = (playerId, stat, projected, actual, position = 'WR', name = playerId) =>
+  ({ playerId, stat, projected, actual, position, name, team: 'HOM', error: Math.abs(projected - actual) });
+function categoryReport() {
+  const data = report();
+  data.games[0].players = Array.from({ length: 4 }, (_, index) => [
+    playerLine(`Passer ${index}`, 'passingYards', 250 + index * 5, 250, 'QB'),
+    playerLine(`Receiver ${index}`, 'receptions', 5 + index, 5),
+    playerLine(`Receiver ${index}`, 'receivingYards', 80 + index * 8, 80),
+    playerLine(`Runner ${index}`, 'rushingYards', 70 + index * 3, 70, 'RB'),
+    playerLine(`Scorer ${index}`, 'rushingTouchdowns', .4 + index * .1, 1, 'RB'),
+    playerLine(`Scorer ${index}`, 'receivingTouchdowns', .6, 0, 'RB'),
+  ]).flat();
+  return data;
+}
+test('Four-section player snapshot includes exactly three per category, paired receiving stats and combined rushing/receiving TDs', async () => {
+  const h = graphicHarness(), data = categoryReport();
+  const snapshot = h.simulationPlayerSummarySnapshot(data, scopes, now);
+  assert.equal(snapshot.kind, 'player-summary'); assert.equal(snapshot.sections.length, 4);
+  assert.equal(snapshot.rows.length, 12);
+  assert.deepEqual(Array.from(snapshot.sections, section => section.rows.length), [3, 3, 3, 3]);
+  assert.equal(snapshot.sections[0].rows[0].title, 'Passer 0');
+  assert.equal(snapshot.sections[1].rows[1].difference, '15.0% mean absolute percentage error');
+  assert.equal(snapshot.sections[1].rows[0].simulated, '5.0 REC | 80.0 YD');
+  assert.equal(snapshot.sections[1].rows[0].actual, '5 REC | 80 YD');
+  assert.equal(snapshot.sections[2].rows[0].title, 'Runner 0');
+  assert.equal(snapshot.sections[3].rows[0].simulated, '1.0 TD');
+  assert.equal(snapshot.sections[3].rows[0].actual, '1 TD');
+  assert.equal(snapshot.record.wins, 2); assert.equal(snapshot.verified, 5);
+  data.games[0].players[0].projected = 999;
+  assert.equal(snapshot.sections[0].rows[0].simulated, '250.0 YD', 'Freeze copied stat strings');
+  await h.renderSimulationResultsGraphic(snapshot);
+  assert.equal(h.canvas.width, 1080);
+  assert.equal(h.canvas.height, Math.round((415 + 4 * (80 + 3 * 138)) * 1080 / 768));
+  assert.equal(h.panels.filter(panel => panel.width === 708 && panel.height === 128).length, 12);
+  assert.ok(h.drawn.includes('RECEPTIONS + RECEIVING YARDS - TOP 3'));
+  assert.ok(h.drawn.includes('RUSHING + RECEIVING TOUCHDOWNS - TOP 3'));
+  assert.equal(h.drawn.filter(value => value === 're Sim').length, 12);
+  assert.ok(h.drawn.includes('5 REC')); assert.ok(h.drawn.includes('80 YD'));
+});
+test('Combined receiving ranks mean percentage error, and cannot pair different players, games, teams or ambiguous rows', () => {
+  const h = graphicHarness(), data = report();
+  data.games.forEach(game => { game.players = []; });
+  data.games[0].players = [
+    playerLine('A', 'receptions', 11, 10), playerLine('A', 'receivingYards', 210, 200),
+    playerLine('B', 'receptions', 6, 5), playerLine('B', 'receivingYards', 41, 40),
+    playerLine('missing', 'receptions', 5, 5),
+    playerLine('low yards', 'receptions', 5, 5), playerLine('low yards', 'receivingYards', 29.99, 30),
+    playerLine('low catches', 'receptions', 3, 2.99), playerLine('low catches', 'receivingYards', 30, 30),
+    playerLine('duplicate', 'receptions', 5, 5), playerLine('duplicate', 'receptions', 5, 5), playerLine('duplicate', 'receivingYards', 80, 80),
+    playerLine('mismatch', 'receptions', 5, 5), playerLine('mismatch', 'receivingYards', 80, 80, 'WR', 'Different name'),
+    playerLine('team mismatch', 'receptions', 5, 5), { ...playerLine('team mismatch', 'receivingYards', 80, 80), team: 'AWY' },
+  ];
+  data.games[1].players = [playerLine('missing', 'receivingYards', 80, 80)];
+  const snapshot = h.simulationPlayerSummarySnapshot(data, scopes, now);
+  assert.deepEqual(Array.from(snapshot.sections[1].rows, row => row.title), ['A', 'B']);
+  assert.equal(snapshot.sections[1].rows[0].difference, '7.5% mean absolute percentage error');
+  assert.equal(snapshot.sections[0].rows.length, 0);
+  assert.equal(snapshot.sections[3].rows.length, 0);
+});
+test('Category minimums preserve QB/yard thresholds and require both touchdown components without filling missing zeroes', async () => {
+  const h = graphicHarness(), data = report();
+  data.games.forEach(game => { game.players = []; });
+  data.games[0].players = [
+    playerLine('QB exact', 'passingYards', 200, 200, 'QB'),
+    playerLine('QB low', 'passingYards', 199.99, 200, 'QB'),
+    playerLine('not QB', 'passingYards', 250, 250, 'WR'),
+    playerLine('rush exact', 'rushingYards', 30, 30, 'QB'),
+    playerLine('rush low', 'rushingYards', 30, 29.99, 'RB'),
+    playerLine('missing TD', 'receivingTouchdowns', 1, 1),
+    playerLine('low TD', 'rushingTouchdowns', .49, 0), playerLine('low TD', 'receivingTouchdowns', .5, 1),
+    playerLine('passing only', 'passingTouchdowns', 3, 3, 'QB'),
+    playerLine('exact TD', 'rushingTouchdowns', .4, 0), playerLine('exact TD', 'receivingTouchdowns', .6, 1),
+  ];
+  const snapshot = h.simulationPlayerSummarySnapshot(data, scopes, now);
+  assert.equal(snapshot.sections[0].rows[0].title, 'QB exact');
+  assert.equal(snapshot.sections[2].rows[0].title, 'rush exact');
+  assert.equal(snapshot.sections[3].rows.length, 1);
+  assert.equal(snapshot.sections[3].rows[0].title, 'exact TD');
+  await h.renderSimulationResultsGraphic(snapshot);
+  assert.ok(h.drawn.includes('RECEPTIONS + RECEIVING YARDS - TOP 0'));
+  assert.ok(h.drawn.some(text => text.startsWith('No verified players meet')));
+  data.games[0].players = [];
+  assert.throws(() => h.simulationPlayerSummarySnapshot(data, scopes, now), /No verified players/);
 });
