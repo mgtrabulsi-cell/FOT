@@ -181,9 +181,9 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
           ctx.strokeStyle = '#51647a66'; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.moveTo(column - 14, y - 16); ctx.lineTo(column - 14, y + 50); ctx.stroke();
         }
-        text(title, column, y, portrait ? 28 : 18, 674 / keys.length - 20, muted);
+        text(title, column, y, portrait ? keys.length > 4 ? 22 : 28 : 18, 674 / keys.length - 20, muted);
         text(value === undefined ? '\u2014' : String(value), column, y + (portrait ? 54 : 36),
-          portrait ? 52 : 33, 150, metallic(y + 36, 33));
+          portrait ? 52 : 33, Math.min(150, 674 / keys.length - 20), metallic(y + 36, 33));
       });
     };
     const card = (y: number, label: string, player: typeof model.quarterback, keys: Array<[keyof SimulationStat, string]>) => {
@@ -192,7 +192,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       metrics(y + (portrait ? 235 : 112), player, keys);
     };
     card(portrait ? 370 : 348, 'QUARTERBACK', model.quarterback, [['completions', 'CMP'], ['passingAttempts', 'ATT'],
-      ['passingYards', 'PASS YDS'], ['passingTouchdowns', 'PASS TD']]);
+      ['passingYards', 'PASS YDS'], ['passingTouchdowns', 'PASS TD'], ['rushingYards', 'RUSH YDS']]);
     card(portrait ? 800 : 536, 'TOP RUNNING BACK', model.runningBack, [['rushingAttempts', 'RUSH ATT'], ['rushingYards', 'RUSH YDS'],
       ['rushingTouchdowns', 'RUSH TD']]);
     heading(portrait ? 1230 : 724, 'TOP 2 RECEIVERS', portrait ? 550 : 173);

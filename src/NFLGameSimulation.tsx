@@ -16,7 +16,7 @@ const statLabels: Record<keyof SimulationStat, string> = {
   receptions: 'REC', receivingYards: 'REC YDS', receivingTouchdowns: 'REC TD',
 };
 const groups: Array<{ title: string; positions: string[]; columns: Array<keyof SimulationStat> }> = [
-  { title: 'Passing', positions: ['QB'], columns: ['completions', 'passingAttempts', 'passingYards', 'passingTouchdowns', 'rushingYards', 'rushingTouchdowns'] },
+  { title: 'Quarterbacks', positions: ['QB'], columns: ['passingYards', 'passingTouchdowns', 'rushingYards', 'rushingTouchdowns', 'completions', 'passingAttempts'] },
   { title: 'Backfield', positions: ['RB'], columns: ['rushingAttempts', 'rushingYards', 'rushingTouchdowns', 'receptions', 'receivingYards', 'receivingTouchdowns'] },
   { title: 'Receiving', positions: ['WR', 'TE'], columns: ['receptions', 'receivingYards', 'receivingTouchdowns'] },
 ];
@@ -224,12 +224,12 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                 generate={() => renderSimulationGraphic(scenario, game.date, { away: game.away.color, home: game.home.color })}
                 filename={`GameWire-Simulation-${scenario.away.abbr}-${scenario.home.abbr}-${game.eventId}.png`}
                 snapshotNote="Snapshot from your last download. Download again after the simulation updates."
-                description="1600 x 1000 PNG: both scores, QBs, top RB by carries and top two receivers by receptions. Uses the selected QB scenario; unavailable stats stay blank."
+                description="1600 x 1000 PNG: both scores, QBs with passing and rushing yards, top RB by carries and top two receivers by receptions. Uses the selected QB scenario; unavailable stats stay blank."
                 alt={`${scenario.away.name} vs ${scenario.home.name} simulated scores and player projections`} />
               <ResultsGraphicDownload key={`instagram-${game.eventId}-${scenario.id}`} label="Download Instagram graphic" disabled={false}
                 generate={() => renderSimulationGraphic(scenario, game.date, { away: game.away.color, home: game.home.color }, 'instagram')}
                 filename={`GameWire-Simulation-${scenario.away.abbr}-${scenario.home.abbr}-${game.eventId}-Instagram.png`}
-                description="Instagram portrait PNG (1080 x 1350). Same projections, with larger stat blocks arranged for the portrait layout."
+                description="Instagram portrait PNG (1080 x 1350). Same projections, including QB rushing yards, with larger stat blocks arranged for the portrait layout."
                 snapshotNote="Snapshot from your last download. Download again after the simulation updates."
                 alt={`${scenario.away.name} vs ${scenario.home.name} Instagram simulation graphic`} />
               </div>}

@@ -1389,6 +1389,9 @@ test('Simulation UI renders one automatic QB matchup, ranges, transfer coverage,
   assert.ok(tables.every(table => !/Expected|10th|verified games/.test(table)));
   for (const match of html.matchAll(/<td><b>([^<]+)<\/b><\/td>/g)) assert.match(match[1], /^\d+$/);
   assert.match(html, /PASS TD/); assert.match(html, /REC TD/); assert.match(html, /RUSH TD/);
+  const qbHeader = html.match(/<caption>Quarterbacks[\s\S]*?<thead>([\s\S]*?)<\/thead>/)[1];
+  assert.ok(qbHeader.indexOf('PASS YDS') < qbHeader.indexOf('RUSH YDS'));
+  assert.ok(qbHeader.indexOf('RUSH YDS') < qbHeader.indexOf('CMP'), 'QB rushing is prominent before secondary passing counts');
   assert.equal((html.match(/projected team totals and score accounting/g) ?? []).length, 1);
   const accounting = html.match(/<details class="nfl-simulation-accounting"[\s\S]*?<\/details>/g);
   assert.equal(accounting.length, 1);
@@ -1478,15 +1481,16 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(!stops.includes('#39bcff'));
   assert.equal(canvas.width, 1600); assert.equal(canvas.height, 1000);
   const assertRunningBackRow = () => {
-    const qbLabels = positions.filter(row => ['CMP', 'ATT', 'PASS YDS', 'PASS TD'].includes(row.value));
-    assert.equal(qbLabels.length, 8);
+    const qbY = positions.find(row => row.value === 'PASS YDS').y;
+    const qbLabels = positions.filter(row => row.y === qbY && ['CMP', 'ATT', 'PASS YDS', 'PASS TD', 'RUSH YDS'].includes(row.value));
+    assert.equal(qbLabels.length, 10);
     assert.equal(new Set(qbLabels.map(row => row.y)).size, 1);
     for (const teamX of [40, 830]) {
       const columns = qbLabels.filter(row => row.x >= teamX && row.x < teamX + 730);
-      assert.equal(columns.length, 4);
+      assert.equal(columns.length, 5);
       assert.ok(columns.every((column, i) => i === 0 || column.x > columns[i - 1].x));
     }
-    const labels = positions.filter(row => ['RUSH ATT', 'RUSH YDS', 'RUSH TD'].includes(row.value));
+    const labels = positions.filter(row => row.y !== qbY && ['RUSH ATT', 'RUSH YDS', 'RUSH TD'].includes(row.value));
     assert.equal(labels.length, 6);
     assert.equal(new Set(labels.map(row => row.y)).size, 1);
     for (const teamX of [40, 830]) {
@@ -1495,6 +1499,11 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
       assert.ok(columns[0].x < columns[1].x && columns[1].x < columns[2].x);
     }
     assert.equal(drawn.filter(value => value === 'REC YDS').length, 4, 'Receiving yards only appear for the four receiving players');
+    for (const [index, team] of [scenario.away, scenario.home].entries()) {
+      const model = simulationGraphicTeam(team), label = qbLabels.filter(row => row.value === 'RUSH YDS')[index];
+      assert.ok(positions.some(row => row.x === label.x && row.y === label.y + (canvas.height === 1350 ? 54 : 36)
+        && row.value === String(model.box.players[model.quarterback.id].rushingYards)), 'QB rushing uses the published reconciled forecast');
+    }
   };
   assertRunningBackRow();
   assert.equal(roundedCards.length, 2, 'Landscape keeps its angled panels and rounded team badges');
@@ -1517,6 +1526,20 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));
   assert.equal(JSON.stringify(scenario), before);
   assert.equal(simulationGraphicTeam({ ...scenario.away, players: [], totals: null }).quarterback, undefined);
+  for (const format of ['landscape', 'instagram']) for (const missing of [false, true]) {
+    const copy = structuredClone(scenario), qb = simulationGraphicTeam(copy.away).quarterback;
+    if (missing) delete qb.stats.rushingYards;
+    else {
+      qb.stats.rushingYards = { mean: 0, p10: 0, median: 0, p90: 0 };
+      qb.stats.rushingAttempts = { mean: 0, p10: 0, median: 0, p90: 0 };
+      qb.stats.rushingTouchdowns = { mean: 0, p10: 0, median: 0, p90: 0 };
+    }
+    positions.length = 0;
+    await renderSimulationGraphic(copy, game.date, {}, format);
+    const label = positions.find(row => row.value === 'RUSH YDS');
+    assert.ok(positions.some(row => row.x === label.x && row.y === label.y + (format === 'instagram' ? 54 : 36)
+      && row.value === (missing ? '\u2014' : '0')), 'Missing QB rush yards stay unavailable; a supported zero stays zero');
+  }
   const tied = overtimeProjectionFixture();
   const final = modelProjectedOvertime(tied.scenario, archivedProjectionOvertimeEvidence(tied.boxes, tied.scenario, new Date(now).toISOString()), 'fixture');
   await renderSimulationGraphic(final, game.date);
