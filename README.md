@@ -120,7 +120,7 @@ Validate locally with `node --test scripts/gamewaire-soccer.test.mjs scripts/gam
 
 ### NFL game simulations
 
-Weekly Instagram results graphics use a metallic GamewAIre header with a red pulse line, a cyan-accented winner-record panel, numbered blue result cards, and separate ACTUAL score/value boxes. Game cards show team abbreviations alongside the published score; player cards use the same layout with the selected statistic. A compact footer retains pending/excluded coverage, no-winner forecasts and the download timestamp.
+Weekly Instagram results graphics use a metallic GamewAIre header with a red pulse line, a cyan-accented winner-record panel, numbered blue result cards with consistent green highlight lines, and separate ACTUAL score/value boxes. Each result uses a GamewAIre Sim label with red AI lettering. Game cards place each team abbreviation directly beside its published and actual score; player cards use the same layout with the selected statistic. A compact footer retains pending/excluded coverage, no-winner forecasts and the download timestamp.
 
 In Simulation Results, select **All games** to download separate Instagram portrait PNGs (1080 x 1350) for the top three game-score comparisons and featured player projections in the selected statistic. The downloads reuse GameWire's simulation theme and logo. Each click fetches fresh verified selected-slate results before freezing the graphic, including the full selected-week winner record, pending/excluded coverage and download timestamp. Published-score ties have no winner forecast; actual ties are tracked separately from wins/losses. Fewer than three available qualifying results are shown honestly, and an empty export reports an error rather than inventing entries.
 

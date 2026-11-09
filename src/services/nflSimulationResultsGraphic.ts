@@ -65,7 +65,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Your browser could not create the simulation results graphic.');
   ctx.scale(1080 / 768, 1350 / 960);
-  const white = '#f2f6fc', muted = '#a8bfdc', red = '#ff2347', blue = '#36baff';
+  const white = '#f2f6fc', muted = '#a8bfdc', red = '#ff2347', blue = '#36baff', green = '#35d48a';
   const text = (value: string, x: number, y: number, size: number, width: number,
     color: string | CanvasGradient = white, display = false, align: CanvasTextAlign = 'left', family = display ? 'Oswald' : '"DM Sans"') => {
     const font = () => `${display ? 'italic ' : ''}700 ${size}px ${family}`;
@@ -128,26 +128,29 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   text(`${snapshot.verified} VERIFIED`, 650, 223, 17, 138, muted, true, 'center');
   text('GAMES', 650, 242, 17, 138, muted, true, 'center');
   snapshot.rows.forEach((row, index) => {
-    const y = 300 + index * 178, accent = index === 2 ? '#e6b94e' : '#0acaff';
-    panel(y, 160, accent);
+    const y = 300 + index * 178;
+    panel(y, 160, green);
     box(44, y, 68, 44, 10);
     text(`#${index + 1}`, 62, y + 34, 30, 48, blue, true);
     text(row.title, 138, y + 34, 30, 580, metallic(y + 34), true);
     text(row.context, 138, y + 58, 16, 390, muted);
     box(546, y + 56, 182, 77, 9);
     text('ACTUAL', 637, y + 80, 15, 162, muted, false, 'center');
-    text(row.actual, 637, y + 116, 34, 162, metallic(y + 116), true, 'center');
+    const teamScores = (scores: string) => `${row.away} ${scores.replace(' - ', ` - ${row.home} `)}`;
+    text(snapshot.kind === 'games' ? teamScores(row.actual) : row.actual,
+      637, y + 116, 34, 162, metallic(y + 116), true, 'center');
+    const labelX = snapshot.kind === 'games' ? 76 : 300;
+    const labelY = y + (snapshot.kind === 'games' ? 85 : 92);
+    const wordWidth = text('Gamew', labelX, labelY, 17, 100, white, true, 'left', '"DM Sans"');
+    const aiWidth = text('AI', labelX + wordWidth, labelY, 17, 40, red, true, 'left', '"DM Sans"');
+    text('re Sim', labelX + wordWidth + aiWidth, labelY, 17, 100, white, true, 'left', '"DM Sans"');
     if (snapshot.kind === 'games') {
-      text(row.away, 76, y + 104, 24, 70, white, true);
-      text(`SIM ${row.simulated}`, 174, y + 110, 36, 225, metallic(y + 110), true);
-      line([[409, y + 80], [409, y + 113]], '#78a7c8', 1);
-      text(row.home, 446, y + 104, 24, 75, white, true);
-      line([[72, y + 114], [125, y + 114]], blue, 3);
-      line([[444, y + 114], [497, y + 114]], accent, 3);
+      text(teamScores(row.simulated), 76, y + 118, 32, 440, metallic(y + 118), true);
     } else {
-      text(snapshot.statistic.toUpperCase(), 76, y + 92, 17, 440, blue);
-      text(`SIM ${row.simulated}`, 76, y + 123, 32, 440, metallic(y + 123), true);
+      text(snapshot.statistic.toUpperCase(), 76, y + 92, 17, 210, blue);
+      text(row.simulated, 76, y + 123, 32, 440, metallic(y + 123), true);
     }
+    line([[76, y + 129], [516, y + 129]], green, 3);
     ctx.beginPath(); ctx.arc(82, y + 140, 11, 0, Math.PI * 2); ctx.fillStyle = blue; ctx.fill();
     line([[76, y + 140], [80, y + 144], [88, y + 135]], '#05203a', 2);
     text(row.difference, 104, y + 146, 16, 424, muted);

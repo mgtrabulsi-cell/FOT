@@ -17,18 +17,19 @@ const report = () => ({
     result('3', 28, 24, 21, 24, 3.5), result('4', 24, 21, 24, 24, 1.5), result('5', 22.4, 22.2, 20, 17, 3.5)],
 });
 function graphicHarness() {
-  const drawn = [], fontSizes = [], panels = [], scales = [];
+  const drawn = [], fontSizes = [], panels = [], scales = [], coloredText = [], accents = [];
   const gradient = { addColorStop() {} };
   const ctx = new Proxy({
     createLinearGradient: () => gradient,
     scale: (x, y) => scales.push([x, y]),
     roundRect: (x, y, width, height) => panels.push({ x, y, width, height }),
+    fillRect(x, y, width) { if (x === 30 && width === 8) accents.push(this.fillStyle); },
     measureText(value) { return { width: value.length * Number(this.font.match(/(\d+)px/)[1]) * .55 }; },
     fillText(value, x, y) {
       const width = this.measureText(value).width;
       const left = this.textAlign === 'center' ? x - width / 2 : x;
       assert.ok(left >= 0 && left + width <= 768 && y > 0 && y < 960);
-      drawn.push(value); fontSizes.push(this.font);
+      drawn.push(value); fontSizes.push(this.font); coloredText.push({ value, color: this.fillStyle });
     },
   }, { get: (target, key) => key in target ? target[key] : () => {} });
   const canvas = { width: 0, height: 0, getContext: () => ctx,
@@ -42,7 +43,7 @@ function graphicHarness() {
   const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationResultsGraphic.ts', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInContext(code, context);
-  return { ...context.exports, canvas, drawn, fontSizes, panels, scales };
+  return { ...context.exports, canvas, drawn, fontSizes, panels, scales, coloredText, accents };
 }
 test('Weekly winner record covers all verified games, with ties and no-winner forecasts separate', () => {
   const { simulationWinnerRecord } = graphicHarness();
@@ -76,7 +77,8 @@ test('Player graphic uses only qualifying selected-stat results and preserves th
   assert.ok(snapshot.rows.every(row => /Passer/.test(row.title)));
   await renderSimulationResultsGraphic(snapshot);
   assert.ok(drawn.includes('PASSING YARDS'));
-  assert.ok(drawn.includes('SIM 250.0'));
+  assert.ok(drawn.includes('250.0'));
+  assert.ok(drawn.includes('re Sim'));
   assert.ok(drawn.includes('Sim & actual >= 200'));
 });
 test('Instagram PNG is portrait, contains the current record and timestamp, and exports explicit errors', async () => {
@@ -90,7 +92,11 @@ test('Instagram PNG is portrait, contains the current record and timestamp, and 
   assert.deepEqual(h.scales[0], [1080 / 768, 1350 / 960]);
   assert.equal(h.panels.filter(panel => panel.width === 182 && panel.height === 77).length, 3);
   assert.ok(h.drawn.includes('ACTUAL'));
-  assert.ok(h.drawn.includes('AWY')); assert.ok(h.drawn.includes('HOM'));
+  assert.ok(h.drawn.includes('AWY 21 - HOM 28'));
+  assert.ok(h.drawn.includes('AWY 24 - HOM 24'));
+  assert.equal(h.drawn.filter(value => value === 're Sim').length, 3);
+  assert.equal(h.coloredText.filter(({ value, color }) => value === 'AI' && color === '#ff2347').length, 4);
+  assert.deepEqual(h.accents, ['#06caff', '#35d48a', '#35d48a', '#35d48a']);
   assert.ok(h.fontSizes.some(font => font.startsWith('italic')));
   h.canvas.toBlob = callback => callback(null);
   await assert.rejects(h.renderSimulationResultsGraphic(snapshot), /export the Instagram PNG/);
