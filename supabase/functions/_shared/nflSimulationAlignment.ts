@@ -1,12 +1,12 @@
 import { normalize } from './gamewaire.ts';
 import type { Quote } from './gamewaire.ts';
-import { projectedSimulationScore, roundedSimulationBox } from './nflSimulation.ts';
+import { projectedSimulationScore, roundedSimulationBox, selectedSimulationScenario } from './nflSimulation.ts';
 import type { NFLGameSimulation, SimulationScenario, SimulationStat } from './nflSimulation.ts';
 import { forecastDistribution } from './gamewireBotIntelligence.ts';
 import type { BotProjection } from './gamewireBotProjections.ts';
 
 export function defaultSimulationScenario(forecast: NFLGameSimulation): SimulationScenario | undefined {
-  return forecast.status === 'ready' ? forecast.scenarios.find(row => !row.issue && row.home && row.away) : undefined;
+  return selectedSimulationScenario(forecast);
 }
 
 export function simulationAllowsMoneyline(pick: Quote, forecast: NFLGameSimulation | undefined): boolean {

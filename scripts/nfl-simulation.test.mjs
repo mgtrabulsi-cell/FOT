@@ -5,7 +5,8 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsxRuntime from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { archivedProjectionOvertimeEvidence, modelProjectedOvertime, projectedSimulationScore, legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerWeights, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
+import { archivedProjectionOvertimeEvidence, modelProjectedOvertime, projectedSimulationScore, selectedSimulationScenario, legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerWeights, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
+import * as qbMatchup from '../supabase/functions/_shared/nflSimulationMatchup.ts';
 import { reconcileSimulationProjections, simulationAllowsMoneyline } from '../supabase/functions/_shared/nflSimulationAlignment.ts';
 import { archivePlayerForecast } from '../supabase/functions/_shared/gamewireForecasts.ts';
 import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
@@ -243,6 +244,94 @@ const partial = (passingAttempts, completions, passingYards, rushingAttempts, ru
     rushingAttempts, rushingYards, rushingTouchdowns: rushingAttempts === undefined ? undefined : 1,
     receptions, receivingYards, receivingTouchdowns: receptions === undefined ? undefined : 1 }).filter(([, n]) => n !== undefined));
 
+test('QB confirmation requires an explicit starter on the matching pregame roster; locked projected choices do not drift', async () => {
+  const api = backendFixture(), matchingGame = { ...game, date: api.kickoff }, raw = await api.get();
+  const athlete = { id: '11', displayName: 'Declared QB', position: { abbreviation: 'QB' } };
+  raw.rosters = [{ team: { id: game.home.id }, entries: [{ athlete, active: true }] }];
+  assert.equal(qbMatchup.confirmedSimulationQBs(raw, matchingGame).size, 0);
+  raw.rosters[0].entries[0].starter = true;
+  const confirmed = qbMatchup.confirmedSimulationQBs(raw, matchingGame);
+  assert.equal(confirmed.get(game.home.id).source, 'game-roster');
+  raw.rosters[0].entries[0].active = false;
+  assert.equal(qbMatchup.confirmedSimulationQBs(raw, matchingGame).size, 0);
+  raw.rosters[0].entries[0].active = true;
+  raw.rosters[0].entries[0].inactive = true;
+  assert.equal(qbMatchup.confirmedSimulationQBs(raw, matchingGame).size, 0);
+  delete raw.rosters[0].entries[0].inactive;
+  raw.rosters[0].entries.push({ athlete: { ...athlete, id: '12' }, starter: true });
+  assert.throws(() => qbMatchup.confirmedSimulationQBs(raw, matchingGame), /conflicting/);
+  raw.header.id = '999';
+  assert.throws(() => qbMatchup.confirmedSimulationQBs(raw, matchingGame), /verified pregame roster/);
+  const selected = simulationWithQBSelection(api.initial, api.initial.scenarios[0].id);
+  selected.qbMatchup.lockedAt = new Date().toISOString();
+  const choices = qbMatchup.simulationQBChoices(matchingGame, [...api.job.players].reverse(), new Map(), selected);
+  assert.deepEqual(choices.home, selected.qbMatchup.home);
+  assert.deepEqual(choices.away, selected.qbMatchup.away);
+  assert.equal(qbMatchup.confirmedSimulationMatchupChanged(selected, choices), false);
+  assert.equal(qbMatchup.simulationQBChoices(matchingGame, [], new Map()).home.source, 'unavailable');
+});
+
+test('SQL freezes at the 30-minute threshold, preserves scores, upgrades confirmation and retains immutable pregame revisions', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec('create role anon; create role authenticated; create role service_role;');
+    const sql = readFileSync(new URL('../supabase/nfl-game-simulations.sql', import.meta.url), 'utf8');
+    await db.exec(sql.slice(0, sql.indexOf('create extension if not exists pg_cron')) + '\ncommit;');
+    const token = '00000000-0000-4000-8000-000000000001', f = fixture();
+    await db.query('select public.gamewire_claim_simulation($1,$2::uuid)', [game.id, token]);
+    const scenarios = simulateNFLGame(game, f.history, f.players, f.observations, 500);
+    let kickoff = new Date(Date.now() + 31 * 60000).toISOString();
+    const payload = simulationWithQBSelection(response(scenarios, { kickoff, version: previousNFLSimulationVersion }), scenarios[0].id);
+    payload.qbMatchup.checkedAt = new Date().toISOString();
+    payload.qbMatchup.lockedAt = new Date().toISOString(); payload.qbMatchup.revision = 4;
+    const forecast = { event_id: game.id, event_start: kickoff, season: 2026, season_type: 2, model_version: previousNFLSimulationVersion, payload };
+    const save = async proposed => (await db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb) as payload',
+      [token, JSON.stringify(proposed)])).rows[0].payload;
+    const freeze = async () => (await db.query('select public.gamewire_lock_due_simulations() as count')).rows[0].count;
+    const initial = await save(forecast);
+    assert.equal(initial.qbMatchup.lockedAt, null);
+    assert.equal(initial.qbMatchup.revision, 0, 'Only the server decides when a forecast is locked');
+    assert.equal(await freeze(), 0);
+    kickoff = new Date(Date.now() + 30 * 60000).toISOString();
+    initial.kickoff = kickoff; initial.qbMatchup.lockAt = new Date(Date.parse(kickoff) - 30 * 60000).toISOString();
+    await db.query('update public.gamewire_game_forecasts set event_start=$1::timestamptz,payload=$2::jsonb where event_id=$3',
+      [kickoff, JSON.stringify(initial), game.id]);
+    assert.equal(await freeze(), 1); assert.equal(await freeze(), 0);
+    const locked = (await db.query('select payload from public.gamewire_game_forecasts')).rows[0].payload;
+    assert.ok(locked.qbMatchup.lockedAt); assert.equal(locked.qbMatchup.revision, 0);
+    const drift = { ...forecast, event_start: kickoff, payload: structuredClone(locked) };
+    drift.payload.scenarios[0].home.score.mean += 7;
+    const stable = await save(drift);
+    assert.deepEqual(stable.scenarios, locked.scenarios);
+    assert.equal(stable.forecastAt, locked.forecastAt);
+    drift.payload.qbMatchup.home.confirmed = true; drift.payload.qbMatchup.home.source = 'game-roster';
+    const upgraded = await save(drift);
+    assert.equal(upgraded.qbMatchup.home.confirmed, true);
+    assert.deepEqual(upgraded.scenarios, locked.scenarios);
+    const alternate = scenarios.find(row => row.id !== locked.qbMatchup.scenarioId);
+    const revision = { ...forecast, event_start: kickoff, payload: simulationWithQBSelection(upgraded, alternate.id) };
+    revision.payload.qbMatchup.checkedAt = new Date().toISOString();
+    assert.equal((await save(revision)).qbMatchup.scenarioId, locked.qbMatchup.scenarioId, 'An unconfirmed switch cannot replace the lock');
+    for (const side of ['home', 'away']) {
+      if (revision.payload.qbMatchup[side].id !== locked.qbMatchup[side].id) {
+        revision.payload.qbMatchup[side].confirmed = true; revision.payload.qbMatchup[side].source = 'game-roster';
+      }
+    }
+    const revised = await save(revision);
+    assert.equal(revised.qbMatchup.revision, 1);
+    assert.equal(revised.qbMatchup.scenarioId, alternate.id);
+    assert.equal(revised.qbMatchup.lockedAt, locked.qbMatchup.lockedAt);
+    const archives = (await db.query('select payload from public.gamewire_simulation_revisions order by revision')).rows;
+    assert.equal(archives.length, 2); assert.deepEqual(archives[0].payload, locked);
+    await db.exec('set role service_role;');
+    await assert.rejects(db.exec('update public.gamewire_simulation_revisions set reason=\'changed\''), /permission denied/);
+    await db.exec('reset role;');
+    await db.query('update public.gamewire_game_forecasts set event_start=clock_timestamp()-interval \'1 second\',forecast_at=clock_timestamp()-interval \'2 seconds\' where event_id=$1', [game.id]);
+    assert.equal(await save(revision), null, 'No revision is generated after kickoff');
+    await assert.rejects(db.exec('update public.gamewire_game_forecasts set payload=payload||\'{"changed":true}\'::jsonb'), /immutable after kickoff/);
+  } finally { await db.close(); }
+});
+
 test('v5 learning remains neutral because settled player actuals include overtime', async () => {
   const clock = Date.parse('2026-11-07T12:00:00Z');
   const rows = Array.from({ length: 50 }, (_, i) => {
@@ -362,6 +451,8 @@ test('Accuracy uses the realized pregame scenario, exact team errors and reporte
   assert.equal(result.players.find(row => row.stat === 'passingTouchdowns').actual, 0);
   assert.ok(result.players.every(row => row.playerId === player.id));
   assert.ok(result.issues.some(issue => /missing stats and DNPs/.test(issue)));
+  const unpublished = forecast.scenarios.find(row => row.id !== scenario.id && row.home && row.away);
+  assert.match(compareSimulationAccuracy(simulationWithQBSelection(forecast, unpublished.id), actuals, result.settledAt), /unpublished alternatives are not ranked/);
   actuals.regulationOnly = false;
   const overtime = compareSimulationAccuracy(forecast, actuals, result.settledAt);
   assert.equal(overtime.error, result.error);
@@ -507,6 +598,12 @@ test('Reduced cached team/player samples produce a box score without waiting for
   assert.ok(data.scenarios[0].home.players.find(player => player.id === '11').stats.passingYards);
   assert.ok(data.scenarios.every(scenario => scenario.issue === null));
   readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' });
+  const unsupported = await advanceSimulation(game, job, simulationCache(values), async () => { throw new Error('Unexpected feed request'); },
+    now, undefined, { home: '999', away: '21' });
+  assert.equal(unsupported.evidenceMode, 'team-only');
+  assert.equal(unsupported.scenarios[0].id, 'team-only');
+  assert.deepEqual(unsupported.scenarios[0].home.players, []);
+  assert.equal(unsupported.scenarios[0].home.totals, null);
 });
 test('Only verified upcoming regular-season/playoff games may be simulated', () => {
   const raw = rawBox(fixture().history.home[0]);
@@ -867,8 +964,8 @@ test('The authenticated simulation action rejects malformed event IDs before any
   assert.equal(fetched, false);
 });
 
-function backendFixture({ ready = false, locked = false, archiveFailure = false, startsDuringRun = false, missing = false, stale = false } = {}) {
-  const f = fixture(), kickoff = new Date(Date.now() + 86400000).toISOString(), initial = response(simulateNFLGame(game, f.history, f.players, f.observations, 500), { kickoff, forecastAt: new Date().toISOString() });
+function backendFixture({ ready = false, locked = false, archiveFailure = false, startsDuringRun = false, missing = false, stale = false, kickoffMinutes = 1440 } = {}) {
+  const f = fixture(), kickoff = new Date(Date.now() + kickoffMinutes * 60000).toISOString(), initial = response(simulateNFLGame(game, f.history, f.players, f.observations, 500), { kickoff, forecastAt: new Date().toISOString() });
   const refs = boxes => boxes.map(box => ({ id: box.id, date: box.date, season: box.season, seasonType: box.seasonType, teamId: box.teams[0].id, opponentId: box.teams[1].id }));
   const job = { version: nflSimulationVersion, createdAt: new Date().toISOString(), history: { home: refs(f.history.home), away: refs(f.history.away) },
     rosterPlayers: f.players, players: f.players, warnings: [], injuries: [], logs: {} };
@@ -916,6 +1013,24 @@ function backendFixture({ ready = false, locked = false, archiveFailure = false,
   };
   return { admin, get, calls, updates, job, kickoff, initial, get fetched() { return fetched; } };
 }
+test('Locked QB monitoring checks the game roster without refreshing historical evidence or recomputing scores', async () => {
+  const api = backendFixture({ ready: true, kickoffMinutes: 15 });
+  Object.assign(api.initial, simulationWithQBSelection(api.initial, api.initial.scenarios[0].id));
+  api.initial.qbMatchup.lockedAt = new Date().toISOString();
+  api.job.createdAt = new Date(Date.now() - 10 * 60000).toISOString();
+  api.job.players.reverse();
+  const original = api.admin.from;
+  api.admin.from = table => {
+    assert.notEqual(table, 'gamewire_bot_cache', 'A stable lock must not fetch historical evidence');
+    return original(table);
+  };
+  const result = await runNFLGameSimulation(api.admin, game.id, api.get);
+  assert.deepEqual(result.scenarios, api.initial.scenarios);
+  assert.equal(result.qbMatchup.revision, 0);
+  assert.equal(api.fetched, 2, 'Check the roster again before saving without regenerating the model');
+  const nextRun = Date.parse(api.updates.find(update => update.response?.status === 'ready').next_run_at);
+  assert.ok(nextRun > Date.now() + 55000 && nextRun <= Date.now() + 60000, 'Continue minute-based pregame confirmation checks');
+});
 test('Fresh and stale forecasts load from storage without feed requests, CPU work or quota; existing progress does not claim a lease', async () => {
   for (const stale of [false, true]) {
     const fresh = backendFixture({ ready: true, stale });
@@ -1073,6 +1188,7 @@ test('Stale completed simulations refresh current-season player logs without res
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
     }).outputText;
     const context = vm.createContext({ exports: {}, crypto, Date, Error, console, require(name) {
+      if (name.includes('nflSimulationMatchup')) return qbMatchup;
       if (name.includes('nflSimulationLearning')) return { loadSimulationLearning };
       if (name.includes('nflSimulationSources')) return {
         prepareSimulation: async () => ({ ...api.job, version: nflSimulationVersion, createdAt: new Date().toISOString(), logs: {} }),
@@ -1095,6 +1211,7 @@ test('Feed-stalled partial backfills retain progress and increasing retry state 
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const context = vm.createContext({ exports: {}, crypto, Date, Error, console: { error() {} }, require(name) {
+    if (name.includes('nflSimulationMatchup')) return qbMatchup;
     if (name.includes('nflSimulationLearning')) return { loadSimulationLearning };
     if (name.includes('nflSimulationSources')) return { advanceSimulation: async () => response([], {
       status: 'collecting', forecastAt: null, kickoff: api.kickoff, stage: 'Team history',
@@ -1113,26 +1230,38 @@ test('Feed-stalled partial backfills retain progress and increasing retry state 
   assert.deepEqual([...saved.response.warnings], ['10001: Feed issue']);
   assert.ok(api.updates.some(update => update.lease_token === null));
 });
+function simulationWithQBSelection(data, scenarioId) {
+  const scenario = data.scenarios.find(row => row.id === scenarioId);
+  const [home, away] = scenarioId.split(':');
+  return { ...data, qbMatchup: {
+    scenarioId, home: { id: home, name: scenario.quarterbacks.home, confirmed: false, source: 'projected' },
+    away: { id: away, name: scenario.quarterbacks.away, confirmed: false, source: 'projected' },
+    checkedAt: new Date(now).toISOString(), lockAt: new Date(Date.parse(data.kickoff) - 30 * 60000).toISOString(),
+    lockedAt: null, revision: 0,
+  } };
+}
 function simulationMarkup(data, error = '', scenarioId = '', admin = false, teamId = game.away.id) {
+  if (scenarioId) data = simulationWithQBSelection(data, scenarioId);
   const code = ts.transpileModule(readFileSync(new URL('../src/NFLGameSimulation.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  const state = [data, data?.status === 'ready' ? data : null, error, 0, scenarioId, false, false, admin, teamId];
+  const state = [data, data?.status === 'ready' ? data : null, error, 0, false, false, admin, teamId];
   let i = 0;
   const context = vm.createContext({ exports: {}, Date, console, require(name) {
     if (name === 'react') return { useState: () => [state[i++], () => {}], useEffect() {} };
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name === './GamewaireResultsDownload') return { ResultsGraphicDownload: props => jsxRuntime.jsx('button', { children: props.label }) };
-    if (name.includes('nflSimulation')) return { projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
+    if (name.includes('nflSimulation')) return { selectedSimulationScenario, projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
     return {};
   } });
   vm.runInContext(code, context);
   return renderToStaticMarkup(jsxRuntime.jsx(context.exports.default, { game: { ...game, eventId: game.id } }));
 }
-test('Simulation UI renders scenario selection, ranges, transfer coverage, errors and retained forecasts without photos', () => {
+test('Simulation UI renders one automatic QB matchup, ranges, transfer coverage, errors and retained forecasts without photos', () => {
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   const html = simulationMarkup(data, 'Feed issue', '', true);
-  assert.match(html, /Quarterback scenario/); assert.match(html, /Includes prior teams/); assert.match(html, /10th/);
+  assert.match(html, /Archived projected QB matchup/); assert.doesNotMatch(html, /<select/);
+  assert.match(html, /Includes prior teams/); assert.match(html, /10th/);
   assert.match(html, /Saved projections remain available/); assert.match(html, /Feed issue/);
   assert.match(html, /overtime was not separately simulated in this archived model/); assert.doesNotMatch(html, /<img/);
   assert.match(html, /role="region"/); assert.match(html, /scope="col"/);
@@ -1154,7 +1283,7 @@ test('Simulation UI renders scenario selection, ranges, transfer coverage, error
   assert.doesNotMatch(publicHtml, /Download game graphic|Download Instagram graphic/);
   assert.match(html, /Download game graphic/); assert.match(html, /Download Instagram graphic/);
   assert.doesNotMatch(publicHtml, /Feed issue|Admin:|player evidence|verified games|Limited evidence|Coverage:/);
-  assert.ok(publicHtml.indexOf('nfl-simulation-scores') < publicHtml.indexOf('nfl-simulation-scenario'));
+  assert.doesNotMatch(publicHtml, /nfl-simulation-scenario|<select/);
   assert.ok(html.indexOf('Admin:') > html.lastIndexOf('</table>'));
 });
 test('Projected receiver names are white and rows sort by displayed catches then receiving yards', () => {
@@ -1294,7 +1423,7 @@ function panelRuntime(load, supabase) {
     };
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name.includes('supabaseClient')) return { supabase };
-    if (name.includes('nflSimulation')) return { projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
+    if (name.includes('nflSimulation')) return { selectedSimulationScenario, projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
     return { loadGameSimulation: load };
   } });
   vm.runInContext(code, context);
@@ -1302,7 +1431,7 @@ function panelRuntime(load, supabase) {
   render();
   return { state, effects, timers, listeners, render };
 }
-test('Simulation team buttons switch the single visible box score and retain selection across QB scenarios and refreshes', () => {
+test('Simulation team buttons retain the visible team across provider-selected QB revisions and refreshes without a chooser', () => {
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   const runtime = panelRuntime(async () => data);
   runtime.state[0] = data; runtime.state[1] = data;
@@ -1318,7 +1447,8 @@ test('Simulation team buttons switch the single visible box score and retain sel
   buttons[1].props.onClick(); tree = render();
   assert.equal(boxes(tree).length, 1);
   assert.equal(boxes(tree)[0].props.team.id, game.home.id);
-  tree.find(node => node.type === 'select').props.onChange({ target: { value: data.scenarios[1].id } });
+  assert.ok(!tree.some(node => node.type === 'select'));
+  runtime.state[1] = simulationWithQBSelection(data, data.scenarios[1].id);
   tree = render();
   assert.equal(boxes(tree)[0].props.team, data.scenarios[1].home);
   runtime.state[1] = structuredClone(data); tree = render();
@@ -1507,15 +1637,15 @@ test('Simulation diagnostics permissions reset on account changes and ignore sta
   const stop = runtime.effects[3]();
   grant({ data: true, error: null });
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(runtime.state[7], true);
+  assert.equal(runtime.state[6], true);
   listener();
-  assert.equal(runtime.state[7], false);
+  assert.equal(runtime.state[6], false);
   for (const [id, timer] of runtime.timers) if (timer.delay === 0) { runtime.timers.delete(id); timer.fn(); }
   const stale = grant;
   listener();
   stale({ data: true, error: null });
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(runtime.state[7], false, 'An old permission result cannot reopen admin diagnostics after account change');
+  assert.equal(runtime.state[6], false, 'An old permission result cannot reopen admin diagnostics after account change');
   stop();
   assert.equal(listener, null);
 });

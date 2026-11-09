@@ -3,7 +3,7 @@ import TeamAbbrMark from './TeamAbbrMark';
 import NFLGameSimulationPanel from './NFLGameSimulation';
 import { NFLSimulationResults } from './NFLSimulationAccuracy';
 import { useNFLBoardSimulations } from './useNFLBoardSimulations';
-import { projectedSimulationScore } from '../supabase/functions/_shared/nflSimulation';
+import { projectedSimulationScore, selectedSimulationScenario } from '../supabase/functions/_shared/nflSimulation';
 import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
@@ -347,7 +347,6 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
   const [pregameView, setPregameView] = useState<'stats' | 'simulation'>('stats');
   const [resultsOpen, setResultsOpen] = useState(false);
-  const [simulationScenarioId, setSimulationScenarioId] = useState('');
   const { simulations: boardSimulations, errors: simulationErrors, rememberSimulation } = useNFLBoardSimulations(nflGames, pregameView === 'simulation' && !detailOpen && !resultsOpen);
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>('boxscore');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
@@ -379,14 +378,12 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const selectGame = (gameId: string) => {
     userSelectedRef.current = true;
     setSelectedGameId(gameId);
-    if (gameId !== selectedGameId) setSimulationScenarioId('');
     if (pregameView === 'simulation') setSubTab('simulation');
     else if (nflGames.find(game => game.id === gameId)?.status === 'UPCOMING' || subTab === 'simulation') setSubTab('boxscore');
     onSelectGame?.(gameId);
   };
 
   const openGame = (gameId: string) => {
-    setSimulationScenarioId('');
     selectGame(gameId);
     setDetailOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -732,8 +729,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const homeScore = homeBoxTeam?.score ?? selectedGame?.home.score;
   const selectedForecast = boardSimulations[selectedGame?.eventId ?? ''];
   const projectedMatchup = subTab === 'simulation' && selectedForecast?.status === 'ready' && Date.parse(selectedForecast.kickoff) === Date.parse(selectedGame?.date ?? '')
-    ? selectedForecast.scenarios.find(scenario => scenario.id === simulationScenarioId)
-      ?? selectedForecast.scenarios.find(scenario => scenario.home && scenario.away) : undefined;
+    ? selectedSimulationScenario(selectedForecast) : undefined;
   const awayLost = subTab !== 'simulation' && finalScore && awayScore !== undefined && homeScore !== undefined && awayScore < homeScore;
   const homeLost = subTab !== 'simulation' && finalScore && awayScore !== undefined && homeScore !== undefined && homeScore < awayScore;
   const activeBoxTeam = selectedTeamSide === 'away' ? awayBoxTeam : homeBoxTeam;
@@ -939,7 +935,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
       const simulationMode = pregameView === 'simulation';
       const savedSimulation = boardSimulations[game.eventId];
       const simulation = simulationMode && savedSimulation?.status === 'ready' && Date.parse(savedSimulation.kickoff) === Date.parse(game.date)
-        ? savedSimulation.scenarios.find(scenario => scenario.home && scenario.away) : undefined;
+        ? selectedSimulationScenario(savedSimulation) : undefined;
       const intl = internationalVenue(game);
       const projectedScore = projectedSimulationScore(simulation);
       const savedPick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
@@ -1418,7 +1414,6 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
           {subTab === 'simulation' ? (
             <NFLGameSimulationPanel key={`${selectedGame.eventId}:${selectedGame.date}`} game={selectedGame}
               onForecast={rememberSimulation}
-              onScenarioChange={setSimulationScenarioId}
               initialSimulation={Date.parse(boardSimulations[selectedGame.eventId]?.kickoff ?? '') === Date.parse(selectedGame.date) ? boardSimulations[selectedGame.eventId] : undefined} />
           ) : loading && !boxScore && !isUpcoming ? (
             <div className="panel empty-games">Loading game box score and player stats…</div>

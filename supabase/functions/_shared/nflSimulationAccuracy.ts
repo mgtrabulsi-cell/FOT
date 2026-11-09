@@ -77,6 +77,8 @@ export function compareSimulationAccuracy(forecast: NFLGameSimulation, actualVal
   const realized = forecast.scenarios.filter(scenario => realizedIds.has(scenario.id) && !scenario.issue && scenario.home && scenario.away);
   if (realized.length !== 1) return `${forecast.eventId}: no uniquely verified realized QB scenario; hypothetical scenarios are not ranked.`;
   const scenario = realized[0], home = scenario.home, away = scenario.away;
+  if (forecast.qbMatchup && scenario.id !== forecast.qbMatchup.scenarioId)
+    return `${forecast.eventId}: the automatically published QB matchup was not realized; unpublished alternatives are not ranked.`;
   if (!home || !away) throw new Error('The realized scenario does not contain both teams.');
   const actualHome = teams.find(side => side.id === home.id), actualAway = teams.find(side => side.id === away.id);
   if (!actualHome || !actualAway || !finite(actualHome.points) || !finite(actualAway.points)) return `${forecast.eventId}: verified final team scores are unavailable.`;

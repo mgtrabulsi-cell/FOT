@@ -93,7 +93,7 @@ export async function prepareSimulation(game: SimulationGame, get: (url: string)
   return { version: nflSimulationVersion, createdAt: new Date(now).toISOString(), history: { home, away },
     rosterPlayers: [...homePlayers, ...awayPlayers], players: null, injuries, warnings, preparationIssues, logs: {} };
 }
-function selectPlayers(job: SimulationJob, boxes: Map<string, SimulationBox>): SimulationPlayer[] {
+function selectPlayers(job: SimulationJob, boxes: Map<string, SimulationBox>, quarterbacks: Record<string, string> = {}): SimulationPlayer[] {
   return [job.history.home, job.history.away].flatMap(refs => {
     const teamId = refs[0]?.teamId;
     if (!teamId) return [];
@@ -111,7 +111,8 @@ function selectPlayers(job: SimulationJob, boxes: Map<string, SimulationBox>): S
       const candidates = job.rosterPlayers.filter(p => p.teamId === teamId && p.position === position)
         .sort((a, b) => Number(a.excluded) - Number(b.excluded) || rank(a) - rank(b) || usage(b) - usage(a) || a.id.localeCompare(b.id));
       const limit = position === 'QB' ? 3 : position === 'WR' ? 4 : 2;
-      const selected = candidates.slice(0, limit);
+      const target = position === 'QB' ? candidates.find(player => player.id === quarterbacks[teamId]) : undefined;
+      const selected = (target ? [target, ...candidates.filter(player => player.id !== target.id)] : candidates).slice(0, limit);
       // Keep reported unavailable depth leaders visible, without treating their missing future production as zero.
       return [...new Map([...selected, ...candidates.filter(p => p.excluded && rank(p) === 1)].map(p => [p.id, p])).values()];
     });
@@ -143,7 +144,8 @@ async function boxBatch(refs: SimulationReference[], cache: SimulationCache, get
   })), completed: saved.size, total: required.length, issues };
 }
 export async function advanceSimulation(game: SimulationGame, job: SimulationJob, cache: SimulationCache, get: (url: string) => Promise<unknown>, now: number,
-  learning?: import('./nflSimulationLearning.ts').SimulationLearning['adjustments']): Promise<NFLGameSimulation> {
+  learning?: import('./nflSimulationLearning.ts').SimulationLearning['adjustments'],
+  quarterbacks?: { home: string | null; away: string | null }): Promise<NFLGameSimulation> {
   const result: NFLGameSimulation & { preparationIssues: string[] } = { status: 'collecting', version: nflSimulationVersion, eventId: game.id, kickoff: game.date, checkedAt: job.createdAt,
     forecastAt: null, stage: 'Team history', progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 },
     runs: nflSimulationRuns, calibrated: false, preparationIssues: [...job.preparationIssues ?? []], warnings: [...job.warnings], injuries: job.injuries, scenarios: [] };
@@ -196,7 +198,9 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     return result;
   };
   if (result.history.home < 8 || result.history.away < 8) return teamOnly(true);
-  job.players ??= selectPlayers(job, teamBatch.boxes);
+  if (quarterbacks) job.players = selectPlayers(job, teamBatch.boxes,
+    { [game.home.id]: quarterbacks.home ?? '', [game.away.id]: quarterbacks.away ?? '' });
+  else job.players ??= selectPlayers(job, teamBatch.boxes);
   const active = job.players.filter(player => !player.excluded);
   const work = active.filter(player => !job.logs[player.id]?.done)
     .sort((a, b) => (job.logs[b.id]?.season ?? game.season) - (job.logs[a.id]?.season ?? game.season));
@@ -241,6 +245,10 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
   };
   if (history.home.length < 8 || history.away.length < 8) return teamOnly(refreshing);
   result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs, undefined, overtime);
+  if (quarterbacks && !result.scenarios.some(scenario => scenario.id === `${quarterbacks.home}:${quarterbacks.away}` && scenario.home && scenario.away)) {
+    result.warnings.push('The selected QB matchup lacks verified player history; the forecast is team-only, with no substitute quarterback or player statistics.');
+    return teamOnly(refreshing);
+  }
   if (learning) {
     result.learning = { version: 'simulation-walk-forward-v1', adjustments: neutralSimulationLearning(now), baselines: simulationLearningBaselines(result.scenarios) };
   }

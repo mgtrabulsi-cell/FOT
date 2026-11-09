@@ -1,6 +1,7 @@
 import { array, numeric, object, text } from './gamewaire.ts';
 import { overtimeRulesSource, readOvertimeDrives, simulateOvertime, validateOvertimeEvidence } from './nflSimulationOvertime.ts';
 import type { OvertimeDrive, OvertimeEvidence } from './nflSimulationOvertime.ts';
+import type { SimulationQBMatchup } from './nflSimulationMatchup.ts';
 
 export const nflSimulationVersion = 'nfl-joint-bootstrap-v5';
 export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v4';
@@ -28,7 +29,7 @@ export type SimulationLearning = {
   adjustments: Record<SimulationLearningMetric, import('./gamewireLearning.ts').LearningAdjustment>;
   baselines: Array<{ scenarioId: string; teams: Array<{ id: string; score: number; passingYards: number | null; rushingYards: number | null }> }>;
 };
-export type NFLGameSimulation = { status: 'collecting' | 'ready' | 'unavailable'; version: string; eventId: string; kickoff: string; checkedAt: string; forecastAt: string | null; stage: string; evidenceMode?: 'full' | 'limited' | 'team-only'; progress: { completed: number; total: number }; history: { home: number; away: number; target: 100 }; runs: number; calibrated: false; refreshing?: boolean; preparationIssues?: string[]; warnings: string[]; injuries: Array<{ name: string; position: string; teamId: string; status: string }>; scenarios: SimulationScenario[]; learning?: SimulationLearning };
+export type NFLGameSimulation = { status: 'collecting' | 'ready' | 'unavailable'; version: string; eventId: string; kickoff: string; checkedAt: string; forecastAt: string | null; stage: string; evidenceMode?: 'full' | 'limited' | 'team-only'; progress: { completed: number; total: number }; history: { home: number; away: number; target: 100 }; runs: number; calibrated: false; refreshing?: boolean; preparationIssues?: string[]; warnings: string[]; injuries: Array<{ name: string; position: string; teamId: string; status: string }>; scenarios: SimulationScenario[]; learning?: SimulationLearning; qbMatchup?: SimulationQBMatchup };
 export const simulationStatKeys: Array<keyof SimulationStat> = ['passingAttempts', 'completions', 'passingYards', 'passingTouchdowns', 'rushingAttempts', 'rushingYards', 'rushingTouchdowns', 'receptions', 'receivingYards', 'receivingTouchdowns'];
 
 export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: string, teams: { home: string; away: string }): NFLGameSimulation {
@@ -119,7 +120,24 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
         || s.issue === null && team(s.home, teams.home) && team(s.away, teams.away) && probability(s.tieProbability)
           && Math.abs(Number(object(s.home).winProbability) + Number(object(s.away).winProbability) + Number(s.tieProbability) - 1) < 1e-8);
   });
-  if (!validLearning || !readableNFLSimulationVersions.includes(String(row.version)) || row.eventId !== eventId || Date.parse(String(row.kickoff)) !== Date.parse(kickoff)
+  const matchup = object(row.qbMatchup);
+  const validMatchup = row.qbMatchup === undefined || typeof matchup.scenarioId === 'string'
+    && array(row.scenarios).some(raw => object(raw).id === matchup.scenarioId)
+    && (matchup.scenarioId === 'team-only' || matchup.scenarioId === `${text(object(matchup.home).id)}:${text(object(matchup.away).id)}`)
+    && Date.parse(text(matchup.lockAt)) === Date.parse(kickoff) - 30 * 60000
+    && finiteDate(text(matchup.checkedAt)) && Date.parse(text(matchup.checkedAt)) < Date.parse(kickoff)
+    && integer(matchup.revision)
+    && (matchup.lockedAt === null || finiteDate(text(matchup.lockedAt))
+      && Date.parse(text(matchup.lockedAt)) >= Date.parse(text(matchup.lockAt)) && Date.parse(text(matchup.lockedAt)) < Date.parse(kickoff))
+    && (matchup.revisionReason === undefined || typeof matchup.revisionReason === 'string')
+    && ['home', 'away'].every(side => {
+      const qb = object(matchup[side]);
+      return (qb.id === null || validId(text(qb.id))) && typeof qb.name === 'string' && qb.name.length > 0 && typeof qb.confirmed === 'boolean'
+        && ['game-roster', 'projected', 'unavailable'].includes(text(qb.source))
+        && (qb.source === 'unavailable' ? qb.id === null : qb.id !== null)
+        && (qb.confirmed ? qb.source === 'game-roster' && qb.id !== null : qb.source !== 'game-roster');
+    });
+  if (!validMatchup || !validLearning || !readableNFLSimulationVersions.includes(String(row.version)) || row.eventId !== eventId || Date.parse(String(row.kickoff)) !== Date.parse(kickoff)
     || row.refreshing !== undefined && typeof row.refreshing !== 'boolean'
     || row.preparationIssues !== undefined && !strings(row.preparationIssues)
     || !['ready', 'collecting', 'unavailable'].includes(String(row.status)) || row.calibrated !== false || typeof row.stage !== 'string'
@@ -447,6 +465,12 @@ export function projectedSimulationScore(scenario: SimulationScenario | undefine
   if (home !== away) return { home, away, overtime: false, archiveExtension: false };
   const result = scenario.projectedOvertime;
   return result ? { home: result.home, away: result.away, overtime: true, archiveExtension: result.source === 'archive-extension' } : null;
+}
+export function selectedSimulationScenario(forecast: NFLGameSimulation | undefined): SimulationScenario | undefined {
+  if (forecast?.status !== 'ready') return undefined;
+  return forecast.qbMatchup
+    ? forecast.scenarios.find(row => row.id === forecast.qbMatchup!.scenarioId && !row.issue && row.home && row.away)
+    : forecast.scenarios.find(row => !row.issue && row.home && row.away);
 }
 export function archivedProjectionOvertimeEvidence(values: unknown[], scenario: SimulationScenario, forecastAt: string): OvertimeEvidence {
   if (!scenario.overtime || !scenario.home || !scenario.away || !Number.isFinite(Date.parse(forecastAt)))

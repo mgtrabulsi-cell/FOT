@@ -23,6 +23,15 @@ create table if not exists public.gamewire_game_forecasts (
   check((actuals is null and settled_at is null) or (jsonb_typeof(actuals)='object' and settled_at >= event_start))
 );
 create index if not exists gamewire_game_forecasts_pending on public.gamewire_game_forecasts(event_start) where settled_at is null;
+create table if not exists public.gamewire_simulation_revisions (
+  event_id text not null, model_version text not null, revision integer not null check(revision >= 0),
+  event_start timestamptz not null, forecast_at timestamptz not null, locked_at timestamptz not null,
+  payload jsonb not null, reason text not null,
+  primary key(event_id,model_version,revision)
+);
+alter table public.gamewire_simulation_revisions enable row level security;
+revoke all on public.gamewire_simulation_revisions from public,anon,authenticated;
+grant select,insert on public.gamewire_simulation_revisions to service_role;
 alter table public.gamewire_simulation_jobs enable row level security;
 alter table public.gamewire_game_forecasts enable row level security;
 revoke all on public.gamewire_simulation_jobs,public.gamewire_game_forecasts from public,anon,authenticated;
@@ -42,10 +51,37 @@ end $$;
 revoke all on function public.gamewire_claim_simulation(text,uuid) from public,anon,authenticated;
 grant execute on function public.gamewire_claim_simulation(text,uuid) to service_role;
 
+create or replace function public.gamewire_lock_due_simulations() returns integer
+language plpgsql security definer set search_path='' as $$
+declare candidate record; saved public.gamewire_game_forecasts; recorded timestamptz; result jsonb; locked integer:=0;
+begin
+  for candidate in select event_id,model_version from public.gamewire_game_forecasts
+    where event_start>clock_timestamp() and event_start<=clock_timestamp()+interval '30 minutes'
+      and payload->'qbMatchup'->>'lockedAt' is null and jsonb_typeof(payload->'qbMatchup')='object'
+    order by event_id,model_version
+  loop
+    perform pg_advisory_xact_lock(hashtextextended('nfl-simulation:'||candidate.event_id,0));
+    select * into saved from public.gamewire_game_forecasts where event_id=candidate.event_id and model_version=candidate.model_version for update;
+    recorded:=clock_timestamp();
+    if saved.event_start<=recorded or saved.event_start>recorded+interval '30 minutes'
+      or saved.payload->'qbMatchup'->>'lockedAt' is not null then continue; end if;
+    result:=jsonb_set(saved.payload,'{qbMatchup,lockedAt}',to_jsonb(recorded));
+    result:=jsonb_set(result,'{qbMatchup,revision}','0'::jsonb);
+    update public.gamewire_game_forecasts set payload=result where event_id=saved.event_id and model_version=saved.model_version;
+    insert into public.gamewire_simulation_revisions values(saved.event_id,saved.model_version,0,saved.event_start,saved.forecast_at,recorded,result,'Initial 30-minute QB matchup lock')
+      on conflict do nothing;
+    locked:=locked+1;
+  end loop;
+  return locked;
+end $$;
+revoke all on function public.gamewire_lock_due_simulations() from public,anon,authenticated;
+grant execute on function public.gamewire_lock_due_simulations() to service_role;
+
 create or replace function public.gamewire_save_game_simulation(target_token uuid,forecast jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare started timestamptz := (forecast->>'event_start')::timestamptz;
-  recorded timestamptz; saved public.gamewire_game_forecasts; result jsonb;
+  recorded timestamptz; saved public.gamewire_game_forecasts; result jsonb; matchup jsonb; prior jsonb;
+  revised boolean:=false; revision integer:=0;
 begin
   perform pg_advisory_xact_lock(hashtextextended('nfl-simulation:'||(forecast->>'event_id'),0));
   perform 1 from public.gamewire_simulation_jobs where event_id=forecast->>'event_id'
@@ -84,10 +120,68 @@ begin
         (scenario->'home'->'teamOnly'='true'::jsonb or scenario->'away'->'teamOnly'='true'::jsonb)))
     then raise exception 'Invalid verified NFL game simulation'; end if;
   result := jsonb_set(forecast->'payload','{forecastAt}',to_jsonb(recorded));
+  if saved.event_id is not null and jsonb_typeof(saved.payload->'qbMatchup')='object'
+    and saved.payload->'qbMatchup'->>'lockedAt' is null and started<=recorded+interval '30 minutes' then
+    saved.payload:=jsonb_set(saved.payload,'{qbMatchup,lockedAt}',to_jsonb(recorded));
+    saved.payload:=jsonb_set(saved.payload,'{qbMatchup,revision}','0'::jsonb);
+    update public.gamewire_game_forecasts set payload=saved.payload where event_id=saved.event_id and model_version=saved.model_version;
+    insert into public.gamewire_simulation_revisions values(saved.event_id,saved.model_version,0,saved.event_start,saved.forecast_at,recorded,saved.payload,'Initial 30-minute QB matchup lock') on conflict do nothing;
+  end if;
+  matchup:=result->'qbMatchup'; prior:=saved.payload->'qbMatchup';
+  if matchup is not null and (jsonb_typeof(matchup) is distinct from 'object'
+    or (matchup->>'lockAt')::timestamptz is distinct from started-interval '30 minutes'
+    or (matchup->>'checkedAt')::timestamptz is null or (matchup->>'checkedAt')::timestamptz>=started
+    or not exists(select 1 from jsonb_array_elements(result->'scenarios') scenario where scenario->>'id'=matchup->>'scenarioId')
+    or (matchup->>'scenarioId'<>'team-only' and matchup->>'scenarioId' is distinct from
+      ((matchup->'home'->>'id')||':'||(matchup->'away'->>'id')))
+    or exists(select 1 from jsonb_array_elements(jsonb_build_array(matchup->'home',matchup->'away')) as entries(qb)
+      where jsonb_typeof(qb) is distinct from 'object' or coalesce(qb->>'name','')=''
+        or coalesce(qb->>'source','') not in ('game-roster','projected','unavailable')
+        or (qb->>'source'='unavailable' and qb->'id' is distinct from 'null'::jsonb)
+        or (qb->>'source'<>'unavailable' and (jsonb_typeof(qb->'id') is distinct from 'string' or coalesce(qb->>'id','') !~ '^[0-9]{1,12}$'))
+        or (qb->'confirmed'='false'::jsonb and qb->>'source'='game-roster'))
+    or jsonb_typeof(matchup->'home'->'confirmed') is distinct from 'boolean'
+    or jsonb_typeof(matchup->'away'->'confirmed') is distinct from 'boolean'
+    or (matchup->'home'->'confirmed'='true'::jsonb and matchup->'home'->>'source' is distinct from 'game-roster')
+    or (matchup->'away'->'confirmed'='true'::jsonb and matchup->'away'->>'source' is distinct from 'game-roster'))
+    then raise exception 'Invalid automatic QB matchup confirmation'; end if;
+  if prior->>'lockedAt' is not null then
+    if matchup is null then return saved.payload; end if;
+    revised:=false;
+    for revision in 0..1 loop
+      if matchup->(case when revision=0 then 'home' else 'away' end)->>'id'
+        is distinct from prior->(case when revision=0 then 'home' else 'away' end)->>'id' then
+        if matchup->(case when revision=0 then 'home' else 'away' end)->'confirmed' is distinct from 'true'::jsonb then return saved.payload; end if;
+        revised:=true;
+      end if;
+    end loop;
+    if not revised then
+      result:=jsonb_set(saved.payload,'{qbMatchup,checkedAt}',matchup->'checkedAt');
+      if matchup->'home'->'confirmed'='true'::jsonb then result:=jsonb_set(result,'{qbMatchup,home}',matchup->'home'); end if;
+      if matchup->'away'->'confirmed'='true'::jsonb then result:=jsonb_set(result,'{qbMatchup,away}',matchup->'away'); end if;
+      update public.gamewire_game_forecasts set payload=result where event_id=saved.event_id and model_version=saved.model_version;
+      return result;
+    end if;
+    revision:=coalesce((prior->>'revision')::integer,0)+1;
+    matchup:=jsonb_set(matchup,'{lockedAt}',prior->'lockedAt');
+    matchup:=jsonb_set(matchup,'{revision}',to_jsonb(revision));
+    matchup:=jsonb_set(matchup,'{revisionReason}',to_jsonb('Confirmed pregame QB change; original locked simulation retained'::text));
+    result:=jsonb_set(result,'{qbMatchup}',matchup);
+  elsif matchup is not null then
+    matchup:=jsonb_set(matchup-'revisionReason','{lockedAt}',
+      case when started<=recorded+interval '30 minutes' then to_jsonb(recorded) else 'null'::jsonb end);
+    matchup:=jsonb_set(matchup,'{revision}','0'::jsonb);
+    result:=jsonb_set(result,'{qbMatchup}',matchup);
+  end if;
   insert into public.gamewire_game_forecasts(event_id,model_version,event_start,season,season_type,forecast_at,payload)
     values(forecast->>'event_id',forecast->>'model_version',started,(forecast->>'season')::integer,
       (forecast->>'season_type')::integer,recorded,result)
   on conflict(event_id,model_version) do update set event_start=excluded.event_start,forecast_at=excluded.forecast_at,payload=excluded.payload;
+  if result->'qbMatchup'->>'lockedAt' is not null then
+    insert into public.gamewire_simulation_revisions values(forecast->>'event_id',forecast->>'model_version',
+      coalesce((result->'qbMatchup'->>'revision')::integer,0),started,recorded,(result->'qbMatchup'->>'lockedAt')::timestamptz,result,
+      case when revised then 'Confirmed pregame QB change' else 'Initial 30-minute QB matchup lock' end) on conflict do nothing;
+  end if;
   return result;
 end $$;
 revoke all on function public.gamewire_save_game_simulation(uuid,jsonb) from public,anon,authenticated;
@@ -169,6 +263,7 @@ language plpgsql security definer set search_path='' as $$
 declare job public.gamewire_simulation_jobs; dispatched integer:=0; available integer; endpoint text; secret text;
 begin
   perform pg_advisory_xact_lock(hashtextextended('nfl-simulation-dispatch',0));
+  perform public.gamewire_lock_due_simulations();
   select greatest(0,4-count(*))::integer into available from public.gamewire_simulation_jobs
     where dispatched_at > clock_timestamp()-interval '3 minutes' or lease_until > clock_timestamp();
   if available=0 then return 0; end if;
@@ -179,7 +274,7 @@ begin
     where event_start > clock_timestamp() and event_start <= clock_timestamp()+interval '14 days'
       and next_run_at <= clock_timestamp() and lease_until < clock_timestamp()
       and (dispatched_at is null or dispatched_at <= clock_timestamp()-interval '3 minutes')
-    order by discovered desc,
+    order by case when event_start<=clock_timestamp()+interval '35 minutes' then 0 else 1 end, discovered desc,
       case when response->>'version'=model_version and response->>'status' in ('ready','unavailable')
         and response->>'refreshing' is distinct from 'true' then 1 else 0 end,
       updated_at,event_id

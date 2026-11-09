@@ -56,7 +56,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
     if (name.includes('sportsData')) return sports;
     if (name.includes('nflSituation')) return nflSituation;
     if (name.includes('/nflSimulation')) return simulation;
-    if (name.includes('useNFLBoardSimulations')) return { useNFLBoardSimulations: () => ({ simulations: availableSnapshot ? { [game.eventId]: availableSnapshot } : {}, errors: {}, rememberSimulation() {} }) };
+    if (name.includes('useNFLBoardSimulations')) return { useNFLBoardSimulations: () => ({ simulations: availableSnapshot ? { [game.eventId]: availableSnapshot } : {}, errors: {}, rememberSimulation(forecast) { availableSnapshot = forecast; } }) };
     if (name.includes('NFLGameSimulation')) return { default: 'SimulationPanel' };
     if (name.includes('NFLSimulationAccuracy')) return { NFLSimulationResults: 'ResultsArea' };
     if (name.includes('useSwipeBack')) return { useSwipeBack: () => ({ current: null }) };
@@ -105,9 +105,9 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   const panel = tree.find(node => node.type === 'SimulationPanel');
   assert.equal(panel.props.game.eventId, game.eventId); assert.equal(panel.props.initialSimulation, snapshot);
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '22 – 28'));
-  panel.props.onScenarioChange('backup'); tree = render();
+  panel.props.onForecast({ ...snapshot, qbMatchup: { scenarioId: 'backup' } }); tree = render();
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '15 – 30'));
-  panel.props.onScenarioChange('unsupported'); tree = render();
+  panel.props.onForecast({ ...snapshot, qbMatchup: { scenarioId: 'unsupported' } }); tree = render();
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '— – —'));
   toggle('Pregame stats').props.onClick(); tree = render();
   assert.ok(!tree.some(node => node.type === 'SimulationPanel'));
@@ -117,7 +117,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.ok(tree.some(node => node.type === 'SimulationPanel'));
   assert.ok(!tree.some(node => node.type?.name === 'ScoringPlays'));
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '— – —'));
-  tree.find(node => node.type === 'SimulationPanel').props.onScenarioChange('fixture'); tree = render();
+  tree.find(node => node.type === 'SimulationPanel').props.onForecast(snapshot); tree = render();
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '22 – 28'));
   props.games = [{ ...props.games[0], status: 'FINAL' }];
   tree = render();

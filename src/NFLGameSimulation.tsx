@@ -5,7 +5,7 @@ import { supabase } from './services/supabaseClient';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
 import NFLSimulationAccuracy from './NFLSimulationAccuracy';
 import { renderSimulationGraphic } from './services/nflSimulationGraphic';
-import { legacyNFLSimulationVersion, projectedSimulationScore, roundedSimulationBox } from '../supabase/functions/_shared/nflSimulation';
+import { legacyNFLSimulationVersion, projectedSimulationScore, roundedSimulationBox, selectedSimulationScenario } from '../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation, SimulationStat, SimulationTeamResult } from '../supabase/functions/_shared/nflSimulation';
 
 const statLabels: Record<keyof SimulationStat, string> = {
@@ -91,15 +91,15 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
   const [forecast, setForecast] = useState<NFLGameSimulation | null>(initialSimulation?.status === 'ready' ? initialSimulation : null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [scenarioId, setScenarioId] = useState('');
-  const [locked, setLocked] = useState(Date.parse(game.date) <= Date.now());
+  const [locked, setLocked] = useState(Date.parse(game.date) - 30 * 60000 <= Date.now());
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     let timer: number | undefined;
     const check = () => {
-      const delay = Date.parse(game.date) - Date.now();
+      const delay = Date.parse(game.date) - 30 * 60000 - Date.now();
       setLocked(delay <= 0);
-      if (delay > 0) timer = window.setTimeout(check, Math.min(delay, 2147483647));
+      const next = delay > 0 ? delay : Date.parse(game.date) - Date.now();
+      if (next > 0) timer = window.setTimeout(check, Math.min(next, 2147483647));
     };
     check();
     return () => { if (timer !== undefined) window.clearTimeout(timer); };
@@ -122,9 +122,9 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
         setResponse(result);
         if (result.status === 'ready') onForecast?.(result);
         if (result.status === 'ready') setForecast(result);
-        if (locked && result.status === 'ready') return;
-        const delay = ++attempts >= 60 || result.status === 'ready' && !result.refreshing ? 300000 : result.status === 'collecting' ? 30000 : 60000;
-        if (!locked) timer = window.setTimeout(() => { void load(); }, delay);
+        if (Date.parse(game.date) <= Date.now() && result.status === 'ready') return;
+        const delay = locked ? 60000 : ++attempts >= 60 || result.status === 'ready' && !result.refreshing ? 300000 : result.status === 'collecting' ? 30000 : 60000;
+        timer = window.setTimeout(() => { void load(); }, delay);
       } catch (cause) {
         if (controller.signal.aborted) return;
         console.error('NFL game simulation failed', game.eventId, cause);
@@ -146,8 +146,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
     return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); window.removeEventListener('online', reconnect); };
   }, [game.eventId, game.date, game.home.id, game.away.id, retry, locked, onForecast]);
   const displayed = forecast;
-  const scenario = displayed?.scenarios.find(row => row.id === scenarioId)
-    ?? displayed?.scenarios.find(row => row.home && row.away) ?? displayed?.scenarios[0];
+  const scenario = selectedSimulationScenario(displayed ?? undefined) ?? displayed?.scenarios[0];
   useEffect(() => { if (scenario) onScenarioChange?.(scenario.id); }, [scenario?.id, onScenarioChange]);
   const [admin, setAdmin] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState(game.away.id);
@@ -182,7 +181,16 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
         <div><h2 id="nfl-simulation-heading">GamewAIre Game Simulation</h2><p>Experimental · Production across teams · Not a betting recommendation</p></div>
         {(!locked || error) && <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)}>{error ? locked ? 'Retry saved forecast' : 'Retry' : 'Refresh'}</button>}
       </header>
-      {locked && <p role="status">Kickoff has passed. Only saved pregame simulations can be viewed; projections are not regenerated or replaced with live statistics.</p>}
+      {locked && <p role="status">{Date.parse(game.date) <= Date.now()
+        ? 'Kickoff has passed. Only saved pregame simulations can be viewed; projections are not regenerated or replaced with live statistics.'
+        : 'The 30-minute lock deadline has passed. Scores stay frozen unless a confirmed pregame QB change requires a clearly marked revision.'}</p>}
+      {displayed?.qbMatchup && <div className="nfl-simulation-caption" aria-label="Automatic QB matchup">
+        <strong>QB matchup: {displayed.qbMatchup.away.name} ({displayed.qbMatchup.away.confirmed ? 'confirmed game roster' : 'projected, unconfirmed'}) vs. {displayed.qbMatchup.home.name} ({displayed.qbMatchup.home.confirmed ? 'confirmed game roster' : 'projected, unconfirmed'})</strong>
+        <p>{displayed.qbMatchup.lockedAt ? 'Locked' : 'Lock scheduled'} · {new Date(displayed.qbMatchup.lockedAt ?? displayed.qbMatchup.lockAt).toLocaleString('en-US',
+          { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}</p>
+        {displayed.qbMatchup.revision > 0 && <p>Revision {displayed.qbMatchup.revision} · {displayed.qbMatchup.revisionReason}. Original locked simulation retained.</p>}
+        {!displayed.qbMatchup.home.confirmed || !displayed.qbMatchup.away.confirmed ? <p>No explicit starting-QB declaration was available for both teams. Depth/usage candidates are projected choices, not confirmed starters.</p> : null}
+      </div>}
       {error && !displayed && <div className="nfl-simulation-caption">
         <p role={locked ? 'alert' : 'status'}>{locked ? error : `${forecast ? 'Your saved simulation remains available while updates reconnect.' : 'Preparing your simulation. A feed interruption is delaying updates.'} Automatic retries continue, including when your connection returns.`}</p>
       </div>}
@@ -190,11 +198,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
       {!displayed && response && !error && !locked && <p role="status">Preparing your GamewAIre simulation. Updates load automatically.</p>}
       {displayed && (
         <>
-          {displayed.evidenceMode !== 'team-only' && <label className="nfl-simulation-scenario">Quarterback scenario — participation assumed, not confirmed
-            <select value={scenario?.id ?? ''} onChange={event => setScenarioId(event.target.value)}>
-              {displayed.scenarios.map(row => <option key={row.id} value={row.id}>{row.label}{row.issue ? ' — Preparing' : ''}</option>)}
-            </select>
-          </label>}
+          {!displayed.qbMatchup && scenario && displayed.evidenceMode !== 'team-only' && <p className="nfl-simulation-caption">Archived projected QB matchup: {scenario.quarterbacks.away} vs. {scenario.quarterbacks.home}. Starting QBs were not explicitly confirmed in this archive.</p>}
           {scenario?.issue && <p role="status">This quarterback scenario is not available yet.</p>}
           {scenario?.home && scenario.away && (
             <>
