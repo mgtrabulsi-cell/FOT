@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as accuracy from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 import * as simulation from '../supabase/functions/_shared/nflSimulation.ts';
+import { readNFLClosingSpread } from '../src/services/nflClosingSpread.ts';
 
 const now = Date.parse('2026-11-08T23:00:00Z');
 const scopes = [{ date: '2026-11-05T23:00:00Z' }, { date: '2026-11-09T23:00:00Z' }];
@@ -140,6 +141,8 @@ test('Each download refreshes the entire selected week and uses the fresh winner
     if (name === 'react') return { useRef: () => ({ current: new Set() }), useEffect: fn => effects.push(fn) };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('GamewaireResultsDownload')) return { ResultsGraphicDownload: 'Download' };
+    if (name.includes('nflClosingSpread')) return { fetchNFLClosingSpread: async game =>
+      ['1', '2'].includes(game.eventId) ? closingFor([game], -6.5)[0] : null };
     if (name.includes('gamewireBot')) return { loadSimulationAccuracy: async (games, signal) => {
       assert.equal(games, selectedGames); assert.equal(signal.aborted, false); requests.push(signal); calls++;
       const data = report();
@@ -197,28 +200,32 @@ test('Each download refreshes the entire selected week and uses the fresh winner
 
 const slateGame = (id, homeScore = 30, awayScore = 20, status = 'FINAL') => ({
   eventId: id, date: '2026-11-08T18:00:00Z', status,
-  home: { abbr: 'HOM', name: 'Home Team', color: '#2366aa', score: homeScore },
-  away: { abbr: 'AWY', name: 'Away Team', color: '#b42145', score: awayScore },
+  home: { id: '1', abbr: 'HOM', name: 'Home Team', color: '#2366aa', score: homeScore },
+  away: { id: '2', abbr: 'AWY', name: 'Away Team', color: '#b42145', score: awayScore },
 });
+const closingFor = (games, homeLine = -6) => games.map(game => ({ eventId: game.eventId, kickoff: game.date,
+  homeTeamId: game.home.id, awayTeamId: game.away.id, homeLine, awayLine: -homeLine, provider: 'DraftKings' }));
 const savedForecast = (game, home, away) => ({
   eventId: game.eventId, kickoff: game.date, status: 'ready', qbMatchup: { scenarioId: 'published' },
   scenarios: [{ id: 'alternative', home: { score: { mean: 99 } }, away: { score: { mean: 0 } } },
     { id: 'published', home: { score: { mean: home } }, away: { score: { mean: away } } }],
 });
-test('Full slate grades the selected published spread, including losses, exact pushes, away favorites and pending/unavailable games', () => {
+test('Full slate grades closing ATS lines, including losses, exact pushes, away picks and pending/unavailable games', () => {
   const h = graphicHarness();
-  const games = [slateGame('1', 31, 20), slateGame('2', 24, 20), slateGame('3', 27, 20),
+  const games = [slateGame('1', 31, 20), slateGame('2', 24, 20), slateGame('3', 26, 20),
     slateGame('4', 20, 30), slateGame('5', 20, 24), slateGame('6', 10, 10, 'LIVE'), slateGame('7', 0, 0, 'UPCOMING'),
     slateGame('8'), slateGame('9')];
   const forecasts = games.slice(0, 7).map(game => ({ eventId: game.eventId,
     forecast: savedForecast(game, ['4', '5'].includes(game.eventId) ? 20 : 27, ['4', '5'].includes(game.eventId) ? 27 : 20) }));
   forecasts.push({ eventId: '9', forecast: savedForecast(games[8], 24, 24) });
-  const snapshot = h.simulationSlateGraphicSnapshot({ games: [], pending: 0, issues: [] }, games, forecasts, now);
+  const lines = closingFor(games).map(line => ['4', '5'].includes(line.eventId)
+    ? { ...line, homeLine: 6, awayLine: -6 } : line);
+  const snapshot = h.simulationSlateGraphicSnapshot({ games: [], pending: 0, issues: [] }, games, forecasts, now, 'slate', lines);
   assert.deepEqual(Array.from(snapshot.rows, row => row.spread.grade), ['covered', 'missed', 'push', 'covered', 'missed', 'pending', 'pending', 'unavailable', 'unavailable']);
   assert.equal(snapshot.rows[0].simulated, '20 - 27');
-  assert.equal(snapshot.rows[0].spread.actualMargin, 11);
+  assert.equal(snapshot.rows[0].spread.actualMargin, 5);
   assert.equal(snapshot.rows[3].spread.favorite, 'AWY');
-  assert.equal(snapshot.rows[3].spread.actualMargin, 10);
+  assert.equal(snapshot.rows[3].spread.actualMargin, 4);
   assert.equal(snapshot.rows[8].simulated, 'Unavailable', 'Never fabricate a winner from a tied archive');
   assert.equal(snapshot.verified, 5); assert.equal(snapshot.pending, 2); assert.equal(snapshot.excluded, 2);
   assert.deepEqual({ ...snapshot.record }, { wins: 2, losses: 2, ties: 1, noWinner: 2 });
@@ -228,25 +235,25 @@ test('Full slate grades the selected published spread, including losses, exact p
 });
 test('A sixteen-game export keeps every row and explicit colored grades within its adaptive canvas', async () => {
   const h = graphicHarness();
-  const games = Array.from({ length: 16 }, (_, index) => slateGame(String(index).padStart(2, '0'), index % 3 === 0 ? 28 : index % 3 === 1 ? 24 : 27, 20));
+  const games = Array.from({ length: 16 }, (_, index) => slateGame(String(index).padStart(2, '0'), index % 3 === 0 ? 28 : index % 3 === 1 ? 24 : 26, 20));
   const forecasts = games.map(game => ({ eventId: game.eventId, forecast: savedForecast(game, 27, 20) }));
-  const snapshot = h.simulationSlateGraphicSnapshot({ games: [], issues: [], pending: 0 }, games, forecasts, now);
+  const snapshot = h.simulationSlateGraphicSnapshot({ games: [], issues: [], pending: 0 }, games, forecasts, now, 'slate', closingFor(games));
   await h.renderSimulationResultsGraphic(snapshot);
   assert.equal(snapshot.rows.length, 16);
   assert.equal(h.canvas.width, 1080); assert.equal(h.canvas.height, Math.round(2030 * 1080 / 768));
-  assert.equal(h.drawn.filter(text => text === 'HOM -7').length, 16);
-  for (const [label, color] of [['COVERED', '#35d48a'], ['MISSED', '#ff2347'], ['PUSH', '#36baff']])
+  assert.equal(h.drawn.filter(text => text === 'HOM -6').length, 16);
+  for (const [label, color] of [['WIN', '#35d48a'], ['LOSS', '#ff2347'], ['PUSH', '#36baff']])
     assert.ok(h.coloredText.some(text => text.value === label && text.color === color));
   const cards = h.panels.filter(panel => panel.width === 708 && panel.height === 88);
   assert.equal(cards.length, 16);
   for (let index = 1; index < cards.length; index++) assert.ok(cards[index].y > cards[index - 1].y + cards[index - 1].height);
-  assert.ok(h.drawn.some(text => text.includes('not sportsbook odds')));
+  assert.ok(h.drawn.some(text => text.includes('No invented odds')));
 });
 test('Modeled pregame OT is graded and labeled, but post-kickoff extensions and wrong-winner calls are never green', async () => {
   const h = graphicHarness(), game = slateGame('ot', 31, 27);
   const forecast = savedForecast(game, 27, 27);
   forecast.scenarios[1].projectedOvertime = { home: 30, away: 27, source: 'pregame' };
-  const snapshot = h.simulationSlateGraphicSnapshot({ games: [], issues: [] }, [game], [{ eventId: 'ot', forecast }], now);
+  const snapshot = h.simulationSlateGraphicSnapshot({ games: [], issues: [] }, [game], [{ eventId: 'ot', forecast }], now, 'slate', closingFor([game], -2));
   assert.equal(snapshot.rows[0].simulated, '27 - 30 F/OT');
   assert.equal(snapshot.rows[0].spread.grade, 'covered');
   await h.renderSimulationResultsGraphic(snapshot);
@@ -254,8 +261,8 @@ test('Modeled pregame OT is graded and labeled, but post-kickoff extensions and 
   forecast.scenarios[1].projectedOvertime.source = 'archive-extension';
   assert.equal(h.simulationSlateGraphicSnapshot({ games: [], issues: [] }, [game], [{ eventId: 'ot', forecast }], now).rows[0].spread.grade, 'unavailable');
   game.home.score = 14; game.away.score = 21;
-  const wrong = h.simulationSlateGraphicSnapshot({ games: [], issues: [] }, [game], [{ eventId: 'ot', forecast: savedForecast(game, 27, 20) }], now);
-  assert.equal(wrong.rows[0].spread.actualMargin, -7);
+  const wrong = h.simulationSlateGraphicSnapshot({ games: [], issues: [] }, [game], [{ eventId: 'ot', forecast: savedForecast(game, 27, 20) }], now, 'slate', closingFor([game], -2));
+  assert.equal(wrong.rows[0].spread.actualMargin, -9);
   assert.equal(wrong.rows[0].spread.grade, 'missed');
 });
 test('Result checkmarks occupy their own padded area below the score underline and left of the explanatory text', async () => {
@@ -283,9 +290,9 @@ test('Winner-only slate grades wins regardless of spread, with actual ties, pend
   assert.deepEqual(Array.from(winners.rows, row => row.spread.grade), ['win', 'win', 'loss', 'win', 'tie', 'pending', 'pending', 'unavailable']);
   assert.deepEqual({ ...winners.record }, { wins: 3, losses: 1, ties: 1, noWinner: 1 });
   assert.equal(winners.verified, 5); assert.equal(winners.pending, 2); assert.equal(winners.excluded, 1);
-  const spreads = h.simulationSlateGraphicSnapshot(report, games, forecasts, now);
+  const spreads = h.simulationSlateGraphicSnapshot(report, games, forecasts, now, 'slate', closingFor(games));
   assert.equal(spreads.rows[0].spread.grade, 'missed');
-  assert.equal(spreads.rows[1].spread.grade, 'push');
+  assert.equal(spreads.rows[1].spread.grade, 'covered');
   await h.renderSimulationResultsGraphic(winners);
   assert.equal(h.drawn.filter(text => text === 'WIN').length, 3);
   assert.ok(h.drawn.includes('3W - 1L - 1T'));
@@ -294,4 +301,55 @@ test('Winner-only slate grades wins regardless of spread, with actual ties, pend
   assert.ok(h.coloredText.some(text => text.value === 'LOSS' && text.color === '#ff2347'));
   assert.ok(h.coloredText.some(text => text.value === 'TIE' && text.color === '#36baff'));
   assert.ok(!h.drawn.some(text => /spread|Actual margin:| -7|COVERED|MISSED|PUSH/i.test(text)));
+});
+
+test('Closing ATS selects the projected covering team, not the outright winner, and grades Tampa Bay +6.5 as a win', async () => {
+  const h = graphicHarness(), game = slateGame('tb', 27, 24);
+  game.home.abbr = 'CHI'; game.away.abbr = 'TB';
+  const lines = closingFor([game], -6.5), report = { games: [], issues: [] };
+  const forecast = savedForecast(game, 27, 24);
+  const snapshot = h.simulationSlateGraphicSnapshot(report, [game], [{ eventId: 'tb', forecast }], now, 'slate', lines);
+  assert.equal(snapshot.rows[0].spread.favorite, 'TB', 'Chicago is the outright projected winner but Tampa Bay is the ATS pick');
+  assert.equal(snapshot.rows[0].spread.closingLine, 6.5);
+  assert.equal(snapshot.rows[0].spread.actualMargin, 3.5);
+  assert.equal(snapshot.rows[0].spread.grade, 'covered');
+  assert.equal(snapshot.record.wins, 1);
+  await h.renderSimulationResultsGraphic(snapshot);
+  assert.ok(h.drawn.includes('TB +6.5'));
+  assert.ok(h.drawn.includes('WIN'));
+  assert.ok(h.drawn.includes('Close: DraftKings'));
+  const chiPick = h.simulationSlateGraphicSnapshot(report, [game], [{ eventId: 'tb', forecast: savedForecast(game, 35, 24) }], now, 'slate', lines);
+  assert.equal(chiPick.rows[0].spread.favorite, 'CHI');
+  assert.equal(chiPick.rows[0].spread.grade, 'missed');
+  const noLine = h.simulationSlateGraphicSnapshot(report, [game], [{ eventId: 'tb', forecast }], now);
+  assert.equal(noLine.rows[0].spread.grade, 'unavailable');
+  assert.equal(noLine.rows[0].simulated, '24 - 27', 'Keep the published score visible when the closing line is missing');
+  assert.equal(noLine.verified, 0);
+  const pushLines = closingFor([game], -3);
+  const push = h.simulationSlateGraphicSnapshot(report, [game], [{ eventId: 'tb', forecast: savedForecast(game, 30, 24) }], now, 'slate', pushLines);
+  assert.equal(push.rows[0].spread.grade, 'push');
+  const noPick = h.simulationSlateGraphicSnapshot(report, [game], [{ eventId: 'tb', forecast }], now, 'slate', pushLines);
+  assert.equal(noPick.rows[0].spread.grade, 'unavailable');
+  assert.match(noPick.rows[0].difference, /No ATS pick/);
+});
+
+test('Closing reader accepts explicit finalized provider close fields only, never generic spreads, opening lines or in-play lines', () => {
+  const game = slateGame('tb');
+  const summary = { header: { id: 'tb', competitions: [{ date: game.date, status: { type: { state: 'post', completed: true } },
+    competitors: [{ homeAway: 'home', team: { id: '1' } }, { homeAway: 'away', team: { id: '2' } }] }] },
+    pickcenter: [{ provider: { name: 'DraftKings' }, spread: -99, pointSpread: {
+      home: { close: { line: '-6.5' }, open: { line: '-3.5' } }, away: { close: { line: '+6.5' }, open: { line: '+3.5' } },
+    } }] };
+  assert.equal(readNFLClosingSpread(summary, game).homeLine, -6.5);
+  assert.equal(readNFLClosingSpread(summary, game).awayLine, 6.5);
+  summary.header.competitions[0].status.type.state = 'in';
+  assert.equal(readNFLClosingSpread(summary, game), null);
+  summary.header.competitions[0].status.type.state = 'post';
+  delete summary.pickcenter[0].pointSpread.away.close;
+  assert.equal(readNFLClosingSpread(summary, game), null);
+  summary.pickcenter[0].pointSpread.away.close = { line: '+7.5' };
+  assert.throws(() => readNFLClosingSpread(summary, game), /inconsistent/);
+  summary.pickcenter[0].pointSpread.away.close.line = '+6.5';
+  assert.equal(readNFLClosingSpread(summary, { ...game, nflMarket: { provider: 'Different book' } }), null);
+  assert.throws(() => readNFLClosingSpread(summary, { ...game, eventId: 'wrong' }), /match the selected game/);
 });

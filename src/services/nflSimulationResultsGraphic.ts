@@ -5,6 +5,7 @@ import type { SimulationStat } from '../../supabase/functions/_shared/nflSimulat
 import type { Game } from './sportsData';
 import { projectedSimulationScore, selectedSimulationScenario } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
+import type { NFLClosingSpread } from './nflClosingSpread';
 
 export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances' | 'slate' | 'winners';
 export type SimulationWinnerRecord = { wins: number; losses: number; ties: number; noWinner: number };
@@ -16,13 +17,14 @@ export type SimulationResultsGraphicSnapshot = {
     spread?: { margin: number | null; favorite: string | null; actualMargin: number | null;
       grade: SimulationSpreadGrade; awayName: string; homeName: string;
       awayColor: string; homeColor: string; projectedAway: number | null; projectedHome: number | null;
-      actualAway: number | null; actualHome: number | null } }>;
+      actualAway: number | null; actualHome: number | null; closingLine: number | null; closingProvider: string | null } }>;
 };
 
 export type SimulationSlateForecast = { eventId: string; forecast?: NFLGameSimulation; error?: string };
 
 export function simulationSlateGraphicSnapshot(report: SimulationAccuracyReport, games: Game[],
-  forecasts: SimulationSlateForecast[], now = Date.now(), kind: 'slate' | 'winners' = 'slate'): SimulationResultsGraphicSnapshot {
+  forecasts: SimulationSlateForecast[], now = Date.now(), kind: 'slate' | 'winners' = 'slate',
+  closingSpreads: NFLClosingSpread[] = []): SimulationResultsGraphicSnapshot {
   if (!games.length || !Number.isFinite(now) || games.some(game => !Number.isFinite(Date.parse(game.date)))
     || new Set(games.map(game => game.eventId)).size !== games.length)
     throw new Error('Choose a valid, unique NFL slate before downloading its simulated spreads.');
@@ -44,27 +46,41 @@ export function simulationSlateGraphicSnapshot(report: SimulationAccuracyReport,
     if ([home, away, actualHome, actualAway].some(value => value !== null && !Number.isFinite(value)))
       throw new Error('Valid published and final scores are required to grade simulated spreads.');
     const margin = home !== null && away !== null && home !== away ? Math.abs(home - away) : null;
-    const favorite = margin === null ? null : home! > away! ? game.home.abbr : game.away.abbr;
-    const actualMargin = margin !== null && actualHome !== null && actualAway !== null
-      ? (home! > away! ? actualHome - actualAway : actualAway - actualHome) : null;
+    const closing = kind === 'slate' && actualHome !== null && actualAway !== null
+      ? closingSpreads.find(row => row.eventId === game.eventId) : undefined;
+    if (closing && (Date.parse(closing.kickoff) !== Date.parse(game.date) || closing.homeTeamId !== game.home.id
+      || closing.awayTeamId !== game.away.id || ![closing.homeLine, closing.awayLine].every(Number.isFinite)
+      || Math.abs(closing.homeLine + closing.awayLine) > 1e-9 || !closing.provider))
+      throw new Error('A closing spread does not match the selected game or contains invalid lines.');
+    const projectedCover = closing && margin !== null ? home! - away! + closing.homeLine : null;
+    const pickHome = kind === 'winners' ? home! > away! : projectedCover !== null && projectedCover > 0;
+    const favorite = margin === null || kind === 'slate' && (projectedCover === null || projectedCover === 0)
+      ? null : pickHome ? game.home.abbr : game.away.abbr;
+    const closingLine = closing && favorite ? pickHome ? closing.homeLine : closing.awayLine : null;
+    const actualMargin = favorite && actualHome !== null && actualAway !== null
+      ? (pickHome ? actualHome - actualAway : actualAway - actualHome) + (kind === 'slate' ? closingLine! : 0) : null;
     const grade: SimulationSpreadGrade = margin === null ? 'unavailable' : actualMargin === null ? 'pending'
       : kind === 'winners' ? actualMargin > 0 ? 'win' : actualMargin < 0 ? 'loss' : 'tie'
-      : actualMargin > margin ? 'covered' : actualMargin === margin ? 'push' : 'missed';
-    const difference = grade === 'unavailable' ? saved?.error ?? 'No published decisive simulation'
+      : actualMargin > 0 ? 'covered' : actualMargin === 0 ? 'push' : 'missed';
+    const finalGrade: SimulationSpreadGrade = kind === 'slate' && margin !== null && actualHome !== null && actualAway !== null && !favorite
+      ? 'unavailable' : grade;
+    const difference = finalGrade === 'unavailable' ? margin === null ? saved?.error ?? 'No published decisive simulation'
+      : closing ? 'No ATS pick: simulation pushes closing line' : 'Closing line unavailable'
       : grade === 'pending' ? `${game.status === 'LIVE' ? 'Live' : 'Upcoming'} - not graded`
       : grade === 'win' ? 'Correct simulated winner' : grade === 'loss' ? 'Incorrect simulated winner' : grade === 'tie' ? 'Final game tied'
-      : grade === 'push' ? 'Push - exact margin' : grade === 'covered' ? 'Covered simulated spread' : 'Did not cover simulated spread';
+      : grade === 'push' ? 'Push - closing line' : grade === 'covered' ? 'Covered closing spread' : 'Did not cover closing spread';
     return { title: `${game.away.abbr} at ${game.home.abbr}`, context: difference, away: game.away.abbr, home: game.home.abbr,
       simulated: margin === null ? 'Unavailable' : `${away} - ${home}${verified?.overtime || published?.overtime ? ' F/OT' : ''}`,
       actual: actualHome === null || actualAway === null ? 'Pending' : `${actualAway} - ${actualHome}`, difference,
-      spread: { margin, favorite, actualMargin, grade, awayName: game.away.name, homeName: game.home.name,
+      spread: { margin, favorite, actualMargin, grade: finalGrade, awayName: game.away.name, homeName: game.home.name,
         awayColor: game.away.color, homeColor: game.home.color, projectedAway: margin === null ? null : away,
-        projectedHome: margin === null ? null : home, actualAway, actualHome } };
+        projectedHome: margin === null ? null : home, actualAway, actualHome,
+        closingLine, closingProvider: closing?.provider ?? null } };
   });
   const graded = rows.filter(row => row.spread.actualMargin !== null);
   return { kind, capturedAt: new Date(now).toISOString(),
     slate: dates[0] === dates[dates.length - 1] ? `${date(dates[0])} ET` : `${date(dates[0])} - ${date(dates[dates.length - 1])} ET`,
-    statistic: kind === 'winners' ? 'Simulated winners' : 'Simulation-derived spreads', record: {
+    statistic: kind === 'winners' ? 'Simulated winners' : 'Closing-line ATS picks', record: {
       wins: rows.filter(row => row.spread.grade === (kind === 'winners' ? 'win' : 'covered')).length,
       losses: rows.filter(row => row.spread.grade === (kind === 'winners' ? 'loss' : 'missed')).length,
       ties: rows.filter(row => row.spread.grade === (kind === 'winners' ? 'tie' : 'push')).length,
@@ -195,9 +211,9 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   ctx.fillRect(80, 232, 8, 13); ctx.fillRect(72, 245, 24, 6);
   line([[142, 195], [142, 255]], '#7cbce0', 1);
   line([[571, 195], [571, 255]], '#7cbce0', 1);
-  text(snapshot.kind === 'winners' ? 'SIMULATED-WINNER RECORD' : snapshot.kind === 'slate' ? 'SIMULATED-SPREAD RECORD' : 'SELECTED-WEEK WINNER RECORD', 174, 208, 17, 385, blue);
+  text(snapshot.kind === 'winners' ? 'SIMULATED-WINNER RECORD' : snapshot.kind === 'slate' ? 'CLOSING-LINE ATS RECORD' : 'SELECTED-WEEK WINNER RECORD', 174, 208, 17, 385, blue);
   const record = snapshot.record;
-  text(snapshot.kind === 'slate' ? `${record.wins}C - ${record.losses}M - ${record.ties}P`
+  text(snapshot.kind === 'slate' ? `${record.wins}W - ${record.losses}L - ${record.ties}P`
     : `${record.wins}W - ${record.losses}L - ${record.ties}T`, 174, 255, 48, 385, metallic(255), true);
   text(`${snapshot.verified} ${fullSlate ? 'GRADED' : 'VERIFIED'}`, 650, 223, 17, 138, muted, true, 'center');
   text('GAMES', 650, 242, 17, 138, muted, true, 'center');
@@ -207,7 +223,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     const ai = text('AI', 278 + word, 289, 14, 30, red);
     text('re Sim', 278 + word + ai, 289, 14, 70, blue);
     text('FINAL', 455, 289, 14, 90, muted, false, 'center');
-    text(snapshot.kind === 'winners' ? 'WINNER PICK' : 'SIMULATED SPREAD', 630, 289, 14, 180, muted, false, 'center');
+    text(snapshot.kind === 'winners' ? 'WINNER PICK' : 'CLOSING ATS PICK', 630, 289, 14, 180, muted, false, 'center');
   }
   snapshot.rows.forEach((row, index) => {
     if (fullSlate) {
@@ -229,11 +245,15 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
       }
       if (row.simulated.endsWith(' F/OT')) text('F/OT', 389, y + 50, 10, 42, blue, false, 'center');
       box(540, y + 10, 182, 68, 8);
-      text(spread.margin === null ? 'UNAVAILABLE' : snapshot.kind === 'winners' ? spread.favorite! : `${spread.favorite} -${spread.margin}`, 631, y + 35, 26, 160, accent, true, 'center');
-      text(spread.grade === 'pending' ? 'NOT GRADED' : spread.grade.toUpperCase(), 631, y + 54, 13, 160, accent, false, 'center');
-      text(spread.actualMargin === null ? (spread.grade === 'pending' ? row.context : 'Archive/score unavailable')
+      text(spread.margin === null ? 'UNAVAILABLE' : snapshot.kind === 'winners' ? spread.favorite!
+        : spread.closingLine === null ? spread.grade === 'pending' ? 'PENDING LINE' : spread.closingProvider ? 'NO ATS PICK' : 'NO CLOSE LINE'
+        : `${spread.favorite} ${spread.closingLine > 0 ? '+' : ''}${spread.closingLine}`, 631, y + 35, 26, 160, accent, true, 'center');
+      text(spread.grade === 'pending' ? 'NOT GRADED' : spread.grade === 'covered' ? 'WIN' : spread.grade === 'missed' ? 'LOSS'
+        : spread.grade.toUpperCase(), 631, y + 54, 13, 160, accent, false, 'center');
+      text(spread.actualMargin === null ? (spread.grade === 'pending' ? row.context : spread.margin === null ? 'Archive/score unavailable'
+        : snapshot.kind === 'slate' ? spread.closingProvider ? 'Projection pushes line' : 'Closing line unavailable' : 'Archive/score unavailable')
         : snapshot.kind === 'winners' ? row.difference
-        : `Actual margin: ${spread.actualMargin > 0 ? '+' : ''}${spread.actualMargin}`, 631, y + 71, 12, 160, muted, false, 'center');
+        : `Close: ${spread.closingProvider}`, 631, y + 71, 12, 160, muted, false, 'center');
       return;
     }
     const y = 300 + index * 178;
@@ -272,12 +292,12 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   if (fullSlate) {
     const footer = height - 115;
     line([[35, footer], [733, footer]], '#4a82aa', 1);
-    text(snapshot.kind === 'winners' ? 'GREEN: WIN   RED: LOSS   BLUE: TIE' : 'GREEN: COVERED   RED: MISSED   BLUE: PUSH', 36, footer + 26, 15, 696, white);
+    text(snapshot.kind === 'winners' ? 'GREEN: WIN   RED: LOSS   BLUE: TIE' : 'GREEN: WIN   RED: LOSS   BLUE: PUSH', 36, footer + 26, 15, 696, white);
     text(`${snapshot.verified} graded | ${snapshot.pending} pending | ${snapshot.excluded} unavailable`, 36, footer + 48, 14, 696, muted);
     text(snapshot.kind === 'winners' ? 'Win/loss grades the predicted winner only, regardless of the winning margin.'
-      : 'Predicted winner must win by MORE than its simulated margin. Equal margin = push.', 36, footer + 69, 12, 696, muted);
+      : 'The published simulation selects the ATS side against the provider closing spread.', 36, footer + 69, 12, 696, muted);
     text(snapshot.kind === 'winners' ? 'Published pregame winner picks, not guarantees or betting recommendations.'
-      : 'Simulation-derived spreads, not sportsbook odds or betting recommendations.', 36, footer + 88, 12, 696, muted);
+      : 'Provider closing lines only. No invented odds or betting recommendations.', 36, footer + 88, 12, 696, muted);
     text(`Downloaded ${new Date(snapshot.capturedAt).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET`, 36, footer + 105, 11, 500, muted);
     text('gamewire.us', 604, footer + 105, 18, 130, white, true);
     return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
