@@ -3,7 +3,7 @@ import { readBotDepth } from './gamewireBotProjections.ts';
 import { readBotRoster } from './gamewireBot.ts';
 import { nflSimulationRuns, nflSimulationVersion, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from './nflSimulation.ts';
 import { validateOvertimeEvidence } from './nflSimulationOvertime.ts';
-import { neutralSimulationLearning, simulationLearningBaselines } from './nflSimulationLearning.ts';
+import { simulationLearningBaselines, simulationLearningFactors } from './nflSimulationLearning.ts';
 import type { NFLGameSimulation, SimulationBox, SimulationGame, SimulationPlayer, SimulationReference } from './nflSimulation.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
@@ -144,7 +144,7 @@ async function boxBatch(refs: SimulationReference[], cache: SimulationCache, get
   })), completed: saved.size, total: required.length, issues };
 }
 export async function advanceSimulation(game: SimulationGame, job: SimulationJob, cache: SimulationCache, get: (url: string) => Promise<unknown>, now: number,
-  learning?: import('./nflSimulationLearning.ts').SimulationLearning['adjustments'],
+  learning?: import('./nflSimulationLearning.ts').SimulationLearningInput,
   quarterbacks?: { home: string | null; away: string | null }): Promise<NFLGameSimulation> {
   const result: NFLGameSimulation & { preparationIssues: string[] } = { status: 'collecting', version: nflSimulationVersion, eventId: game.id, kickoff: game.date, checkedAt: job.createdAt,
     forecastAt: null, stage: 'Team history', progress: { completed: 0, total: 200 }, history: { home: 0, away: 0, target: 100 },
@@ -250,7 +250,12 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     return teamOnly(refreshing);
   }
   if (learning) {
-    result.learning = { version: 'simulation-walk-forward-v1', adjustments: neutralSimulationLearning(now), baselines: simulationLearningBaselines(result.scenarios) };
+    result.learning = { version: 'simulation-walk-forward-v2', adjustments: learning.adjustments,
+      playerAdjustments: learning.playerAdjustments ?? {}, baselines: simulationLearningBaselines(result.scenarios) };
+    if ([...Object.values(learning.adjustments), ...Object.values(learning.playerAdjustments ?? {})].some(adjustment => adjustment.active)) {
+      result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs,
+        simulationLearningFactors(learning.adjustments), overtime, learning.playerAdjustments);
+    }
   }
   result.warnings.push(...result.scenarios.flatMap(scenario => scenario.issue ? [scenario.issue] : []));
   result.scenarios = result.scenarios.filter(scenario => scenario.home && scenario.away);
@@ -274,6 +279,6 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     'Touchdowns use verified per-opportunity player production and opponent allowances. Passing/receiving touchdowns reconcile and scoring is bounded below by six points per offensive touchdown in every draw.',
     'Regulation uses joint yardage/scoring-rate outcomes from verified non-overtime games. Tied draws add empirical possession overtime under current NFL rules. Overtime is score-only: no player yards or touchdowns are invented; added points remain unallocated other points. Genuine regular-season ties and equal rounded average scores remain possible.',
   );
-  if (result.learning) result.warnings.push('v5 learning is neutral: archived full-game player actuals include overtime, while these player expectations cover regulation only. Legacy v4 forecasts do not train this version.');
+  if (result.learning) result.warnings.push('Results-based learning uses original v5 baselines and verified settled outcomes. Player and yardage learning excludes overtime games. Corrections need at least 30 training and 10 later validation games, with at least 5% lower validation error; otherwise the model stays unchanged. Published forecasts are not rewritten. Future improvement is not guaranteed.');
   return result;
 }

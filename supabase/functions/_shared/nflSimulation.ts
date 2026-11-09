@@ -24,10 +24,14 @@ export type SimulationTeamTotals = Record<BaseTotal, SimulationRange> & Partial<
 export type SimulationTeamResult = { id: string; name: string; abbr: string; score: SimulationRange; winProbability: number; players: SimulationPlayerResult[]; teamOnly?: boolean; matchup?: { passingYardsMultiplier: number; rushingYardsMultiplier: number }; totals: SimulationTeamTotals | null };
 export type SimulationScenario = { id: string; label: string; quarterbacks: { home: string; away: string }; issue: string | null; home: SimulationTeamResult | null; away: SimulationTeamResult | null; tieProbability: number | null; projectedOvertime?: { method: 'empirical-score-continuation-v1'; home: number; away: number; startingScore: number; source: 'pregame' | 'archive-extension'; runs: number; decisiveRuns: number }; overtime?: { method: 'empirical-possession-bootstrap-v1'; rules: string; rulesSource: string; evidenceEvents: { home: string[]; away: string[] }; probability: number; samples: { home: number; away: number }; attribution: 'score-only'; seasonType: 2 | 3 } };
 export type SimulationLearningMetric = 'score' | 'passingYards' | 'rushingYards';
+export type SimulationPlayerLearningKey = `${SimulationPosition}:${keyof SimulationStat}`;
+export type SimulationPlayerLearning = Partial<Record<SimulationPlayerLearningKey, import('./gamewireLearning.ts').LearningAdjustment>>;
 export type SimulationLearning = {
-  version: 'simulation-walk-forward-v1';
+  version: 'simulation-walk-forward-v1' | 'simulation-walk-forward-v2';
   adjustments: Record<SimulationLearningMetric, import('./gamewireLearning.ts').LearningAdjustment>;
-  baselines: Array<{ scenarioId: string; teams: Array<{ id: string; score: number; passingYards: number | null; rushingYards: number | null }> }>;
+  playerAdjustments?: SimulationPlayerLearning;
+  baselines: Array<{ scenarioId: string; teams: Array<{ id: string; score: number; passingYards: number | null; rushingYards: number | null;
+    players?: Array<{ id: string; position: SimulationPosition; stats: Partial<SimulationStat> }> }> }>;
 };
 export type NFLGameSimulation = { status: 'collecting' | 'ready' | 'unavailable'; version: string; eventId: string; kickoff: string; checkedAt: string; forecastAt: string | null; stage: string; evidenceMode?: 'full' | 'limited' | 'team-only'; progress: { completed: number; total: number }; history: { home: number; away: number; target: 100 }; runs: number; calibrated: false; refreshing?: boolean; preparationIssues?: string[]; warnings: string[]; injuries: Array<{ name: string; position: string; teamId: string; status: string }>; scenarios: SimulationScenario[]; learning?: SimulationLearning; qbMatchup?: SimulationQBMatchup };
 export const simulationStatKeys: Array<keyof SimulationStat> = ['passingAttempts', 'completions', 'passingYards', 'passingTouchdowns', 'rushingAttempts', 'rushingYards', 'rushingTouchdowns', 'receptions', 'receivingYards', 'receivingTouchdowns'];
@@ -39,23 +43,39 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
   const integer = (n: unknown) => finite(n) && Number.isInteger(n) && n >= 0;
   const strings = (values: unknown) => Array.isArray(values) && values.every(n => typeof n === 'string');
   const learning = object(row.learning);
-  const validLearning = row.learning === undefined || learning.version === 'simulation-walk-forward-v1'
-    && ['score', 'passingYards', 'rushingYards'].every(metric => {
-      const adjustment = object(object(learning.adjustments)[metric]);
+  const validAdjustment = (value: unknown) => {
+      const adjustment = object(value);
       return adjustment.version === 'walk-forward-v1' && adjustment.mode === 'stat' && typeof adjustment.active === 'boolean'
         && finite(adjustment.adjustment) && adjustment.adjustment >= .9 && adjustment.adjustment <= 1.1
         && (adjustment.active || adjustment.adjustment === 1)
         && integer(adjustment.trainingGames) && integer(adjustment.validationGames)
         && ['baselineError', 'adjustedError'].every(key => adjustment[key] === null || finite(adjustment[key]) && Number(adjustment[key]) >= 0)
         && (adjustment.through === null || typeof adjustment.through === 'string' && finiteDate(adjustment.through)) && strings(adjustment.sampleIds);
-    }) && Array.isArray(learning.baselines) && learning.baselines.every(raw => {
+  };
+  const validLearning = row.learning === undefined || ['simulation-walk-forward-v1', 'simulation-walk-forward-v2'].includes(String(learning.version))
+    && ['score', 'passingYards', 'rushingYards'].every(metric => validAdjustment(object(learning.adjustments)[metric]))
+    && (learning.version !== 'simulation-walk-forward-v2' || learning.playerAdjustments !== null && typeof learning.playerAdjustments === 'object'
+      && !Array.isArray(learning.playerAdjustments) && Object.entries(object(learning.playerAdjustments)).every(([key, value]) => {
+        const [position, stat] = key.split(':');
+        return key === `${position}:${stat}` && ['QB', 'RB', 'WR', 'TE'].includes(position)
+          && simulationStatKeys.includes(stat as keyof SimulationStat) && validAdjustment(value);
+      }))
+    && Array.isArray(learning.baselines) && learning.baselines.every(raw => {
       const baseline = object(raw);
       return typeof baseline.scenarioId === 'string' && array(row.scenarios).some(raw => object(raw).id === baseline.scenarioId)
         && Array.isArray(baseline.teams) && baseline.teams.length === 2
         && baseline.teams.every(raw => {
           const team = object(raw);
           return [teams.home, teams.away].includes(String(team.id)) && finite(team.score) && team.score >= 0
-            && ['passingYards', 'rushingYards'].every(key => team[key] === null || finite(team[key]) && Number(team[key]) >= 0);
+            && ['passingYards', 'rushingYards'].every(key => team[key] === null || finite(team[key]) && Number(team[key]) >= 0)
+            && (learning.version !== 'simulation-walk-forward-v2' || Array.isArray(team.players)
+              && new Set(team.players.map(raw => object(raw).id)).size === team.players.length
+              && team.players.every(raw => {
+                const player = object(raw);
+                return typeof player.id === 'string' && player.id.length > 0 && ['QB', 'RB', 'WR', 'TE'].includes(String(player.position))
+                  && player.stats !== null && typeof player.stats === 'object' && !Array.isArray(player.stats)
+                  && Object.entries(object(player.stats)).every(([key, value]) => simulationStatKeys.includes(key as keyof SimulationStat) && finite(value) && value >= 0);
+              }));
         }) && new Set(baseline.teams.map(raw => object(raw).id)).size === 2;
     });
   const range = (value: unknown) => {
@@ -574,11 +594,18 @@ function overtimeMetadata(game: SimulationGame, evidence: OvertimeEvidence, prob
 }
 export function simulateNFLGame(game: SimulationGame, history: { home: SimulationBox[]; away: SimulationBox[] },
   players: SimulationPlayer[], observations: Map<string, SimulationObservation[]>, runs = nflSimulationRuns,
-  learned = { score: 1, passingYards: 1, rushingYards: 1 }, overtime?: OvertimeEvidence): SimulationScenario[] {
+  learned = { score: 1, passingYards: 1, rushingYards: 1 }, overtime?: OvertimeEvidence,
+  playerLearning: SimulationPlayerLearning = {}): SimulationScenario[] {
   if (overtime) validateGameOvertime(game, overtime);
   if (!Number.isInteger(runs) || runs < 500 || runs > 10000) throw new Error('Simulation runs must be between 500 and 10000.');
   if (Object.values(learned).some(value => !Number.isFinite(value) || value < .9 || value > 1.1))
     throw new Error('Simulation learning corrections must remain within ten percent.');
+  if (Object.values(playerLearning).some(value => !value || !Number.isFinite(value.adjustment) || value.adjustment < .9 || value.adjustment > 1.1
+    || !value.active && value.adjustment !== 1)) throw new Error('Player simulation learning corrections must remain within ten percent.');
+  const factor = (player: SimulationPlayer, stat: keyof SimulationStat, base = 1) => {
+    const adjustment = playerLearning[`${player.position}:${stat}`];
+    return Math.max(.9, Math.min(1.1, base * (adjustment?.active ? adjustment.adjustment : 1)));
+  };
   const pair = (boxes: SimulationBox[], teamId: string): HistoricalPair[] => {
     const seen = new Set<string>();
     const rows = [...boxes].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).map(box => {
@@ -648,40 +675,41 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
         return draw(cohort.rows, cohort.weights, random);
       };
       const qbSample = sample(qb, 'passing'), qbStats = qbSample.player;
-      const passAttempts = Math.max(0, Math.round((own.passingAttempts + allowed.passingAttempts) / 2));
-      const completions = Math.min(passAttempts, Math.max(0, Math.round(passAttempts * (qbStats.completions ?? 0) / qbStats.passingAttempts!)));
+      const passAttempts = Math.max(0, Math.round((own.passingAttempts + allowed.passingAttempts) / 2 * factor(qb, 'passingAttempts')));
+      const completions = Math.min(passAttempts, Math.max(0, Math.round(passAttempts * (qbStats.completions ?? 0) / qbStats.passingAttempts! * factor(qb, 'completions'))));
       const receivers = context.usable.filter(p => p.position !== 'QB' && context.cohorts.has(`${p.id}:receiving`));
       const receivingSamples = receivers.map(p => sample(p, 'receiving'));
-      const catchShares = receivingSamples.map(row => row.player.receptions! / Math.max(1, row.team.receptions));
+      const catchShares = receivingSamples.map((row, i) => row.player.receptions! / Math.max(1, row.team.receptions) * factor(receivers[i], 'receptions'));
       const catches = allocate(completions, [...catchShares, Math.max(.1, 1 - catchShares.reduce((a, b) => a + b, 0))]);
       const qbYPC = Math.max(0, qbStats.passingYards! / Math.max(1, qbStats.completions!));
       const baseReceiverYards = receivers.map((_p, i) => {
         const observed = receivingSamples[i].player;
         return Math.max(0, Math.round(catches[i] * observed.receivingYards! / Math.max(1, observed.receptions!) * context.passAdjustment));
       });
-      const receiverYards = baseReceiverYards.map(yards => Math.round(yards * learned.passingYards));
+      const passFactor = factor(qb, 'passingYards', learned.passingYards);
+      const receiverYards = baseReceiverYards.map((yards, i) => Math.round(yards * factor(receivers[i], 'receivingYards', passFactor)));
       const otherReceptions = catches[catches.length - 1], baseOtherReceivingYards = Math.max(0, Math.round(otherReceptions * qbYPC * context.passAdjustment));
-      const otherReceivingYards = Math.round(baseOtherReceivingYards * learned.passingYards);
+      const otherReceivingYards = Math.round(baseOtherReceivingYards * passFactor);
       const passingYards = receiverYards.reduce((a, b) => a + b, 0) + otherReceivingYards;
       const rushers = context.usable.filter(p => ['QB', 'RB'].includes(p.position) && context.cohorts.has(`${p.id}:rushing`));
       const rushingSamples = rushers.map(p => sample(p, 'rushing'));
-      const rushShares = rushingSamples.map(row => row.player.rushingAttempts! / Math.max(1, row.team.rushingAttempts));
+      const rushShares = rushingSamples.map((row, i) => row.player.rushingAttempts! / Math.max(1, row.team.rushingAttempts) * factor(rushers[i], 'rushingAttempts'));
       const attempts = Math.max(0, Math.round((own.rushingAttempts + allowed.rushingAttempts) / 2));
       const carries = allocate(attempts, [...rushShares, Math.max(.1, 1 - rushShares.reduce((a, b) => a + b, 0))]);
       const baseRushing = rushers.map((_p, i) => {
         const observed = rushingSamples[i].player;
         return Math.max(0, Math.round(carries[i] * observed.rushingYards! / Math.max(1, observed.rushingAttempts!) * context.rushAdjustment));
       });
-      const rushing = baseRushing.map(yards => Math.round(yards * learned.rushingYards));
+      const rushing = baseRushing.map((yards, i) => Math.round(yards * factor(rushers[i], 'rushingYards', learned.rushingYards)));
       const baseOtherRushingYards = Math.max(0, Math.round(carries[carries.length - 1] * Math.max(0, own.rushingYards / Math.max(1, own.rushingAttempts)) * context.rushAdjustment));
       const otherRushingYards = Math.round(baseOtherRushingYards * learned.rushingYards);
       const rushingYards = rushing.reduce((a, b) => a + b, 0) + otherRushingYards;
       const stochasticCount = (value: number) => Math.floor(value) + (random() < value - Math.floor(value) ? 1 : 0);
-      const passProposal = Math.min(completions, stochasticCount(passAttempts * qbStats.passingTouchdowns! / qbStats.passingAttempts! * context.passTDAdjustment));
-      const receivingTD = allocateCapped(passProposal, [...receivingSamples.map(row => row.player.receivingTouchdowns! / Math.max(1, row.team.passingTouchdowns)),
+      const passProposal = Math.min(completions, stochasticCount(passAttempts * qbStats.passingTouchdowns! / qbStats.passingAttempts! * context.passTDAdjustment * factor(qb, 'passingTouchdowns')));
+      const receivingTD = allocateCapped(passProposal, [...receivingSamples.map((row, i) => row.player.receivingTouchdowns! / Math.max(1, row.team.passingTouchdowns) * factor(receivers[i], 'receivingTouchdowns')),
         Math.max(.1, 1 - receivingSamples.reduce((sum, row) => sum + row.player.receivingTouchdowns! / Math.max(1, row.team.passingTouchdowns), 0))], catches);
       const passingTouchdowns = receivingTD.reduce((a, b) => a + b, 0), otherReceivingTouchdowns = receivingTD[receivingTD.length - 1];
-      const rushingTD = rushingSamples.map((row, i) => Math.min(carries[i], stochasticCount(carries[i] * row.player.rushingTouchdowns! / Math.max(1, row.player.rushingAttempts!) * context.rushTDAdjustment)));
+      const rushingTD = rushingSamples.map((row, i) => Math.min(carries[i], stochasticCount(carries[i] * row.player.rushingTouchdowns! / Math.max(1, row.player.rushingAttempts!) * context.rushTDAdjustment * factor(rushers[i], 'rushingTouchdowns'))));
       const otherRushingTouchdowns = Math.min(carries[carries.length - 1], stochasticCount(carries[carries.length - 1] * own.rushingTouchdowns / Math.max(1, own.rushingAttempts) * context.rushTDAdjustment));
       const rushingTouchdowns = rushingTD.reduce((a, b) => a + b, 0) + otherRushingTouchdowns;
       const stats: TeamDraw['stats'] = { [qb.id]: { passingAttempts: passAttempts, completions, passingYards, passingTouchdowns } };

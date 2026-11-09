@@ -24,6 +24,16 @@ test('Stat learning requires 30 training and 10 later games; validated adjustmen
   assert.equal(result.baselineError, 10); assert.ok(result.adjustedError < .0001);
   assert.equal(learnAdjustment(samples(40, 200), 'stat', cutoff).adjustment, 1.1);
 });
+test('Grouped player observations keep individual absolute errors and still count one sample per game', () => {
+  const rows = samples().map(row => ({ ...row, prediction: 150, actual: 150,
+    observations: [{ prediction: 100, actual: 110 }, { prediction: 200, actual: 190 }] }));
+  const result = learnAdjustment(rows, 'stat', cutoff);
+  assert.equal(result.trainingGames, 30); assert.equal(result.validationGames, 10);
+  assert.equal(result.active, true); assert.equal(result.adjustment, .95);
+  assert.equal(result.baselineError, 10, 'Opposite player errors cannot cancel into a perfect forecast');
+  rows[0].observations[0].actual = NaN;
+  assert.equal(learnAdjustment(rows, 'stat', cutoff).active, false);
+});
 test('Insufficient learning evidence reports sample progress without activating a correction', () => {
   const result = learnAdjustment(samples(20), 'stat', cutoff);
   assert.equal(result.active, false); assert.equal(result.adjustment, 1);

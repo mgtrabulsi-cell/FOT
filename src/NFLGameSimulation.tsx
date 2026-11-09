@@ -258,7 +258,8 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
           {displayed.evidenceMode && <p>Coverage: {displayed.evidenceMode}. {displayed.refreshing ? 'Additional history is collecting.' : 'Collection complete.'}</p>}
           {displayed.learning && <div>
             <h3>Results-based simulation learning</h3>
-            {Object.entries(displayed.learning.adjustments).map(([metric, adjustment]) => <p key={metric}>
+            <p>Final scores include overtime. Player/stat learning uses verified non-overtime results, grouped by position and statistic. Corrections stay inactive until at least 30 training and 10 later validation games show lower error; future improvement is not guaranteed.</p>
+            {[...Object.entries(displayed.learning.adjustments), ...Object.entries(displayed.learning.playerAdjustments ?? {})].map(([metric, adjustment]) => <p key={metric}>
               {metric}: {adjustment.active ? `${Math.round((adjustment.adjustment - 1) * 100)}% validated correction` : 'No validated correction active'}
               {' · '}{adjustment.trainingGames} training / {adjustment.validationGames} validation games
             </p>)}

@@ -1,4 +1,5 @@
-export type LearningSample = { id: string; eventId: string; start: string; recordedAt: string; settledAt: string; prediction: number; actual: number };
+export type LearningSample = { id: string; eventId: string; start: string; recordedAt: string; settledAt: string; prediction: number; actual: number;
+  observations?: Array<{ prediction: number; actual: number }> };
 export type LearningAdjustment = {
   version: 'walk-forward-v1'; mode: 'stat' | 'probability'; adjustment: number; active: boolean;
   trainingGames: number; validationGames: number; baselineError: number | null; adjustedError: number | null;
@@ -27,7 +28,9 @@ export function learnAdjustment(samples: LearningSample[], mode: LearningAdjustm
     const start = Date.parse(row.start), recorded = Date.parse(row.recordedAt), settled = Date.parse(row.settledAt);
     if (!row.id || !row.eventId || ![start, recorded, settled, row.prediction, row.actual].every(Number.isFinite)
       || recorded >= start || settled < start || settled >= cutoff || start >= cutoff
-      || mode === 'stat' && row.prediction <= 0
+      || mode === 'stat' && (row.prediction <= 0 || row.observations !== undefined && (!row.observations.length
+        || row.observations.some(value => !Number.isFinite(value.prediction) || value.prediction <= 0
+          || !Number.isFinite(value.actual) || value.actual < 0)))
       || mode === 'probability' && (row.prediction <= 0 || row.prediction >= 1 || ![0, 1].includes(row.actual))) continue;
     if (!events.has(row.eventId)) events.set(row.eventId, row);
   }
@@ -40,6 +43,8 @@ export function learnAdjustment(samples: LearningSample[], mode: LearningAdjustm
   result.sampleIds = [...training, ...validation].map(row => row.id);
   if (rows.length < 40 || training.length < 30 || validation.length < 10) return result;
   const error = (sample: LearningSample[], adjustment: number) => average(sample.map(row => {
+    if (mode === 'stat' && row.observations) return average(row.observations.map(value =>
+      Math.abs(adjustedPrediction(value.prediction, mode, adjustment) - value.actual)));
     const difference = adjustedPrediction(row.prediction, mode, adjustment) - row.actual;
     return mode === 'stat' ? Math.abs(difference) : difference ** 2;
   }));

@@ -332,7 +332,7 @@ test('SQL freezes at the 30-minute threshold, preserves scores, upgrades confirm
   } finally { await db.close(); }
 });
 
-test('v5 learning remains neutral because settled player actuals include overtime', async () => {
+test('v5 score learning uses final scores, while yardage needs verified non-overtime outcomes', async () => {
   const clock = Date.parse('2026-11-07T12:00:00Z');
   const rows = Array.from({ length: 50 }, (_, i) => {
     const start = new Date(clock - (60 - i) * 86400000).toISOString();
@@ -351,14 +351,121 @@ test('v5 learning remains neutral because settled player actuals include overtim
     return query;
   } };
   const learned = await loadSimulationLearning(admin, clock);
-  for (const adjustment of Object.values(learned)) {
+  assert.equal(learned.adjustments.score.active, true);
+  assert.equal(learned.adjustments.score.adjustment, 1.1);
+  for (const adjustment of [learned.adjustments.passingYards, learned.adjustments.rushingYards]) {
     assert.equal(adjustment.active, false); assert.equal(adjustment.adjustment, 1);
     assert.equal(adjustment.trainingGames + adjustment.validationGames, 0);
   }
+  rows.forEach(row => row.actuals.regulationOnly = true);
+  assert.equal((await loadSimulationLearning(admin, clock)).adjustments.passingYards.active, true);
   rows.slice(37).forEach(row => row.actuals.teams.forEach(team => { team.points = 18; team.passingYards = 180; team.rushingYards = 90; }));
-  assert.ok(Object.values(await loadSimulationLearning(admin, clock)).every(adjustment => !adjustment.active));
+  assert.ok(Object.values((await loadSimulationLearning(admin, clock)).adjustments).every(adjustment => !adjustment.active));
   rows.forEach(row => row.actuals.realized = []);
-  assert.ok(Object.values(await loadSimulationLearning(admin, clock)).every(adjustment => !adjustment.active));
+  assert.ok(Object.values((await loadSimulationLearning(admin, clock)).adjustments).every(adjustment => !adjustment.active));
+});
+
+test('Player learning counts games, preserves original baselines, excludes OT/DNP and rejects failed validation', async () => {
+  const clock = Date.parse('2026-11-07T12:00:00Z');
+  const rows = Array.from({ length: 40 }, (_, i) => {
+    const start = clock - (50 - i) * 86400000;
+    const teams = ['1', '2'].map(id => ({ id, score: 20, passingYards: 200, rushingYards: 100,
+      players: [1, 2, 3].map(n => ({ id: `${id}${n}`, position: n === 3 ? 'TE' : 'WR',
+        stats: { receptions: 5, receivingYards: 100, receivingTouchdowns: 1 } })) }));
+    return { event_id: String(i), event_start: new Date(start).toISOString(), settled_at: new Date(start + 4 * 3600000).toISOString(),
+      payload: { forecastAt: new Date(start - 3600000).toISOString(),
+        scenarios: [{ id: 'real', home: { id: '1', totals: {}, score: { mean: 999 } }, away: { id: '2', totals: {}, score: { mean: 999 } } }],
+        learning: { version: 'simulation-walk-forward-v2', baselines: [{ scenarioId: 'real', teams }] } },
+      actuals: { regulationOnly: true, realized: [{ scenarioId: 'real' }], teams: teams.map(team => ({
+        id: team.id, points: 22, passingYards: 220, rushingYards: 110,
+        players: Object.fromEntries(team.players.map(player => [player.id, { receptions: 6, receivingYards: 110, receivingTouchdowns: 2 }])),
+      })) } };
+  });
+  let failure = false;
+  const admin = { from() {
+    const query = { select: () => query, eq: (_key, value) => { assert.equal(value, nflSimulationVersion); return query; },
+      not: () => query, lt: () => query, gt: () => query, order: () => query,
+      range: async () => ({ data: rows, error: failure ? { message: 'Unavailable' } : null }) };
+    return query;
+  } };
+  let learned = await loadSimulationLearning(admin, clock);
+  const yards = learned.playerAdjustments['WR:receivingYards'];
+  assert.equal(yards.active, true); assert.equal(yards.adjustment, 1.1);
+  assert.equal(yards.trainingGames, 30); assert.equal(yards.validationGames, 10);
+  assert.equal(learned.playerAdjustments['TE:receptions'].active, true);
+  assert.equal(learned.playerAdjustments['WR:receivingTouchdowns'].active, true);
+  assert.equal(learned.adjustments.score.adjustment, 1.1, 'Learn from original score 20, not the adjusted 999');
+  rows[0].actuals.regulationOnly = false;
+  learned = await loadSimulationLearning(admin, clock);
+  assert.equal(learned.playerAdjustments['WR:receivingYards'].active, false);
+  assert.equal(learned.adjustments.score.active, true, 'Full-game score learning can include overtime');
+  rows[0].actuals.regulationOnly = true;
+  delete rows[0].actuals.teams[0].players['11'].receivingYards;
+  delete rows[0].actuals.teams[0].players['12'].receivingYards;
+  delete rows[0].actuals.teams[1].players['21'].receivingYards;
+  delete rows[0].actuals.teams[1].players['22'].receivingYards;
+  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, false, 'Missing stats are not manufactured zeroes');
+  rows.slice(30).forEach(row => row.actuals.teams.forEach(team => Object.values(team.players).forEach(player => { player.receptions = 4; })));
+  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receptions'].active, false);
+  rows.forEach(row => row.payload.forecastAt = row.event_start);
+  learned = await loadSimulationLearning(admin, clock);
+  assert.ok(Object.values(learned.playerAdjustments).every(adjustment => !adjustment.active && adjustment.trainingGames === 0));
+  failure = true;
+  await assert.rejects(loadSimulationLearning(admin, clock), /Could not verify/);
+});
+
+test('Historical neutral v5 player expectations can train, but adjusted legacy outputs cannot', async () => {
+  const clock = Date.parse('2026-11-07T12:00:00Z');
+  const rows = Array.from({ length: 40 }, (_, i) => {
+    const start = clock - (50 - i) * 86400000;
+    const teams = ['1', '2'].map(id => ({ id, totals: {}, score: { mean: 20 },
+      players: [{ id: `${id}4`, position: 'WR', stats: { receivingYards: { mean: 100 } } }] }));
+    return { event_id: String(i), event_start: new Date(start).toISOString(), settled_at: new Date(start + 4 * 3600000).toISOString(),
+      payload: { forecastAt: new Date(start - 3600000).toISOString(), scenarios: [{ id: 'real', home: teams[0], away: teams[1] }],
+        learning: { version: 'simulation-walk-forward-v1',
+          adjustments: Object.fromEntries(['score', 'passingYards', 'rushingYards'].map(key => [key, { active: false, adjustment: 1 }])),
+          baselines: [{ scenarioId: 'real', teams: teams.map(team => ({ id: team.id, score: 20, passingYards: 200, rushingYards: 100 })) }] } },
+      actuals: { regulationOnly: true, realized: [{ scenarioId: 'real' }],
+        teams: teams.map(team => ({ id: team.id, points: 22, players: { [`${team.id}4`]: { receivingYards: 110 } } })) } };
+  });
+  const admin = { from() { const q = { select: () => q, eq: () => q, not: () => q, lt: () => q, gt: () => q, order: () => q,
+    range: async () => ({ data: rows, error: null }) }; return q; } };
+  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, true);
+  rows[0].payload.learning.adjustments.passingYards = { active: true, adjustment: 1.1 };
+  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, false);
+});
+
+test('Position-specific player corrections change the joint draws without breaking caps or team accounting', () => {
+  const f = fixture();
+  const base = simulateNFLGame(game, f.history, f.players, f.observations, 500);
+  const adjustment = { active: true, adjustment: 1.1 };
+  const corrections = { 'QB:passingAttempts': adjustment, 'QB:completions': adjustment, 'QB:passingYards': adjustment,
+    'QB:passingTouchdowns': adjustment, 'WR:receivingYards': adjustment, 'WR:receptions': adjustment,
+    'WR:receivingTouchdowns': adjustment, 'RB:rushingAttempts': adjustment, 'RB:rushingYards': adjustment, 'RB:rushingTouchdowns': adjustment };
+  const corrected = simulateNFLGame(game, f.history, f.players, f.observations, 500, undefined, undefined, corrections);
+  assert.notDeepEqual(corrected, base);
+  for (const scenario of corrected) for (const team of [scenario.home, scenario.away]) {
+    if (!team) continue;
+    const qb = team.players.find(player => player.position === 'QB' && player.stats.passingYards);
+    assert.ok(qb.stats.completions.mean <= qb.stats.passingAttempts.mean);
+    assert.ok(qb.stats.passingTouchdowns.mean <= qb.stats.completions.mean);
+    assert.ok(Math.abs(qb.stats.passingYards.mean - team.totals.passingYards.mean) < 1e-8);
+    const sum = key => team.players.reduce((total, player) => total + (player.stats[key]?.mean ?? 0), 0);
+    // Archived means round each component to tenths; exported integer boxes must reconcile exactly.
+    assert.ok(Math.abs(team.totals.passingYards.mean - sum('receivingYards') - team.totals.otherReceivingYards.mean) < .26);
+    assert.ok(Math.abs(team.totals.receptions.mean - sum('receptions') - team.totals.otherReceptions.mean) < .26);
+    assert.ok(Math.abs(team.totals.rushingYards.mean - sum('rushingYards') - team.totals.otherRushingYards.mean) < .26);
+    assert.ok(Math.abs(team.totals.passingTouchdowns.mean - sum('receivingTouchdowns') - team.totals.otherReceivingTouchdowns.mean) < .26);
+    assert.ok(team.score.mean >= 6 * (team.totals.passingTouchdowns.mean + team.totals.rushingTouchdowns.mean) - .65);
+    const box = roundedSimulationBox(team);
+    assert.equal(box.totals.passingYards, box.listed.receivingYards);
+    assert.equal(box.totals.passingTouchdowns, box.listed.receivingTouchdowns + box.remainder.otherReceivingTouchdowns);
+  }
+  const baselines = simulationLearningBaselines(base);
+  assert.ok(baselines[0].teams[0].players.some(player => player.position === 'WR' && player.stats.receivingYards));
+  assert.deepEqual(baselines, simulationLearningBaselines(base), 'Applying learning did not mutate the original forecast');
+  assert.throws(() => simulateNFLGame(game, f.history, f.players, f.observations, 500, undefined, undefined,
+    { 'WR:receivingYards': { active: true, adjustment: 1.2 } }), /ten percent/);
 });
 
 test('Learned simulation yardage retains passing/receiving equality, TD accounting and independent score correction', () => {
@@ -591,10 +698,15 @@ test('Reduced cached team/player samples produce a box score without waiting for
     players: null, injuries: [], warnings: [], logs: Object.fromEntries(f.players.map(player => [player.id,
       { season: game.season, done: true, refs: history[player.teamId === '1' ? 'home' : 'away'] }])) };
   const values = new Map([...f.history.home.slice(0, 8), ...f.history.away.slice(0, 8)].map(box => [`nfl:simulation:box:v3:${box.id}`, simulationBox(rawBox(box), box.id, now)]));
+  const adjustment = { version: 'walk-forward-v1', mode: 'stat', active: true, adjustment: 1.1,
+    trainingGames: 30, validationGames: 10, baselineError: 10, adjustedError: 0, through: new Date(now - 86400000).toISOString(), sampleIds: [] };
   const data = await advanceSimulation(game, job, simulationCache(values), async () => { throw new Error('Unexpected feed request'); }, now,
-    Object.fromEntries(['score', 'passingYards', 'rushingYards'].map(metric => [metric, { active: true, adjustment: 1.1 }])));
+    { adjustments: Object.fromEntries(['score', 'passingYards', 'rushingYards'].map(metric => [metric, adjustment])),
+      playerAdjustments: { 'WR:receivingYards': adjustment } });
   assert.equal(data.status, 'ready'); assert.equal(data.evidenceMode, 'limited'); assert.equal(data.refreshing, false);
-  assert.ok(Object.values(data.learning.adjustments).every(adjustment => !adjustment.active && adjustment.adjustment === 1));
+  assert.ok(Object.values(data.learning.adjustments).every(adjustment => adjustment.active && adjustment.adjustment === 1.1));
+  assert.equal(data.learning.playerAdjustments['WR:receivingYards'].active, true);
+  assert.notDeepEqual(data.scenarios[0].home.score.mean, data.learning.baselines[0].teams.find(team => team.id === '1').score);
   assert.ok(data.scenarios[0].home.players.find(player => player.id === '11').stats.passingYards);
   assert.ok(data.scenarios.every(scenario => scenario.issue === null));
   readNFLGameSimulation(data, game.id, game.date, { home: '1', away: '2' });
@@ -1101,12 +1213,18 @@ test('Archived team-only preparation remains eligible for minute-by-minute backf
 test('Background simulations archive learning diagnostics and neutral baselines even before sufficient results exist', async () => {
   const api = backendFixture();
   const data = await runNFLGameSimulation(api.admin, game.id, api.get);
-  assert.equal(data.learning.version, 'simulation-walk-forward-v1');
+  assert.equal(data.learning.version, 'simulation-walk-forward-v2');
   assert.ok(Object.values(data.learning.adjustments).every(adjustment => !adjustment.active && adjustment.adjustment === 1));
   assert.ok(data.learning.baselines.length > 0);
-  assert.equal(readNFLGameSimulation(data, game.id, api.kickoff, { home: '1', away: '2' }).learning.version, 'simulation-walk-forward-v1');
+  assert.equal(readNFLGameSimulation(data, game.id, api.kickoff, { home: '1', away: '2' }).learning.version, 'simulation-walk-forward-v2');
   const invalid = structuredClone(data); invalid.learning.adjustments.score.adjustment = 2;
   assert.throws(() => readNFLGameSimulation(invalid, game.id, api.kickoff, { home: '1', away: '2' }), /invalid/i);
+  const invalidPlayer = structuredClone(data);
+  invalidPlayer.learning.baselines[0].teams[0].players[0].stats.passingYards = NaN;
+  assert.throws(() => readNFLGameSimulation(invalidPlayer, game.id, api.kickoff, { home: '1', away: '2' }), /invalid/i);
+  const invalidCorrection = structuredClone(data);
+  invalidCorrection.learning.playerAdjustments['WR:unknown'] = data.learning.adjustments.score;
+  assert.throws(() => readNFLGameSimulation(invalidCorrection, game.id, api.kickoff, { home: '1', away: '2' }), /invalid/i);
 });
 test('Missing results enqueue once with quota, not foreground backfill; denied requests cannot enqueue', async () => {
   const api = backendFixture({ missing: true });
