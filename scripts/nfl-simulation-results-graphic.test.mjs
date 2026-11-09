@@ -184,6 +184,14 @@ test('Each download refreshes the entire selected week and uses the fresh winner
   assert.deepEqual(fetched.sort(), ['missing', 'pending']);
   assert.equal(slate.pending, 1); assert.equal(slate.excluded, 1); assert.equal(errors.length, 1);
   assert.equal(calls, 5);
+  const winnerButton = slateTree.props.children.find(node => node.type === 'div').props.children[4];
+  const winners = JSON.parse(await (await winnerButton.props.generate()).text());
+  assert.equal(winners.kind, 'winners');
+  assert.equal(winners.rows.length, 4);
+  assert.equal(winners.pending, 1); assert.equal(winners.excluded, 1);
+  assert.equal(winners.record.wins, 1); assert.equal(winners.record.losses, 1);
+  assert.equal(calls, 6);
+  assert.match(winnerButton.props.filename, /Full-Slate-Winners\.png$/);
   effects[0]()();
 });
 
@@ -261,5 +269,29 @@ test('Result checkmarks occupy their own padded area below the score underline a
     const label = h.labels.find(row => row.value === snapshot.rows[index].difference && Math.abs(row.y - (cardY + 153)) < 1);
     assert.ok(label.left >= circle.x + circle.radius + 14);
     assert.ok(label.right < 546, 'Do not overlap the actual-score box');
+  });
+  test('Winner-only slate grades wins regardless of spread, with actual ties, pending games and missing forecasts kept neutral', async () => {
+    const h = graphicHarness();
+    const games = [slateGame('1', 24, 20), slateGame('2', 27, 20), slateGame('3', 14, 21),
+      slateGame('4', 20, 24), slateGame('5', 20, 20), slateGame('6', 10, 10, 'LIVE'),
+      slateGame('7', 0, 0, 'UPCOMING'), slateGame('8')];
+    const forecasts = games.slice(0, 7).map(game => ({ eventId: game.eventId,
+      forecast: savedForecast(game, game.eventId === '4' ? 20 : 27, game.eventId === '4' ? 27 : 20) }));
+    const report = { games: [], pending: 0, issues: [] };
+    const winners = h.simulationSlateGraphicSnapshot(report, games, forecasts, now, 'winners');
+    assert.deepEqual(Array.from(winners.rows, row => row.spread.grade), ['win', 'win', 'loss', 'win', 'tie', 'pending', 'pending', 'unavailable']);
+    assert.deepEqual({ ...winners.record }, { wins: 3, losses: 1, ties: 1, noWinner: 1 });
+    assert.equal(winners.verified, 5); assert.equal(winners.pending, 2); assert.equal(winners.excluded, 1);
+    const spreads = h.simulationSlateGraphicSnapshot(report, games, forecasts, now);
+    assert.equal(spreads.rows[0].spread.grade, 'missed');
+    assert.equal(spreads.rows[1].spread.grade, 'push');
+    await h.renderSimulationResultsGraphic(winners);
+    assert.equal(h.drawn.filter(text => text === 'WIN').length, 3);
+    assert.ok(h.drawn.includes('3W - 1L - 1T'));
+    assert.ok(h.drawn.includes('SIMULATED-WINNER RECORD'));
+    assert.ok(h.coloredText.some(text => text.value === 'WIN' && text.color === '#35d48a'));
+    assert.ok(h.coloredText.some(text => text.value === 'LOSS' && text.color === '#ff2347'));
+    assert.ok(h.coloredText.some(text => text.value === 'TIE' && text.color === '#36baff'));
+    assert.ok(!h.drawn.some(text => /spread|Actual margin:| -7|COVERED|MISSED|PUSH/i.test(text)));
   });
 });
