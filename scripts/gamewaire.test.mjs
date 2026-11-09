@@ -1426,6 +1426,31 @@ test('Scheduled pregame refresh cannot reuse an initial report from just outside
   assert.equal((await (await recent.cron()).json()).cached, true);
   assert.equal(recent.fetches.length, 0, 'A manual full refresh already inside the pregame window avoids duplicate charges');
 });
+test('Private subscription probe checks live credit headers without claiming work or spending analysis credits', async () => {
+  const api = endpoint({ configured: true });
+  let url;
+  const response = await api.cron({ action: 'scheduled', checkQuota: true }, 'fixture-cron', async input => {
+    url = new URL(input);
+    return Response.json([], { headers: { 'x-requests-last': '0', 'x-requests-used': '499', 'x-requests-remaining': '19501' } });
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.providerUsage.creditsRemaining, 19501);
+  assert.equal(body.providerUsage.creditsUsed, 499);
+  assert.equal(body.providerUsage.requestCost, 0);
+  assert.ok(url.pathname.endsWith('/events'));
+  assert.equal(url.searchParams.has('markets'), false);
+  assert.equal(api.rpc.length, 0);
+  assert.equal(api.writes.length, 0);
+  const denied = await api.cron({ action: 'scheduled', checkQuota: true }, 'wrong-secret');
+  assert.equal(denied.status, 401);
+});
+test('Exhausted quota preserves the provider error code rather than mislabeling the key as invalid', async () => {
+  const api = endpoint({ configured: true });
+  await assert.rejects(api.exports.oddsJSON('sports/basketball_nba/events/event/odds?markets=h2h,spreads,player_points', 'test-key',
+    async () => Response.json({ error_code: 'OUT_OF_USAGE_CREDITS' }, { status: 403,
+      headers: { 'x-requests-used': '499', 'x-requests-remaining': '1' } })), /1 credits remaining.*up to 3.*OUT_OF_USAGE_CREDITS/);
+});
 test('Quota-free game lists remain available when the paid analysis budget is exhausted', async () => {
   const upcoming = { id: 'event', sport: 'NBA', home: quote.home, away: quote.away, start: quote.start };
   const cached = { payload: { events: [upcoming, { ...upcoming, id: 'started', start: new Date(now - 60_000).toISOString() }] },

@@ -28,11 +28,19 @@ export async function oddsJSON(path: string, key: string, fetcher: typeof fetch 
     const raw = response.headers.get(header);
     return raw !== null && raw.trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0 ? Number(raw) : null;
   };
-  onUsage?.({ requestCost: credit('x-requests-last'), creditsUsed: credit('x-requests-used'),
-    creditsRemaining: credit('x-requests-remaining'), checkedAt: new Date().toISOString() });
-  if (!response.ok) throw new Error(response.status === 429 ? 'Odds provider rate limit reached. Retry later.'
+  const usage = { requestCost: credit('x-requests-last'), creditsUsed: credit('x-requests-used'),
+    creditsRemaining: credit('x-requests-remaining'), checkedAt: new Date().toISOString() };
+  onUsage?.(usage);
+  if (!response.ok) {
+    const body = response.headers.get('content-type')?.includes('application/json') ? object(await response.json()) : {};
+    const code = /^[A-Z_]{1,60}$/.test(text(body.error_code)) ? ` Provider code: ${text(body.error_code)}.` : '';
+    const requested = new Set((url.searchParams.get('markets') ?? '').split(',').filter(Boolean)).size;
+    if (response.status === 403 && usage.creditsRemaining !== null && requested > usage.creditsRemaining)
+      throw new Error(`Odds provider reports ${usage.creditsRemaining} credits remaining; this request needs up to ${requested}. Verify the upgraded subscription is active for the configured server key.${code}`);
+    throw new Error((response.status === 429 ? 'Odds provider rate limit reached. Retry later.'
     : response.status === 401 || response.status === 403 ? 'Odds provider credentials or market subscription are unavailable.'
-    : `Odds provider returned HTTP ${response.status}.`);
+    : `Odds provider returned HTTP ${response.status}.`) + code);
+  }
   return response.json();
 }
 async function loadEvents(admin: SupabaseClient, sport: Sport, key: string, fetcher: typeof fetch): Promise<Event[]> {
@@ -114,6 +122,10 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (cron) {
       if (body.action !== 'scheduled') return json({ error: 'Cron credentials are only accepted for scheduled analyses.' }, 403);
       if (!oddsKey) return json({ error: 'Scheduled analyses require ODDS_API_KEY.' }, 503);
+      if (body.checkQuota === true) {
+        await oddsJSON(`sports/${oddsSport.NBA}/events`, oddsKey, fetcher, usage => { providerUsage = usage; });
+        return json({ providerUsage });
+      }
       await planScheduledAnalyses(admin, (sport) => loadEvents(admin, sport, oddsKey, fetcher), fetcher);
       const claimed = await admin.rpc('gamewaire_schedule_claim');
       if (claimed.error) throw new Error('Could not claim the next scheduled analysis.');
