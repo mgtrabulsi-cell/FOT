@@ -38,7 +38,7 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
     ? [...report.games].sort((a, b) => a.error - b.error || a.eventId.localeCompare(b.eventId)).slice(0, 3).map(game => ({
       title: `${game.away.abbr} at ${game.home.abbr}`, context: `${game.away.name} / ${game.home.name}`,
       away: game.away.abbr, home: game.home.abbr,
-      simulated: `${Math.round(game.away.projected)} - ${Math.round(game.home.projected)}`,
+      simulated: `${Math.round(game.away.projected)} - ${Math.round(game.home.projected)}${game.overtime ? ' F/OT' : ''}`,
       actual: `${game.away.actual} - ${game.home.actual}`, difference: `${game.error.toFixed(1)} average points missed`,
     }))
     : kind === 'performances' ? fullPlayerPerformances(report).slice(0, 3).map(player => ({

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { array, numeric, object, text } from './gamewaire.ts';
-import { previousNFLSimulationVersion, readableNFLSimulationVersions, nflSimulationRuns, nflSimulationVersion, readNFLGameSimulation, simulationBox, simulationGame } from './nflSimulation.ts';
+import { archivedProjectionOvertimeEvidence, modelProjectedOvertime, previousNFLSimulationVersion, readableNFLSimulationVersions, nflSimulationRuns, nflSimulationVersion, readNFLGameSimulation, simulationBox, simulationGame } from './nflSimulation.ts';
 import type { NFLGameSimulation } from './nflSimulation.ts';
 import { advanceSimulation, prepareSimulation } from './nflSimulationSources.ts';
 import type { SimulationCache, SimulationJob } from './nflSimulationSources.ts';
@@ -11,6 +11,46 @@ import type { SimulationAccuracyScope } from './nflSimulationAccuracy.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 const migration = 'NFL simulation storage is unavailable. Apply supabase/nfl-game-simulations.sql before enabling this endpoint.';
+async function savedOvertimeFinal(admin: SupabaseClient, saved: NFLGameSimulation, now: number): Promise<NFLGameSimulation> {
+  const pending = saved.scenarios.filter(scenario => !scenario.issue && scenario.home && scenario.away && scenario.overtime
+    && !scenario.projectedOvertime && Math.round(scenario.home.score.mean) === Math.round(scenario.away.score.mean));
+  if (!pending.length || !saved.forecastAt) return saved;
+  try {
+    const cacheKey = `nfl:simulation:ot-final:v1:${saved.eventId}:${saved.version}:${saved.forecastAt}`;
+    const cachedFinal = await admin.from('gamewire_bot_cache').select('payload').eq('cache_key', cacheKey).maybeSingle();
+    if (cachedFinal.error) throw new Error('Could not read the saved overtime continuation.');
+    if (cachedFinal.data) {
+      const cached = readNFLGameSimulation(cachedFinal.data.payload, saved.eventId, saved.kickoff,
+        { home: pending[0].home!.id, away: pending[0].away!.id });
+      const basis = (forecast: NFLGameSimulation) => JSON.stringify({ ...forecast,
+        scenarios: forecast.scenarios.map(({ projectedOvertime: _overtime, ...scenario }) => scenario) });
+      if (basis(cached) !== basis(saved)) throw new Error('A cached overtime continuation does not match the original saved forecast.');
+      return cached;
+    }
+    const ids = [...new Set(pending.flatMap(scenario => [...scenario.overtime!.evidenceEvents.home, ...scenario.overtime!.evidenceEvents.away]))];
+    const boxes: unknown[] = [];
+    for (let start = 0; start < ids.length; start += 200) {
+      const cached = await admin.from('gamewire_bot_cache').select('payload')
+        .in('cache_key', ids.slice(start, start + 200).map(id => `nfl:simulation:box:v3:${id}`));
+      if (cached.error) throw new Error('Could not read the original pregame overtime possessions.');
+      boxes.push(...(cached.data ?? []).map(row => row.payload));
+    }
+    const source = now < Date.parse(saved.kickoff) ? 'pregame' : 'archive-extension';
+    const result = { ...saved, scenarios: saved.scenarios.map(scenario => pending.includes(scenario)
+      ? modelProjectedOvertime(scenario, archivedProjectionOvertimeEvidence(boxes, scenario, saved.forecastAt!),
+        `${saved.version}:${saved.eventId}:${scenario.id}`, source) : scenario) };
+    const updated = source === 'pregame'
+      ? await admin.from('gamewire_game_forecasts').update({ payload: result })
+        .eq('event_id', saved.eventId).eq('model_version', saved.version).eq('payload->>forecastAt', saved.forecastAt)
+      : await admin.from('gamewire_bot_cache').upsert({ cache_key: cacheKey, payload: result,
+        expires_at: new Date(now + 365 * 86400000).toISOString() });
+    if (updated.error) throw new Error('Could not save the modeled overtime continuation.');
+    return result;
+  } catch (cause) {
+    console.error('Saved simulation overtime continuation unavailable', saved.eventId, cause);
+    return { ...saved, warnings: [...saved.warnings, `Modeled OT final unavailable: ${cause instanceof Error ? cause.message : 'Original pregame evidence could not be verified.'} No tied final or invented winner is substituted.`] };
+  }
+}
 export async function loadNFLSimulationAccuracy(admin: SupabaseClient, scopes: SimulationAccuracyScope[], now = Date.now()) {
   const saved = await admin.from('gamewire_game_forecasts').select('event_id,event_start,payload,actuals,settled_at,model_version')
     .in('event_id', scopes.map(row => row.eventId)).in('model_version', readableNFLSimulationVersions)
@@ -28,7 +68,7 @@ export async function savedNFLGameSimulation(admin: SupabaseClient, eventId: str
   if (!scenario) return undefined;
   const forecast = readNFLGameSimulation(raw, eventId, kickoff, { home: text(object(scenario.home).id), away: text(object(scenario.away).id) });
   if (forecast.status !== 'ready' || Date.parse(forecast.forecastAt ?? '') > now) return undefined;
-  return forecast;
+  return savedOvertimeFinal(admin, forecast, now);
 }
 export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: string, kickoff: string, teams: { home: string; away: string },
   claim: () => Promise<boolean>, now = Date.now()): Promise<NFLGameSimulation> {
@@ -45,11 +85,11 @@ export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: stri
     if (!saved || saved.status !== 'ready' || !Number.isFinite(Date.parse(saved.forecastAt ?? ''))
       || Date.parse(saved.forecastAt ?? '') >= Date.parse(kickoff))
       throw new Error('No saved pregame simulation is available for this game. Forecasts are not generated after kickoff.');
-    return { ...saved, refreshing: false };
+    return { ...await savedOvertimeFinal(admin, saved, now), refreshing: false };
   }
   const waiting = await admin.from('gamewire_simulation_jobs').select('response,next_run_at,last_error,model_version').eq('event_id', eventId).maybeSingle();
   if (waiting.error) throw new Error('Could not read NFL simulation progress.');
-  if (saved?.status === 'ready') return { ...saved, refreshing: saved.refreshing === true || saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000,
+  if (saved?.status === 'ready') return { ...await savedOvertimeFinal(admin, saved, now), refreshing: saved.refreshing === true || saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000,
     warnings: waiting.data?.last_error ? [...saved.warnings, `Background preparation issue: ${waiting.data.last_error}`] : saved.warnings };
   if (!waiting.data || waiting.data.model_version !== nflSimulationVersion) {
     if (!waiting.data && !await claim()) throw new Error('Simulation request limit reached (60 per account per hour). Scheduled background preparation continues.');

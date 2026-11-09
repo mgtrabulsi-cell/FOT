@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as sports from '../src/services/sportsData.ts';
 import * as nflSituation from '../src/services/nflSituation.ts';
+import * as simulation from '../supabase/functions/_shared/nflSimulation.ts';
 import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 
 const compile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), {
@@ -54,6 +55,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('sportsData')) return sports;
     if (name.includes('nflSituation')) return nflSituation;
+    if (name.includes('/nflSimulation')) return simulation;
     if (name.includes('useNFLBoardSimulations')) return { useNFLBoardSimulations: () => ({ simulations: availableSnapshot ? { [game.eventId]: availableSnapshot } : {}, errors: {}, rememberSimulation() {} }) };
     if (name.includes('NFLGameSimulation')) return { default: 'SimulationPanel' };
     if (name.includes('NFLSimulationAccuracy')) return { NFLSimulationResults: 'ResultsArea' };
@@ -76,6 +78,19 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.equal(toggle('GamewAIre simulations').props.className, 'wire-simulation-toggle');
   assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card is-simulation-game'));
   assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [22, 28]);
+  availableSnapshot = { ...snapshot, scenarios: [{ ...snapshot.scenarios[0],
+    home: { ...snapshot.scenarios[0].home, score: { mean: 24.2 } },
+    away: { ...snapshot.scenarios[0].away, score: { mean: 24.3 } },
+    projectedOvertime: { home: 27, away: 24, source: 'pregame' },
+  }] };
+  tree = render();
+  assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [24, 27]);
+  assert.ok(tree.some(node => node.type === 'small' && node.props.children === 'PROJECTED F/OT'));
+  delete availableSnapshot.scenarios[0].projectedOvertime;
+  tree = render();
+  assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), ['—', '—']);
+  assert.ok(tree.some(node => node.type === 'small' && node.props.children === 'OT final unavailable'));
+  availableSnapshot = snapshot;
   for (const status of ['LIVE', 'FINAL']) {
     props.games = [{ ...game, status, away: { ...game.away, score: 12 }, home: { ...game.home, score: 17 } }];
     tree = render();
@@ -133,6 +148,7 @@ test('Opening a simulation panel after kickoff loads its saved archive on reload
     if (name === 'react') return h.react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('supabaseClient')) return { supabase: null };
+    if (name.includes('/nflSimulation')) return simulation;
     if (name.includes('gamewireBot')) return { loadGameSimulation: async received => {
       assert.equal(received.date, pastGame.date); requests++;
       return archive;

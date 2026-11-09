@@ -1,5 +1,5 @@
 import { array, object, text } from './gamewaire.ts';
-import { readNFLGameSimulation, nflSimulationVersion } from './nflSimulation.ts';
+import { projectedSimulationScore, readNFLGameSimulation, nflSimulationVersion } from './nflSimulation.ts';
 import type { NFLGameSimulation, SimulationStat } from './nflSimulation.ts';
 
 export const simulationAccuracyStats = {
@@ -26,7 +26,7 @@ export type SimulationAccuracyGame = {
   eventId: string; kickoff: string; forecastAt: string; version: string; settledAt: string; scenario: string;
   home: { id: string; name: string; abbr: string; projected: number; actual: number };
   away: { id: string; name: string; abbr: string; projected: number; actual: number };
-  error: number; players: SimulationAccuracyPlayer[]; issues: string[];
+  error: number; players: SimulationAccuracyPlayer[]; issues: string[]; overtime?: boolean;
 };
 export type SimulationAccuracyReport = { games: SimulationAccuracyGame[]; issues: string[]; pending: number };
 export function fullPlayerPerformances(report: SimulationAccuracyReport) {
@@ -80,6 +80,8 @@ export function compareSimulationAccuracy(forecast: NFLGameSimulation, actualVal
   if (!home || !away) throw new Error('The realized scenario does not contain both teams.');
   const actualHome = teams.find(side => side.id === home.id), actualAway = teams.find(side => side.id === away.id);
   if (!actualHome || !actualAway || !finite(actualHome.points) || !finite(actualAway.points)) return `${forecast.eventId}: verified final team scores are unavailable.`;
+  const published = scenario.projectedOvertime?.source === 'pregame' ? projectedSimulationScore(scenario) : null;
+  const homeScore = published?.home ?? Math.round(home.score.mean), awayScore = published?.away ?? Math.round(away.score.mean);
   const issues: string[] = [], players: SimulationAccuracyPlayer[] = [];
   const comparablePlayers = forecast.version !== nflSimulationVersion || actuals.regulationOnly === true;
   if (!comparablePlayers) issues.push('Player rankings excluded: this regulation-only forecast does not have verified regulation-only actuals (overtime or verification pending).');
@@ -100,9 +102,10 @@ export function compareSimulationAccuracy(forecast: NFLGameSimulation, actualVal
   if (missing) issues.push(`${missing} player/stat comparisons omitted because projections or reported actuals were unavailable; missing stats and DNPs are not treated as zero.`);
   return { eventId: forecast.eventId, kickoff: forecast.kickoff, forecastAt: forecast.forecastAt, version: forecast.version,
     settledAt, scenario: scenario.label,
-    home: { id: home.id, name: home.name, abbr: home.abbr, projected: Math.round(home.score.mean), actual: actualHome.points },
-    away: { id: away.id, name: away.name, abbr: away.abbr, projected: Math.round(away.score.mean), actual: actualAway.points },
-    error: (Math.abs(Math.round(home.score.mean) - actualHome.points) + Math.abs(Math.round(away.score.mean) - actualAway.points)) / 2,
+    home: { id: home.id, name: home.name, abbr: home.abbr, projected: homeScore, actual: actualHome.points },
+    away: { id: away.id, name: away.name, abbr: away.abbr, projected: awayScore, actual: actualAway.points },
+    ...(published?.overtime ? { overtime: true } : {}),
+    error: (Math.abs(homeScore - actualHome.points) + Math.abs(awayScore - actualAway.points)) / 2,
     players, issues };
 }
 
@@ -144,6 +147,7 @@ export function readSimulationAccuracyReport(value: unknown, scope: SimulationAc
         && [game.forecastAt, game.settledAt].every(date => typeof date === 'string' && Number.isFinite(Date.parse(date)))
         && Date.parse(text(game.forecastAt)) < Date.parse(target.kickoff) && Date.parse(text(game.settledAt)) >= Date.parse(target.kickoff)
         && finite(game.error) && game.error >= 0 && typeof game.version === 'string' && typeof game.scenario === 'string'
+        && (game.overtime === undefined || typeof game.overtime === 'boolean')
         && validStrings(game.issues) && Array.isArray(game.players) && game.players.every(rawPlayer => {
           const player = object(rawPlayer);
           return ['playerId', 'name', 'position', 'team'].every(key => typeof player[key] === 'string')

@@ -1,10 +1,10 @@
-import { roundedSimulationBox } from '../../supabase/functions/_shared/nflSimulation';
+import { projectedSimulationScore, roundedSimulationBox } from '../../supabase/functions/_shared/nflSimulation';
 import type { SimulationScenario, SimulationTeamResult, SimulationStat } from '../../supabase/functions/_shared/nflSimulation';
 import { loadGamewireGraphicAssets } from './gamewaireResultsGraphic';
 import { teamMarkAbbr, teamMarkColor } from '../TeamAbbrMark';
 
-export function simulationGraphicTeam(team: SimulationTeamResult) {
-  const box = team.totals ? roundedSimulationBox({ ...team, totals: team.totals }) : null;
+export function simulationGraphicTeam(team: SimulationTeamResult, finalScore?: number) {
+  const box = team.totals ? roundedSimulationBox({ ...team, totals: team.totals }, finalScore) : null;
   const supported = team.players.filter(player => box && Object.keys(box.players[player.id]).length);
   const rank = (key: keyof SimulationStat, tie: keyof SimulationStat) => (a: typeof supported[number], b: typeof supported[number]) =>
     (box!.players[b.id][key] ?? -1) - (box!.players[a.id][key] ?? -1)
@@ -23,6 +23,8 @@ export function simulationGraphicTeam(team: SimulationTeamResult) {
 export async function renderSimulationGraphic(scenario: SimulationScenario, kickoff: string,
   colors: { away?: string; home?: string } = {}, format: 'landscape' | 'instagram' = 'landscape'): Promise<Blob> {
   if (!scenario.away || !scenario.home || scenario.issue) throw new Error('Choose an available simulation before downloading.');
+  const score = projectedSimulationScore(scenario);
+  if (!score) throw new Error('The modeled overtime final is not available yet. No tied final or invented winner is exported.');
   const logo = await loadGamewireGraphicAssets();
   const canvas = document.createElement('canvas');
   const portrait = format === 'instagram', height = portrait ? 2000 : 1000;
@@ -122,14 +124,15 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(kickoff));
   panel(40, 171, 1520, 145, awayColor);
   ctx.font = `${portrait ? '' : 'italic '}700 23px Oswald`;
-  text('PROJECTED FINAL', (1600 - ctx.measureText('PROJECTED FINAL').width) / 2, 204, 23, 320, muted, true);
-  text(String(Math.round(scenario.away.score.mean)), 575, 285, 96, 180, metallic(285, 96), true);
+  const finalLabel = score.overtime ? 'PROJECTED F/OT' : 'PROJECTED FINAL';
+  text(finalLabel, (1600 - ctx.measureText(finalLabel).width) / 2, 204, 23, 320, muted, true);
+  text(String(score.away), 575, 285, 96, 180, metallic(285, 96), true);
   text('VS', 780, 266, 28, 60, muted, true);
-  text(String(Math.round(scenario.home.score.mean)), 900, 285, 96, 180, metallic(285, 96), true);
+  text(String(score.home), 900, 285, 96, 180, metallic(285, 96), true);
   beam(800, 316, 1545, homeColor);
   [scenario.away, scenario.home].forEach((team, index) => {
     const x = index ? 830 : 40, accent = index ? homeColor : awayColor;
-    const model = simulationGraphicTeam(team);
+    const model = simulationGraphicTeam(team, index ? score.home : score.away);
     const teamX = portrait ? index ? 1045 : 465 : index ? 1120 : 70;
     const badgeY = portrait ? 215 : 188;
     ctx.save();
@@ -209,7 +212,9 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   });
   text(`QB scenario: ${scenario.label}`, 40, height - 71, portrait ? 28 : 20, 1520, muted);
   text(`${date} ET`, 40, height - 27, 19, 450, muted);
-  text(scenario.overtime ? 'OT score-only; player stats regulation. Mean scores may match. Uncalibrated.' : 'Simulated outcomes, not guarantees. Usage-ranked; participation assumed.', 495, height - 27, 18, 850, muted);
+  text(score.archiveExtension ? 'Pregame-data OT extension; not the original historical forecast. Player stats regulation.'
+    : scenario.overtime ? 'Empirical OT score-only; player stats regulation. Uncalibrated.'
+    : 'Simulated outcomes, not guarantees. Usage-ranked; participation assumed.', 495, height - 27, 18, 850, muted);
   text('gamewire.us', 1360, height - 27, 24, 200, white, true);
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
     : reject(new Error('Your browser could not export the PNG. Retry.')), 'image/png'));

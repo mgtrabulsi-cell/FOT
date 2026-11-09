@@ -21,7 +21,7 @@ type BaseTotal = 'passingYards' | 'rushingYards' | 'receptions' | 'otherReceivin
 type TouchdownTotal = 'passingTouchdowns' | 'rushingTouchdowns' | 'otherReceivingTouchdowns' | 'otherRushingTouchdowns';
 export type SimulationTeamTotals = Record<BaseTotal, SimulationRange> & Partial<Record<TouchdownTotal, SimulationRange>>;
 export type SimulationTeamResult = { id: string; name: string; abbr: string; score: SimulationRange; winProbability: number; players: SimulationPlayerResult[]; teamOnly?: boolean; matchup?: { passingYardsMultiplier: number; rushingYardsMultiplier: number }; totals: SimulationTeamTotals | null };
-export type SimulationScenario = { id: string; label: string; quarterbacks: { home: string; away: string }; issue: string | null; home: SimulationTeamResult | null; away: SimulationTeamResult | null; tieProbability: number | null; overtime?: { method: 'empirical-possession-bootstrap-v1'; rules: string; rulesSource: string; evidenceEvents: { home: string[]; away: string[] }; probability: number; samples: { home: number; away: number }; attribution: 'score-only'; seasonType: 2 | 3 } };
+export type SimulationScenario = { id: string; label: string; quarterbacks: { home: string; away: string }; issue: string | null; home: SimulationTeamResult | null; away: SimulationTeamResult | null; tieProbability: number | null; projectedOvertime?: { method: 'empirical-score-continuation-v1'; home: number; away: number; startingScore: number; source: 'pregame' | 'archive-extension'; runs: number; decisiveRuns: number }; overtime?: { method: 'empirical-possession-bootstrap-v1'; rules: string; rulesSource: string; evidenceEvents: { home: string[]; away: string[] }; probability: number; samples: { home: number; away: number }; attribution: 'score-only'; seasonType: 2 | 3 } };
 export type SimulationLearningMetric = 'score' | 'passingYards' | 'rushingYards';
 export type SimulationLearning = {
   version: 'simulation-walk-forward-v1';
@@ -102,8 +102,19 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
       && [2, 3].includes(Number(ot.seasonType)) && integer(samples.home) && Number(samples.home) >= 24
       && integer(samples.away) && Number(samples.away) >= 24
       && (ot.seasonType !== 3 || s.tieProbability === 0);
+    const projected = object(s.projectedOvertime);
+    const validProjectedOvertime = s.projectedOvertime === undefined || s.overtime !== undefined
+      && projected.method === 'empirical-score-continuation-v1'
+      && ['pregame', 'archive-extension'].includes(String(projected.source))
+      && integer(projected.home) && integer(projected.away) && projected.home !== projected.away
+      && integer(projected.startingScore)
+      && Number(projected.startingScore) === Math.round(Number(object(object(s.home).score).mean))
+      && Number(projected.startingScore) === Math.round(Number(object(object(s.away).score).mean))
+      && Number(projected.home) >= Number(projected.startingScore) && Number(projected.away) >= Number(projected.startingScore)
+      && projected.runs === nflSimulationRuns && integer(projected.decisiveRuns)
+      && Number(projected.decisiveRuns) > 0 && Number(projected.decisiveRuns) <= Number(projected.runs);
     return ['id', 'label'].every(key => typeof s[key] === 'string') && typeof qbs.home === 'string' && typeof qbs.away === 'string'
-      && validOvertime
+      && validOvertime && validProjectedOvertime
       && (typeof s.issue === 'string' && s.home === null && s.away === null && s.tieProbability === null
         || s.issue === null && team(s.home, teams.home) && team(s.away, teams.away) && probability(s.tieProbability)
           && Math.abs(Number(object(s.home).winProbability) + Number(object(s.away).winProbability) + Number(s.tieProbability) - 1) < 1e-8);
@@ -364,7 +375,7 @@ function allocateCapped(total: number, shares: number[], caps: number[]): number
   }
   return result;
 }
-export function roundedSimulationBox(team: SimulationTeamResult & { totals: SimulationTeamTotals }) {
+export function roundedSimulationBox(team: SimulationTeamResult & { totals: SimulationTeamTotals }, projectedFinal?: number) {
   if (team.totals === null) throw new Error('Team-only scoring does not support a projected box score.');
   const teamTotals = team.totals;
   const players = Object.fromEntries(team.players.map(player => [player.id, Object.fromEntries(Object.entries(player.stats).map(([key, value]) => [key, Math.round(value!.mean)])) as Partial<SimulationStat>]));
@@ -423,11 +434,70 @@ export function roundedSimulationBox(team: SimulationTeamResult & { totals: Simu
   };
   const offensivePoints = totals.passingTouchdowns !== null && totals.rushingTouchdowns !== null
     ? 6 * (totals.passingTouchdowns + totals.rushingTouchdowns) : null;
-  const scoring = offensivePoints !== null ? { offensivePoints, otherPoints: score - offensivePoints } : null;
-  return { score, players, remainder, listed, totals, scoring };
+  const finalScore = projectedFinal ?? score;
+  if (!Number.isInteger(finalScore) || finalScore < score) throw new Error('A modeled overtime final cannot reduce the original projected score.');
+  const scoring = offensivePoints !== null ? { offensivePoints, otherPoints: finalScore - offensivePoints } : null;
+  return { score: finalScore, players, remainder, listed, totals, scoring };
 }
 type TeamDraw = { points: number; stats: Record<string, Partial<SimulationStat>> } & Record<BaseTotal | TouchdownTotal, number>;
 type HistoricalPair = { own: SimulationSide; opponent: SimulationSide; date: string };
+export function projectedSimulationScore(scenario: SimulationScenario | undefined) {
+  if (!scenario?.home || !scenario.away || scenario.issue) return null;
+  const home = Math.round(scenario.home.score.mean), away = Math.round(scenario.away.score.mean);
+  if (home !== away) return { home, away, overtime: false, archiveExtension: false };
+  const result = scenario.projectedOvertime;
+  return result ? { home: result.home, away: result.away, overtime: true, archiveExtension: result.source === 'archive-extension' } : null;
+}
+export function archivedProjectionOvertimeEvidence(values: unknown[], scenario: SimulationScenario, forecastAt: string): OvertimeEvidence {
+  if (!scenario.overtime || !scenario.home || !scenario.away || !Number.isFinite(Date.parse(forecastAt)))
+    throw new Error('The saved forecast does not identify verified pregame overtime evidence.');
+  const boxes = values.map(object), metadata = scenario.overtime;
+  const cohort = (side: 'home' | 'away', teamId: string): OvertimeDrive[] => {
+    const ids = metadata.evidenceEvents[side], selected = boxes.filter(box => ids.includes(text(box.id)));
+    if (selected.length !== ids.length || new Set(selected.map(box => box.id)).size !== ids.length
+      || selected.some(box => box.regulationOnly !== true || !Number.isFinite(Date.parse(text(box.date)))
+        || Date.parse(text(box.date)) >= Date.parse(forecastAt)))
+      throw new Error('Original pregame overtime evidence is incomplete or does not predate the saved forecast.');
+    const rows = selected.flatMap(box => array(box.overtimeDrives).map(object).filter(drive => drive.teamId === teamId).map(drive => {
+      if (drive.eventId !== box.id) throw new Error('An archived overtime possession does not match its original event.');
+      return { eventId: text(drive.eventId), driveId: text(drive.driveId), teamId,
+        seconds: typeof drive.seconds === 'number' ? drive.seconds : NaN,
+        offensePoints: typeof drive.offensePoints === 'number' ? drive.offensePoints : NaN,
+        defensePoints: typeof drive.defensePoints === 'number' ? drive.defensePoints : NaN };
+    }));
+    if (rows.length !== metadata.samples[side]) throw new Error('Archived overtime evidence no longer matches the original possession sample.');
+    return rows;
+  };
+  const evidence = { home: cohort('home', scenario.home.id), away: cohort('away', scenario.away.id) };
+  validateOvertimeEvidence(evidence);
+  return evidence;
+}
+export function modelProjectedOvertime(scenario: SimulationScenario, evidence: OvertimeEvidence, seed: string,
+  source: 'pregame' | 'archive-extension' = 'pregame'): SimulationScenario {
+  if (!scenario.home || !scenario.away || Math.round(scenario.home.score.mean) !== Math.round(scenario.away.score.mean)
+    || scenario.projectedOvertime) return scenario;
+  if (!scenario.overtime) throw new Error('A tied forecast needs verified empirical overtime evidence before a final score can be shown.');
+  validateOvertimeEvidence(evidence);
+  if (evidence.home[0].teamId !== scenario.home.id || evidence.away[0].teamId !== scenario.away.id)
+    throw new Error('Overtime projection evidence does not match the forecast teams.');
+  const startingScore = Math.round(scenario.home.score.mean), random = generator(`${seed}:projected-overtime-v1`);
+  const outcomes = new Map<string, { home: number; away: number; count: number }>();
+  let decisiveRuns = 0;
+  for (let index = 0; index < nflSimulationRuns; index++) {
+    const result = simulateOvertime(startingScore, startingScore, scenario.overtime.seasonType, evidence, random);
+    if (result.home === result.away) continue;
+    decisiveRuns++;
+    const key = `${result.home}:${result.away}`, previous = outcomes.get(key);
+    outcomes.set(key, { home: result.home, away: result.away, count: (previous?.count ?? 0) + 1 });
+  }
+  const favoredHome = scenario.home.winProbability >= scenario.away.winProbability;
+  const selected = [...outcomes.values()].sort((a, b) => b.count - a.count
+    || Number((b.home > b.away) === favoredHome) - Number((a.home > a.away) === favoredHome)
+    || a.home + a.away - b.home - b.away || a.home - b.home)[0];
+  if (!selected) throw new Error('The empirical overtime continuations produced no decisive final. No winner is invented.');
+  return { ...scenario, projectedOvertime: { method: 'empirical-score-continuation-v1', home: selected.home, away: selected.away,
+    startingScore, source, runs: nflSimulationRuns, decisiveRuns } };
+}
 function validateGameOvertime(game: SimulationGame, evidence: OvertimeEvidence) {
   validateOvertimeEvidence(evidence);
   if (evidence.home[0].teamId !== game.home.id || evidence.away[0].teamId !== game.away.id
@@ -465,10 +535,11 @@ export function simulateNFLTeamScore(game: SimulationGame, history: { home: Simu
     homeScores.push(homeScore); awayScores.push(awayScore);
     if (homeScore > awayScore) homeWins++; else if (awayScore > homeScore) awayWins++; else ties++;
   }
-  return { id: 'team-only', label: 'Team-only scoring estimate', quarterbacks: { home: 'Unconfirmed', away: 'Unconfirmed' }, issue: null,
+  const scenario: SimulationScenario = { id: 'team-only', label: 'Team-only scoring estimate', quarterbacks: { home: 'Unconfirmed', away: 'Unconfirmed' }, issue: null,
     home: { ...game.home, score: simulationRange(homeScores), winProbability: homeWins / runs, players: [], teamOnly: true, totals: null },
     away: { ...game.away, score: simulationRange(awayScores), winProbability: awayWins / runs, players: [], teamOnly: true, totals: null }, tieProbability: ties / runs,
     ...(overtime ? { overtime: overtimeMetadata(game, overtime, overtimeRuns / runs) } : {}) };
+  return overtime ? modelProjectedOvertime(scenario, overtime, `${nflSimulationVersion}:${game.id}:team-only`) : scenario;
 }
 function overtimeMetadata(game: SimulationGame, evidence: OvertimeEvidence, probability: number): NonNullable<SimulationScenario['overtime']> {
   return { method: 'empirical-possession-bootstrap-v1', rules: 'NFL Rule 16 (2025+ regular season / 2022+ postseason)',
@@ -626,8 +697,9 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
           issue: p.excluded ? 'Excluded by reported availability; no zero-valued projection is substituted.' : !usable ? 'Fewer than four verified production appearances; included only in unmodeled team remainder.' : !keys.length ? 'No supported market was recorded.' : null };
       }),
     });
-    results.push({ id, label, quarterbacks, issue: null, home: finish(game.home, homeSetup, homeDraws, homeWins), away: finish(game.away, awaySetup, awayDraws, awayWins), tieProbability: ties / runs,
-      ...(overtime ? { overtime: overtimeMetadata(game, overtime, overtimeRuns / runs) } : {}) });
+    const scenario: SimulationScenario = { id, label, quarterbacks, issue: null, home: finish(game.home, homeSetup, homeDraws, homeWins), away: finish(game.away, awaySetup, awayDraws, awayWins), tieProbability: ties / runs,
+      ...(overtime ? { overtime: overtimeMetadata(game, overtime, overtimeRuns / runs) } : {}) };
+    results.push(overtime ? modelProjectedOvertime(scenario, overtime, `${nflSimulationVersion}:${game.id}:${id}`) : scenario);
   }
   return results;
 }

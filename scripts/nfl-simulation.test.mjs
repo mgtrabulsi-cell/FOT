@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsxRuntime from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerWeights, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
+import { archivedProjectionOvertimeEvidence, modelProjectedOvertime, projectedSimulationScore, legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerWeights, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
 import { reconcileSimulationProjections, simulationAllowsMoneyline } from '../supabase/functions/_shared/nflSimulationAlignment.ts';
 import { archivePlayerForecast } from '../supabase/functions/_shared/gamewireForecasts.ts';
 import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
@@ -24,6 +24,129 @@ const possession = (points, seconds = 180, defensePoints = 0) => ({
   eventId: '100', driveId: '1', teamId: '1', seconds, offensePoints: points, defensePoints,
 });
 const otEvidence = (home, away) => ({ home: [home], away: [away] });
+let overtimeProjectionTemplate;
+function overtimeProjectionFixture() {
+  if (!overtimeProjectionTemplate) {
+    const f = fixture();
+    const scenario = simulateNFLGame(game, f.history, f.players, f.observations, 500)[0];
+    scenario.home.score = { mean: 24.2, p10: 14, median: 24, p90: 35 };
+    scenario.away.score = { mean: 24.3, p10: 14, median: 24, p90: 35 };
+    const boxes = Array.from({ length: 8 }, (_, i) => ({ id: String(100 + i), date: date(i), regulationOnly: true,
+      overtimeDrives: ['1', '2'].flatMap(teamId => Array.from({ length: 3 }, (_, drive) => ({
+        eventId: String(100 + i), driveId: `${teamId}-${drive}`, teamId, seconds: 180,
+        offensePoints: teamId === '1' ? 7 : 3, defensePoints: 0,
+      }))) }));
+    scenario.overtime = { method: 'empirical-possession-bootstrap-v1', rules: 'NFL Rule 16',
+      rulesSource: 'https://operations.nfl.com/rules-officiating/2026-nfl-rulebook', probability: .1,
+      evidenceEvents: { home: boxes.map(box => box.id), away: boxes.map(box => box.id) },
+      samples: { home: 24, away: 24 }, attribution: 'score-only', seasonType: 2 };
+    overtimeProjectionTemplate = { scenario, boxes };
+  }
+  return structuredClone(overtimeProjectionTemplate);
+}
+test('Tied rounded scores use actual empirical possession continuations, never a fixed three-point display adjustment', () => {
+  const { scenario, boxes } = overtimeProjectionFixture();
+  const original = structuredClone(scenario);
+  const evidence = archivedProjectionOvertimeEvidence(boxes, scenario, new Date(now).toISOString());
+  const modeled = modelProjectedOvertime(scenario, evidence, 'fixture');
+  const final = projectedSimulationScore(modeled);
+  assert.equal(final.overtime, true);
+  assert.match(simulationMarkup(response([modeled])), /Projected F\/OT/);
+  assert.ok([30, 31].includes(final.home), 'Observed opening/reply TD rules determine six/seven points');
+  assert.equal(final.away, 27, 'Observed opponent field-goal possession is also simulated');
+  assert.notEqual(final.home, final.away);
+  assert.deepEqual(modelProjectedOvertime(scenario, evidence, 'fixture'), modeled);
+  assert.deepEqual(scenario, original);
+  assert.equal(modeled.home, scenario.home); assert.equal(modeled.away, scenario.away);
+  assert.equal(modeled.tieProbability, scenario.tieProbability);
+  const pick = { sport: 'NFL', market: 'h2h', start: game.date, home: game.home.name, away: game.away.name, subject: game.home.name };
+  assert.equal(simulationAllowsMoneyline(pick, response([modeled])), true);
+  assert.equal(simulationAllowsMoneyline({ ...pick, subject: game.away.name }, response([modeled])), false);
+  const before = roundedSimulationBox(scenario.home), after = roundedSimulationBox(scenario.home, final.home);
+  assert.deepEqual(after.players, before.players);
+  assert.deepEqual(after.totals, before.totals);
+  assert.equal(after.scoring.otherPoints - before.scoring.otherPoints, final.home - before.score);
+  assert.equal(projectedSimulationScore(scenario), null, 'No unresolved tied final is displayed');
+  const incomplete = { home: [], away: [] };
+  assert.throws(() => modelProjectedOvertime(scenario, incomplete, 'fixture'), /24 verified/);
+  const noDecisive = { home: evidence.home.map(row => ({ ...row, seconds: 900 })), away: evidence.away.map(row => ({ ...row, seconds: 900 })) };
+  assert.throws(() => modelProjectedOvertime(scenario, noDecisive, 'fixture'), /no decisive final/);
+});
+test('Archived overtime continuations require the exact original pregame events, sample counts and team identities', () => {
+  const { scenario, boxes } = overtimeProjectionFixture();
+  const forecastAt = new Date(now).toISOString();
+  assert.equal(archivedProjectionOvertimeEvidence(boxes, scenario, forecastAt).home.length, 24);
+  for (const invalid of [
+    boxes.slice(1), [...boxes, boxes[0]],
+    boxes.map((box, i) => i ? box : { ...box, date: forecastAt }),
+    boxes.map((box, i) => i ? box : { ...box, regulationOnly: false }),
+    boxes.map((box, i) => i ? box : { ...box, overtimeDrives: box.overtimeDrives.slice(1) }),
+    boxes.map((box, i) => i ? box : { ...box, overtimeDrives: box.overtimeDrives.map(row => ({ ...row, eventId: '999' })) }),
+  ]) assert.throws(() => archivedProjectionOvertimeEvidence(invalid, scenario, forecastAt), /evidence|possession|sample/);
+});
+test('Only genuinely pregame OT finals change published-score accuracy; later archive extensions never regrade history', () => {
+  const { scenario, boxes } = overtimeProjectionFixture();
+  const evidence = archivedProjectionOvertimeEvidence(boxes, scenario, new Date(now).toISOString());
+  const actuals = { regulationOnly: true, realized: [{ scenarioId: scenario.id }], teams: [
+    { id: '1', points: 31, players: {} }, { id: '2', points: 27, players: {} },
+  ] };
+  const forecast = response([scenario]), settledAt = new Date(Date.parse(game.date) + 60000).toISOString();
+  const original = compareSimulationAccuracy(forecast, actuals, settledAt);
+  const extension = modelProjectedOvertime(scenario, evidence, 'fixture', 'archive-extension');
+  const historical = compareSimulationAccuracy({ ...forecast, scenarios: [extension] }, actuals, settledAt);
+  assert.equal(historical.error, original.error);
+  assert.equal(historical.home.projected, 24); assert.equal(historical.away.projected, 24);
+  const pregame = modelProjectedOvertime(scenario, evidence, 'fixture', 'pregame');
+  const published = compareSimulationAccuracy({ ...forecast, scenarios: [pregame] }, actuals, settledAt);
+  assert.equal(published.home.projected, projectedSimulationScore(pregame).home);
+  assert.equal(published.overtime, true);
+  assert.ok(published.error < original.error);
+  const parsed = response([pregame]);
+  assert.equal(readNFLGameSimulation(parsed, game.id, game.date, { home: '1', away: '2' }), parsed);
+  parsed.scenarios[0].projectedOvertime.home = parsed.scenarios[0].projectedOvertime.away;
+  assert.throws(() => readNFLGameSimulation(parsed, game.id, game.date, { home: '1', away: '2' }), /invalid/);
+});
+test('After kickoff, original-evidence OT finals persist separately and never mutate archives, query preparation jobs or claim quota', async () => {
+  const { scenario, boxes } = overtimeProjectionFixture(), forecast = response([scenario]);
+  const original = JSON.stringify(forecast), cache = new Map(boxes.map(box => [`nfl:simulation:box:v3:${box.id}`, box]));
+  let evidenceReads = 0;
+  const admin = { from(table) {
+    assert.ok(['gamewire_game_forecasts', 'gamewire_bot_cache'].includes(table));
+    let key, keys = [];
+    const query = {
+      select() { return this; }, order() { return this; }, limit() { return this; },
+      eq(field, value) { if (field === 'cache_key') key = value; return this; },
+      in(field, values) { if (field === 'cache_key') { keys = values; evidenceReads++; } return this; },
+      async maybeSingle() { return { data: table === 'gamewire_game_forecasts' ? { event_start: game.date, payload: forecast }
+        : cache.has(key) ? { payload: cache.get(key) } : null, error: null }; },
+      update() { throw new Error('Locked original forecast must not be changed'); },
+      async upsert(row) { assert.equal(table, 'gamewire_bot_cache'); cache.set(row.cache_key, row.payload); return { error: null }; },
+      then(resolve) { return Promise.resolve({ data: keys.filter(id => cache.has(id)).map(id => ({ payload: cache.get(id) })), error: null }).then(resolve); },
+    };
+    return query;
+  }, rpc() { throw new Error('No quota claim or forecast regeneration after kickoff'); } };
+  const load = () => loadNFLGameSimulation(admin, game.id, game.date, { home: '1', away: '2' },
+    () => { throw new Error('No quota claim'); }, Date.parse(game.date) + 60000);
+  const first = await load();
+  assert.equal(first.scenarios[0].projectedOvertime.source, 'archive-extension');
+  assert.equal(projectedSimulationScore(first.scenarios[0]).overtime, true);
+  assert.equal(JSON.stringify(forecast), original);
+  const reads = evidenceReads;
+  const second = await load();
+  assert.deepEqual(second.scenarios, first.scenarios);
+  assert.equal(evidenceReads, reads, 'Saved continuation reopens without replaying evidence');
+  assert.equal(second.forecastAt, forecast.forecastAt);
+  for (const key of cache.keys()) if (key.startsWith('nfl:simulation:ot-final:')) cache.delete(key);
+  cache.delete(`nfl:simulation:box:v3:${boxes[0].id}`);
+  const errors = [], log = console.error;
+  console.error = (...args) => errors.push(args);
+  let unavailable;
+  try { unavailable = await load(); } finally { console.error = log; }
+  assert.equal(projectedSimulationScore(unavailable.scenarios[0]), null);
+  assert.ok(unavailable.warnings.some(warning => warning.includes('Modeled OT final unavailable')));
+  assert.equal(errors.length, 1);
+  assert.equal(JSON.stringify(forecast), original);
+});
 test('Overtime opening TD permits second opportunity, unmatched reply loses, matched reply reaches sudden death', () => {
   assert.deepEqual(simulateOvertime(20, 20, 2, otEvidence(possession(7), possession(3)), () => 0),
     { home: 27, away: 23, played: true });
@@ -106,7 +229,7 @@ test('SQL archives v5 overtime metadata and retains older v4 model rows without 
     const invalid = structuredClone(forecast); delete invalid.payload.scenarios[0].overtime;
     await assert.rejects(db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb)', [token, JSON.stringify(invalid)]), /Invalid verified/);
     const legacy = structuredClone(forecast); legacy.model_version = previousNFLSimulationVersion; legacy.payload.version = previousNFLSimulationVersion;
-    legacy.payload.scenarios.forEach(scenario => { delete scenario.overtime; });
+    legacy.payload.scenarios.forEach(scenario => { delete scenario.overtime; delete scenario.projectedOvertime; });
     await db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb)', [token, JSON.stringify(legacy)]);
     const rows = await db.query('select model_version,payload from public.gamewire_game_forecasts order by model_version');
     assert.equal(rows.rows.length, 2);
@@ -1000,7 +1123,7 @@ function simulationMarkup(data, error = '', scenarioId = '', admin = false, team
     if (name === 'react') return { useState: () => [state[i++], () => {}], useEffect() {} };
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name === './GamewaireResultsDownload') return { ResultsGraphicDownload: props => jsxRuntime.jsx('button', { children: props.label }) };
-    if (name.includes('nflSimulation')) return { roundedSimulationBox, legacyNFLSimulationVersion };
+    if (name.includes('nflSimulation')) return { projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
     return {};
   } });
   vm.runInContext(code, context);
@@ -1062,7 +1185,10 @@ test('Projected receiver names are white and rows sort by displayed catches then
 });
 
 test('Simulation graphic uses reconciled box values, usage-ranked players and both teams without modifying the forecast', async () => {
-  const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  const f = fixture(), evidence = {
+    home: f.history.home.flatMap(box => box.overtimeDrives).filter(row => row.teamId === game.home.id),
+    away: f.history.away.flatMap(box => box.overtimeDrives).filter(row => row.teamId === game.away.id),
+  }, data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500, undefined, evidence));
   const scenario = data.scenarios[0], before = JSON.stringify(scenario), drawn = [], positions = [];
   const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -1077,7 +1203,7 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(['png'])) };
   Object.defineProperty(ctx, 'shadowBlur', { set: value => shadows.push(value) });
   const context = vm.createContext({ exports: {}, Intl, Date, Error, document: { createElement: () => canvas }, require(name) {
-    if (name.includes('nflSimulation')) return { roundedSimulationBox };
+    if (name.includes('nflSimulation')) return { projectedSimulationScore, roundedSimulationBox };
     if (name.includes('TeamAbbrMark')) return {
       teamMarkAbbr: abbr => (abbr ?? '').trim().toUpperCase().slice(0, 4) || '\u2014',
       teamMarkColor: color => /^[0-9a-f]{6}$/i.test((color ?? '').replace(/^#/, '')) ? `#${color.replace(/^#/, '')}` : '#8ba2c3',
@@ -1142,6 +1268,11 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));
   assert.equal(JSON.stringify(scenario), before);
   assert.equal(simulationGraphicTeam({ ...scenario.away, players: [], totals: null }).quarterback, undefined);
+  const tied = overtimeProjectionFixture();
+  const final = modelProjectedOvertime(tied.scenario, archivedProjectionOvertimeEvidence(tied.boxes, tied.scenario, new Date(now).toISOString()), 'fixture');
+  await renderSimulationGraphic(final, game.date);
+  assert.ok(drawn.includes('PROJECTED F/OT'));
+  await assert.rejects(renderSimulationGraphic(tied.scenario, game.date), /No tied final or invented winner/);
   await assert.rejects(renderSimulationGraphic({ ...scenario, home: null }, game.date), /available simulation/);
   canvas.toBlob = callback => callback(null);
   await assert.rejects(renderSimulationGraphic(scenario, game.date), /export the PNG/);
@@ -1163,7 +1294,7 @@ function panelRuntime(load, supabase) {
     };
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name.includes('supabaseClient')) return { supabase };
-    if (name.includes('nflSimulation')) return { roundedSimulationBox, legacyNFLSimulationVersion };
+    if (name.includes('nflSimulation')) return { projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
     return { loadGameSimulation: load };
   } });
   vm.runInContext(code, context);

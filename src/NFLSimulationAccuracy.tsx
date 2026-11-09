@@ -76,7 +76,7 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
         <span className="nfl-accuracy-card-title">Game results <small>Top {Math.min(3, report.games.length)}</small></span>
         <span className="nfl-accuracy-card-list" role="list">{report.games.slice(0, 3).map((game, index) => <span className="nfl-accuracy-card-row" role="listitem" key={game.eventId}>
           <b>{index + 1}. {game.away.abbr} – {game.home.abbr}</b>
-          <span>Sim {Math.round(game.away.projected)} – {Math.round(game.home.projected)} · Actual {game.away.actual} – {game.home.actual}</span>
+          <span>Sim {Math.round(game.away.projected)} – {Math.round(game.home.projected)}{game.overtime ? ' F/OT' : ''} · Actual {game.away.actual} – {game.home.actual}</span>
           <small>{number(game.error)} average points missed</small>
         </span>)}</span>
         {!report.games.length && <span>No eligible verified game comparisons yet.</span>}
@@ -88,7 +88,7 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
         <th scope="col">Rank / game</th><th scope="col">Simulated</th><th scope="col">Actual</th><th scope="col">Avg. difference</th>
       </tr></thead><tbody>{report.games.map((game, index) => <tr key={game.eventId}>
         <th scope="row">{weekly ? `${index + 1}. ` : ''}{game.away.abbr} – {game.home.abbr}<small>{game.scenario}</small></th>
-        <td>{Math.round(game.away.projected)} – {Math.round(game.home.projected)}</td>
+        <td>{Math.round(game.away.projected)} – {Math.round(game.home.projected)}{game.overtime ? ' F/OT' : ''}</td>
         <td>{game.away.actual} – {game.home.actual}</td><td>{number(game.error)} pts</td>
       </tr>)}</tbody></table></div> : <p>No eligible verified game comparisons yet.</p>}
       </div>

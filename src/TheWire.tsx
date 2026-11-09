@@ -3,6 +3,7 @@ import TeamAbbrMark from './TeamAbbrMark';
 import NFLGameSimulationPanel from './NFLGameSimulation';
 import { NFLSimulationResults } from './NFLSimulationAccuracy';
 import { useNFLBoardSimulations } from './useNFLBoardSimulations';
+import { projectedSimulationScore } from '../supabase/functions/_shared/nflSimulation';
 import { useSwipeBack } from './useSwipeBack';
 import { Activity, ChevronLeft, ChevronRight, MapPin, Star, Tv } from 'lucide-react';
 import type {
@@ -940,10 +941,11 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
       const simulation = simulationMode && savedSimulation?.status === 'ready' && Date.parse(savedSimulation.kickoff) === Date.parse(game.date)
         ? savedSimulation.scenarios.find(scenario => scenario.home && scenario.away) : undefined;
       const intl = internationalVenue(game);
+      const projectedScore = projectedSimulationScore(simulation);
       const savedPick = teamPicks[`${game.eventId}:${game.away.id}`] ?? teamPicks[`${game.eventId}:${game.home.id}`];
       const pick = savedPick?.market === 'h2h' && simulation?.away && simulation.home
-        && (Math.round(simulation.away.score.mean) === Math.round(simulation.home.score.mean)
-          || teamPicks[`${game.eventId}:${Math.round(simulation.away.score.mean) > Math.round(simulation.home.score.mean) ? game.away.id : game.home.id}`] !== savedPick)
+        && (!projectedScore
+          || teamPicks[`${game.eventId}:${projectedScore.away > projectedScore.home ? game.away.id : game.home.id}`] !== savedPick)
         ? undefined : savedPick;
       return (
         <li key={game.id} className={`notification-game-card${live ? ' is-live-game' : final ? ' is-final-game' : ''}${simulationMode ? ' is-simulation-game' : ''}`}>
@@ -963,13 +965,13 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 <span>{formatGameTime(game)}</span>
               )}
               {live && (game.period || game.clock) && <small>{gameClockLabel(game.period, game.clock)}</small>}
-              {simulationMode && <small>{simulation ? 'SIM SCORE' : upcoming ? 'Pending' : 'No saved forecast'}</small>}
+              {simulationMode && <small>{projectedScore?.overtime ? 'PROJECTED F/OT' : simulation ? projectedScore ? 'SIM SCORE' : 'OT final unavailable' : upcoming ? 'Pending' : 'No saved forecast'}</small>}
             </span>
             <span className="wire-board-teams">
               {[game.away, game.home].map((team, index) => {
                 const opponent = index === 0 ? game.home : game.away;
                 const lost = !simulationMode && final && team.score < opponent.score;
-                const simulatedTeam = [simulation?.away, simulation?.home].find(side => side?.id === team.id);
+                const simulatedScore = projectedScore ? team.id === game.away.id ? projectedScore.away : projectedScore.home : undefined;
                 return (
                   <span className={`wire-board-team${lost ? ' is-loser' : ''}`} key={team.id}>
                     <TeamAbbrMark className="wire-board-mark" abbr={team.abbr} color={team.color} name={team.name} />
@@ -982,8 +984,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                       </b>
                       <small>{team.abbr}{team.record ? ` · ${team.record}` : ''}</small>
                     </span>
-                    <strong className="wire-board-score" aria-label={simulationMode ? `${team.abbr} projected score${simulatedTeam ? ` ${Math.round(simulatedTeam.score.mean)}` : upcoming ? ' preparing' : ' unavailable'}` : undefined}>{simulationMode
-                      ? simulatedTeam ? Math.round(simulatedTeam.score.mean) : '—'
+                    <strong className="wire-board-score" aria-label={simulationMode ? `${team.abbr} projected score${simulatedScore !== undefined ? ` ${simulatedScore}${projectedScore?.overtime ? ' F/OT' : ''}` : upcoming ? ' preparing' : ' unavailable'}` : undefined}>{simulationMode
+                      ? simulatedScore ?? '—'
                       : upcoming ? '' : <ScoreTicker value={team.score} gameKey={`${game.id}:${team.id}`} />}</strong>
                   </span>
                 );
@@ -1199,7 +1201,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
               <div className="wire-matchup-center">
                 <div className="wire-matchup-score" aria-live="polite">
                   {subTab === 'simulation'
-                    ? `${projectedMatchup?.away ? Math.round(projectedMatchup.away.score.mean) : '—'} – ${projectedMatchup?.home ? Math.round(projectedMatchup.home.score.mean) : '—'}` : selectedGame.status === 'UPCOMING' ? 'vs'
+                    ? `${projectedSimulationScore(projectedMatchup)?.away ?? '—'} – ${projectedSimulationScore(projectedMatchup)?.home ?? '—'}${projectedSimulationScore(projectedMatchup)?.overtime ? ' F/OT' : ''}` : selectedGame.status === 'UPCOMING' ? 'vs'
                     : <><span className={awayLost ? 'is-loser' : undefined}><ScoreTicker value={awayBoxTeam?.score ?? selectedGame.away.score} gameKey={`${selectedGame.id}:away`} /></span>{' – '}<span className={homeLost ? 'is-loser' : undefined}><ScoreTicker value={homeBoxTeam?.score ?? selectedGame.home.score} gameKey={`${selectedGame.id}:home`} /></span></>}
                 </div>
                 {subTab === 'simulation' && <small>Saved pregame score · Conditional QB participation</small>}

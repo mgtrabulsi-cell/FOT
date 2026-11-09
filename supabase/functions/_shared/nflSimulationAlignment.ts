@@ -1,6 +1,6 @@
 import { normalize } from './gamewaire.ts';
 import type { Quote } from './gamewaire.ts';
-import { roundedSimulationBox } from './nflSimulation.ts';
+import { projectedSimulationScore, roundedSimulationBox } from './nflSimulation.ts';
 import type { NFLGameSimulation, SimulationScenario, SimulationStat } from './nflSimulation.ts';
 import { forecastDistribution } from './gamewireBotIntelligence.ts';
 import type { BotProjection } from './gamewireBotProjections.ts';
@@ -15,9 +15,9 @@ export function simulationAllowsMoneyline(pick: Quote, forecast: NFLGameSimulati
   const scenario = defaultSimulationScenario(forecast);
   if (!scenario?.home || !scenario.away) return false;
   if (normalize(pick.home) !== normalize(scenario.home.name) || normalize(pick.away) !== normalize(scenario.away.name)) return false;
-  const homeScore = Math.round(scenario.home.score.mean), awayScore = Math.round(scenario.away.score.mean);
-  if (homeScore === awayScore) return false;
-  return normalize(pick.subject) === normalize(homeScore > awayScore ? scenario.home.name : scenario.away.name);
+  const score = projectedSimulationScore(scenario);
+  if (!score) return false;
+  return normalize(pick.subject) === normalize(score.home > score.away ? scenario.home.name : scenario.away.name);
 }
 
 const projectionStats: Record<string, keyof SimulationStat> = {

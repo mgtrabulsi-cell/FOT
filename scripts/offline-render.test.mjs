@@ -22,6 +22,7 @@ const compiled = ts.transpileModule(source, {
   .replace(/from ['"]\.\/GamewaireBreakdown['"]/g, `from '${breakdownURL}'`)
   .replace(/from ['"]react['"]/g, `from '${import.meta.resolve('react')}'`)
   .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
+  .replace(/from ['"]\.\.\/supabase\/functions\/_shared\/nflSimulation['"]/g, `from '${new URL('../supabase/functions/_shared/nflSimulation.ts', import.meta.url)}'`)
   .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
   .replace(/from ['"].\/services\/sportsData['"]/g, `from '${new URL('../src/services/sportsData.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/foregroundRefresh['"]/g, `from '${new URL('../src/services/foregroundRefresh.ts', import.meta.url)}'`)

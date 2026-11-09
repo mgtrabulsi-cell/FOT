@@ -5,7 +5,7 @@ import { supabase } from './services/supabaseClient';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
 import NFLSimulationAccuracy from './NFLSimulationAccuracy';
 import { renderSimulationGraphic } from './services/nflSimulationGraphic';
-import { legacyNFLSimulationVersion, roundedSimulationBox } from '../supabase/functions/_shared/nflSimulation';
+import { legacyNFLSimulationVersion, projectedSimulationScore, roundedSimulationBox } from '../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation, SimulationStat, SimulationTeamResult } from '../supabase/functions/_shared/nflSimulation';
 
 const statLabels: Record<keyof SimulationStat, string> = {
@@ -19,9 +19,9 @@ const groups: Array<{ title: string; positions: string[]; columns: Array<keyof S
   { title: 'Receiving', positions: ['WR', 'TE'], columns: ['receptions', 'receivingYards', 'receivingTouchdowns'] },
 ];
 
-function TeamSimulation({ team }: { team: SimulationTeamResult }) {
+function TeamSimulation({ team, projectedScore }: { team: SimulationTeamResult; projectedScore?: number }) {
   if (team.totals === null) return null;
-  const box = roundedSimulationBox({ ...team, totals: team.totals });
+  const box = roundedSimulationBox({ ...team, totals: team.totals }, projectedScore);
   return (
     <section className="nfl-simulation-team">
       <header className="nfl-simulation-team-title"><span>{team.abbr}</span><h3>{team.name}</h3><b>{box.score}</b></header>
@@ -152,6 +152,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
   const [admin, setAdmin] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState(game.away.id);
   const selectedTeam = scenario?.home?.id === selectedTeamId ? scenario.home : scenario?.away;
+  const projectedScore = projectedSimulationScore(scenario);
   useEffect(() => {
     if (!supabase) return;
     let active = true, revision = 0;
@@ -174,8 +175,9 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
     <section className="nfl-simulation" aria-labelledby="nfl-simulation-heading">
       {game.status === 'FINAL' && <NFLSimulationAccuracy key={`${game.eventId}:${game.date}`} games={[game]} />}
       {scenario?.home && scenario.away && <div className="nfl-simulation-scores" aria-label="Projected final score">
-        {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{Math.round(team.score.mean)}</strong><span>{team.name}</span></div>)}
+        {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{projectedScore ? team.id === scenario.home!.id ? projectedScore.home : projectedScore.away : '—'}</strong><span>{team.name}</span></div>)}
       </div>}
+      {projectedScore?.overtime && <p className="nfl-simulation-caption"><strong>Projected F/OT</strong>{projectedScore.archiveExtension ? ' · Pregame-evidence OT extension; original historical forecast remains unchanged.' : ''}</p>}
       <header className="nfl-simulation-header">
         <div><h2 id="nfl-simulation-heading">GamewAIre Game Simulation</h2><p>Experimental · Production across teams · Not a betting recommendation</p></div>
         {(!locked || error) && <button type="button" disabled={loading} onClick={() => setRetry(value => value + 1)}>{error ? locked ? 'Retry saved forecast' : 'Retry' : 'Refresh'}</button>}
@@ -197,7 +199,10 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
           {scenario?.home && scenario.away && (
             <>
               <p className="nfl-simulation-caption">Projected final score · {displayed.evidenceMode === 'team-only' ? 'Verified score history' : 'Rounded stat lines'} · {displayed.runs.toLocaleString()} joint draws
-                {scenario.overtime && <> · Empirical overtime included; player stats cover regulation only. Genuine regular-season ties and equal rounded averages remain possible.</>}</p>
+                {projectedScore?.overtime && <> · Projected F/OT: modeled empirical-possession continuation of the tied rounded estimate.</>}
+                {projectedScore?.archiveExtension && <> Added from original pregame evidence after kickoff; not the originally published score and not used to regrade historical accuracy.</>}
+                {!projectedScore && <> · Modeled OT final unavailable. No tied final or invented winner is shown.</>}
+                {scenario.overtime && <> · Player stats cover regulation only; real NFL ties remain represented in the model probabilities.</>}</p>
               {admin && <div className="nfl-simulation-graphic-downloads">
               <ResultsGraphicDownload key={`${game.eventId}-${scenario.id}`} label="Download game graphic" disabled={false}
                 generate={() => renderSimulationGraphic(scenario, game.date, { away: game.away.color, home: game.home.color })}
@@ -216,6 +221,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                 {[scenario.away, scenario.home].map(team => <p key={team.id}>{team.abbr}: expected {team.score.mean.toFixed(2)} points · 10th–90th: {team.score.p10}–{team.score.p90} · Outscored opponent in {(team.winProbability * 100).toFixed(1)}% of draws</p>)}
                 <p>{((scenario.tieProbability ?? 0) * 100).toFixed(1)}% {scenario.overtime ? 'final ties after empirical possession overtime' : 'tied-score draws; overtime was not separately simulated in this archived model'}.
                   {scenario.overtime && <> Overtime in {(scenario.overtime.probability * 100).toFixed(1)}% of draws; score-only, with no invented player production. Equal rounded averages do not imply a tied game.</>}</p>
+                {scenario.projectedOvertime && <p>Projected F/OT is a conditional continuation of the tied rounded estimate, not the overall average score. It selects the most frequent decisive final from {scenario.projectedOvertime.runs.toLocaleString()} empirical overtime runs; {scenario.projectedOvertime.runs - scenario.projectedOvertime.decisiveRuns} tied continuations were not selected. Original win/tie probabilities and regulation player projections are unchanged.</p>}
               </details>
               {displayed.evidenceMode === 'team-only' ? <p className="nfl-simulation-caption">Player stat lines, touchdown accounting and numerical starter/injury adjustments are not supported by the available evidence. No missing player production is filled with zeros.</p>
                 : selectedTeam && <div className="nfl-simulation-teams">
@@ -226,7 +232,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                       </button>)}
                     </div>
                     <div role="region" aria-label={`${selectedTeam.name} projected box score`}>
-                      <TeamSimulation key={selectedTeam.id} team={selectedTeam} />
+                      <TeamSimulation key={selectedTeam.id} team={selectedTeam} projectedScore={projectedScore ? selectedTeam.id === scenario.home.id ? projectedScore.home : projectedScore.away : undefined} />
                     </div>
                   </div>}
             </>

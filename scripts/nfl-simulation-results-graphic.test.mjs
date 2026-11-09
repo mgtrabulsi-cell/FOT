@@ -62,6 +62,8 @@ test('Game graphic snapshots the top three but grades the entire selected week a
   data.games[0].home.projected = 99;
   assert.equal(snapshot.rows[0].simulated, '21 - 28');
   assert.equal(snapshot.record.wins, 2);
+  data.games[0].overtime = true;
+  assert.match(simulationResultsGraphicSnapshot(data, scopes, 'games', 'passingYards', now).rows[0].simulated, / F\/OT$/);
 });
 test('Player graphic uses only qualifying selected-stat results and preserves the overall game winner record', async () => {
   const { simulationResultsGraphicSnapshot, renderSimulationResultsGraphic, drawn } = graphicHarness(), data = report();
