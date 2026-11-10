@@ -454,7 +454,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   };
   const pregameToggle = <section className="wire-pregame-mode" aria-label="NFL pregame display">
     <div role="group" aria-label="NFL pregame view">
-      <button type="button" aria-pressed={!resultsOpen && pregameView === 'stats'} onClick={() => changePregameView('stats')}>Pregame stats</button>
+      <button type="button" aria-pressed={!resultsOpen && pregameView === 'stats'} onClick={() => changePregameView('stats')}>Matchups</button>
       <button type="button" className="wire-simulation-toggle" aria-pressed={!resultsOpen && pregameView === 'simulation'} onClick={() => changePregameView('simulation')}>GamewAIre simulations</button>
       <button type="button" aria-pressed={resultsOpen} onClick={() => { setResultsOpen(true); setDetailOpen(false); }}>Simulation Results</button>
     </div>
@@ -991,7 +991,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 {live ? nflFieldPosition(game.situation) : <><MapPin size={12} aria-hidden="true" /> {game.venue || 'Venue TBD'}{intl ? `, ${intl.city ?? intl.country}` : ''}</>}
               </span>
               <span className="wire-board-open">
-                {simulationMode ? 'GamewAIre simulation' : upcoming ? 'Pregame stats' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
+                {simulationMode ? 'GamewAIre simulation' : upcoming ? 'Matchups' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
               </span>
             </span>
           </button>

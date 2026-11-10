@@ -32,6 +32,8 @@ GamewAIre pick breakdowns share a selection heading, verified matchup/statistica
 
 NBA and NFL scoreboard cards on The Wire share card spacing and typography. NBA controls do not override the shared 44px circular notification bell, and NBA footer links do not add extra card height.
 
+The NFL stats-view toggle and upcoming NFL/NBA matchup links use the label **Matchups**; their navigation and statistics are unchanged.
+
 NBA schedule refreshes continue across sport-tab switches instead of restarting. Shared saved schedules render without waiting for the live-score overlay; fresh schedule and live-score requests run concurrently. Available saved schedules can start matchup preloading before the fresh refresh completes. NFL simulation score checks retain saved projections and retry in the background without the pregame explanatory or reconnecting banners; sign-in requirements remain visible and refresh failures remain logged.
 
 Site interface copy uses provider-neutral data labels (including "Loading data...") rather than naming the feed provider. Feed URLs, source links, caching, and refresh behavior are unchanged.

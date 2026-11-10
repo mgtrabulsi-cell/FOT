@@ -170,11 +170,11 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   let tree = render();
   const toggle = label => tree.find(node => node.type === 'button' && node.props.children === label);
   assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
-  assert.equal(toggle('Pregame stats').props['aria-pressed'], false);
+  assert.equal(toggle('Matchups').props['aria-pressed'], false);
   assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card is-simulation-game'));
   assert.deepEqual(tree.filter(node => node.props.className === 'wire-board-score').map(node => node.props.children), [22, 28]);
-  toggle('Pregame stats').props.onClick(); tree = render();
-  assert.equal(toggle('Pregame stats').props['aria-pressed'], true);
+  toggle('Matchups').props.onClick(); tree = render();
+  assert.equal(toggle('Matchups').props['aria-pressed'], true);
   assert.ok(tree.some(node => node.type === 'li' && node.props.className === 'notification-game-card'));
   toggle('GamewAIre simulations').props.onClick(); tree = render();
   assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
@@ -212,7 +212,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '15 – 30'));
   panel.props.onForecast({ ...snapshot, qbMatchup: { scenarioId: 'unsupported' } }); tree = render();
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '— – —'));
-  toggle('Pregame stats').props.onClick(); tree = render();
+  toggle('Matchups').props.onClick(); tree = render();
   assert.ok(!tree.some(node => node.type === 'SimulationPanel'));
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === 'vs'));
   props.games = [{ ...game, status: 'LIVE', away: { ...game.away, score: 12 }, home: { ...game.home, score: 17 } }];
@@ -226,7 +226,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   tree = render();
   assert.ok(tree.some(node => node.type === 'SimulationPanel'));
   assert.ok(tree.some(node => node.props.className === 'wire-matchup-score' && node.props.children === '22 – 28'));
-  toggle('Pregame stats').props.onClick(); tree = render();
+  toggle('Matchups').props.onClick(); tree = render();
   assert.ok(!tree.some(node => node.type === 'SimulationPanel'));
   assert.ok(tree.some(node => node.props.value === 12) && tree.some(node => node.props.value === 17));
   assert.ok(tree.some(node => node.type?.name === 'ScoringPlays'));
@@ -234,7 +234,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.equal(toggle('Simulation Results').props['aria-pressed'], true);
   assert.ok(tree.some(node => node.type === 'ResultsArea'));
   assert.ok(!tree.some(node => node.props.className === 'wire-board-score' || node.type === 'SimulationPanel'));
-  toggle('Pregame stats').props.onClick(); tree = render();
+  toggle('Matchups').props.onClick(); tree = render();
   assert.equal(toggle('Simulation Results').props['aria-pressed'], false);
   assert.ok(tree.some(node => node.props.className === 'wire-board-score'));
   h.state.length = 0;
