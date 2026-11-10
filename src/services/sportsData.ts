@@ -554,16 +554,17 @@ export function readNBAScoreboard(payload: unknown): Game[] {
 export async function fetchNBAScoreboard(date: string, signal?: AbortSignal): Promise<Game[]> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T12:00:00Z`))
     || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error('Choose a valid NBA calendar date.');
-  const { payload, headers } = await fetchScoreboardJSON(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal, 'NBA');
-  const games = await withLiveFeed(readNBAScoreboard(payload).map((game) => ({ ...game,
-    ...(headers.has('x-gamewire-database') ? { sharedSavedAt: headers.get('x-gamewire-saved-at') ?? '' } : {}) })), 'NBA', signal);
+  const schedule = fetchScoreboardJSON(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal, 'NBA')
+    .then(({ payload, headers }) => readNBAScoreboard(payload).map((game) => ({ ...game,
+      ...(headers.has('x-gamewire-database') ? { sharedSavedAt: headers.get('x-gamewire-saved-at') ?? '' } : {}) })));
+  const games = await withLiveFeed(schedule, 'NBA', signal);
   if (!signal?.aborted) saveRenderSnapshot('scoreboard', `NBA:${date}`, { games, nflWeek: null, failedLeagues: [] });
   return games;
 }
 
 export async function fetchStoredNBAScoreboard(date: string, signal: AbortSignal): Promise<Game[] | null> {
   const response = await readSportsDatabase(`${apiBase}/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}&limit=100`, signal);
-  return response ? withLiveFeed(readNBAScoreboard(await response.json()).map((game) => ({ ...game, sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })), 'NBA', signal) : null;
+  return response ? readNBAScoreboard(await response.json()).map((game) => ({ ...game, sharedSavedAt: response.headers.get('x-gamewire-saved-at') ?? '' })) : null;
 }
 
 export async function fetchStoredNFLScoreboard(week: number | null, signal: AbortSignal): Promise<ScoreboardResult | null> {

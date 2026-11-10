@@ -152,13 +152,13 @@ export function applyLiveFeed(games: Game[], rows: LiveFeedRow[], now = Date.now
   });
 }
 
-export async function withLiveFeed(games: Game[], league: 'NFL' | 'NBA', signal?: AbortSignal): Promise<Game[]> {
-  try {
-    return applyLiveFeed(games, await fetchLiveFeed(league, signal));
-  } catch (error) {
+export async function withLiveFeed(games: Game[] | Promise<Game[]>, league: 'NFL' | 'NBA', signal?: AbortSignal, config: Config | null = configured): Promise<Game[]> {
+  const rows = fetchLiveFeed(league, signal, config).catch((error: unknown) => {
     if (!signal?.aborted) console.warn(`${league} live feed is unavailable; showing feed scores`, error);
-    return games;
-  }
+    return [];
+  });
+  const [schedule, live] = await Promise.all([games, rows]);
+  return applyLiveFeed(schedule, live);
 }
 
 // --- Per-game box score details from API-Sports ---

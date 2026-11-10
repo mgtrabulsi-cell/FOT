@@ -7,7 +7,7 @@ import {
 } from '../supabase/functions/_shared/apiSportsFeed.ts';
 import {
   apiSportsBoxScore, applyLiveFeed, completedPeriodScores, fetchLiveFeed, fetchLiveFeedGameDetails,
-  fetchNFLSeasonAveragesFeed, readLiveFeedRows,
+  fetchNFLSeasonAveragesFeed, readLiveFeedRows, withLiveFeed,
 } from '../src/services/liveFeed.ts';
 
 test('scoreboard and matchup views omit saved-schedule and provider banners', () => {
@@ -15,6 +15,11 @@ test('scoreboard and matchup views omit saved-schedule and provider banners', ()
     const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /Showing the saved schedule|className="feed-source"/);
   }
+  const wire = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(wire, /Saved pregame projections remain visible after kickoff|Simulation score updates are reconnecting|<summary>Update details<\/summary>/);
+  assert.match(wire, /Sign in to view GamewAIre simulation scores/);
+  const refresh = readFileSync(new URL('../src/useNFLBoardSimulations.ts', import.meta.url), 'utf8');
+  assert.match(refresh, /console\.error\('NFL scoreboard simulation update failed'/);
 });
 
 const nflGame = (overrides = {}) => ({
@@ -144,6 +149,42 @@ const espnGame = (overrides = {}) => ({
   completedPeriods: [{ period: 1, awayScore: 10, homeScore: 3 }],
   situation: { down: 2, distance: 7 },
   ...overrides,
+});
+
+test('NBA live-feed lookup starts before its schedule finishes and still overlays the final result', async () => {
+  const originalFetch = globalThis.fetch;
+  let releaseSchedule;
+  let requested = false;
+  const schedule = new Promise(resolve => { releaseSchedule = resolve; });
+  globalThis.fetch = async () => {
+    requested = true;
+    return Response.json([feedRow()]);
+  };
+  try {
+    const result = withLiveFeed(schedule, 'NBA', undefined, { url: 'https://gamewire.test', key: 'public-test-key' });
+    assert.equal(requested, true, 'Live scores must start while the schedule is still pending, not after it resolves');
+    releaseSchedule([espnGame({ league: 'NBA' })]);
+    const [game] = await result;
+    assert.equal(game.home.score, 20);
+    assert.equal(game.liveSource, 'api-sports');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('parallel score loading preserves schedule failures and logs overlay failures without erasing scores', async () => {
+  const originalFetch = globalThis.fetch, originalWarn = console.warn;
+  const warnings = [];
+  globalThis.fetch = async () => { throw new Error('Feed unavailable'); };
+  console.warn = (...args) => warnings.push(args);
+  try {
+    const games = [espnGame({ league: 'NBA' })];
+    const config = { url: 'https://gamewire.test', key: 'public-test-key' };
+    assert.deepEqual(await withLiveFeed(Promise.resolve(games), 'NBA', undefined, config), games);
+    assert.equal(warnings.length, 1);
+    await assert.rejects(withLiveFeed(Promise.reject(new Error('Schedule unavailable')), 'NBA', undefined, config), /Schedule unavailable/);
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(withLiveFeed(Promise.reject(controller.signal.reason), 'NBA', controller.signal, config), { name: 'AbortError' });
+  } finally { globalThis.fetch = originalFetch; console.warn = originalWarn; }
 });
 
 test('live overlay preserves halftime for explicit breaks and zero second-quarter clocks', () => {

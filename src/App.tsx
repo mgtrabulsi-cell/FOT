@@ -539,12 +539,15 @@ function App() {
     let active = true;
     let refreshing = false;
     let receivedFreshSchedule = false;
-    const saved = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`)?.games ?? [];
+    const snapshot = readRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`);
+    const saved = snapshot?.games ?? [];
     setNBAGames(saved); setNBAGamesDate(selectedNBADate); setNBAStatus(saved.length ? 'ready' : 'loading'); setNBAError('');
+    if (snapshot) setNBAWarmReadyKey(`${selectedNBADate}:${nbaRetry}`);
     if (!saved.length) void fetchStoredNBAScoreboard(selectedNBADate, controller.signal).then((stored) => {
       if (active && !receivedFreshSchedule && stored !== null) {
         saveRenderSnapshot('scoreboard', `NBA:${selectedNBADate}`, { games: stored, nflWeek: null, failedLeagues: [] });
         setNBAGames(stored); setNBAStatus('ready');
+        setNBAWarmReadyKey(`${selectedNBADate}:${nbaRetry}`);
       }
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) console.error('Could not open shared NBA schedule', error);
@@ -576,7 +579,7 @@ function App() {
       else void refresh();
     }, 30_000);
     return () => { active = false; controller.abort(); window.clearInterval(timer); };
-  }, [selectedNBADate, nbaDateOverride, nbaRetry, warmNBA]);
+  }, [selectedNBADate, nbaDateOverride, nbaRetry]);
   useEffect(() => {
     if (!warmNBA || nbaWarmReadyKey !== nbaWarmKey) return;
     const controller = new AbortController();

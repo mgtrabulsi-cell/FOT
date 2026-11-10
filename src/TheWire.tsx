@@ -458,7 +458,6 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
       <button type="button" className="wire-simulation-toggle" aria-pressed={!resultsOpen && pregameView === 'simulation'} onClick={() => changePregameView('simulation')}>GamewAIre simulations</button>
       <button type="button" aria-pressed={resultsOpen} onClick={() => { setResultsOpen(true); setDetailOpen(false); }}>Simulation Results</button>
     </div>
-    {!resultsOpen && pregameView === 'simulation' && <p>Saved pregame projections remain visible after kickoff. Live scores and actual statistics are available in the stats view. Quarterback participation is conditional, not confirmed.</p>}
   </section>;
   const selectedPrimetime = selectedGame ? getPrimetimeLabel(selectedGame) : null;
   const selectedIntl = selectedGame ? internationalVenue(selectedGame) : null;
@@ -1006,11 +1005,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
     return (
       <div className="the-wire-container">
         {pregameToggle}
-        {pregameView === 'simulation' && Object.keys(simulationErrors).length > 0 && <div className="nfl-simulation-caption">
-          <p role="status">{Object.values(simulationErrors).some(issue => /sign in/i.test(issue))
-            ? 'Sign in to view GamewAIre simulation scores.'
-            : 'Simulation score updates are reconnecting. Saved projections remain visible; automatic checks continue.'}</p>
-          <details><summary>Update details</summary>{[...new Set(Object.values(simulationErrors))].map(issue => <p key={issue}>{issue}</p>)}</details>
+        {pregameView === 'simulation' && Object.values(simulationErrors).some(issue => /sign in/i.test(issue)) && <div className="nfl-simulation-caption">
+          <p role="status">Sign in to view GamewAIre simulation scores.</p>
         </div>}
         <div className="wire-board" ref={boardRef}>
           <header className="wire-board-header">

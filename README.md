@@ -32,6 +32,8 @@ GamewAIre pick breakdowns share a selection heading, verified matchup/statistica
 
 NBA and NFL scoreboard cards on The Wire share card spacing and typography. NBA controls do not override the shared 44px circular notification bell, and NBA footer links do not add extra card height.
 
+NBA schedule refreshes continue across sport-tab switches instead of restarting. Shared saved schedules render without waiting for the live-score overlay; fresh schedule and live-score requests run concurrently. Available saved schedules can start matchup preloading before the fresh refresh completes. NFL simulation score checks retain saved projections and retry in the background without the pregame explanatory or reconnecting banners; sign-in requirements remain visible and refresh failures remain logged.
+
 Site interface copy uses provider-neutral data labels (including "Loading data...") rather than naming the feed provider. Feed URLs, source links, caching, and refresh behavior are unchanged.
 
 Scores refresh immediately when returning to a visible app/tab, restoring a page, or reconnecting; open game box scores and Locker Room plays also refresh on return rather than waiting for their polling timers. Web and native score/box-score requests explicitly asking for fresh data wait for the network read instead of returning a saved-first response. Saved data remains available on connection failures. Regular scoreboard polling remains every 30 seconds, with live box scores and favorite plays every 15 seconds. Closed or OS-suspended apps cannot guarantee background polling.

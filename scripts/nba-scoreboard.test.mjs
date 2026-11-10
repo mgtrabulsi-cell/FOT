@@ -4,6 +4,20 @@ import test from 'node:test';
 import { fetchNBAScoreboard, nbaCalendarDate, readNBAScoreboard, shiftNBACalendarDate } from '../src/services/sportsData.ts';
 import { matchWirePicks } from '../src/services/wireTeamPicks.ts';
 
+test('NBA sport switches do not restart schedule reads and saved schedules do not wait for live overlays', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const effect = app.slice(app.indexOf('let receivedFreshSchedule = false;'), app.indexOf('const previousView = useRef(view);'));
+  assert.match(effect, /\[selectedNBADate, nbaDateOverride, nbaRetry\]/);
+  assert.doesNotMatch(effect, /\[selectedNBADate, nbaDateOverride, nbaRetry, warmNBA\]/);
+  assert.match(effect, /if \(snapshot\) setNBAWarmReadyKey/);
+  const service = readFileSync(new URL('../src/services/sportsData.ts', import.meta.url), 'utf8');
+  const stored = service.slice(service.indexOf('export async function fetchStoredNBAScoreboard'), service.indexOf('export async function fetchStoredNFLScoreboard'));
+  assert.doesNotMatch(stored, /withLiveFeed/);
+  assert.match(stored, /sharedSavedAt/);
+  const fresh = service.slice(service.indexOf('export async function fetchNBAScoreboard'), service.indexOf('export async function fetchStoredNBAScoreboard'));
+  assert.match(fresh, /withLiveFeed\(schedule, 'NBA', signal\)/);
+});
+
 test('Automatic NBA picks reconcile the real ten-minute odds/ESPN tip-off difference without accepting a different game', () => {
   const game = { eventId: '401909288', sport: 'Basketball', status: 'UPCOMING', date: '2026-11-07T00:00:00Z',
     away: { id: '2', name: 'Boston Celtics' }, home: { id: '30', name: 'Charlotte Hornets' } };
