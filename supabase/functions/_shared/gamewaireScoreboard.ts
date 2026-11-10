@@ -8,7 +8,7 @@ export type ScoreboardPick = { eventId: string; start: string; team: string; mar
 export function scoreboardBreakdown(pick: Candidate): string {
   return pickBreakdown(pick);
 }
-export function scoreboardPicks(candidates: Candidate[], now = Date.now(), options: { nbaGames?: number; winnerLeans?: TeamLean[]; nflSimulations?: Map<string, NFLGameSimulation> } = {}): ScoreboardPick[] {
+export function scoreboardPicks(candidates: Candidate[], now = Date.now(), options: { nbaGames?: number; winnerLeans?: TeamLean[]; nflSimulations?: Map<string, NFLGameSimulation>; onSelection?: (pick: Candidate) => void } = {}): ScoreboardPick[] {
   const verified = (pick: Candidate) => ['h2h', 'spreads'].includes(pick.market)
     && pick.modelVersion?.startsWith(modelVersion) && !!pick.identifiers?.espnEventId
     && [pick.ev, pick.edge, pick.conservativeEV, pick.quality, pick.american].every(Number.isFinite)
@@ -37,6 +37,7 @@ export function scoreboardPicks(candidates: Candidate[], now = Date.now(), optio
     const eventId = pick.identifiers!.espnEventId;
     if (events.has(eventId) || result.length >= limit) return;
     events.add(eventId);
+    options.onSelection?.(pick);
     result.push({ eventId, start: pick.start, team: pick.subject, market: pick.market === 'h2h' ? 'h2h' : 'spreads', opponent: normalize(pick.subject) === normalize(pick.home) ? pick.away : pick.home,
       evidenceAt: pick.dataAt, rank: result.length + 1, label: lean ? 'GamewAIre Winner Lean' : 'GamewAIre Pick', savedAt: pick.updatedAt,
       reason: lean ? scoreboardBreakdown(pick).replace('\n\n', '\n\nModel winner lean for daily coverage, not a value-qualified pick or betting recommendation. ') : scoreboardBreakdown(pick) });

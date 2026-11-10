@@ -126,7 +126,7 @@ export async function settlePublishedPicks(admin: SupabaseClient, fetcher: typeo
   for (let offset = 0; ; offset += 500) {
     const page = await admin.from('gamewaire_picks').select('id,sport,event_id,event_start,market,subject,side,line,data,revision')
       .eq('result', 'pending').eq('withdrawn', false).is('settled_at', null)
-      .or('is_top_pick.eq.true,is_game_lean.eq.true').lte('event_start', new Date().toISOString())
+      .or('is_top_pick.eq.true,is_game_lean.eq.true,is_automatic.eq.true').lte('event_start', new Date().toISOString())
       .order('event_start').order('id').range(offset, offset + 499);
     if (page.error) throw new Error('Could not read published picks awaiting final results.');
     rows.push(...page.data);

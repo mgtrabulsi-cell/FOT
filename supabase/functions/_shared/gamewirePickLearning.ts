@@ -6,7 +6,7 @@ export async function loadPickLearning(admin: SupabaseClient, sport: string, bas
   const groups = new Map<string, LearningSample[]>();
   for (let offset = 0; ; offset += 500) {
     const saved = await admin.from('gamewaire_picks').select('id,event_id,event_start,created_at,settled_at,probability,push_probability,result,market,side,data')
-      .eq('sport', sport).eq('withdrawn', false).or('is_top_pick.eq.true,is_game_lean.eq.true')
+      .eq('sport', sport).eq('withdrawn', false).or('is_top_pick.eq.true,is_game_lean.eq.true,is_automatic.eq.true')
       .in('result', ['win', 'loss']).lt('settled_at', new Date(cutoff).toISOString())
       .gt('event_start', new Date(cutoff - 365 * 86400000).toISOString())
       .order('event_start', { ascending: false }).order('id').range(offset, offset + 499);

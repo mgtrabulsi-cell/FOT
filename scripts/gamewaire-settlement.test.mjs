@@ -157,7 +157,7 @@ test('worker reuses one box per game, persists audited results with revision gua
     }
     assert.equal('closing_american' in update, false);
   }
-  assert.ok(db.reads[0].some(filter => filter[0] === 'or' && filter[1] === 'is_top_pick.eq.true,is_game_lean.eq.true'));
+  assert.ok(db.reads[0].some(filter => filter[0] === 'or' && filter[1] === 'is_top_pick.eq.true,is_game_lean.eq.true,is_automatic.eq.true'));
   const live = summary(); live.header.competitions[0].status.type.completed = false;
   const liveDB = database(rows);
   assert.equal((await settlePublishedPicks(liveDB, async () => Response.json(live))).pending, 2);

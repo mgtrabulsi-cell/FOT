@@ -33,19 +33,24 @@ const rows = [
   pick(4, 'push', { is_top_pick: false, is_game_lean: true }), pick(5, 'void', { is_top_pick: false, is_game_lean: true }),
   pick(6, 'win', { is_game_lean: true, withdrawn: true }),
 ];
-test('Results graphic has exactly three record-only sections without double-counting shared picks', () => {
+test('Results graphic has four record-only sections without double-counting shared automatic picks', () => {
   const { resultsGraphicSections } = fixture();
   const sections = resultsGraphicSections([...rows, rows[0], pick(7, 'win', { is_top_pick: false })]);
-  assert.equal(sections.length, 3);
-  assert.deepEqual(Array.from(sections, (s) => s.title), ['TOP PICKS', 'GAME LEANS', 'ALL PICKS']);
-  const [top, leans, all] = sections;
+  assert.equal(sections.length, 4);
+  assert.deepEqual(Array.from(sections, (s) => s.title), ['TOP PICKS', 'GAME LEANS', 'AUTOMATIC PICKS', 'ALL PICKS']);
+  const [top, leans, automatic, all] = sections;
+  assert.equal(automatic.wins, 0);
   assert.equal(leans.wins, 2); assert.equal(leans.losses, 0); assert.equal(leans.hitRate, 1);
   assert.equal(top.wins, 2); assert.equal(top.losses, 1); assert.equal(top.hitRate, 2 / 3);
   assert.equal(all.wins, 2); assert.equal(all.losses, 1); assert.equal(all.hitRate, 2 / 3);
   assert.equal(all.pending, 1); assert.equal(all.pushes, 1); assert.equal(all.voids, 1);
   assert.ok(sections.every((section) => !('recent' in section)));
-  const reset = resultsGraphicSections(rows.map((p) => p.id === 6 ? { ...p, result: 'pending' } : p))[2];
+  const reset = resultsGraphicSections(rows.map((p) => p.id === 6 ? { ...p, result: 'pending' } : p))[3];
   assert.equal(reset.hitRate, 0.5); assert.equal(reset.pending, 2);
+  const withAutomatic = resultsGraphicSections([...rows, { ...rows[0], is_automatic: true },
+    pick(8, 'loss', { is_top_pick: false, is_automatic: true })]);
+  assert.equal(withAutomatic[2].wins, 1); assert.equal(withAutomatic[2].losses, 1);
+  assert.equal(withAutomatic[3].wins, 2); assert.equal(withAutomatic[3].losses, 2);
 });
 test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no picks or private financial/Stretch data', async () => {
   const r = fixture();
@@ -64,8 +69,8 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
   assert.ok(r.fontLoads.includes('400 22px "DM Sans"'));
   assert.ok(r.texts.filter((row) => /^(66.7|100.0)%$/.test(row.text)).every((row) => row.font === '700 48px Oswald'));
   assert.ok(r.texts.filter((row) => row.text === 'Record').every((row) => row.font === '400 22px "DM Sans"'));
-  assert.equal(r.boxes.length, 6);
-  assert.ok(r.boxes.every((box) => box[2] === (960 - 16) / 2 && box[3] === 162 && box[4] === 12));
+  assert.equal(r.boxes.length, 8);
+  assert.ok(r.boxes.every((box) => box[2] === (960 - 16) / 2 && box[3] === 120 && box[4] === 12 && box[1] + box[3] < 1178));
   assert.equal(r.images.length, 1);
   const [logo, x, y, width, height] = r.images[0];
   assert.equal(logo.url, '/app/gamewire-mark-transparent.png');
@@ -79,8 +84,8 @@ test('Renderer exports an Instagram 4:5 portrait PNG with record cards and no pi
 test('Empty and pending-only sections do not invent a hit rate, and rendering failures are explicit', async () => {
   const r = fixture();
   await r.renderResultsGraphic([]);
-  assert.equal(r.texts.filter((row) => row.text === 'Unavailable').length, 3);
-  assert.equal(r.resultsGraphicSections([pick(1, 'pending')])[2].hitRate, null);
+  assert.equal(r.texts.filter((row) => row.text === 'Unavailable').length, 4);
+  assert.equal(r.resultsGraphicSections([pick(1, 'pending')])[3].hitRate, null);
   await assert.rejects(fixture({ noContext: true }).renderResultsGraphic(rows), /could not create/);
   await assert.rejects(fixture({ noBlob: true }).renderResultsGraphic(rows), /could not export/);
   await assert.rejects(fixture({ noFonts: true }).renderResultsGraphic(rows), /fonts could not load/);

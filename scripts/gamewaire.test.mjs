@@ -11,6 +11,7 @@ import * as pickLearningTools from '../supabase/functions/_shared/gamewirePickLe
 import * as settlementTools from '../supabase/functions/_shared/gamewaireSettlement.ts';
 import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
 import * as scoreboard from '../supabase/functions/_shared/gamewaireScoreboard.ts';
+import * as automaticTools from '../supabase/functions/_shared/gamewaireAutomaticPicks.ts';
 import * as simulationBackend from '../supabase/functions/_shared/nflSimulationBackend.ts';
 import * as simulationAlignment from '../supabase/functions/_shared/nflSimulationAlignment.ts';
 test('Soccer shortcuts open league analysis without requesting or publishing odds', () => {
@@ -748,9 +749,9 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /Featured from your selected league/);
   assert.match(report, /Saved published prices, not live odds/);
   assert.match(report, /GameWire player analysis/);
-  assert.equal((report.match(/class="gai-record-open"/g) ?? []).length, 3);
-  assert.equal((report.match(/>See results <span/g) ?? []).length, 3);
-  for (const label of ['Top Picks', 'Game Leans', 'All Picks']) {
+  assert.equal((report.match(/class="gai-record-open"/g) ?? []).length, 4);
+  assert.equal((report.match(/>See results <span/g) ?? []).length, 4);
+  for (const label of ['Top Picks', 'Game Leans', 'Automatic Picks', 'All Picks']) {
     assert.ok(report.includes(`aria-label="View published picks for ${label}"`));
     assert.ok(report.includes(`aria-label="View ${label} results"`));
   }
@@ -983,7 +984,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   const sharedRecord = { ...nflRecord, is_game_lean: true };
   const sourceState = mixed.slice();
   sourceState[2] = [nbaRecord, leanRecord, sharedRecord];
-  for (const [view, count, label, rate] of [['top', 2, 'Top Picks record only', '50.0%'], ['leans', 2, 'Published Game Leans record only', '100.0%'], ['all', 3, 'All published Top Picks and Game Leans', '66.7%']]) {
+  for (const [view, count, label, rate] of [['top', 2, 'Top Picks record only', '50.0%'], ['leans', 2, 'Published Game Leans record only', '100.0%'], ['all', 3, 'All published Top Picks, Game Leans and Automatic Picks', '66.7%']]) {
     sourceState[33] = view;
     fixture(sourceState);
     const output = renderToStaticMarkup(createElement(Page));
@@ -995,6 +996,14 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     assert.match(output, /Top Pick \+ Game Lean/);
     assert.match(output, /class="gai-record-card"/);
   }
+  sourceState[33] = 'automatic';
+  sourceState[2] = [...sourceState[2], { ...leanRecord, id: 'automatic-record', is_game_lean: false, is_automatic: true, result: 'loss' }];
+  fixture(sourceState);
+  const automaticRecord = renderToStaticMarkup(createElement(Page));
+  assert.equal((automaticRecord.match(/class="gai-history-row"/g) ?? []).length, 1);
+  assert.match(automaticRecord, /Automatic Pick<\/span>/);
+  assert.match(automaticRecord, /Winner leans grade the winner; spread picks grade the saved spread/);
+  sourceState[2] = [nbaRecord, leanRecord, sharedRecord];
   sourceState[33] = 'leans'; sourceState[20] = 'NFL';
   fixture(sourceState);
   assert.equal((renderToStaticMarkup(createElement(Page)).match(/class="gai-history-row"/g) ?? []).length, 1, 'Lean results sport filter is isolated');
@@ -1088,7 +1097,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: table === 'gamewaire_runs' && builder.columns?.includes('event_start,payload,status')
-          ? scoreboardRows.slice(builder.first, builder.last + 1) : table === 'gamewaire_schedule_jobs' ? scoreboardJobs : table === 'gamewaire_picks' ? [] : null,
+          ? scoreboardRows.slice(builder.first, builder.last + 1) : table === 'gamewaire_runs' ? [] : table === 'gamewaire_schedule_jobs' ? scoreboardJobs : table === 'gamewaire_picks' ? [] : null,
           error: table === 'gamewaire_runs' ? scoreboardError : table === 'gamewaire_schedule_jobs' ? scoreboardJobsError : null }).then(resolve),
       };
       return builder;
@@ -1105,11 +1114,12 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       bookmakers: [{ key: 'book', title: 'Book', markets: [{ key: 'player_points', last_update: quote.updatedAt,
         outcomes: [{ name: 'Over', description: 'Player', point: 20.5, price: 150 }, { name: 'Under', description: 'Player', point: 20.5, price: -180 }] }] }] });
   };
-  const context = vm.createContext({ exports: {}, Response, Request, URL, AbortSignal, Date: class extends Date { static now() { return now; } }, console,
+  const context = vm.createContext({ exports: {}, Response, Request, URL, AbortSignal, Error, Date: class extends Date { static now() { return now; } }, console,
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
       if (name.includes('gamewirePickLearning')) return pickLearningTools;
       if (name.includes('gamewaireSettlement')) return settlementTools;
+      if (name.includes('gamewaireAutomaticPicks')) return automaticTools;
       if (name.includes('gamewaireSchedule')) return { ...schedule, planScheduledAnalyses: async () => {} };
       if (name.includes('gamewaireScoreboard')) return scoreboard;
       if (name.includes('nflSimulationBackend')) return simulationBackend;
@@ -1139,9 +1149,15 @@ test('automatic published-result cron needs the job secret, not an odds subscrip
   assert.equal(fixture.rpc.length, 0);
   assert.equal((await fixture.cron({ action: 'settlePublished' }, 'wrong')).status, 401);
   assert.equal((await fixture.run({ action: 'settlePublished' })).status, 403);
+  const failedScan = endpoint({ allowed: false, scoreboardError: { message: 'Unavailable' } });
+  const partial = await failedScan.cron({ action: 'settlePublished' });
+  assert.equal(partial.status, 207);
+  const diagnostic = await partial.json();
+  assert.equal(diagnostic.checked, 0, 'Result grading still runs if automatic registration fails');
+  assert.match(diagnostic.issues[0], /Could not load upcoming automatic-pick slates/);
 });
 
-test('Member scoreboard shortlist ranks every saved matchup, exposes only three summaries, and never publishes or requests odds', async () => {
+test('Member scoreboard shortlist ranks every saved matchup, records only selected pregame picks, and never requests odds', async () => {
   const base = evaluate().picks[0];
   const rows = Array.from({ length: 5 }, (_, index) => {
     const pick = { ...base, key: `team-${index}`, market: 'h2h', subject: quote.home,
@@ -1190,7 +1206,9 @@ test('Member scoreboard shortlist ranks every saved matchup, exposes only three 
     assert.equal(response.dailyTarget, 3);
     assert.equal(response.picks.length, 2);
     assert.equal(response.pendingGames, 1);
-    assert.deepEqual(api.fetches, []); assert.deepEqual(api.writes, []); assert.deepEqual(api.rpc, []);
+    assert.deepEqual(api.fetches, []); assert.deepEqual(api.writes, []);
+    assert.equal(api.rpc.length, 2);
+    assert.ok(api.rpc.every(call => call.name === 'gamewaire_track_automatic_pick'));
   });
   const api = endpoint({ role: 'member', scoreboardRows: rows });
   const response = await api.run({ action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' });
@@ -1204,7 +1222,8 @@ test('Member scoreboard shortlist ranks every saved matchup, exposes only three 
   assert.doesNotMatch(body.picks[0].reason, /conservative expected value|uncalibrated|Saved pregame price/);
   assert.deepEqual(api.fetches, []);
   assert.deepEqual(api.writes, []);
-  assert.deepEqual(api.rpc, []);
+  assert.equal(api.rpc.length, 3);
+  assert.ok(api.rpc.every(call => call.name === 'gamewaire_track_automatic_pick'));
   assert.ok(api.tables.every(table => ['gamewaire_runs', 'gamewaire_schedule_jobs'].includes(table)));
   const failed = { ...rows[3], payload: { error: 'Provider unavailable' }, status: 'provider_error' };
   const refreshed = endpoint({ role: 'member', scoreboardRows: [failed, ...rows] });

@@ -2,9 +2,10 @@ import type { StoredPick } from './gamewaire';
 import { performance } from './gamewaire';
 
 export function resultsGraphicSections(picks: StoredPick[]) {
-  const unique = [...new Map(picks.filter((pick) => pick.is_top_pick || pick.is_game_lean).map((pick) => [pick.id, pick])).values()];
+  const unique = [...new Map(picks.filter((pick) => pick.is_top_pick || pick.is_game_lean || pick.is_automatic).map((pick) => [pick.id, pick])).values()];
   return ([['TOP PICKS', unique.filter((pick) => pick.is_top_pick)],
-    ['GAME LEANS', unique.filter((pick) => pick.is_game_lean)], ['ALL PICKS', unique]] as const).map(([title, rows]) => {
+    ['GAME LEANS', unique.filter((pick) => pick.is_game_lean)],
+    ['AUTOMATIC PICKS', unique.filter((pick) => pick.is_automatic)], ['ALL PICKS', unique]] as const).map(([title, rows]) => {
     const record = performance(rows.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
       american: pick.american, result: pick.result, withdrawn: pick.withdrawn })));
     return { title, wins: record.wins, losses: rows.filter((pick) => pick.result === 'loss').length,
@@ -66,8 +67,9 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
   text(`ALL TIME / ${analyst ? 'STRAIGHTS ONLY' : 'NBA + NFL'} / AS OF ${generated.toUpperCase()} ET`, 60, 310, 22, muted);
   const sections = analyst?.sections ?? resultsGraphicSections(picks);
   if (sections.length > 4) throw new Error('At most four record sections fit on the results graphic.');
+  const compact = !!analyst || sections.length === 4;
   sections.forEach((section, index) => {
-    const y = 362 + index * (analyst ? 198 : 264);
+    const y = 362 + index * (compact ? 198 : 264);
     text(section.title, 60, y + 28, 26, muted);
     const stats = [
       { label: 'Record', value: String(section.wins) },
@@ -76,10 +78,10 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
     const width = (960 - 16) / 2;
     let x = 60;
     stats.forEach((stat) => {
-      ctx.beginPath(); ctx.roundRect(x, y + 50, width, analyst ? 120 : 162, 12); ctx.fillStyle = '#101b2c'; ctx.fill();
+      ctx.beginPath(); ctx.roundRect(x, y + 50, width, compact ? 120 : 162, 12); ctx.fillStyle = '#101b2c'; ctx.fill();
       ctx.strokeStyle = '#263b55'; ctx.lineWidth = 2; ctx.stroke();
       text(stat.label, x + 28, y + 94, 22, muted, width - 56, 400);
-      const valueY = y + (analyst ? 147 : 162);
+      const valueY = y + (compact ? 147 : 162);
       text(stat.value, x + 28, valueY, 48, stat.label === 'Win rate' && section.hitRate !== null && section.hitRate > 0.5 ? green : ink, width - 56, 700, 'Oswald');
       if (stat.label === 'Record') {
         let nextX = x + 28 + ctx.measureText(stat.value).width;
@@ -92,12 +94,12 @@ export async function renderResultsGraphic(picks: StoredPick[], now = new Date()
       }
       x += width + 16;
     });
-    if (!analyst) text(`${section.pushes} push / ${section.voids} void`, 60, y + 243, 19, muted, 960, 400);
+    if (!analyst) text(`${section.pushes} push / ${section.voids} void`, 60, y + (compact ? 190 : 243), 19, muted, 960, 400);
   });
   if (analyst) text('Top sports: 5+ settled straights. Ranked by win rate, then wins.', 60, 1178, 20, muted);
   text(analyst ? 'Wins / (Wins + Losses). No parlays, pending picks or sprinkles.'
     : 'Hit rate = Wins / (Wins + Losses). Pending, pushes and voids excluded.', 60, 1222, 20, muted);
-  text('Admin-recorded outcomes / No guaranteed future results', 60, 1260, 19, muted);
+  text('Verified results and admin corrections / No guaranteed future results', 60, 1260, 19, muted);
   text('gamewire.us', 60, 1305, 24, ink);
   return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob)
     : reject(new Error('Your browser could not export the results PNG. Retry.')), 'image/png'));

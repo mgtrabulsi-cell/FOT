@@ -237,7 +237,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
   const [completion, setCompletion] = useState<{ completed: string[]; completionWarning: string }>({ completed: [], completionWarning: '' });
   const [orders, setOrders] = useState<PickOrder[]>([]);
   const [stretches, setStretches] = useState<StretchPick[]>([]);
-  const [resultsView, setResultsView] = useState<'top' | 'leans' | 'all'>('top');
+  const [resultsView, setResultsView] = useState<'top' | 'leans' | 'automatic' | 'all'>('all');
   const [section, setSection] = useState<'bot' | 'bets'>('bot');
   const [memberWeek, setMemberWeek] = useState<number | null>(null);
   const [weekSchedule, setWeekSchedule] = useState<Awaited<ReturnType<typeof loadPublishedNFLWeek>> | null>(null);
@@ -315,7 +315,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
   };
   const savedGames = reviewRuns.filter((run, index) => run.status !== 'in_progress'
     && reviewRuns.findIndex((other) => other.sport === run.sport && other.event_id === run.event_id && other.status !== 'in_progress') === index);
-  const resultPicks = picks.filter((pick) => resultsView === 'all' || (resultsView === 'leans' ? pick.is_game_lean : pick.is_top_pick));
+  const resultPicks = picks.filter((pick) => resultsView === 'all' || (resultsView === 'automatic' ? pick.is_automatic : resultsView === 'leans' ? pick.is_game_lean : pick.is_top_pick));
   const historyPicks = resultPicks.filter((pick) => historySport === 'all' || pick.sport === historySport);
   const record = performance(historyPicks.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
     american: pick.american, result: pick.result, closingAmerican: pick.closing_american, withdrawn: pick.withdrawn })));
@@ -413,16 +413,16 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     </header>
     <section className="gai-record-overview" aria-label="GamewAIre record overview">
       <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD · ALL TIME · ALL SPORTS</span><h3>GamewAIre results</h3></div>
-        <button onClick={() => openResults('top')}>View full results</button></div>
+        <button onClick={() => openResults('all')}>View full results</button></div>
       {!loaded ? <p className="gai-note">{error ? 'Record unavailable until saved results reload.' : 'Loading recorded results…'}</p> :
         <div className="gai-record-cards">
-          {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['all', 'All Picks']] as const).map(([view, label]) => {
-            const rows = picks.filter((pick) => view === 'all' || (view === 'top' ? pick.is_top_pick : pick.is_game_lean));
+          {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['automatic', 'Automatic Picks'], ['all', 'All Picks']] as const).map(([view, label]) => {
+            const rows = picks.filter((pick) => view === 'all' || (view === 'automatic' ? pick.is_automatic : view === 'top' ? pick.is_top_pick : pick.is_game_lean));
             const summary = performance(rows.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
               american: pick.american, result: pick.result, withdrawn: pick.withdrawn })));
             const Icon = view === 'top' ? Crosshair : view === 'leans' ? BarChart3 : Star;
             return <div key={view} className="gai-record-card">
-              <button type="button" className="gai-record-open" onClick={openPublishedPicks} aria-label={`View published picks for ${label}`} />
+              <button type="button" className="gai-record-open" onClick={view === 'automatic' ? () => openResults(view) : openPublishedPicks} aria-label={`View published picks for ${label}`} />
               <Icon className="gai-record-icon" size={28} aria-hidden="true" />
               <span className="gai-record-label">{label}</span>
               <strong>{summary.wins}<small> Hit · </small>{rows.filter((pick) => pick.result === 'loss').length}<small> Missed</small></strong>
@@ -431,7 +431,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
             </div>;
           })}
         </div>}
-      <p className="gai-note">Published picks only · Manually recorded outcomes · Pushes and voids excluded from hit rate. All Picks counts shared selections once.</p>
+      <p className="gai-note">Published and recorded automatic picks · Verified final results and admin corrections · Pushes and voids excluded from hit rate. All Picks counts shared selections once.</p>
     </section>
     {!candidateView && <section className="gai-latest-published" aria-label="Featured published pick">
       <div className="gai-home-heading"><h3>Featured published pick</h3><button type="button" onClick={openPublishedPicks}>View all picks <ArrowRight size={17} aria-hidden="true" /></button></div>
@@ -671,11 +671,11 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       {status?.canAnalyze && <GamewaireResultsDownload picks={picks} disabled={!loaded || !!error} />}
       <p className="gai-note">Published picks are checked every five minutes and graded from verified final scores and player statistics. Missing data, DNPs and unclear results stay pending for review. Admin corrections remain available.</p>
       <div className="gai-sport-tabs" role="group" aria-label="Results type">
-        {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['all', 'All Picks']] as const).map(([value, label]) =>
+        {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['automatic', 'Automatic Picks'], ['all', 'All Picks']] as const).map(([value, label]) =>
           <button key={value} aria-pressed={resultsView === value} onClick={() => { setResultsView(value); setMarket('all'); }}>{label}</button>)}
       </div>
-      <p className="gai-note">{resultsView === 'top' ? 'Top Picks record only.' : resultsView === 'leans' ? 'Published Game Leans record only, including lean-only selections.' : 'All published Top Picks and Game Leans. Identical selections at the same price and model version count once.'}
-        {' '}A selection published in both areas shares one Hit/Missed result. Private analyses do not enter either record.</p>
+      <p className="gai-note">{resultsView === 'top' ? 'Top Picks record only.' : resultsView === 'leans' ? 'Published Game Leans record only, including lean-only selections.' : resultsView === 'automatic' ? 'Ranked GamewAIre Picks and Winner Leans shown on The Wire, saved before kickoff.' : 'All published Top Picks, Game Leans and Automatic Picks. Identical selections at the same price and model version count once.'}
+        {' '}Automatic tracking locks the first pregame selection per game; later refreshes do not rewrite it. Winner leans grade the winner; spread picks grade the saved spread. Private analyses and unverified historical selections do not enter the record.</p>
       {loaded && <dl className={`gai-results-stats${status?.canAnalyze ? '' : ' gai-results-public'}`}>
         <div><dt>Record</dt><dd>{historyPicks.filter((pick) => pick.result === 'win').length}<span> W · </span>{historyPicks.filter((pick) => pick.result === 'loss').length}<span> L</span></dd></div>
         <div><dt>Pending</dt><dd>{record.pending}</dd></div>
@@ -702,7 +702,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       <ul className="gai-history-list" aria-label="Published pick history">
         {visible.map((pick) => <li key={pick.id} className="gai-history-row">
           <div className="gai-history-pick"><span className="eyebrow">{pick.sport} · {marketLabels[pick.market] ?? pick.market.replace(/_/g, ' ')}</span>
-            <span className="gai-tag">{pick.is_top_pick && pick.is_game_lean ? 'Top Pick + Game Lean' : pick.is_game_lean ? 'Game Lean' : 'Top Pick'}</span>
+            <span className="gai-tag">{[pick.is_top_pick && 'Top Pick', pick.is_game_lean && 'Game Lean', pick.is_automatic && 'Automatic Pick'].filter(Boolean).join(' + ')}</span>
             <h4>{pickTitle(pick.data)}</h4>{status?.canAnalyze && stretches.some((row) => row.run_id === pick.run_id && row.pick_key === pick.data.key) && <span className="gai-stretch">Stretch · only you</span>}<small>{pick.data.away} @ {pick.data.home} · {stamp(pick.event_start)}</small>
             {pick.withdrawn && <span className="gai-tag">Withdrawn</span>}
           </div>

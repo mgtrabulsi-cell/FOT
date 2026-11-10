@@ -6,7 +6,7 @@ import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaire
 import { planScheduledAnalyses, scheduledMarkets } from '../_shared/gamewaireSchedule.ts';
 import type { ScheduledJob } from '../_shared/gamewaireSchedule.ts';
 import { loadPickLearning } from '../_shared/gamewirePickLearning.ts';
-import { scoreboardPicks } from '../_shared/gamewaireScoreboard.ts';
+import { loadWireSelections, recordWireSelections, syncAutomaticWirePicks } from '../_shared/gamewaireAutomaticPicks.ts';
 import { savedNFLGameSimulation } from '../_shared/nflSimulationBackend.ts';
 import { alignSimulationEvidence, simulationAllowsMoneyline } from '../_shared/nflSimulationAlignment.ts';
 import type { NFLGameSimulation } from '../_shared/nflSimulation.ts';
@@ -122,8 +122,15 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     let canAnalyze = false, userId: string | null = null;
     if (cron) {
       if (body.action === 'settlePublished') {
+        let automaticRecorded = 0, automaticIssue: string | null = null;
+        try { automaticRecorded = await syncAutomaticWirePicks(admin); }
+        catch (cause) {
+          automaticIssue = message(cause);
+          console.error('Automatic Wire pick recording failed', automaticIssue);
+        }
         const result = await settlePublishedPicks(admin, fetcher);
-        return json(result, result.issues.length ? 207 : 200);
+        if (automaticIssue) result.issues.push(automaticIssue);
+        return json({ ...result, automaticRecorded }, result.issues.length ? 207 : 200);
       }
       if (body.action !== 'scheduled') return json({ error: 'Cron credentials are only accepted for scheduled analyses.' }, 403);
       if (!oddsKey) return json({ error: 'Scheduled analyses require ODDS_API_KEY.' }, 503);
@@ -161,57 +168,9 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const span = Date.parse(last) - Date.parse(first);
       if (!validDate(first) || !validDate(last) || span < 0 || span > (body.sport === 'NBA' ? 0 : 6 * 86400000))
         return json({ error: 'Choose one NBA night or one NFL week.' }, 400);
-      const start = new Date(Date.parse(first) - 86400000).toISOString();
-      const end = new Date(Date.parse(last) + 2 * 86400000).toISOString();
-      const inSlate = (start: string) => {
-        const timestamp = Date.parse(start);
-        if (!Number.isFinite(timestamp)) return false;
-        const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp));
-        return day >= first && day <= last;
-      };
-      type SavedScore = { event_id: string; event_start: string; status: string; payload: { modelVersion?: string; teamLean?: TeamLean; winnerLean?: TeamLean } };
-      const latest = new Map<string, SavedScore>();
-      for (let offset = 0; ; offset += 500) {
-        const saved = await admin.from('gamewaire_runs').select('event_id,event_start,payload,status,created_at')
-          .eq('sport', body.sport).gte('event_start', start).lt('event_start', end)
-          .order('created_at', { ascending: false }).order('id').range(offset, offset + 499).returns<SavedScore[]>();
-        if (saved.error) throw new Error('Could not load matchup scores for the scoreboard.');
-        for (const row of saved.data) {
-          if (!inSlate(row.event_start) || row.status === 'in_progress' || latest.has(row.event_id)) continue;
-          latest.set(row.event_id, row);
-        }
-        if (saved.data.length < 500) break;
-      }
-      const candidates = [...latest.values()].flatMap(row => {
-        const lean = row.payload?.teamLean;
-        return row.payload?.modelVersion === modelVersion && lean?.qualifies === true ? [lean.pick] : [];
-      });
-      const jobs = await admin.from('gamewaire_schedule_jobs')
-        .select('event_id,event_start,status,gamewaire_schedule_batches!inner(model_version)')
-        .eq('sport', body.sport).eq('gamewaire_schedule_batches.model_version', modelVersion)
-        .gte('event_start', start).lt('event_start', end)
-        .returns<Array<{ event_id: string; event_start: string; status: string }>>();
-      if (jobs.error) throw new Error('Could not load scoreboard analysis progress.');
-      const countJobs = (statuses: string[]) => new Set(jobs.data.filter(job => inSlate(job.event_start) && statuses.includes(job.status)).map(job => job.event_id)).size;
-      const slateGames = new Set([...latest.keys(), ...jobs.data.filter(job => inSlate(job.event_start)).map(job => job.event_id)]).size;
-      const winners = [...latest.values()].flatMap(row => {
-        const winner = row.payload?.winnerLean ?? (row.payload?.teamLean?.pick.market === 'h2h' ? row.payload.teamLean : undefined);
-        return row.payload?.modelVersion === modelVersion && winner ? [winner] : [];
-      });
-      const nflSimulations = new Map<string, NFLGameSimulation>();
-      if (body.sport === 'NFL') for (const candidate of candidates) {
-        const eventId = candidate.identifiers?.espnEventId;
-        if (candidate.market !== 'h2h' || !eventId || nflSimulations.has(eventId) || Date.parse(candidate.start) <= Date.now()) continue;
-        const forecast = await savedNFLGameSimulation(admin, eventId, candidate.start);
-        if (forecast) nflSimulations.set(eventId, forecast);
-      }
-      const picks = scoreboardPicks(candidates, Date.now(), body.sport === 'NBA' ? { nbaGames: slateGames, winnerLeans: winners } : { nflSimulations });
-      return json({ picks, ...(body.sport === 'NBA' ? { dailyTarget: slateGames === 0 ? 0 : slateGames < 3 ? 1 : 3, selectionCount: picks.length } : {}),
-        analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
-        upcomingAnalyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion && Date.parse(row.event_start) > Date.now()).length,
-        pendingGames: countJobs(['pending', 'running']), failedGames: countJobs(['failed']),
-        note: body.sport === 'NBA' ? 'Three distinct games per Eastern day, or one winner selection total on a 1–2-game slate. Value-qualified picks are prioritized; coverage-only winner leans are labeled separately. Missing evidence is not invented. No paid odds refresh or publication is triggered.'
-          : 'Ranked across saved matchup analyses. NFL moneyline picks must also match the saved default simulation winner; missing or tied simulations receive no moneyline label. No paid odds refresh or post publication is triggered.' });
+      const { selections, response } = await loadWireSelections(admin, body.sport, first, last, Date.now());
+      await recordWireSelections(admin, selections, Date.now());
+      return json(response);
     }
     if (!canAnalyze) return json({ error: 'GamewAIre management is restricted to the designated account.' }, 403);
     if (body.action === 'report') {

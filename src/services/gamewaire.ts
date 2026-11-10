@@ -16,7 +16,7 @@ export type StoredPick = {
   american: number; probability: number; push_probability: number; data: Candidate;
   result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closing_american: number | null; withdrawn: boolean;
   revision: number; created_at: string; settlement_note: string | null;
-  is_top_pick: boolean; is_game_lean: boolean;
+  is_top_pick: boolean; is_game_lean: boolean; is_automatic: boolean;
 };
 export type EngineStatus = { canAnalyze: boolean; oddsReady: boolean; aiReady: boolean; model: string; experimental: boolean };
 export type StretchPick = { run_id: string; pick_key: string };
@@ -68,7 +68,7 @@ export async function loadEngineHistory(signal: AbortSignal, canAnalyze = false)
     .order('event_start', { ascending: false }).abortSignal(signal) : { data: [], error: null };
   if (jobs.error) throw new Error(`Could not load scheduled game reports: ${jobs.error.message}`);
   for (let offset = 0; ; offset += 500) {
-    const page = await supabase.from('gamewaire_picks').select('*').or('is_top_pick.eq.true,is_game_lean.eq.true')
+    const page = await supabase.from('gamewaire_picks').select('*').or('is_top_pick.eq.true,is_game_lean.eq.true,is_automatic.eq.true')
       .order('created_at', { ascending: false }).order('id').range(offset, offset + 499).abortSignal(signal);
     if (page.error) throw new Error(`Could not load complete model performance: ${page.error.message}`);
     picks.push(...page.data);

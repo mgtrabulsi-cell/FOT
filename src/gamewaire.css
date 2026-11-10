@@ -26,7 +26,7 @@
   .gai-panel .gai-section-tabs button { padding: 10px 6px; font-size: 13px; }
 }
 .gai-record-overview { padding: 16px; border: 1px solid #344963; border-radius: 8px; background: radial-gradient(ellipse at top right, #50202d55, transparent 65%), #0c1523; }
-.gai-record-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.gai-record-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
 .gai-panel .gai-record-card { display: grid; gap: 10px; text-align: left; min-width: 0; padding: 14px; }
 .gai-record-label { color: #b6c6db; font-size: 13px; font-weight: 600; }
 .gai-record-card strong { font: 700 28px var(--display); }
