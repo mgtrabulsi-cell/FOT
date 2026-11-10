@@ -12,6 +12,7 @@ import { alignSimulationEvidence, simulationAllowsMoneyline } from '../_shared/n
 import type { NFLGameSimulation } from '../_shared/nflSimulation.ts';
 import { isSoccer, soccerModelVersion } from '../_shared/gamewaire.ts';
 import { collectSoccerEvidence, evaluateSoccer, resolveSoccerMatchup } from '../_shared/gamewaireSoccer.ts';
+import { settlePublishedPicks } from '../_shared/gamewaireSettlement.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
@@ -120,6 +121,10 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     let body = object(input);
     let canAnalyze = false, userId: string | null = null;
     if (cron) {
+      if (body.action === 'settlePublished') {
+        const result = await settlePublishedPicks(admin, fetcher);
+        return json(result, result.issues.length ? 207 : 200);
+      }
       if (body.action !== 'scheduled') return json({ error: 'Cron credentials are only accepted for scheduled analyses.' }, 403);
       if (!oddsKey) return json({ error: 'Scheduled analyses require ODDS_API_KEY.' }, 503);
       if (body.checkQuota === true) {

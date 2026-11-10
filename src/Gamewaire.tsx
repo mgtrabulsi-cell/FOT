@@ -176,11 +176,11 @@ function ReviewGameLean({ report, refresh, onFreshReport }: { report: AnalysisRu
   </section>;
 }
 function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }) {
-  const [result, setResult] = useState<'win' | 'loss' | 'pending' | ''>(
-    pick.result === 'win' || pick.result === 'loss' || pick.result === 'pending' ? pick.result : '');
+  const [result, setResult] = useState<StoredPick['result']>(pick.result);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => { setResult(pick.result); setSaved(false); }, [pick.result, pick.revision]);
   return <details><summary>Log result · {pick.subject}</summary><form className="gai-form" onSubmit={(event) => {
     event.preventDefault(); setBusy(true); setError('');
     setSaved(false);
@@ -188,8 +188,8 @@ function Settlement({ pick, refresh }: { pick: StoredPick; refresh: () => void }
       .then(() => { setSaved(true); refresh(); }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false));
   }}>
     <fieldset disabled={busy}><legend>Result</legend>
-      {(['win', 'loss', 'pending'] as const).map((value) => <label key={value}><input type="radio" name={`result-${pick.id}`} value={value}
-        checked={result === value} onChange={() => { setResult(value); setSaved(false); }} required />{value === 'win' ? 'Hit' : value === 'loss' ? 'Missed' : 'Pending'}</label>)}
+      {(['win', 'loss', 'push', 'void', 'pending'] as const).map((value) => <label key={value}><input type="radio" name={`result-${pick.id}`} value={value}
+        checked={result === value} onChange={() => { setResult(value); setSaved(false); }} required />{value === 'win' ? 'Hit' : value === 'loss' ? 'Missed' : resultLabels[value]}</label>)}
     </fieldset>
     <button disabled={busy || !result}>{busy ? 'Saving…' : 'Save result'}</button>
     {pick.is_game_lean && <div>
@@ -669,7 +669,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <label>Results sport<select value={historySport} onChange={(event) => setHistorySport(event.target.value)}><option value="all">All sports</option>{(['NBA', 'NFL', ...soccerSports] as const).map(value => <option key={value}>{value}</option>)}</select></label>
       </div>
       {status?.canAnalyze && <GamewaireResultsDownload picks={picks} disabled={!loaded || !!error} />}
-      <p className="gai-note">Results are recorded by an admin, not automatically settled. Pending picks stay pending until reviewed.</p>
+      <p className="gai-note">Published picks are checked every five minutes and graded from verified final scores and player statistics. Missing data, DNPs and unclear results stay pending for review. Admin corrections remain available.</p>
       <div className="gai-sport-tabs" role="group" aria-label="Results type">
         {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['all', 'All Picks']] as const).map(([value, label]) =>
           <button key={value} aria-pressed={resultsView === value} onClick={() => { setResultsView(value); setMarket('all'); }}>{label}</button>)}
@@ -715,7 +715,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         </li>)}
       </ul>
       {loaded && status?.canAnalyze && <details className="gai-history-advanced"><summary>Model diagnostics &amp; breakdowns</summary>
-        <p className="gai-note">{record.total} tracked · {record.settled} settled. Repeated identical selections are counted once. Admin-reported outcomes only; no simulated results.</p>
+        <p className="gai-note">{record.total} tracked · {record.settled} settled. Repeated identical selections are counted once. Verified final results and admin corrections; no simulated results.</p>
         <dl className="gai-metrics"><div><dt>Brier score</dt><dd>{record.brier?.toFixed(3) ?? 'Unavailable'}</dd></div>
           <div><dt>Log loss</dt><dd>{record.logLoss?.toFixed(3) ?? 'Unavailable'}</dd></div><div><dt>Closing price value</dt><dd>{percent(record.closingPriceValue)}</dd></div></dl>
         <p className="gai-note">These descriptive metrics are not proof of an edge. Closing price value compares prices at the same line, not line movement. Breakdowns follow the selected sport, not the list filters.</p>

@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
 import * as pickLearningTools from '../supabase/functions/_shared/gamewirePickLearning.ts';
+import * as settlementTools from '../supabase/functions/_shared/gamewaireSettlement.ts';
 import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
 import * as scoreboard from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import * as simulationBackend from '../supabase/functions/_shared/nflSimulationBackend.ts';
@@ -675,13 +676,13 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(settlement, />Pending<\/label>/);
   assert.match(settlement, /checked="" value="pending"/);
   assert.match(settlement, /Save result/);
-  assert.equal((settlement.match(/type="radio"/g) ?? []).length, 3);
+  assert.equal((settlement.match(/type="radio"/g) ?? []).length, 5);
   assert.doesNotMatch(settlement, /Source|reason|Closing|Withdrawn|<select/);
   assert.doesNotMatch(settlement, /Delete game lean/);
   fixture([]);
   const leanSettlement = renderToStaticMarkup(createElement(Settlement, { pick: { id: 'lean', result: 'pending', subject: 'Team', is_game_lean: true }, refresh() {} }));
   assert.match(leanSettlement, /Delete game lean/);
-  for (const result of ['win', 'loss']) {
+  for (const result of ['win', 'loss', 'push', 'void']) {
     fixture([]);
     const settled = renderToStaticMarkup(createElement(Settlement, { pick: { id: 'pick', result, subject: 'Player' }, refresh() {} }));
     assert.match(settled, new RegExp(`checked="" value="${result}"`));
@@ -976,7 +977,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(allSports, /class="gai-history-list" aria-label="Published pick history"/);
   assert.match(allSports, /gai-result-win">Won/);
   assert.match(allSports, /gai-result-loss">Lost/);
-  assert.match(allSports, /not automatically settled/);
+  assert.match(allSports, /graded from verified final scores and player statistics/);
   assert.match(allSports, /More filters/);
   const leanRecord = { ...nbaRecord, id: 'lean-record', is_top_pick: false, is_game_lean: true, result: 'win' };
   const sharedRecord = { ...nflRecord, is_game_lean: true };
@@ -1075,7 +1076,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       tables.push(table);
       const builder = {
         select: (columns) => { builder.columns = columns; return builder; }, eq: () => builder, order: () => builder, limit: () => builder, lt: () => builder,
-        gt: () => builder, gte: () => builder, in: () => builder, or: () => builder,
+        gt: () => builder, gte: () => builder, in: () => builder, or: () => builder, is: () => builder, lte: () => builder,
         range: (first, last) => { builder.first = first; builder.last = last; return builder; }, returns: () => builder,
         update: (value) => { writes.push({ table, value }); return builder; }, insert: (value) => { builder.value = value; return builder; },
         upsert: () => builder,
@@ -1108,6 +1109,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
       if (name.includes('gamewirePickLearning')) return pickLearningTools;
+      if (name.includes('gamewaireSettlement')) return settlementTools;
       if (name.includes('gamewaireSchedule')) return { ...schedule, planScheduledAnalyses: async () => {} };
       if (name.includes('gamewaireScoreboard')) return scoreboard;
       if (name.includes('nflSimulationBackend')) return simulationBackend;
@@ -1128,6 +1130,17 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer fixture' } : {}) }, body: JSON.stringify(body),
   }), env, customFetcher), exports: context.exports };
 }
+test('automatic published-result cron needs the job secret, not an odds subscription or admin browser', async () => {
+  const fixture = endpoint({ allowed: false, configured: false });
+  const response = await fixture.cron({ action: 'settlePublished' });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).checked, 0);
+  assert.equal(fixture.fetches.length, 0);
+  assert.equal(fixture.rpc.length, 0);
+  assert.equal((await fixture.cron({ action: 'settlePublished' }, 'wrong')).status, 401);
+  assert.equal((await fixture.run({ action: 'settlePublished' })).status, 403);
+});
+
 test('Member scoreboard shortlist ranks every saved matchup, exposes only three summaries, and never publishes or requests odds', async () => {
   const base = evaluate().picks[0];
   const rows = Array.from({ length: 5 }, (_, index) => {
