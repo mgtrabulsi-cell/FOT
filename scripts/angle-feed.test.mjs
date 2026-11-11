@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as angles from '../src/services/theAngle.ts';
 import * as picks from '../src/services/anglePicks.ts';
 import { postThemes } from '../src/services/postThemes.ts';
+import * as media from '../src/services/postMedia.ts';
 import { readRenderSnapshot, saveRenderSnapshot } from '../src/services/renderSnapshots.ts';
 
 const story = {
@@ -32,24 +33,41 @@ const code = ts.transpileModule(component.getText(parsed).replace('export defaul
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 
-function fixture(saved = null) {
+function fixture(saved = null, { editing = false, staleOnClear = false, section = 'angle', existing = false } = {}) {
   class ClickTarget {
     constructor(interactive = false) { this.interactive = interactive; }
     closest() { return this.interactive ? this : null; }
   }
-  const hooks = [], requests = [], listeners = new Set();
+  const hooks = [], requests = [], writes = [], listeners = new Set();
   let cursor = 0, changed = false, effects = [], tree;
-  const props = { user: null, games: [], season: 2026, week: 7, active: false };
+  const props = { user: null, games: [], season: 2026, week: 7, active: false, section };
+  if (editing) {
+    props.user = { id: 'author' };
+    props.importedDraft = { form: { ...story, section, news_types: section === 'news' ? ['news'] : [],
+      id: existing ? story.id : '', revision: existing ? story.revision : 0,
+      status: existing ? 'published' : 'draft', title: 'Newly published Angle' }, photos: [] };
+    props.onDraftImported = () => { props.importedDraft = null; };
+  }
   const jsx = (type, props) => ({ type, props });
   const context = vm.createContext({
-    ...angles, ...picks, postThemes,
+    ...angles, ...picks, ...media, postThemes,
     exports: {}, require: () => ({ jsx, jsxs: jsx }), console, AbortController, Element: ClickTarget,
     errorMessage: (cause) => cause.message, generalMatchups: [],
     readRenderSnapshot: () => saved,
     saveRenderSnapshot: (_kind, _key, data) => { saved = data; },
     subscribeForegroundRefresh: (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
-    supabase: { from: () => {
-      const builder = { select: () => builder, eq: () => builder, maybeSingle: async () => ({ data: story, error: null }) };
+    loadAngleDraft: async () => undefined,
+    saveAngleDraft: async (_user, _section, value) => {
+      if (staleOnClear && writes.length && value === undefined) requests[0].resolve({ data: [], error: null });
+    },
+    supabase: { from: (table) => {
+      let payload;
+      const builder = { select: () => builder, eq: () => builder,
+        insert: value => { payload = value; writes.push(value); return builder; },
+        update: value => { payload = value; writes.push(value); return builder; },
+        in: async () => ({ data: [], error: null }),
+        single: async () => ({ data: { ...story, section, ...payload }, error: null }),
+        maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role: 'admin' } : { ...story, section, ...payload }, error: null }) };
       return builder;
     }, rpc: (_name, args) => {
       const request = { args };
@@ -60,11 +78,13 @@ function fixture(saved = null) {
       return builder;
     } },
     document: { visibilityState: 'visible', getElementById: () => ({ scrollIntoView() {}, focus() {} }) },
-    window: { setInterval: () => 1, clearInterval() {}, setTimeout: () => 2, clearTimeout() {} },
+    window: { setInterval: () => 1, clearInterval() {}, setTimeout: () => 2, clearTimeout() {}, addEventListener() {}, removeEventListener() {} },
     useAnalystReadObserver: () => ({ root: { current: null } }),
     observePostViews: () => () => {},
     PostGallery: 'gallery', AnglePicks: 'picks', AngleReviewList: 'review-picks', ActiveAngleBets: 'active-bets',
     PostViewers: 'viewers', XPublishingStatus: 'x-status', Plus: 'plus', ExternalLink: 'link',
+    Pin: 'pin', BookOpen: 'book', AngleReviewPicker: 'review-picker',
+    ParlayGraphicBuilder: 'parlay-builder', BestBetGraphicBuilder: 'best-bet-builder',
     useRef(initial) { const index = cursor++; return hooks[index] ??= { current: initial }; },
     useState(initial) {
       const index = cursor++;
@@ -92,12 +112,66 @@ function fixture(saved = null) {
     throw new Error('Angle fixture did not stabilize');
   }
   return {
-    props, requests, render, text: () => JSON.stringify(tree), saved: () => saved,
+    props, requests, writes, render, text: () => JSON.stringify(tree), saved: () => saved,
     clickTarget: interactive => new ClickTarget(interactive),
     async settle() { await new Promise((resolve) => setImmediate(resolve)); render(); },
     unmount: () => hooks.forEach((hook) => hook?.cleanup?.()),
   };
 }
+
+test('Angle publication ends initial loading and persists the returned post without waiting for a feed reload', async () => {
+  const app = fixture(null, { editing: true });
+  app.props.active = true;
+  try {
+    app.render(); await app.settle(); await app.settle();
+    const form = findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor');
+    assert.ok(form, 'The restored editor is ready to publish');
+    form.props.onSubmit({ preventDefault() {} });
+    await app.settle();
+    assert.equal(app.writes.length, 1);
+    assert.match(app.text(), /Newly published Angle/);
+    assert.doesNotMatch(app.text(), /Loading The Angle|Saving\.\.\./);
+    assert.equal(app.saved().rows[0].title, 'Newly published Angle');
+    app.requests.at(-1).reject(new Error('Refresh offline'));
+    await app.settle();
+    assert.match(app.text(), /Newly published Angle/);
+    assert.doesNotMatch(app.text(), /Loading The Angle/);
+  } finally { app.unmount(); }
+});
+
+test('Angle publication cannot be erased by a feed request started before the write', async () => {
+  const app = fixture(null, { editing: true, staleOnClear: true });
+  app.props.active = true;
+  try {
+    app.render(); await app.settle(); await app.settle();
+    const form = findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor');
+    form.props.onSubmit({ preventDefault() {} });
+    await app.settle();
+    assert.equal(app.writes.length, 1);
+    assert.match(app.text(), /Newly published Angle/);
+    assert.equal(app.saved().rows[0].title, 'Newly published Angle');
+  } finally { app.unmount(); }
+});
+
+test('Angle publication updates existing posts in place and applies the same immediate feed update to Fantasy News', async () => {
+  for (const section of ['angle', 'news']) {
+    const app = fixture({ season: 2026, week: 7, rows: [{ ...story, section }] }, { editing: true, section, existing: true });
+    app.props.active = true;
+    try {
+      app.render(); await app.settle(); await app.settle();
+      const form = findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor');
+      form.props.onSubmit({ preventDefault() {} });
+      await app.settle();
+      assert.equal(app.writes.length, 1);
+      assert.equal(app.writes[0].revision, 2);
+      assert.equal(app.saved().rows.length, 1);
+      assert.equal(app.saved().rows[0].title, 'Newly published Angle');
+      assert.equal(app.saved().rows[0].section, section);
+      assert.match(app.text(), /Newly published Angle/);
+      assert.doesNotMatch(app.text(), /Loading The Angle|Loading Fantasy News|Saving\.\.\./);
+    } finally { app.unmount(); }
+  }
+});
 
 test('Angle renders saved published posts before effects, schedule, or network', () => {
   const app = fixture({ season: 2026, week: 7, rows: [story] });

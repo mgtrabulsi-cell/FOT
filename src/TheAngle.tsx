@@ -78,6 +78,9 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   const [admin, setAdmin] = useState(false);
   const [savedFeed] = useState(() => readRenderSnapshot('angleFeed', section));
   const [rows, setRows] = useState<Angle[]>(savedFeed?.rows ?? []);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const feedVersion = useRef(0);
   const [loaded, setLoaded] = useState(!!savedFeed);
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
@@ -220,6 +223,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
   useEffect(() => {
     if (!season || !week) return;
     const boardSeason = season, boardWeek = week;
+    const version = feedVersion.current;
     let active = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15_000);
@@ -231,9 +235,10 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           .order('updated_at', { ascending: false }).order('id').range(offset, offset + 499).abortSignal(controller.signal);
         if (result.error) throw result.error;
         next.push(...readAngles(result.data));
-        if (!active) return;
+        if (!active || version !== feedVersion.current) return;
         if (result.data.length < 500) break;
       }
+      rowsRef.current = next;
       setRows(next); setLoaded(true); setLoadError('');
       saveRenderSnapshot('angleFeed', section, {
         season: boardSeason, week: boardWeek,
@@ -241,7 +246,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       });
     }
     void load().catch((cause: unknown) => {
-      if (active) setLoadError(controller.signal.aborted
+      if (active && version === feedVersion.current) setLoadError(controller.signal.aborted
         ? 'The Angle refresh timed out. Saved posts remain available; retry to update.'
         : `Could not load The Angle: ${errorMessage(cause)}`);
     }).finally(() => window.clearTimeout(timeout));
@@ -270,6 +275,16 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  function updateFeed(next: Angle[], boardSeason = season, boardWeek = week) {
+    feedVersion.current++;
+    rowsRef.current = next;
+    loadedRef.current = true;
+    setRows(next); setLoaded(true); setLoadError('');
+    if (boardSeason && boardWeek) saveRenderSnapshot('angleFeed', section, {
+      season: boardSeason, week: boardWeek,
+      rows: next.filter((row) => row.status === 'published' && angleSection(row) === section).slice(0, 20),
+    });
+  }
   function openEditor(next: Angle | null) {
     if (!draftReady || draftRestoreFailed || busy) return;
     if (form) {
@@ -357,8 +372,11 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       if (!result.data) throw new Error('Another admin changed or removed this angle. Copy your changes before discarding this local draft and reopening the current version.');
       persisted = true;
       const saved = readAngles([result.data])[0];
-      setRows((previous) => [saved, ...previous.filter((row) => row.id !== saved.id)]);
-      if (saved.id === storyId) setLinkedStory(saved.status === 'published' ? saved : null);
+      updateFeed([saved, ...rowsRef.current.filter((row) => row.id !== saved.id)], season ?? saved.season, week ?? saved.week);
+      if (saved.id === storyId) {
+        setLinkedStory(saved.status === 'published' ? saved : null);
+        setLinkedReady(storyId); setLinkedError('');
+      }
       resetPhotos();
       setPhotos((saved.image_paths ?? []).filter((path) => path !== saved.parlay_graphic?.image_path).map((path) => ({ path, preview: postPhotoUrl(path) })));
       setForm(saved); setDirty(false); setRefresh((value) => value + 1);
@@ -389,10 +407,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       const result = await supabase.from('angles').delete().eq('id', angle.id).eq('revision', angle.revision).select('id').maybeSingle();
       if (result.error) throw result.error;
       if (!result.data) throw new Error('Another admin changed this angle. Reload before deleting.');
-      setRows((previous) => previous.filter((row) => row.id !== angle.id));
-      if (season && week) saveRenderSnapshot('angleFeed', section, {
-        season, week, rows: rows.filter((row) => row.id !== angle.id && row.status === 'published').slice(0, 20),
-      });
+      updateFeed(rowsRef.current.filter((row) => row.id !== angle.id));
       if (angle.id === storyId) setLinkedStory(null);
       setNotice('Angle deleted.');
     } catch (cause) { setActionError(errorMessage(cause)); }
@@ -427,7 +442,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       if (angle.pinned_at) {
         const result = await supabase.from('angles').update({ pinned_at: null }).eq('id', angle.id).select('id').maybeSingle();
         if (result.error) throw result.error;
-        setRows((previous) => previous.map((row) => row.id === angle.id ? { ...row, pinned_at: null } : row));
+        updateFeed(rowsRef.current.map((row) => row.id === angle.id ? { ...row, pinned_at: null } : row));
       } else {
         const cleared = await supabase.from('angles').update({ pinned_at: null }).not('pinned_at', 'is', null).select('id');
         if (cleared.error) throw cleared.error;
@@ -435,7 +450,7 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         if (result.error) throw result.error;
         if (!result.data) throw new Error('The post could not be pinned. Reload and retry.');
         const pinnedAt = typeof result.data.pinned_at === 'string' ? result.data.pinned_at : new Date().toISOString();
-        setRows((previous) => previous.map((row) => row.id === angle.id ? { ...row, pinned_at: pinnedAt } : { ...row, pinned_at: null }));
+        updateFeed(rowsRef.current.map((row) => row.id === angle.id ? { ...row, pinned_at: pinnedAt } : { ...row, pinned_at: null }));
       }
       setRefresh((value) => value + 1);
     } catch (cause) { setActionError(errorMessage(cause)); }
