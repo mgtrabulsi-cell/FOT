@@ -1,5 +1,9 @@
 # GameWire
 
+Mobile Angle posts use tighter spacing and 20px headlines while retaining 13px body text and unchanged button targets. Notification settings retain the confirmed choice when checks fail; stale checks cannot overwrite preference writes. Device permissions and expired subscriptions still require device-level attention.
+
+Landscape pregame simulation downloads use an original canvas stadium scene and abbreviation-only midfield marks. GameWire fonts, colors, simulation values and disclaimers remain; portrait and postgame exports retain their existing layouts.
+
 A responsive NFL hub with live scoreboards, weekly matchups, player statistics, and a favorite-centered feed called Your Locker Room.
 
 Stat Hub's **Team Game Logs** tab supports NBA and NFL teams. Choose a team and season (2002 onward, subject to ESPN availability) to see verified completed preseason, regular-season and playoff games, newest first. Select a game to open the existing player/team box-score view, then use **Team game log** to return. Previously loaded directories, schedules and box scores remain available on the same device when saved; first-time requests need a connection. Missing final scores are not fabricated.

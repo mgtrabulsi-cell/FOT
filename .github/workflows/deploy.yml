@@ -33,6 +33,8 @@ jobs:
         run: node --test scripts/x-posting.test.mjs scripts/livewire-retirement.test.mjs
       - name: Test Angle publishing
         run: node --test --test-name-pattern="^Angle publication" scripts/angle-feed.test.mjs
+      - name: Test mobile posts and notification settings
+        run: node --test scripts/angle-mobile-posts.test.mjs scripts/push-settings.test.mjs
       - name: Test Start/Sit graphics
         run: node --test scripts/fantasy-graphics.test.mjs scripts/fantasy-graphic-drafts.test.mjs
       - name: Test results sport filters

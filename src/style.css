@@ -692,6 +692,14 @@ span.angle-pin-button { cursor: default; }
   .angle-heading { flex-direction: column; gap: 8px; }
   .angle-cards, .angle-suggestions { grid-template-columns: minmax(0, 1fr); }
   .angle-card, .angle-admin { padding: 14px; }
+  .angle-cards .angle-card { padding: 10px; gap: 8px; }
+  .angle-cards .angle-card-collapsible { gap: 0; }
+  .angle-cards .angle-card h3 { font-size: 20px; line-height: 1.25; }
+  .angle-cards .angle-card p { line-height: 1.45; }
+  .angle-cards .angle-card .angle-subject { font-size: 14px; line-height: 1.35; }
+  .angle-cards .angle-posted-at { margin-top: 4px; line-height: 1.35; }
+  .angle-cards .angle-card-collapsible .angle-post-content { padding-top: 10px; }
+  .angle-cards :is(.angle-context, .angle-counterpoint, .angle-pick) { padding: 8px; }
   .player-mode-tabs[aria-label="Analyst Desk view"] { gap: 14px; }
   .player-mode-tabs[aria-label="Analyst Desk view"] button { min-height: 44px; }
 }

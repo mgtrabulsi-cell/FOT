@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { ArrowLeft, Bell, CalendarDays, CheckCircle2, KeyRound, Mail, Trash2 } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
@@ -20,10 +20,11 @@ function PushNotificationSettings({ user }: { user: User }) {
   const [error, setError] = useState('');
   const [settingsError, setSettingsError] = useState('');
   const [settingsRetry, setSettingsRetry] = useState(0);
+  const settingsRequest = useRef(0);
+  const updating = useRef(false);
 
   useEffect(() => {
     let active = true;
-    let requestId = 0;
     const pushSupported = supportsPushNotifications();
     setSupported(pushSupported);
     setConfigured(hasPushConfiguration());
@@ -33,20 +34,21 @@ function PushNotificationSettings({ user }: { user: User }) {
     }
 
     const checkSettings = () => {
-      const currentRequest = ++requestId;
+      if (updating.current) return;
+      const currentRequest = ++settingsRequest.current;
       setChecking(true);
       void getPushSettings(user.id).then((settings) => {
-        if (!active || currentRequest !== requestId) return;
+        if (!active || currentRequest !== settingsRequest.current) return;
         setEnabled(settings.enabled);
         setNotifyScores(settings.notifyScores);
         setSettingsError('');
-      }).catch(() => {
-        if (active && currentRequest === requestId) {
-          setEnabled(false);
+      }).catch((cause: unknown) => {
+        console.error('Could not confirm device notification settings', cause);
+        if (active && currentRequest === settingsRequest.current) {
           setSettingsError('Could not confirm this device’s notification status.');
         }
       }).finally(() => {
-        if (active && currentRequest === requestId) setChecking(false);
+        if (active && currentRequest === settingsRequest.current) setChecking(false);
       });
     };
     const onVisible = () => { if (document.visibilityState === 'visible') checkSettings(); };
@@ -60,46 +62,59 @@ function PushNotificationSettings({ user }: { user: User }) {
     };
   }, [user.id, settingsRetry]);
 
+  const beginUpdate = () => {
+    updating.current = true;
+    settingsRequest.current++;
+    setBusy(true); setChecking(false);
+  };
+  const finishUpdate = () => { updating.current = false; setBusy(false); };
   const enable = async () => {
-    setBusy(true);
+    if (updating.current) return;
+    beginUpdate();
     setError('');
     setMessage('');
     try {
       await enablePushNotifications(user.id, notifyScores);
       setEnabled(true);
+      setSettingsError('');
       setMessage('Notifications are enabled on this device.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not enable notifications.');
     } finally {
-      setBusy(false);
+      finishUpdate();
     }
   };
 
   const disable = async () => {
-    setBusy(true);
+    if (updating.current) return;
+    beginUpdate();
     setError('');
     setMessage('');
     try {
       await disablePushNotifications(user.id);
       setEnabled(false);
+      setSettingsError('');
       setMessage('Notifications are turned off on this device.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not turn off notifications.');
     } finally {
-      setBusy(false);
+      finishUpdate();
     }
   };
 
   const updatePreference = async (nextValue: boolean) => {
+    if (updating.current) return;
+    beginUpdate();
     const previousValue = notifyScores;
     setNotifyScores(nextValue);
     setError('');
     try {
       await updatePushPreference(user.id, nextValue);
+      setSettingsError('');
     } catch (cause) {
       setNotifyScores(previousValue);
       setError(cause instanceof Error ? cause.message : 'Could not save this preference.');
-    }
+    } finally { finishUpdate(); }
   };
 
   const sendTest = async () => {
@@ -119,7 +134,7 @@ function PushNotificationSettings({ user }: { user: User }) {
   return <section className="account-setting push-notifications-setting"><header><Bell size={16} /><div><b>Mobile notifications</b><small>Angle updates, favorite NFL updates, favorite NBA team quarter scores, and league-wide NBA scoring milestones and buzzer-beaters.</small></div></header><div className="account-setting-form push-settings-form">
     {!supported ? <p className="nfl-empty-note">This browser does not support push notifications.</p> : !configured ? <p className="auth-config-note">Push is not configured for this site yet.</p> : checking ? <p className="nfl-empty-note">Checking this device…</p> : settingsError ? <p className="auth-error" role="alert">{settingsError} <button type="button" onClick={() => setSettingsRetry((value) => value + 1)}>Retry</button></p> : enabled ? <>
       <p className="push-enabled-status" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span><b>Notifications enabled</b><small>Active on this device · Angle alerts are on.</small></span></p>
-      <label className="push-preference"><input type="checkbox" checked={notifyScores} onChange={(event) => void updatePreference(event.target.checked)} />Game updates: favorite NFL games, favorite NBA team quarters, and NBA highlights</label>
+      <label className="push-preference"><input type="checkbox" checked={notifyScores} disabled={busy} onChange={(event) => void updatePreference(event.target.checked)} />Game updates: favorite NFL games, favorite NBA team quarters, and NBA highlights</label>
       <p className="owner-users-note">NBA highlights cover any player: 35, 40, 50 and 60 points, a final PTS / REB / AST line for 35+ points, halftime buzzer-beaters, and confirmed game-winning buzzer-beaters.</p>
       <div className="push-actions"><button type="button" onClick={() => void sendTest()} disabled={testBusy}>{testBusy ? 'Sending…' : 'Send test notification'}</button><button type="button" className="push-disable-button" onClick={() => void disable()} disabled={busy}>{busy ? 'Updating…' : 'Turn off on this device'}</button></div>
     </> : <button type="button" onClick={() => void enable()} disabled={busy}>{busy ? 'Enabling…' : 'Enable on this device'}</button>}

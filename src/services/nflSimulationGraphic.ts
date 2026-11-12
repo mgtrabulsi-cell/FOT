@@ -109,6 +109,54 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.beginPath(); ctx.moveTo(i ? 1600 : 0, 70); ctx.lineTo(i ? 1390 : 210, 280);
     ctx.moveTo(i ? 1600 : 0, height - 180); ctx.lineTo(i ? 1370 : 230, height); ctx.stroke(); ctx.restore();
   });
+  if (!portrait) {
+    // Draw an original stadium scene rather than embedding league imagery.
+    const sky = ctx.createRadialGradient(800, 490, 40, 800, 490, 690);
+    sky.addColorStop(0, '#123a60'); sky.addColorStop(1, '#020711');
+    ctx.fillStyle = sky; ctx.fillRect(0, 320, 1600, 590);
+    for (let tier = 0; tier < 4; tier++) {
+      const y = 405 + tier * 58;
+      path([[0, y - 90], [470, y], [1130, y], [1600, y - 90], [1600, y - 62],
+        [1130, y + 26], [470, y + 26], [0, y - 62]]);
+      ctx.fillStyle = '#101c31'; ctx.fill();
+      for (let seat = 0; seat < 150; seat++) {
+        const x = seat * 11, curve = Math.abs(x - 800) * .13;
+        ctx.fillStyle = seat % 7 === 0 ? '#d2edff' : seat % 3 === 0 ? '#2478bd' : '#304868';
+        ctx.fillRect(x, y - curve + 7, 3, 3);
+      }
+      beam(0, y + 24, 1600, tier % 2 ? red : '#29aaff', 16);
+    }
+    path([[570, 592], [1030, 592], [1350, 882], [250, 882]]);
+    const turf = ctx.createLinearGradient(0, 592, 0, 882);
+    turf.addColorStop(0, '#144439'); turf.addColorStop(1, '#256557');
+    ctx.fillStyle = turf; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.strokeStyle = '#d3e6dfbb'; ctx.lineWidth = 2;
+    for (let yard = 0; yard <= 10; yard++) {
+      const t = yard / 10, y = 592 + t * t * 290;
+      const spread = t * t * 320;
+      ctx.beginPath(); ctx.moveTo(570 - spread, y); ctx.lineTo(1030 + spread, y); ctx.stroke();
+    }
+    for (const x of [640, 960]) {
+      ctx.beginPath(); ctx.moveTo(x, 592); ctx.lineTo(800 + (x - 800) * 2.4, 882); ctx.stroke();
+    }
+    ctx.restore();
+    beam(250, 884, 1350, '#2cabff', 24);
+    const midfield = scenario.home.abbr === 'NYG' ? 'NY' : teamMarkAbbr(scenario.home.abbr);
+    ctx.save(); ctx.translate(800, 725); ctx.scale(1, .55);
+    ctx.beginPath(); ctx.ellipse(0, 0, 85, 52, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#081526'; ctx.fill(); ctx.strokeStyle = homeColor; ctx.lineWidth = 5; ctx.stroke();
+    ctx.font = '700 48px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
+    ctx.fillText(midfield, -ctx.measureText(midfield).width / 2, 17); ctx.restore();
+    for (const side of [0, 1]) {
+      for (let light = 0; light < 5; light++) {
+        const x = side ? 1450 - light * 24 : 150 + light * 24;
+        const y = 360 + light * 12;
+        ctx.save(); ctx.shadowColor = '#50bdff'; ctx.shadowBlur = 26;
+        ctx.fillStyle = '#f2faff'; ctx.fillRect(x, y, 12, 12); ctx.restore();
+      }
+    }
+  }
   ctx.drawImage(logo, 25, 2, 175, 175 * logo.naturalHeight / logo.naturalWidth);
   ctx.font = `${portrait ? '' : 'italic '}700 72px Oswald`;
   const brandX = (1600 - ctx.measureText('GamewAIre').width) / 2;
@@ -153,6 +201,12 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.restore();
     text(team.name, portrait ? index ? 1150 : 70 : teamX, portrait ? 266 : 298, 30,
       portrait ? 365 : 405, metallic(298, 30), true);
+    ctx.save();
+    if (!portrait) {
+      const targetX = index ? 1180 : 20;
+      ctx.translate(targetX - x * .55, 165);
+      ctx.scale(.55, .8);
+    }
     const heading = (y: number, label: string, height: number) => {
       panel(x, y, 730, height, accent);
       if (portrait) {
@@ -207,6 +261,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
         text(value === undefined ? '\u2014' : String(value), left, y + (portrait ? 124 : 15),
           portrait ? 52 : 30, 110, metallic(y + 15, 30));
       });
+      ctx.restore();
       if (!i) { ctx.fillStyle = '#536b8144'; ctx.fillRect(x + 25, y + (portrait ? 162 : 30), 680, 1); }
     });
   });
