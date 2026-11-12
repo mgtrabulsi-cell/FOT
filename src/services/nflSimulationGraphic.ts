@@ -9,12 +9,13 @@ export function simulationGraphicTeam(team: SimulationTeamResult, finalScore?: n
   const rank = (key: keyof SimulationStat, tie: keyof SimulationStat) => (a: typeof supported[number], b: typeof supported[number]) =>
     (box!.players[b.id][key] ?? -1) - (box!.players[a.id][key] ?? -1)
     || (box!.players[b.id][tie] ?? -1) - (box!.players[a.id][tie] ?? -1) || a.name.localeCompare(b.name);
+  const runningBacks = supported.filter(player => player.position === 'RB' && box!.players[player.id].rushingAttempts !== undefined)
+    .sort(rank('rushingAttempts', 'rushingYards')).slice(0, 2);
   return {
     team, box,
     quarterback: supported.filter(player => player.position === 'QB' && box!.players[player.id].passingYards !== undefined)
       .sort(rank('passingAttempts', 'passingYards'))[0],
-    runningBack: supported.filter(player => player.position === 'RB' && box!.players[player.id].rushingAttempts !== undefined)
-      .sort(rank('rushingAttempts', 'rushingYards'))[0],
+    runningBack: runningBacks[0], runningBacks,
     receivers: supported.filter(player => box!.players[player.id].receptions !== undefined)
       .sort(rank('receptions', 'receivingYards')).slice(0, 2),
   };
@@ -145,7 +146,6 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       ctx.beginPath(); ctx.moveTo(x, centerY - 65); ctx.lineTo(x + 5, centerY + 65); ctx.stroke();
     }
     ctx.restore();
-    beam(0, 925, 550, red, 22); beam(1050, 925, 1600, '#29aaff', 22);
   }
   ctx.drawImage(logo, 25, 2, 175, 175 * logo.naturalHeight / logo.naturalWidth);
   ctx.font = `${portrait ? '' : 'italic '}700 72px Oswald`;
@@ -239,8 +239,18 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     };
     card(portrait ? 370 : 348, 'QUARTERBACK', model.quarterback, [['completions', 'CMP'], ['passingAttempts', 'ATT'],
       ['passingYards', 'PASS YDS'], ['passingTouchdowns', 'PASS TD'], ['rushingYards', 'RUSH YDS']]);
-    card(portrait ? 800 : 536, 'TOP RUNNING BACK', model.runningBack, [['rushingAttempts', 'RUSH ATT'], ['rushingYards', 'RUSH YDS'],
-      ['rushingTouchdowns', 'RUSH TD']]);
+    heading(portrait ? 800 : 536, 'TOP 2 RUNNING BACKS', portrait ? 390 : 173);
+    [0, 1].forEach(i => {
+      const player = model.runningBacks[i], y = portrait ? 895 + i * 150 : 609 + i * 70;
+      text(player?.name ?? 'Projection unavailable', x + 28, y, portrait ? 32 : 28, portrait ? 674 : 310);
+      const keys: Array<[keyof SimulationStat, string]> = [['rushingAttempts', 'ATT'], ['rushingYards', 'RUSH YDS'], ['rushingTouchdowns', 'TD']];
+      keys.forEach(([key, label], column) => {
+        const left = portrait ? x + 28 + column * 225 : x + 365 + column * 118;
+        const value = player ? model.box?.players[player.id][key] : undefined;
+        text(label, left, y + (portrait ? 38 : -16), portrait ? 22 : 15, portrait ? 210 : 110, muted);
+        text(value === undefined ? '\u2014' : String(value), left, y + (portrait ? 85 : 15), portrait ? 38 : 30, 110, metallic(y + 15, 30));
+      });
+    });
     heading(portrait ? 1230 : 724, 'TOP 2 RECEIVERS', portrait ? 550 : 173);
     [0, 1].forEach(i => {
       const player = model.receivers[i], y = portrait ? 1350 + i * 240 : 797 + i * 70;

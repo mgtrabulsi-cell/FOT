@@ -1492,11 +1492,12 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
       assert.equal(columns.length, 5);
       assert.ok(columns.every((column, i) => i === 0 || column.x > columns[i - 1].x));
     }
-    const labels = positions.filter(row => row.y !== qbY && ['RUSH ATT', 'RUSH YDS', 'RUSH TD'].includes(row.value));
-    assert.equal(labels.length, 6);
-    assert.equal(new Set(labels.map(row => row.y)).size, 1);
-    for (const teamX of [40, 830]) {
-      const columns = labels.filter(row => row.x >= teamX && row.x < teamX + 730);
+    const rbRows = positions.filter(row => row.y !== qbY && row.value === 'RUSH YDS');
+    assert.equal(rbRows.length, 4, 'Two running-back rows per team');
+    assert.equal(new Set(rbRows.map(row => row.y)).size, 2);
+    for (const teamX of [40, 830]) for (const y of new Set(rbRows.map(row => row.y))) {
+      const columns = positions.filter(row => row.y === y && row.x >= teamX && row.x < teamX + 730
+        && ['ATT', 'RUSH YDS', 'TD'].includes(row.value));
       assert.equal(columns.length, 3);
       assert.ok(columns[0].x < columns[1].x && columns[1].x < columns[2].x);
     }
