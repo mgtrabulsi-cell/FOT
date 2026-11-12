@@ -143,11 +143,11 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.restore();
     beam(250, 884, 1350, '#2cabff', 24);
     const midfield = scenario.home.abbr === 'NYG' ? 'NY' : teamMarkAbbr(scenario.home.abbr);
-    ctx.save(); ctx.translate(800, 725); ctx.scale(1, .55);
-    ctx.beginPath(); ctx.ellipse(0, 0, 85, 52, 0, 0, Math.PI * 2);
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(800, 725, 85, 29, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#081526'; ctx.fill(); ctx.strokeStyle = homeColor; ctx.lineWidth = 5; ctx.stroke();
-    ctx.font = '700 48px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
-    ctx.fillText(midfield, -ctx.measureText(midfield).width / 2, 17); ctx.restore();
+    ctx.font = '700 32px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
+    ctx.fillText(midfield, 800 - ctx.measureText(midfield).width / 2, 737); ctx.restore();
     for (const side of [0, 1]) {
       for (let light = 0; light < 5; light++) {
         const x = side ? 1450 - light * 24 : 150 + light * 24;

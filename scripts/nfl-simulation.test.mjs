@@ -1449,7 +1449,7 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   const stops = [], roundedCards = [], shadows = [];
   const gradient = { addColorStop: (_, color) => stops.push(color) };
   const ctx = { createLinearGradient: () => gradient, createRadialGradient: () => gradient,
-    roundRect: (...args) => roundedCards.push(args), scale() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
+    roundRect: (...args) => roundedCards.push(args), scale() {}, translate() {}, ellipse() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
     fillRect() {}, strokeRect() {}, drawImage() {},
     measureText: value => ({ width: String(value).length * 9 }),
     fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); positions.push({ value, x, y }); } };
@@ -1522,7 +1522,8 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(stops.includes('#142c47')); assert.ok(stops.includes('#081526'));
   assert.ok(!shadows.some(value => value > 0), 'Instagram has no neon beam glow');
   assertRunningBackRow();
-  assert.deepEqual(drawn, landscapeText);
+  assert.equal(landscapeText[0], scenario.home.abbr, 'Landscape stadium adds an abbreviation-only midfield mark');
+  assert.deepEqual(drawn, landscapeText.slice(1));
   assert.ok(drawn.includes(scenario.away.name)); assert.ok(drawn.includes(scenario.home.name));
   assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));
   assert.equal(JSON.stringify(scenario), before);
