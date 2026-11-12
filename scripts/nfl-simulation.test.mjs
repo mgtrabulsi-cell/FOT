@@ -1443,7 +1443,7 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
     away: f.history.away.flatMap(box => box.overtimeDrives).filter(row => row.teamId === game.away.id),
   }, data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500, undefined, evidence));
   const scenario = data.scenarios[0], before = JSON.stringify(scenario), drawn = [], positions = [];
-  const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8'), {
+  const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8').replace('import.meta.env.BASE_URL', "'/'"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const stops = [], roundedCards = [], shadows = [];
@@ -1455,7 +1455,8 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
     fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); positions.push({ value, x, y }); } };
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(['png'])) };
   Object.defineProperty(ctx, 'shadowBlur', { set: value => shadows.push(value) });
-  const context = vm.createContext({ exports: {}, Intl, Date, Error, document: { createElement: () => canvas }, require(name) {
+  class Image { set src(value) { this.url = value; if (value) queueMicrotask(() => this.onload()); } }
+  const context = vm.createContext({ exports: {}, Intl, Date, Error, Image, setTimeout, clearTimeout, document: { createElement: () => canvas }, require(name) {
     if (name.includes('nflSimulation')) return { projectedSimulationScore, roundedSimulationBox };
     if (name.includes('TeamAbbrMark')) return {
       teamMarkAbbr: abbr => (abbr ?? '').trim().toUpperCase().slice(0, 4) || '\u2014',
@@ -1523,7 +1524,8 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(!shadows.some(value => value > 0), 'Instagram has no neon beam glow');
   assertRunningBackRow();
   assert.equal(landscapeText[0], scenario.home.abbr, 'Landscape stadium adds an abbreviation-only midfield mark');
-  assert.deepEqual(drawn, landscapeText.slice(1));
+  assert.deepEqual(drawn, landscapeText.slice(1).filter(value => ![scenario.away, scenario.home]
+    .some(team => value === `${team.abbr}   ${team.name}`)));
   assert.ok(drawn.includes(scenario.away.name)); assert.ok(drawn.includes(scenario.home.name));
   assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));
   assert.equal(JSON.stringify(scenario), before);

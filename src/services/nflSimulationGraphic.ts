@@ -26,6 +26,13 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   const score = projectedSimulationScore(scenario);
   if (!score) throw new Error('The modeled overtime final is not available yet. No tied final or invented winner is exported.');
   const logo = await loadGamewireGraphicAssets();
+  const stadium = format === 'landscape' ? await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    const timer = setTimeout(() => { image.src = ''; reject(new Error('Stadium artwork timed out. Reconnect and retry the graphic.')); }, 15_000);
+    image.onload = () => { clearTimeout(timer); resolve(image); };
+    image.onerror = () => { clearTimeout(timer); reject(new Error('Stadium artwork could not load. Reconnect and retry the graphic.')); };
+    image.src = `${import.meta.env.BASE_URL}simulation-stadium.png`;
+  }) : null;
   const canvas = document.createElement('canvas');
   const portrait = format === 'instagram', height = portrait ? 2000 : 1000;
   canvas.width = portrait ? 1080 : 1600; canvas.height = portrait ? 1350 : 1000;
@@ -85,7 +92,8 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     const fill = ctx.createLinearGradient(x, y, x + width / 2, y + height);
     fill.addColorStop(0, '#1b3148'); fill.addColorStop(.24, '#0b1828'); fill.addColorStop(1, '#040a13');
     ctx.fillStyle = fill; ctx.fill();
-    ctx.strokeStyle = `${accent}88`; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.save(); ctx.shadowColor = accent; ctx.shadowBlur = 16;
+    ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
     beam(x + 24, y, x + width - 24, accent);
     const gloss = ctx.createLinearGradient(0, y, 0, y + 44);
     gloss.addColorStop(0, '#ffffff17'); gloss.addColorStop(1, '#ffffff00');
@@ -110,52 +118,24 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.moveTo(i ? 1600 : 0, height - 180); ctx.lineTo(i ? 1370 : 230, height); ctx.stroke(); ctx.restore();
   });
   if (!portrait) {
-    // Draw an original stadium scene rather than embedding league imagery.
-    const sky = ctx.createRadialGradient(800, 490, 40, 800, 490, 690);
-    sky.addColorStop(0, '#123a60'); sky.addColorStop(1, '#020711');
-    ctx.fillStyle = sky; ctx.fillRect(0, 320, 1600, 590);
-    for (let tier = 0; tier < 4; tier++) {
-      const y = 405 + tier * 58;
-      path([[0, y - 90], [470, y], [1130, y], [1600, y - 90], [1600, y - 62],
-        [1130, y + 26], [470, y + 26], [0, y - 62]]);
-      ctx.fillStyle = '#101c31'; ctx.fill();
-      for (let seat = 0; seat < 150; seat++) {
-        const x = seat * 11, curve = Math.abs(x - 800) * .13;
-        ctx.fillStyle = seat % 7 === 0 ? '#d2edff' : seat % 3 === 0 ? '#2478bd' : '#304868';
-        ctx.fillRect(x, y - curve + 7, 3, 3);
-      }
-      beam(0, y + 24, 1600, tier % 2 ? red : '#29aaff', 16);
-    }
-    path([[570, 592], [1030, 592], [1350, 882], [250, 882]]);
-    const turf = ctx.createLinearGradient(0, 592, 0, 882);
-    turf.addColorStop(0, '#144439'); turf.addColorStop(1, '#256557');
-    ctx.fillStyle = turf; ctx.fill();
-    ctx.save(); ctx.clip();
-    ctx.strokeStyle = '#d3e6dfbb'; ctx.lineWidth = 2;
-    for (let yard = 0; yard <= 10; yard++) {
-      const t = yard / 10, y = 592 + t * t * 290;
-      const spread = t * t * 320;
-      ctx.beginPath(); ctx.moveTo(570 - spread, y); ctx.lineTo(1030 + spread, y); ctx.stroke();
-    }
-    for (const x of [640, 960]) {
-      ctx.beginPath(); ctx.moveTo(x, 592); ctx.lineTo(800 + (x - 800) * 2.4, 882); ctx.stroke();
-    }
-    ctx.restore();
-    beam(250, 884, 1350, '#2cabff', 24);
+    ctx.drawImage(stadium!, 0, 0, 1600, 1000);
+    const pulse = (x: number, y: number, size: number) => {
+      ctx.save(); ctx.shadowColor = red; ctx.shadowBlur = 22;
+      ctx.strokeStyle = '#ff3655'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x - size, y); ctx.lineTo(x - 22, y);
+      ctx.lineTo(x - 12, y - 15); ctx.lineTo(x - 2, y + 20);
+      ctx.lineTo(x + 8, y - 48); ctx.lineTo(x + 18, y + 30);
+      ctx.lineTo(x + 28, y - 9); ctx.lineTo(x + 40, y); ctx.lineTo(x + size, y);
+      ctx.stroke(); ctx.restore();
+    };
+    pulse(800, 403, 135); pulse(335, 75, 95); pulse(1265, 75, 95);
     const midfield = scenario.home.abbr === 'NYG' ? 'NY' : teamMarkAbbr(scenario.home.abbr);
     ctx.save();
     ctx.beginPath(); ctx.ellipse(800, 725, 85, 29, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#081526'; ctx.fill(); ctx.strokeStyle = homeColor; ctx.lineWidth = 5; ctx.stroke();
     ctx.font = '700 32px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
     ctx.fillText(midfield, 800 - ctx.measureText(midfield).width / 2, 737); ctx.restore();
-    for (const side of [0, 1]) {
-      for (let light = 0; light < 5; light++) {
-        const x = side ? 1450 - light * 24 : 150 + light * 24;
-        const y = 360 + light * 12;
-        ctx.save(); ctx.shadowColor = '#50bdff'; ctx.shadowBlur = 26;
-        ctx.fillStyle = '#f2faff'; ctx.fillRect(x, y, 12, 12); ctx.restore();
-      }
-    }
+    beam(0, 925, 550, red, 22); beam(1050, 925, 1600, '#29aaff', 22);
   }
   ctx.drawImage(logo, 25, 2, 175, 175 * logo.naturalHeight / logo.naturalWidth);
   ctx.font = `${portrait ? '' : 'italic '}700 72px Oswald`;
@@ -206,6 +186,8 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       const targetX = index ? 1180 : 20;
       ctx.translate(targetX - x * .55, 165);
       ctx.scale(.55, .8);
+      panel(x, 295, 730, 53, accent);
+      text(`${teamMarkAbbr(team.abbr)}   ${team.name}`, x + 28, 332, 30, 674, white, true);
     }
     const heading = (y: number, label: string, height: number) => {
       panel(x, y, 730, height, accent);
