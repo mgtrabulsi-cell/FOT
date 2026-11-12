@@ -1446,10 +1446,10 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8').replace('import.meta.env.BASE_URL', "'/'"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const stops = [], roundedCards = [], shadows = [];
+  const stops = [], roundedCards = [], shadows = [], turfCircles = [], translations = [];
   const gradient = { addColorStop: (_, color) => stops.push(color) };
   const ctx = { createLinearGradient: () => gradient, createRadialGradient: () => gradient,
-    roundRect: (...args) => roundedCards.push(args), scale() {}, translate() {}, ellipse() {}, save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
+    roundRect: (...args) => roundedCards.push(args), scale() {}, translate: (...args) => translations.push(args), ellipse: (...args) => turfCircles.push(args), save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
     fillRect() {}, strokeRect() {}, drawImage() {},
     measureText: value => ({ width: String(value).length * 9 }),
     fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); positions.push({ value, x, y }); } };
@@ -1510,6 +1510,12 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   };
   assertRunningBackRow();
   assert.equal(roundedCards.length, 2, 'Landscape keeps its angled panels and rounded team badges');
+  assert.deepEqual(turfCircles.map(row => row.slice(0, 4)), [[800, 690, 70, 70], [800, 690, 76, 76]],
+    'Midfield badge and outline share the exact center and circular geometry');
+  assert.ok(translations.some(([x, y]) => x === 0 && y === 270.5), 'Perspective puts midfield at canvas center x=800, y=650');
+  const fieldNumbers = positions.filter(row => row.y === 577 || row.y === 765);
+  for (const y of [577, 765]) assert.deepEqual(fieldNumbers.filter(row => row.y === y).map(row => row.value),
+    ['10', '20', '30', '40', '50', '40', '30', '20', '10'], 'Field numbers are correct and symmetric, not generated text');
   const landscapeText = [...drawn]; drawn.length = 0; positions.length = 0; roundedCards.length = 0; shadows.length = 0; stops.length = 0;
   await renderSimulationGraphic(scenario, game.date, { away: '#fb4f14', home: '#241773' }, 'instagram');
   assert.equal(canvas.width, 1080); assert.equal(canvas.height, 1350);
@@ -1525,7 +1531,7 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   assert.ok(!shadows.some(value => value > 0), 'Instagram has no neon beam glow');
   assertRunningBackRow();
   assert.equal(landscapeText[0], scenario.home.abbr, 'Landscape stadium adds an abbreviation-only midfield mark');
-  assert.deepEqual(drawn, landscapeText.slice(1).filter(value => ![scenario.away, scenario.home]
+  assert.deepEqual(drawn, landscapeText.slice(19).filter(value => ![scenario.away, scenario.home]
     .some(team => value === `${team.abbr}   ${team.name}`)));
   assert.ok(drawn.includes(scenario.away.name)); assert.ok(drawn.includes(scenario.home.name));
   assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));

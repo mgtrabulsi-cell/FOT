@@ -129,13 +129,16 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     const midfield = scenario.home.abbr === 'NYG' ? 'NY' : teamMarkAbbr(scenario.home.abbr);
     ctx.save();
     // A circular turf marking appears foreshortened in the stadium perspective.
-    ctx.translate(0, 310.5);
+    ctx.translate(0, 270.5);
     ctx.scale(1, .55);
     const centerY = 690;
-    ctx.globalAlpha = .8;
+    ctx.globalAlpha = .95;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.beginPath(); ctx.ellipse(800, centerY, 65, 65, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = '#e9eee4'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(800, centerY, 70, 70, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#082453'; ctx.fill();
+    ctx.strokeStyle = '#edba46'; ctx.lineWidth = 10; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(800, centerY, 76, 76, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = '#f5f1de'; ctx.lineWidth = 2; ctx.stroke();
     ctx.font = '700 48px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
     ctx.fillText(midfield, 800 - ctx.measureText(midfield).width / 2, centerY + 17);
     ctx.clip();
@@ -144,6 +147,18 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     for (let blade = 0; blade < 70; blade++) {
       const x = 735 + blade * 2;
       ctx.beginPath(); ctx.moveTo(x, centerY - 65); ctx.lineTo(x + 5, centerY + 65); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle = '#e9eee4';
+    const yardNumbers = [10, 20, 30, 40, 50, 40, 30, 20, 10];
+    for (const [index, value] of yardNumbers.entries()) {
+      ctx.font = '700 16px "DM Sans"';
+      const farX = 548 + index * 63;
+      ctx.fillText(String(value), farX - ctx.measureText(String(value)).width / 2, 577);
+      ctx.font = '700 26px "DM Sans"';
+      const nearX = 200 + index * 150;
+      ctx.fillText(String(value), nearX - ctx.measureText(String(value)).width / 2, 765);
     }
     ctx.restore();
   }
