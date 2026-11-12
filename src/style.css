@@ -1721,13 +1721,16 @@ td:first-child { color: #828c84; }
   .wire-page .the-wire-container, .wire-page .wire-content { gap: 10px; }
   .wire-page .wire-game-wheel { gap: 4px; }
   .wire-page .wire-game-wheel > .eyebrow { display: none; }
-  .wire-board { gap: 14px; }
-  .wire-board-card { grid-template-columns: 64px minmax(0, 1fr); gap: 8px 10px; padding: 10px; }
+  .wire-board { gap: 10px; }
+  .wire-board-day { gap: 8px; }
+  .wire-board-list { gap: 6px; }
+  .wire-board-card { grid-template-columns: 64px minmax(0, 1fr); gap: 5px 8px; padding: 8px; }
   .wire-board-status { font-size: 11px; }
-  .wire-board-team { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; }
-  .wire-board-mark { width: 32px; height: 32px; font-size: 8px; }
-  .wire-board-team-name b { font-size: 14px; }
-  .wire-board-score { font-size: 19px; }
+  .wire-board-teams { gap: 4px; }
+  .wire-board-team { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 6px; }
+  .wire-board-mark { width: 28px; height: 28px; font-size: 8px; }
+  .wire-board-team-name b { font-size: 13px; }
+  .wire-board-score { font-size: 17px; }
   .wire-back-button { min-height: 34px; }
   .page-heading { align-items: stretch; flex-direction: column; gap: 14px; }
   .page-heading p { max-width: none; font-size: 13px; line-height: 1.5; }
