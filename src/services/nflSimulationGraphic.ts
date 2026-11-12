@@ -152,13 +152,30 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     ctx.save();
     ctx.fillStyle = '#e9eee4';
     const yardNumbers = [10, 20, 30, 40, 50, 40, 30, 20, 10];
+    const fieldNumber = (value: number, x: number, y: number, far: boolean) => {
+      ctx.save();
+      const direction = far ? -1 : 1, flatten = far ? .38 : .46;
+      const shear = (x - 800) / 1800;
+      // Project lettering onto the turf plane instead of drawing upright screen text.
+      ctx.transform(direction, 0, shear, direction * flatten,
+        x * (1 - direction) - shear * y, y * (1 - direction * flatten));
+      ctx.font = `900 ${far ? 22 : 32}px "DM Sans"`;
+      const width = ctx.measureText(String(value)).width;
+      ctx.fillText(String(value), x - width / 2, y);
+      if (value !== 50) {
+        const toward = x < 800 ? -direction : direction;
+        const markerX = x + toward * (width / 2 + 12);
+        ctx.beginPath();
+        ctx.moveTo(markerX + toward * 6, y - 11);
+        ctx.lineTo(markerX - toward * 3, y - 17);
+        ctx.lineTo(markerX - toward * 3, y - 5);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    };
     for (const [index, value] of yardNumbers.entries()) {
-      ctx.font = '700 16px "DM Sans"';
-      const farX = 548 + index * 63;
-      ctx.fillText(String(value), farX - ctx.measureText(String(value)).width / 2, 577);
-      ctx.font = '700 26px "DM Sans"';
-      const nearX = 200 + index * 150;
-      ctx.fillText(String(value), nearX - ctx.measureText(String(value)).width / 2, 765);
+      fieldNumber(value, 548 + index * 63, 577, true);
+      fieldNumber(value, 200 + index * 150, 765, false);
     }
     ctx.restore();
   }

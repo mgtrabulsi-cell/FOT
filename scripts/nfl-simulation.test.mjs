@@ -1446,11 +1446,11 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationGraphic.ts', import.meta.url), 'utf8').replace('import.meta.env.BASE_URL', "'/'"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const stops = [], roundedCards = [], shadows = [], turfCircles = [], translations = [];
+  const stops = [], roundedCards = [], shadows = [], turfCircles = [], translations = [], fieldTransforms = [];
   const gradient = { addColorStop: (_, color) => stops.push(color) };
   const ctx = { createLinearGradient: () => gradient, createRadialGradient: () => gradient,
     roundRect: (...args) => roundedCards.push(args), scale() {}, translate: (...args) => translations.push(args), ellipse: (...args) => turfCircles.push(args), save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, clip() {},
-    fillRect() {}, strokeRect() {}, drawImage() {},
+    fillRect() {}, strokeRect() {}, drawImage() {}, transform: (...args) => fieldTransforms.push(args),
     measureText: value => ({ width: String(value).length * 9 }),
     fillText: (value, x, y) => { assert.ok(x >= 0 && x < 1600 && y > 0 && y < (canvas.height === 1350 ? 2000 : 1000)); drawn.push(value); positions.push({ value, x, y }); } };
   const canvas = { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(['png'])) };
@@ -1516,6 +1516,15 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   const fieldNumbers = positions.filter(row => row.y === 577 || row.y === 765);
   for (const y of [577, 765]) assert.deepEqual(fieldNumbers.filter(row => row.y === y).map(row => row.value),
     ['10', '20', '30', '40', '50', '40', '30', '20', '10'], 'Field numbers are correct and symmetric, not generated text');
+  assert.equal(fieldTransforms.length, 18);
+  for (const [index, [a, b, c, d, e, f]] of fieldTransforms.entries()) {
+    const far = index % 2 === 0, x = far ? 548 + Math.floor(index / 2) * 63 : 200 + Math.floor(index / 2) * 150;
+    const y = far ? 577 : 765;
+    assert.equal(a, far ? -1 : 1, 'Far-side numbers face the opposite sideline');
+    assert.equal(d, far ? -.38 : .46, 'Both rows lie flat in the field perspective');
+    assert.ok(Math.abs(a * x + c * y + e - x) < 1e-8);
+    assert.ok(Math.abs(b * x + d * y + f - y) < 1e-8, 'Perspective preserves each yard-number anchor');
+  }
   const landscapeText = [...drawn]; drawn.length = 0; positions.length = 0; roundedCards.length = 0; shadows.length = 0; stops.length = 0;
   await renderSimulationGraphic(scenario, game.date, { away: '#fb4f14', home: '#241773' }, 'instagram');
   assert.equal(canvas.width, 1080); assert.equal(canvas.height, 1350);
