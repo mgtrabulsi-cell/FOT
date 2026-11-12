@@ -265,16 +265,18 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       });
     };
     const card = (y: number, label: string, player: typeof model.quarterback, keys: Array<[keyof SimulationStat, string]>) => {
+      if (!player) return;
       heading(y, label, portrait ? 390 : 166);
-      text(player?.name ?? 'Projection unavailable', x + 28, y + (portrait ? 115 : 82), portrait ? 44 : 34, 674);
+      text(player.name, x + 28, y + (portrait ? 115 : 82), portrait ? 44 : 34, 674);
       metrics(y + (portrait ? 235 : 112), player, keys);
     };
     card(portrait ? 370 : 348, 'QUARTERBACK', model.quarterback, [['completions', 'CMP'], ['passingAttempts', 'ATT'],
       ['passingYards', 'PASS YDS'], ['passingTouchdowns', 'PASS TD'], ['rushingYards', 'RUSH YDS']]);
-    heading(portrait ? 800 : 536, 'TOP 2 RUNNING BACKS', portrait ? 390 : 173);
-    [0, 1].forEach(i => {
-      const player = model.runningBacks[i], y = portrait ? 895 + i * 150 : 609 + i * 70;
-      text(player?.name ?? 'Projection unavailable', x + 28, y, portrait ? 32 : 28, portrait ? 674 : 310);
+    if (model.runningBacks.length) heading(portrait ? 800 : 536,
+      `TOP ${model.runningBacks.length} RUNNING BACK${model.runningBacks.length === 1 ? '' : 'S'}`, portrait ? 390 : 173);
+    model.runningBacks.forEach((player, i) => {
+      const y = portrait ? 895 + i * 150 : 609 + i * 70;
+      text(player.name, x + 28, y, portrait ? 32 : 28, portrait ? 674 : 310);
       const keys: Array<[keyof SimulationStat, string]> = [['rushingAttempts', 'ATT'], ['rushingYards', 'RUSH YDS'], ['rushingTouchdowns', 'TD']];
       keys.forEach(([key, label], column) => {
         const left = portrait ? x + 28 + column * 225 : x + 365 + column * 118;
@@ -283,10 +285,11 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
         text(value === undefined ? '\u2014' : String(value), left, y + (portrait ? 85 : 15), portrait ? 38 : 30, 110, metallic(y + 15, 30));
       });
     });
-    heading(portrait ? 1230 : 724, 'TOP 2 RECEIVERS', portrait ? 550 : 173);
-    [0, 1].forEach(i => {
-      const player = model.receivers[i], y = portrait ? 1350 + i * 240 : 797 + i * 70;
-      text(player?.name ?? 'Projection unavailable', x + 28, y, portrait ? 42 : 28, portrait ? 674 : 310);
+    if (model.receivers.length) heading(portrait ? 1230 : 724,
+      `TOP ${model.receivers.length} RECEIVER${model.receivers.length === 1 ? '' : 'S'}`, portrait ? 550 : 173);
+    model.receivers.forEach((player, i) => {
+      const y = portrait ? 1350 + i * 240 : 797 + i * 70;
+      text(player.name, x + 28, y, portrait ? 42 : 28, portrait ? 674 : 310);
       const keys: Array<[keyof SimulationStat, string]> = [['receptions', 'REC'], ['receivingYards', 'REC YDS'], ['receivingTouchdowns', 'REC TD']];
       keys.forEach(([key, label], column) => {
         const left = portrait ? x + 28 + column * 225 : x + 365 + column * 118;
@@ -295,17 +298,18 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
         text(value === undefined ? '\u2014' : String(value), left, y + (portrait ? 124 : 15),
           portrait ? 52 : 30, 110, metallic(y + 15, 30));
       });
-      if (!i) { ctx.fillStyle = '#536b8144'; ctx.fillRect(x + 25, y + (portrait ? 162 : 30), 680, 1); }
+      if (!i && model.receivers.length > 1) { ctx.fillStyle = '#536b8144'; ctx.fillRect(x + 25, y + (portrait ? 162 : 30), 680, 1); }
     });
     ctx.restore();
     playerPanel = false;
   });
-  text(`QB scenario: ${scenario.label}`, 40, height - 71, portrait ? 28 : 20, 1520, muted);
-  text(`${date} ET`, 40, height - 27, 19, 450, muted);
+  ctx.fillStyle = '#030a14'; ctx.fillRect(0, height - 110, 1600, 110);
+  text(`QB scenario: ${scenario.label}`, 40, height - 82, 24, 1520, white);
+  text(`${date} ET`, 40, height - 49, 22, 1280, white);
   text(score.archiveExtension ? 'Pregame-data OT extension; not the original historical forecast. Player stats regulation.'
     : scenario.overtime ? 'Empirical OT score-only; player stats regulation. Uncalibrated.'
-    : 'Simulated outcomes, not guarantees. Usage-ranked; participation assumed.', 495, height - 27, 18, 850, muted);
-  text('gamewire.us', 1360, height - 27, 24, 200, white, true);
+    : 'Simulated outcomes, not guarantees. Usage-ranked; participation assumed.', 40, height - 17, 22, 1520, white);
+  text('gamewire.us', 1360, height - 49, 24, 200, white);
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
     : reject(new Error('Your browser could not export the PNG. Retry.')), 'image/png'));
 }

@@ -1493,9 +1493,10 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
       assert.ok(columns.every((column, i) => i === 0 || column.x > columns[i - 1].x));
     }
     const rbRows = positions.filter(row => row.y !== qbY && row.value === 'RUSH YDS');
-    assert.equal(rbRows.length, 4, 'Two running-back rows per team');
-    assert.equal(new Set(rbRows.map(row => row.y)).size, 2);
-    for (const teamX of [40, 830]) for (const y of new Set(rbRows.map(row => row.y))) {
+    const rbCounts = [scenario.away, scenario.home].map(team => simulationGraphicTeam(team).runningBacks.length);
+    assert.equal(rbRows.length, rbCounts[0] + rbCounts[1], 'Only supported running-back rows are drawn');
+    assert.equal(new Set(rbRows.map(row => row.y)).size, Math.max(...rbCounts));
+    for (const [index, teamX] of [40, 830].entries()) for (const y of [...new Set(rbRows.map(row => row.y))].slice(0, rbCounts[index])) {
       const columns = positions.filter(row => row.y === y && row.x >= teamX && row.x < teamX + 730
         && ['ATT', 'RUSH YDS', 'TD'].includes(row.value));
       assert.equal(columns.length, 3);
@@ -1544,8 +1545,19 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
     .some(team => value === `${team.abbr}   ${team.name}`)));
   assert.ok(drawn.includes(scenario.away.name)); assert.ok(drawn.includes(scenario.home.name));
   assert.ok(drawn.includes(`QB scenario: ${scenario.label}`));
+  assert.ok(positions.filter(row => row.value === `QB scenario: ${scenario.label}` || row.value === 'gamewire.us')
+    .every(row => row.y >= 1918), 'Footer separates text into readable lines');
   assert.equal(JSON.stringify(scenario), before);
   assert.equal(simulationGraphicTeam({ ...scenario.away, players: [], totals: null }).quarterback, undefined);
+  for (const format of ['landscape', 'instagram']) {
+    const copy = structuredClone(scenario);
+    copy.away.players = [];
+    copy.away.totals = null;
+    drawn.length = 0;
+    await renderSimulationGraphic(copy, game.date, {}, format);
+    assert.ok(!drawn.includes('Projection unavailable'), 'Missing players never produce placeholder rows');
+    assert.equal(drawn.filter(value => value === 'QUARTERBACK').length, 1, 'Unsupported quarterback card is omitted');
+  }
   for (const format of ['landscape', 'instagram']) for (const missing of [false, true]) {
     const copy = structuredClone(scenario), qb = simulationGraphicTeam(copy.away).quarterback;
     if (missing) delete qb.stats.rushingYards;
