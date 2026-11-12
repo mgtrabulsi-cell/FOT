@@ -125,22 +125,26 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   });
   if (!portrait) {
     ctx.drawImage(stadium!, 0, 0, 1600, 1000);
-    const pulse = (x: number, y: number, size: number) => {
-      ctx.save(); ctx.shadowColor = red; ctx.shadowBlur = 22;
-      ctx.strokeStyle = '#ff3655'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(x - size, y); ctx.lineTo(x - 22, y);
-      ctx.lineTo(x - 12, y - 15); ctx.lineTo(x - 2, y + 20);
-      ctx.lineTo(x + 8, y - 48); ctx.lineTo(x + 18, y + 30);
-      ctx.lineTo(x + 28, y - 9); ctx.lineTo(x + 40, y); ctx.lineTo(x + size, y);
-      ctx.stroke(); ctx.restore();
-    };
-    pulse(335, 75, 95); pulse(1265, 75, 95);
     const midfield = scenario.home.abbr === 'NYG' ? 'NY' : teamMarkAbbr(scenario.home.abbr);
     ctx.save();
-    ctx.beginPath(); ctx.ellipse(800, 690, 48, 48, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#081526'; ctx.fill(); ctx.strokeStyle = homeColor; ctx.lineWidth = 5; ctx.stroke();
-    ctx.font = '700 32px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
-    ctx.fillText(midfield, 800 - ctx.measureText(midfield).width / 2, 702); ctx.restore();
+    // A circular turf marking appears foreshortened in the stadium perspective.
+    ctx.translate(0, 310.5);
+    ctx.scale(1, .55);
+    const centerY = 690;
+    ctx.globalAlpha = .8;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.beginPath(); ctx.ellipse(800, centerY, 65, 65, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = '#e9eee4'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.font = '700 48px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
+    ctx.fillText(midfield, 800 - ctx.measureText(midfield).width / 2, centerY + 17);
+    ctx.clip();
+    ctx.globalAlpha = .18;
+    ctx.strokeStyle = '#245745'; ctx.lineWidth = 1;
+    for (let blade = 0; blade < 70; blade++) {
+      const x = 735 + blade * 2;
+      ctx.beginPath(); ctx.moveTo(x, centerY - 65); ctx.lineTo(x + 5, centerY + 65); ctx.stroke();
+    }
+    ctx.restore();
     beam(0, 925, 550, red, 22); beam(1050, 925, 1600, '#29aaff', 22);
   }
   ctx.drawImage(logo, 25, 2, 175, 175 * logo.naturalHeight / logo.naturalWidth);
@@ -153,7 +157,6 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   ctx.font = '700 20px "DM Sans"';
   const subtitle = 'S I M U L A T I O N   P R E V I E W';
   text(subtitle, (1600 - ctx.measureText(subtitle).width) / 2, 123, 20, 600, muted);
-  beam(210, 75, 520, red); beam(1070, 75, 1550, red);
   const date = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric',
     year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(kickoff));
   panel(40, 171, 1520, 145, awayColor);

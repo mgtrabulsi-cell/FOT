@@ -2,7 +2,7 @@
 
 Mobile Angle posts use tighter spacing and 20px headlines while retaining 13px body text and unchanged button targets. Notification settings retain the confirmed choice when checks fail; stale checks cannot overwrite preference writes. Device permissions and expired subscriptions still require device-level attention.
 
-Landscape pregame simulation downloads use detailed generated night-stadium artwork with electric-blue floodlights, red LED accents, packed stands and a reflective field, plus live-rendered abbreviation-only midfield marks. GameWire fonts, colors, simulation values and disclaimers remain; portrait and postgame exports retain their existing layouts.
+Landscape pregame simulation downloads use detailed generated night-stadium artwork with two interior hash-mark rows and subdued red lighting. Midfield abbreviation marks use foreshortening, transparent paint and turf texture instead of solid badges; header pulses are omitted. The artwork with electric-blue floodlights, red LED accents, packed stands and a reflective field, plus live-rendered abbreviation-only midfield marks. GameWire fonts, colors, simulation values and disclaimers remain; portrait and postgame exports retain their existing layouts.
 
 A responsive NFL hub with live scoreboards, weekly matchups, player statistics, and a favorite-centered feed called Your Locker Room.
 
