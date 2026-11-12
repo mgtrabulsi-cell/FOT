@@ -41,18 +41,19 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
   if (portrait) ctx.scale(.675, .675);
   const white = '#f2f6fc', muted = '#b7c8db', red = '#ff354c';
   const awayColor = teamMarkColor(colors.away), homeColor = teamMarkColor(colors.home);
+  let playerPanel = false;
   const text = (value: string, x: number, y: number, size: number, width: number,
     color: string | CanvasGradient = white, display = false) => {
-    const font = () => `${display && !portrait ? 'italic ' : ''}700 ${size}px ${display ? 'Oswald' : '"DM Sans"'}`;
+    const font = () => `${display && !portrait && !playerPanel ? 'italic ' : ''}700 ${size}px ${display ? 'Oswald' : '"DM Sans"'}`;
     ctx.font = font();
     while (ctx.measureText(value).width > width && size > 18) {
       size--; ctx.font = font();
     }
     if (ctx.measureText(value).width > width) throw new Error('A player or scenario name is too long to fit this graphic.');
-    ctx.fillStyle = color; ctx.fillText(value, x, y);
+    ctx.fillStyle = playerPanel ? '#ffffff' : color; ctx.fillText(value, x, y);
   };
   const metallic = (y: number, size: number) => {
-    if (portrait) return white;
+    if (portrait || playerPanel) return white;
     const gradient = ctx.createLinearGradient(0, y - size, 0, y + 4);
     gradient.addColorStop(0, '#ffffff'); gradient.addColorStop(.45, '#f4f8ff');
     gradient.addColorStop(.53, '#a3b7ce'); gradient.addColorStop(1, '#ffffff');
@@ -89,6 +90,11 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     }
     path([[x + 14, y], [x + width - 14, y], [x + width, y + 14], [x + width, y + height - 14],
       [x + width - 14, y + height], [x + 14, y + height], [x, y + height - 14], [x, y + 14]]);
+    if (playerPanel) {
+      ctx.fillStyle = '#091321'; ctx.fill();
+      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.stroke();
+      return;
+    }
     const fill = ctx.createLinearGradient(x, y, x + width / 2, y + height);
     fill.addColorStop(0, '#1b3148'); fill.addColorStop(.24, '#0b1828'); fill.addColorStop(1, '#040a13');
     ctx.fillStyle = fill; ctx.fill();
@@ -128,13 +134,13 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       ctx.lineTo(x + 28, y - 9); ctx.lineTo(x + 40, y); ctx.lineTo(x + size, y);
       ctx.stroke(); ctx.restore();
     };
-    pulse(800, 403, 135); pulse(335, 75, 95); pulse(1265, 75, 95);
+    pulse(335, 75, 95); pulse(1265, 75, 95);
     const midfield = scenario.home.abbr === 'NYG' ? 'NY' : teamMarkAbbr(scenario.home.abbr);
     ctx.save();
-    ctx.beginPath(); ctx.ellipse(800, 725, 85, 29, 0, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.ellipse(800, 690, 48, 48, 0, 0, Math.PI * 2);
     ctx.fillStyle = '#081526'; ctx.fill(); ctx.strokeStyle = homeColor; ctx.lineWidth = 5; ctx.stroke();
     ctx.font = '700 32px Oswald'; ctx.fillStyle = scenario.home.abbr === 'NYG' ? '#145cff' : homeColor;
-    ctx.fillText(midfield, 800 - ctx.measureText(midfield).width / 2, 737); ctx.restore();
+    ctx.fillText(midfield, 800 - ctx.measureText(midfield).width / 2, 702); ctx.restore();
     beam(0, 925, 550, red, 22); beam(1050, 925, 1600, '#29aaff', 22);
   }
   ctx.drawImage(logo, 25, 2, 175, 175 * logo.naturalHeight / logo.naturalWidth);
@@ -183,9 +189,10 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       portrait ? 365 : 405, metallic(298, 30), true);
     ctx.save();
     if (!portrait) {
-      const targetX = index ? 1180 : 20;
-      ctx.translate(targetX - x * .55, 165);
-      ctx.scale(.55, .8);
+      playerPanel = true;
+      const targetX = index ? 1084 : 20;
+      ctx.translate(targetX - x * .68, 165);
+      ctx.scale(.68, .8);
       panel(x, 295, 730, 53, accent);
       text(`${teamMarkAbbr(team.abbr)}   ${team.name}`, x + 28, 332, 30, 674, white, true);
     }
@@ -243,9 +250,10 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
         text(value === undefined ? '\u2014' : String(value), left, y + (portrait ? 124 : 15),
           portrait ? 52 : 30, 110, metallic(y + 15, 30));
       });
-      ctx.restore();
       if (!i) { ctx.fillStyle = '#536b8144'; ctx.fillRect(x + 25, y + (portrait ? 162 : 30), 680, 1); }
     });
+    ctx.restore();
+    playerPanel = false;
   });
   text(`QB scenario: ${scenario.label}`, 40, height - 71, portrait ? 28 : 20, 1520, muted);
   text(`${date} ET`, 40, height - 27, 19, 450, muted);
