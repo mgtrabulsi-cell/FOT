@@ -20,10 +20,20 @@ export type Settings = {
   minEV: number; minEdge: number; minQuality: number; recentWeight: number;
 };
 export const defaultSettings: Settings = {
-  markets: [], direction: 'both', player: '', minEV: 0.05, minEdge: 0.03, minQuality: 0.75, recentWeight: 0.4,
+  markets: [], direction: 'over', player: '', minEV: 0.05, minEdge: 0.03, minQuality: 0.75, recentWeight: 0.4,
 };
 export function fullAnalysisSettings(settings: Settings, sport: Sport): Settings {
-  return isSoccer(sport) ? settings : { ...settings, markets: [...new Set([...settings.markets, ...markets[sport]])] };
+  return { ...settings, direction: 'over', markets: isSoccer(sport) ? settings.markets : [...new Set([...settings.markets, ...markets[sport]])] };
+}
+export function isAllowedPickSide(pick: { market: string; side: string }) {
+  return pick.market !== 'totals' && !pick.market.startsWith('player_') || pick.side === 'Over';
+}
+export function upcomingAnalysisEvents<T extends { start: string }>(events: T[], sport: Sport, date: string, now: number): T[] {
+  const easternDate = (start: string) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(start));
+  return events.filter(event => Date.parse(event.start) > now && (sport === 'NFL' || easternDate(event.start) === date))
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
 }
 export type Quote = {
   key: string; eventId: string; sport: Sport; start: string; home: string; away: string;
@@ -340,7 +350,7 @@ export function readSettings(value: unknown, sport: Sport): Settings {
     return value;
   };
   if (typeof row.player !== 'string' || row.player.length > 100) throw new Error('Invalid player filter.');
-  return { markets: selected as string[], direction: row.direction, player: row.player.trim(),
+  return { markets: selected as string[], direction: 'over', player: row.player.trim(),
     minEV: bounded('minEV', 0, 1), minEdge: bounded('minEdge', 0, 0.5), minQuality: bounded('minQuality', 0.75, 1),
     recentWeight: bounded('recentWeight', 0, 0.6) };
 }
@@ -406,6 +416,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (quote.market.startsWith('player_') && quote.american < -200) {
       rejected.push({ key: quote.key, reason: 'Player props must be priced at -200 or better; worse prices are excluded, including Stretch picks.' }); continue;
     }
+    if (!isAllowedPickSide(quote)) { rejected.push({ key: quote.key, reason: 'GamewAIre totals and player props are Over-only; Under selections are excluded.' }); continue; }
     if (settings.direction !== 'both' && ['Over', 'Under'].includes(quote.side) && quote.side.toLowerCase() !== settings.direction) continue;
     if (Date.parse(quote.start) <= now) { rejected.push({ key: quote.key, reason: 'Game has started; pregame analysis only.' }); continue; }
     if (now - Date.parse(quote.updatedAt) > 10 * 60_000 || Date.parse(quote.updatedAt) > now + 60_000) {

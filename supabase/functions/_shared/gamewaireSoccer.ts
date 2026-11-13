@@ -1,4 +1,4 @@
-import { array, decimalOdds, expectedValue, fairAmericanOdds, impliedProbability, isSoccer, normalize, numeric, object, soccerModelVersion, text, valueClassification } from './gamewaire.ts';
+import { array, decimalOdds, expectedValue, fairAmericanOdds, impliedProbability, isAllowedPickSide, isSoccer, normalize, numeric, object, soccerModelVersion, text, valueClassification } from './gamewaire.ts';
 import type { Candidate, Evaluation, Evidence, Observation, Quote, Settings, SoccerSport, TeamLean } from './gamewaire.ts';
 import { publicJSON } from './gamewaireSources.ts';
 import type { Matchup } from './gamewaireSources.ts';
@@ -132,6 +132,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     if (!isSoccer(quote.sport)) throw new Error('Two-way sports must not use the soccer evaluator.');
     if (!settings.markets.includes(quote.market) && quote.market !== 'h2h') continue;
     if (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player))) continue;
+    if (!isAllowedPickSide(quote)) { rejected.push({ key: quote.key, reason: 'GamewAIre totals and player props are Over-only; Under selections are excluded.' }); continue; }
     if (settings.direction !== 'both' && quote.market !== 'h2h' && quote.side.toLowerCase() !== settings.direction) continue;
     const reject = (reason: string) => rejected.push({ key: quote.key, reason });
     if (!Number.isFinite(Date.parse(quote.start)) || Date.parse(quote.start) <= now) { reject('Only upcoming regulation-time fixtures are eligible.'); continue; }

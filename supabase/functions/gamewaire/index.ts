@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, markets, modelVersion, probabilityModelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
+import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isAllowedPickSide, upcomingAnalysisEvents, markets, modelVersion, probabilityModelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport, TeamLean } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses, scheduledMarkets } from '../_shared/gamewaireSchedule.ts';
@@ -187,6 +187,10 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (source.error) throw new Error('Could not verify the saved lean.');
       if (!source.data || object(source.data.payload).modelVersion !== (isSoccer(text(source.data.sport)) ? soccerModelVersion : modelVersion))
         return json({ error: 'This saved analysis uses an older model. Refresh the game lean before publishing.' }, 400);
+      const lean = object(object(source.data.payload).teamLean);
+      const leanPick = object(lean.pick);
+      if (!isAllowedPickSide({ market: text(leanPick.market), side: text(leanPick.side) }))
+        return json({ error: 'Under selections cannot be newly published. Refresh this analysis for supported Overs.' }, 400);
       const saved = await admin.rpc('gamewaire_publish_lean', { target_run: body.runId });
       if (saved.error) return json({ error: `Could not publish game lean: ${saved.error.message}` }, 400);
       return json({ saved: true });
@@ -195,10 +199,15 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (typeof body.runId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.runId) || !Array.isArray(body.keys)
         || body.keys.length < 1 || body.keys.length > 4 || body.keys.some((key) => typeof key !== 'string')
         || new Set(body.keys).size !== body.keys.length) return json({ error: 'Select one to four unique candidates from an analysis.' }, 400);
+      const selectedKeys = body.keys;
       const source = await admin.from('gamewaire_runs').select('payload,sport').eq('id', body.runId).maybeSingle();
       if (source.error) throw new Error('Could not verify the analysis model before publishing.');
       if (!source.data || object(source.data.payload).modelVersion !== (isSoccer(text(source.data.sport)) ? soccerModelVersion : modelVersion))
         return json({ error: 'This saved analysis uses an older model. Generate fresh candidates before publishing.' }, 400);
+      if (array(object(source.data.payload).picks).some(value => {
+        const pick = object(value);
+        return selectedKeys.includes(pick.key) && !isAllowedPickSide({ market: text(pick.market), side: text(pick.side) });
+      })) return json({ error: 'Under selections cannot be newly published. Refresh this analysis for supported Overs.' }, 400);
       const saved = await admin.rpc('gamewaire_publish', { target_run: body.runId, selected_keys: body.keys });
       if (saved.error) return json({ error: `Could not publish picks: ${saved.error.message}` }, 400);
       return json({ saved: true });
@@ -244,10 +253,9 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (!oddsKey) return json({ status: 'setup_required', error: 'A server-side ODDS_API_KEY and the required player-prop subscription must be configured before sportsbook markets can be evaluated.' }, 503);
     if (body.action === 'events') {
       const date = body.date;
-      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))) return json({ error: 'Choose a valid date.' }, 400);
+      if (sport !== 'NFL' && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)))) return json({ error: 'Choose a valid date.' }, 400);
       const events = await loadEvents(admin, sport, oddsKey, fetcher);
-      const easternDate = (start: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(start));
-      return json({ events: events.filter((event) => easternDate(event.start) === date && Date.parse(event.start) > Date.now()), provider: 'The Odds API' });
+      return json({ events: upcomingAnalysisEvents(events, sport, typeof date === 'string' ? date : '', Date.now()), provider: 'The Odds API' });
     }
     if (body.action !== 'analyze' || !/^[a-zA-Z0-9_-]{1,100}$/.test(text(body.eventId))) return json({ error: 'Choose an event to analyze.' }, 400);
     let settings;
@@ -273,7 +281,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       && Date.parse(cached.data.event_start) > Date.now() && Date.now() - Date.parse(cached.data.created_at) < 600_000
       && array(object(cached.data.payload).picks).every((value) => {
         const pick = object(value);
-        return Date.now() - Date.parse(text(pick.updatedAt)) < 600_000 && Date.now() - Date.parse(text(pick.dataAt)) < 3_600_000;
+        return isAllowedPickSide({ market: text(pick.market), side: text(pick.side) })
+          && Date.now() - Date.parse(text(pick.updatedAt)) < 600_000 && Date.now() - Date.parse(text(pick.dataAt)) < 3_600_000;
       })
       && JSON.stringify(readSettings(cached.data.settings, sport)) === JSON.stringify(settings)) {
       await finishScheduled(cached.data.id, null);

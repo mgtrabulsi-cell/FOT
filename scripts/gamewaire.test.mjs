@@ -40,6 +40,34 @@ test('Soccer shortcuts open league analysis without requesting or publishing odd
     } else assert.ok(changes.includes('published'));
   }
 });
+test('New selections are Over-only even with legacy both/under settings; team markets remain allowed', () => {
+  for (const market of ['totals', 'player_points', 'player_rush_yds', 'player_shots']) {
+    assert.equal(engine.isAllowedPickSide({ market, side: 'Under' }), false);
+    assert.equal(engine.isAllowedPickSide({ market, side: 'Over' }), true);
+  }
+  for (const market of ['h2h', 'spreads']) assert.equal(engine.isAllowedPickSide({ market, side: 'Home' }), true);
+  for (const direction of ['both', 'under', 'over']) {
+    assert.equal(engine.readSettings({ ...engine.defaultSettings, markets: ['totals'], direction }, 'NFL').direction, 'over');
+    assert.equal(engine.fullAnalysisSettings({ ...engine.defaultSettings, direction }, 'NFL').direction, 'over');
+    const under = { ...quote, key: 'under-policy', side: 'Under' };
+    const result = engine.evaluate([under], new Map([[under.key, evidence]]), { ...settings, direction }, now);
+    assert.equal(result.picks.length, 0);
+    assert.match(result.rejected[0].reason, /Over-only/);
+  }
+});
+test('NFL matchup loading includes every upcoming provider event across dates, while NBA stays date-scoped', () => {
+  const time = Date.parse('2026-11-13T22:00:00Z');
+  const events = [
+    { id: 'monday', start: '2026-11-17T01:15:00Z' },
+    { id: 'sunday', start: '2026-11-15T18:00:00Z' },
+    { id: 'started', start: '2026-11-13T22:00:00Z' },
+    { id: 'next-week', start: '2026-11-22T18:00:00Z' },
+  ];
+  assert.deepEqual(engine.upcomingAnalysisEvents(events, 'NFL', '2026-11-13', time).map(event => event.id),
+    ['sunday', 'monday', 'next-week']);
+  assert.deepEqual(engine.upcomingAnalysisEvents(events, 'NBA', '2026-11-16', time).map(event => event.id), ['monday']);
+  assert.equal(events[0].id, 'monday', 'Provider list is not mutated');
+});
 import * as soccer from '../supabase/functions/_shared/gamewaireSoccer.ts';
 import { completedSavedGames, isSavedGamePastReview, loadCompletedSavedGames } from '../src/services/gamewaireGames.ts';
 
@@ -666,7 +694,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
     .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
-    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `import { defaultSettings, fullAnalysisSettings, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb, isSoccer, soccerSports, soccerModelVersion } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
+    .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `    import { defaultSettings, fullAnalysisSettings, isAllowedPickSide, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb, isSoccer, soccerSports, soccerModelVersion } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
     .replace(/import \{ nbaCalendarDate \} from [^;]+;/, `const nbaCalendarDate=(date=new Date())=>date.toISOString().slice(0,10);`)
     .replace(/import \{ subscribeForegroundRefresh \} from [^;]+;/, 'const subscribeForegroundRefresh=()=>()=>{};');
   const { default: Page, fixture, PickCard, Settlement } = await import(`data:text/javascript;base64,${Buffer.from(component).toString('base64')}`);
@@ -907,8 +935,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     previousSeasonAverage: undefined, risks: [], projection: 4.2, last5: 4, last10: 4.5, seasonAverage: 5.1,
   }] } }], [], true]);
   const under = renderToStaticMarkup(createElement(Page));
-  assert.match(under, /averages 5\.1 assists/);
-  assert.match(under, /selection is under 7\.5 assists/);
+  assert.doesNotMatch(under, /averages 5\.1 assists|selection is under 7\.5 assists/, 'Legacy Under candidates cannot be newly selected for publication');
   assert.doesNotMatch(under, /Core rotation|Previous full-season average:|Key limitation:/, 'Reasoning never invents rotation, baseline or risks missing from this pick');
   const navCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(navCSS, /font-size: clamp\(9px, 2\.5vw, 11px\)/);
@@ -1071,7 +1098,7 @@ for (const sport of engine.soccerSports) test(`${sport} on-demand backend uses v
   assert.ok(fixture.rpc.some(call => call.name === 'gamewaire_finish'));
   assert.ok(fixture.rpc.every(call => !call.name.includes('publish') && !call.name.includes('schedule')));
 });
-function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, creditBudget = true, publicationVersion = engine.modelVersion, eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
+function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, creditBudget = true, publicationVersion = engine.modelVersion, publicationPicks = [], eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
   scoreboardRows = [], scoreboardError = null, scoreboardJobs = [], scoreboardJobsError = null,
   settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
@@ -1093,7 +1120,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
         maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role }
           : table === 'gamewaire_picks' ? settlementConflict ? null : { id: 'pick' }
           : table === 'sports_resources' ? eventCache
-          : table === 'gamewaire_runs' && builder.columns === 'payload,sport' ? { sport: 'NBA', payload: { modelVersion: publicationVersion } }
+          : table === 'gamewaire_runs' && builder.columns === 'payload,sport' ? { sport: 'NBA', payload: { modelVersion: publicationVersion, picks: publicationPicks } }
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: table === 'gamewaire_runs' && builder.columns?.includes('event_start,payload,status')
@@ -1140,6 +1167,28 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer fixture' } : {}) }, body: JSON.stringify(body),
   }), env, customFetcher), exports: context.exports };
 }
+test('Publication rejects saved Under candidates without changing existing published results', async () => {
+  const api = endpoint({ publicationPicks: [{ ...quote, key: 'under', side: 'Under' }, { ...quote, key: 'over' }] });
+  const body = { action: 'publish', runId: '00000000-0000-4000-8000-000000000001', keys: ['under'] };
+  const rejected = await api.run(body);
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /Under selections cannot/);
+  assert.ok(!api.rpc.some(call => call.name === 'gamewaire_publish'));
+  assert.equal((await api.run({ ...body, keys: ['over'] })).status, 200);
+  assert.equal(api.writes.length, 0, 'Policy enforcement does not edit historical picks');
+});
+test('NFL events endpoint ignores date restriction and returns the full upcoming slate in kickoff order', async () => {
+  const events = [
+    { id: 'next-week', home: 'Home', away: 'Away', start: new Date(now + 10 * 86400000).toISOString() },
+    { id: 'sunday', home: 'Home', away: 'Away', start: new Date(now + 5 * 86400000).toISOString() },
+    { id: 'finished', home: 'Home', away: 'Away', start: new Date(now - 86400000).toISOString() },
+  ];
+  const api = endpoint({ configured: true, eventCache: { payload: { events }, updated_at: new Date(now).toISOString() } });
+  const response = await api.run({ action: 'events', sport: 'NFL' });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).events.map(event => event.id), ['sunday', 'next-week']);
+  assert.equal(api.fetches.length, 0, 'Cached game loading makes no odds analysis calls');
+});
 test('automatic published-result cron needs the job secret, not an odds subscription or admin browser', async () => {
   const fixture = endpoint({ allowed: false, configured: false });
   const response = await fixture.cron({ action: 'settlePublished' });

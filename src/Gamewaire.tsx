@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Activity, ArrowRight, BarChart3, Bot, Crosshair, Layers, Star } from 'lucide-react';
 import { isSavedGamePastReview, loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
-import { defaultSettings, fullAnalysisSettings, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, isSoccer, soccerSports, soccerModelVersion } from './services/gamewaire';
+import { defaultSettings, fullAnalysisSettings, isAllowedPickSide, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, isSoccer, soccerSports, soccerModelVersion } from './services/gamewaire';
 import { pickBreakdown } from '../supabase/functions/_shared/gamewaireNarrative.ts';
 import GamewaireBreakdown from './GamewaireBreakdown';
 import type { AnalysisRun, Candidate, EngineStatus, GameLean, OddsEvent, PublishedGame, ScheduleBatch, ScheduleJob, Settings, Sport, StoredPick, StretchPick } from './services/gamewaire';
@@ -106,7 +106,7 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
   </article>;
 }
 function PublishPicks({ report, refresh, onFreshReport }: { report: AnalysisRun; refresh: () => void; onFreshReport: (run: AnalysisRun) => void }) {
-  const candidates = rankTopPicks((report.payload.picks ?? []).filter((pick) => pick.market.startsWith('player_') || pick.market === 'totals'));
+  const candidates = rankTopPicks((report.payload.picks ?? []).filter((pick) => isAllowedPickSide(pick) && (pick.market.startsWith('player_') || pick.market === 'totals')));
   const [selected, setSelected] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const stale = candidates.some((pick) => Date.now() - Date.parse(pick.updatedAt) > 600_000) || Date.parse(report.event_start) <= Date.now();
@@ -332,7 +332,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       if (action === 'events') {
         const result = await engineRequest<{ events: OddsEvent[] }>({ action, sport, date });
         setEvents(result.events); setEventId(result.events[0]?.id ?? '');
-        if (!result.events.length) setNotice('No upcoming provider-listed games on this Eastern date.');
+        if (!result.events.length) setNotice(sport === 'NFL' ? 'No upcoming NFL games are currently listed by the provider.' : 'No upcoming provider-listed games on this Eastern date.');
       } else {
         const result = await engineRequest<{ run: AnalysisRun; cached?: boolean }>({ action, sport, eventId, settings: fullAnalysisSettings(settings, sport), fullAnalysis: true });
         setSelectedRun(result.run.id); setRuns((previous) => [result.run, ...previous.filter((run) => run.id !== result.run.id)]);
@@ -468,7 +468,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     </nav>
     {status?.canAnalyze && <section className="gai-scheduled" aria-label="Soccer game analysis">
       <h3>Pull picks from soccer games</h3>
-      <p className="gai-note">Choose a league below, select the Eastern game date, and load upcoming games. Select a matchup, then run analysis to pull its supported picks. Review the saved report before publishing. Opening this section or loading games uses no odds credits; running analysis may use the displayed credits.</p>
+      <p className="gai-note">Choose a league below and load upcoming games. NFL includes all upcoming provider-listed games, not just one date; other leagues use the selected Eastern date. Totals and player props are Over-only; spreads and moneylines remain eligible. Select a matchup, then run analysis to pull its supported picks. Review the saved report before publishing. Opening this section or loading games uses no odds credits; running analysis may use the displayed credits.</p>
       <div className="gai-view-switch" role="group" aria-label="Soccer leagues">
         {soccerSports.map((league) => <button type="button" key={league} disabled={busy}
           aria-pressed={candidateView && sport === league} onClick={() => openSoccerGames(league)}>{league === 'EPL' ? 'Premier League' : league}</button>)}
@@ -541,8 +541,8 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     <section className="gai-admin" aria-label="Admin analysis controls">
       <form className="gai-form" onSubmit={(event) => { event.preventDefault(); void request('analyze'); }}>
         <label>Sport<select value={sport} disabled={busy} onChange={(event) => changeSport(event.target.value as Sport)}>{(['NBA', 'NFL', ...soccerSports] as const).map(value => <option key={value} value={value}>{value === 'EPL' ? 'Premier League' : value}</option>)}</select></label>
-        <label>Date (Eastern)<input type="date" value={date} disabled={busy} onChange={(event) => { setDate(event.target.value); setEvents([]); setEventId(''); }} required /></label>
-        <button className="gai-load" type="button" disabled={busy || !date || !status.oddsReady} onClick={() => void request('events')}>Load upcoming games</button>
+        {sport !== 'NFL' && <label>Date (Eastern)<input type="date" value={date} disabled={busy} onChange={(event) => { setDate(event.target.value); setEvents([]); setEventId(''); }} required /></label>}
+        <button className="gai-load" type="button" disabled={busy || sport !== 'NFL' && !date || !status.oddsReady} onClick={() => void request('events')}>{sport === 'NFL' ? 'Load all upcoming NFL games' : 'Load upcoming games'}</button>
         <label>Matchup<select value={eventId} onChange={(event) => setEventId(event.target.value)} disabled={busy} required><option value="">Select a game</option>
           {report && report.event_id === eventId && !events.some((event) => event.id === eventId) && <option value={eventId}>{report.matchup} · {stamp(report.event_start)} · Saved report</option>}
           {events.map((event) => <option key={event.id} value={event.id}>{event.away} @ {event.home} · {stamp(event.start)}</option>)}</select></label>
@@ -558,7 +558,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
               ? [...new Set([...previous.markets, ...group])] : previous.markets.filter((item) => !group.includes(item)) }))} />{label}</label>)}
         </fieldset>
         <fieldset><legend>Individual markets</legend>{markets[sport].map((item) => <label key={item}><input type="checkbox" disabled={sport === 'NFL' && item.startsWith('player_')} checked={fullAnalysisSettings(settings, sport).markets.includes(item)} onChange={(event) => setSettings((previous) => ({ ...previous, markets: event.target.checked ? [...previous.markets, item] : previous.markets.filter((market) => market !== item) }))} />{item.replace(/_/g, ' ')}</label>)}</fieldset>
-        <label>Directions<select value={settings.direction} onChange={(event) => setSettings((previous) => ({ ...previous, direction: event.target.value as Settings['direction'] }))}><option value="both">Overs and unders</option><option value="over">Overs only</option><option value="under">Unders only</option></select></label>
+        <p className="gai-note">Totals and player props: Overs only. Spreads and moneylines are unchanged. No Under is converted into an unsupported Over.</p>
         <label>Player name filter<input value={settings.player} maxLength={100} onChange={(event) => setSettings((previous) => ({ ...previous, player: event.target.value }))} /></label>
         {([{ key: 'minEV', label: 'Minimum estimated EV %', max: 100 }, { key: 'minEdge', label: 'Minimum probability edge (pp)', max: 50 },
           { key: 'minQuality', label: 'Minimum completeness %', min: 75, max: 100 }, { key: 'recentWeight', label: 'Last-10 weighting %', max: 60 }] as const).map((field) => <label key={field.key}>{field.label}<input type="number" min={'min' in field ? field.min : 0} max={field.max} step="1" value={Math.round(settings[field.key] * 100)} required onChange={(event) => setSettings((previous) => ({ ...previous, [field.key]: Number(event.target.value) / 100 }))} /></label>)}

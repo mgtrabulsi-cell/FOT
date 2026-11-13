@@ -41,15 +41,14 @@ test('Full analysis excludes high-hit-rate sides contradicted by projections and
   for (const invalid of [{ ...data, eligible: false }, { ...data, quality: .5 }, { ...data, samples: data.samples.slice(0, 3) }])
     assert.equal(evaluate([q], new Map([[q.key, invalid]]), { ...defaultSettings, markets: [q.market] }, now, 5, 4).picks.length, 0);
 });
-test('Saved simulation projection changes both the player side and the estimated distribution, without altering source logs', () => {
+test('An Under-supported simulation never becomes an invented Over, and source logs stay unchanged', () => {
   const over = quote('NFL', 0), under = { ...over, key: 'under', side: 'Under' };
   const data = { ...evidence(12, 30), simulationProjection: 5 };
   const snapshot = JSON.stringify(data);
   const result = evaluate([over, under], new Map([[over.key, data], [under.key, data]]),
     { ...defaultSettings, markets: [over.market] }, now, 5, 4);
-  assert.equal(result.picks.length, 1);
-  assert.equal(result.picks[0].side, 'Under');
-  assert.ok(Math.abs(result.picks[0].projection - 5) < 1e-8);
+  assert.equal(result.picks.length, 0);
+  assert.ok(result.rejected.some(row => row.key === 'under' && /Over-only/.test(row.reason)));
   assert.equal(JSON.stringify(data), snapshot);
 });
 test('Full schedule SQL preserves jobs, refreshes once at 60 minutes, bounds retries and enforces the shared budget', async () => {
