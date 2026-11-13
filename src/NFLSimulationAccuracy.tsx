@@ -5,6 +5,7 @@ import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulatio
 import type { SimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
 import NFLSimulationResultsDownloads from './NFLSimulationResultsDownloads';
+import NFLSimulationRecapDownloads from './NFLSimulationRecapDownloads';
 
 const number = (value: number) => value.toFixed(1);
 export function NFLSimulationResults({ games }: { games: Game[] }) {
@@ -65,6 +66,7 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
     <header><h3>{weekly ? 'This slate’s simulation accuracy' : 'Simulation vs. final results'}</h3>
       <button type="button" onClick={() => setRetry(value => value + 1)}>Refresh results</button></header>
     <p>Published pregame scores vs. verified final results. Closest first; smaller differences are better. Select a top-three card to see all comparisons. Final-stat verification normally takes up to 15 minutes.</p>
+    <NFLSimulationRecapDownloads games={games} />
     {error && <p role="alert">{error} Saved results remain visible when available.</p>}
     {!report && !error && <p role="status">Loading verified results…</p>}
     {report && <>
