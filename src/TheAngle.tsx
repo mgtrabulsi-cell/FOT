@@ -179,7 +179,11 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       .then(() => { if (current) { setDraftError(''); setDraftSaving(false); } })
       .catch((cause: unknown) => {
         console.error('Could not save storyline draft', cause);
-        if (current) { setDraftError('Your latest draft changes could not be saved on this device. Keep this page open and retry saving.'); setDraftSaving(false); }
+        if (current) {
+          setDraftError(form ? 'Your latest draft changes could not be saved on this device. Keep this page open and retry saving.'
+            : 'The saved draft could not be cleared on this device. Retry clearing it; do not publish an already-published post again.');
+          setDraftSaving(false);
+        }
       });
     return () => { current = false; };
   }, [user?.id, section, draftReady, draftRestoreFailed, busy, form, photos, draftRetry]);
@@ -378,18 +382,18 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         setLinkedReady(storyId); setLinkedError('');
       }
       resetPhotos();
-      setPhotos((saved.image_paths ?? []).filter((path) => path !== saved.parlay_graphic?.image_path).map((path) => ({ path, preview: postPhotoUrl(path) })));
-      setForm(saved); setDirty(false); setRefresh((value) => value + 1);
+      if (status === 'draft') setPhotos((saved.image_paths ?? []).filter((path) => path !== saved.parlay_graphic?.image_path).map((path) => ({ path, preview: postPhotoUrl(path) })));
+      setForm(status === 'published' ? null : saved);
+      setDirty(false); setDraftError(''); setRefresh((value) => value + 1);
+      setNotice(status === 'published' ? `${news ? 'Fantasy News' : 'Angle'} published for this NFL week.` : 'Draft saved privately for admin review. You can keep editing.');
       if (status === 'published') {
         try {
           await saveAngleDraft(user.id, section, undefined);
-          resetPhotos(); setForm(null);
         } catch (cause) {
           console.error('Story published, but the local draft could not be removed', cause);
-          setActionError('Your story was published, but its local draft could not be removed. Discard the local draft; do not publish it again.');
+          setDraftError('Your story was published, but its saved draft could not be cleared on this device. Retry clearing it; do not publish it again.');
         }
       }
-      setNotice(status === 'published' ? `${news ? 'Fantasy News' : 'Angle'} published for this NFL week.` : 'Draft saved privately for admin review. You can keep editing.');
     } catch (cause) {
       let message = errorMessage(cause);
       if (!persisted && uploaded.length) {
@@ -600,15 +604,13 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
         <label className="angle-review-check"><input type="checkbox" checked={form.reviewed} onChange={(event) => change('reviewed', event.target.checked)} />I verified the source, matchup, and facts, and personal details are publicly reported.</label>
         <div className="angle-actions"><button type="button" onClick={() => void save('draft')}>{form.status === 'published' ? 'Unpublish to drafts' : 'Save private draft'}</button><button type="submit" className="angle-publish">{busy ? 'Saving...' : news ? 'Publish news' : 'Publish angle'}</button>
           <label className="x-publishing-choice"><input type="checkbox" checked={form.post_to_x ?? false} disabled={busy || !!form.published_at} onChange={(event) => change('post_to_x', event.target.checked)} />Post to X on first publication</label>
-          <p>Attached photos are included on X instead of generated analysis images. With no photos, X uses generated analysis images. Videos stay on GameWire.</p>
         </div>
-        <p>Requires a connected X account. Edits and republishing do not create another tweet. Attached videos play in The Angle; X keeps the existing headline, story link, and analysis-image format.</p>
       </fieldset>
     </form>}
     {draftError && <p className="feed-warning" role="alert">{draftError} <button disabled={busy} onClick={() => {
       if (draftRestoreFailed) { setDraftReady(false); setRestoreRetry((value) => value + 1); }
       else setDraftRetry((value) => value + 1);
-    }}>{draftRestoreFailed ? 'Retry restoring draft' : 'Retry saving draft'}</button>{draftRestoreFailed && <button disabled={busy} onClick={() => void discardDraft()}>Discard saved draft</button>}</p>}
+    }}>{draftRestoreFailed ? 'Retry restoring draft' : form ? 'Retry saving draft' : 'Retry clearing draft'}</button>{draftRestoreFailed && <button disabled={busy} onClick={() => void discardDraft()}>Discard saved draft</button>}</p>}
     {accessError && <p className="feed-warning" role="status">{accessError}</p>}
     {actionError && <p className="feed-warning" role="alert">{actionError}</p>}
     {notice && <p className="angle-notice" role="status">{notice}</p>}

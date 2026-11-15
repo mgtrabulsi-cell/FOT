@@ -32,7 +32,7 @@ Laptop widths (761–1599px) use moderately smaller game-wheel cards and tighter
 
 Each time The Angle is opened, its pinned post expands and scrolls to the top with a small safe-area-aware inset. Background refreshes do not repeatedly pull readers back to the pin. Explicitly linked stories and active/imported drafts take precedence, and reduced-motion preferences disable the smooth scroll.
 
-The Angle post builder omits introductory draft, source, pick-record, settled-review and media-format descriptor paragraphs. Controls and validation are unchanged; saving progress, draft-backup errors and retry actions remain visible.
+The Angle post builder omits introductory draft, source, pick-record, settled-review, media-format and X-posting descriptor paragraphs. Controls and validation are unchanged; saving progress, draft-backup errors and retry actions remain visible. Successful publication closes the editor immediately after server confirmation, before device-backup cleanup finishes. Cleanup failures keep the editor closed and offer **Retry clearing draft**, without publishing again; failed publication preserves the working draft and saving a private draft keeps it editable.
 
 Mobile NBA player box scores size columns to the table viewport so 3PT is the final visible statistic in the initial view. Full player names, player-detail links and favorites remain available, with horizontal scrolling for steals and the remaining statistics. Desktop table sizing is unchanged.
 

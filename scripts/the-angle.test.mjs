@@ -13,7 +13,8 @@ import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleTheme
 test('Angle builder omits descriptor paragraphs but retains controls, saving status and actionable errors', () => {
   const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
   for (const text of ['Drafts are private.', 'Draft saved on this device.', 'Include sources and context in your storyline.',
-    'Admin picks (optional opinions).', 'Straights and parlays have separate records.', 'Photos: JPG, PNG, WebP or GIF'])
+    'Admin picks (optional opinions).', 'Straights and parlays have separate records.', 'Photos: JPG, PNG, WebP or GIF',
+    'Attached photos are included on X instead of generated analysis images.', 'Requires a connected X account.'])
     assert.ok(!source.includes(text), text);
   for (const text of ['Save private draft', 'Publish angle', 'Add a pick', 'Photos and videos (optional',
     'Post to X on first publication', 'Retry saving draft', 'Draft is not backed up. Keep this page open.',

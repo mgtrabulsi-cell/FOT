@@ -33,12 +33,13 @@ const code = ts.transpileModule(component.getText(parsed).replace('export defaul
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 
-function fixture(saved = null, { editing = false, staleOnClear = false, section = 'angle', existing = false } = {}) {
+function fixture(saved = null, { editing = false, staleOnClear = false, section = 'angle', existing = false,
+  clearPending = false, clearFailure = false, publishFailure = false } = {}) {
   class ClickTarget {
     constructor(interactive = false) { this.interactive = interactive; }
     closest() { return this.interactive ? this : null; }
   }
-  const hooks = [], requests = [], writes = [], listeners = new Set();
+  const hooks = [], requests = [], writes = [], draftWrites = [], clearRequests = [], listeners = new Set();
   let cursor = 0, changed = false, effects = [], tree;
   const props = { user: null, games: [], season: 2026, week: 7, active: false, section };
   if (editing) {
@@ -58,7 +59,13 @@ function fixture(saved = null, { editing = false, staleOnClear = false, section 
     subscribeForegroundRefresh: (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
     loadAngleDraft: async () => undefined,
     saveAngleDraft: async (_user, _section, value) => {
+      draftWrites.push(value);
       if (staleOnClear && writes.length && value === undefined) requests[0].resolve({ data: [], error: null });
+      if (writes.length && value === undefined) {
+        if (clearFailure) throw new Error('Device draft storage unavailable');
+        if (clearPending && !clearRequests.length)
+          return new Promise((resolve, reject) => clearRequests.push({ resolve, reject }));
+      }
     },
     supabase: { from: (table) => {
       let payload;
@@ -66,8 +73,9 @@ function fixture(saved = null, { editing = false, staleOnClear = false, section 
         insert: value => { payload = value; writes.push(value); return builder; },
         update: value => { payload = value; writes.push(value); return builder; },
         in: async () => ({ data: [], error: null }),
-        single: async () => ({ data: { ...story, section, ...payload }, error: null }),
-        maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role: 'admin' } : { ...story, section, ...payload }, error: null }) };
+        single: async () => publishFailure ? { data: null, error: new Error('Publication failed') } : { data: { ...story, section, ...payload }, error: null },
+        maybeSingle: async () => table !== 'livewire_roles' && publishFailure ? { data: null, error: new Error('Publication failed') }
+          : { data: table === 'livewire_roles' ? { role: 'admin' } : { ...story, section, ...payload }, error: null } };
       return builder;
     }, rpc: (_name, args) => {
       const request = { args };
@@ -112,12 +120,80 @@ function fixture(saved = null, { editing = false, staleOnClear = false, section 
     throw new Error('Angle fixture did not stabilize');
   }
   return {
-    props, requests, writes, render, text: () => JSON.stringify(tree), saved: () => saved,
+    props, requests, writes, draftWrites, clearRequests, render, text: () => JSON.stringify(tree), saved: () => saved,
+    recoverDraftStorage: () => { clearFailure = false; },
     clickTarget: interactive => new ClickTarget(interactive),
     async settle() { await new Promise((resolve) => setImmediate(resolve)); render(); },
     unmount: () => hooks.forEach((hook) => hook?.cleanup?.()),
   };
 }
+
+test('Angle publication closes the editor before slow device cleanup finishes, for new posts and edits in either section', async () => {
+  for (const section of ['angle', 'news']) for (const existing of [false, true]) {
+    const app = fixture(null, { editing: true, clearPending: true, section, existing });
+    app.props.active = true;
+    try {
+      app.render(); await app.settle(); await app.settle();
+      const editor = findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor');
+      assert.ok(editor);
+      const previousDraftWrites = app.draftWrites.length;
+      editor.props.onSubmit({ preventDefault() {} });
+      await app.settle();
+      assert.equal(app.writes.length, 1, 'Exactly one server publication');
+      assert.equal(app.clearRequests.length, 1, 'Local deletion is still pending');
+      assert.equal(findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor'), undefined);
+      assert.match(app.text(), /published for this NFL week/);
+      assert.equal(app.saved().rows[0].title, 'Newly published Angle');
+      assert.ok(app.draftWrites.slice(previousDraftWrites).every(value => value === undefined),
+        'Published posts and edits are not re-saved as editable device drafts');
+      app.clearRequests[0].resolve();
+      await app.settle(); await app.settle();
+      assert.doesNotMatch(app.text(), /Continue draft/);
+    } finally { app.unmount(); }
+  }
+});
+
+test('Angle publication keeps the editor closed after device cleanup fails and retries without republishing', async () => {
+  const app = fixture(null, { editing: true, clearFailure: true });
+  app.props.active = true;
+  try {
+    app.render(); await app.settle(); await app.settle();
+    findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor')
+      .props.onSubmit({ preventDefault() {} });
+    await app.settle(); await app.settle();
+    assert.equal(findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor'), undefined);
+    assert.match(app.text(), /saved draft could not be cleared/);
+    const retry = findNode(app.render(), node => node.type === 'button' && node.props.children === 'Retry clearing draft');
+    assert.ok(retry);
+    assert.equal(retry.props.disabled, false);
+    assert.equal(app.writes.length, 1);
+    app.recoverDraftStorage();
+    retry.props.onClick();
+    app.render(); await app.settle(); await app.settle();
+    assert.doesNotMatch(app.text(), /saved draft could not be cleared|Retry clearing draft|Continue draft/);
+    assert.equal(app.writes.length, 1, 'Cleanup retry never republishes');
+    assert.equal(app.draftWrites.at(-1), undefined);
+  } finally { app.unmount(); }
+});
+
+test('Angle publication failures preserve the editor, and saving a private draft keeps it editable', async () => {
+  for (const publishFailure of [true, false]) {
+    const app = fixture(null, { editing: true, publishFailure });
+    app.props.active = true;
+    try {
+      app.render(); await app.settle(); await app.settle();
+      const editor = findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor');
+      if (publishFailure) editor.props.onSubmit({ preventDefault() {} });
+      else findNode(editor, node => node.type === 'button' && node.props.children === 'Save private draft').props.onClick();
+      await app.settle(); await app.settle();
+      assert.ok(findNode(app.render(), node => node.type === 'form' && node.props.className === 'angle-editor'));
+      assert.equal(app.writes.length, 1);
+      assert.ok(app.draftWrites.at(-1));
+      if (publishFailure) assert.match(app.text(), /Publication failed/);
+      else assert.match(app.text(), /Draft saved privately/);
+    } finally { app.unmount(); }
+  }
+});
 
 test('Angle publication ends initial loading and persists the returned post without waiting for a feed reload', async () => {
   const app = fixture(null, { editing: true });
