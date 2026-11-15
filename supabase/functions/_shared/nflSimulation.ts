@@ -3,10 +3,10 @@ import { overtimeRulesSource, readOvertimeDrives, simulateOvertime, validateOver
 import type { OvertimeDrive, OvertimeEvidence } from './nflSimulationOvertime.ts';
 import type { SimulationQBMatchup } from './nflSimulationMatchup.ts';
 
-export const nflSimulationVersion = 'nfl-joint-bootstrap-v5';
-export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v4';
+export const nflSimulationVersion = 'nfl-joint-bootstrap-v6';
+export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v5';
 export const legacyNFLSimulationVersion = 'nfl-joint-bootstrap-v1';
-export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v3', 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
+export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3', 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
 export const nflSimulationRuns = 1000;
 export type SimulationPosition = 'QB' | 'RB' | 'WR' | 'TE';
 export type SimulationStat = { passingAttempts: number; completions: number; passingYards: number; passingTouchdowns: number; rushingAttempts: number; rushingYards: number; rushingTouchdowns: number; receptions: number; receivingYards: number; receivingTouchdowns: number };
@@ -15,9 +15,9 @@ export type SimulationBox = { id: string; date: string; season: number; seasonTy
 export type SimulationGame = { id: string; date: string; season: number; seasonType: 2 | 3; home: { id: string; name: string; abbr: string }; away: { id: string; name: string; abbr: string } };
 export type SimulationReference = { id: string; date: string; season: number; seasonType: 2 | 3; teamId: string; opponentId: string; regulationOnly?: boolean; scores?: { own: number; opponent: number; home: boolean } };
 export type SimulationPlayer = { id: string; name: string; teamId: string; position: SimulationPosition; status: string; excluded: boolean; uncertain: boolean; role: string };
-export type SimulationObservation = { eventId: string; date: string; teamId: string; opponentId: string; player: Partial<SimulationStat>; team: SimulationSide };
+export type SimulationObservation = { eventId: string; date: string; teamId: string; opponentId: string; player: Partial<SimulationStat>; team: SimulationSide; basis?: 'team-position-average-v1' };
 export type SimulationRange = { mean: number; p10: number; median: number; p90: number };
-export type SimulationPlayerResult = { id: string; name: string; position: SimulationPosition; games: number; priorTeams: string[]; headToHeadGames: number; status: string; role: string; limited?: boolean; stats: Partial<Record<keyof SimulationStat, SimulationRange>>; issue: string | null };
+export type SimulationPlayerResult = { id: string; name: string; position: SimulationPosition; games: number; priorTeams: string[]; headToHeadGames: number; status: string; role: string; limited?: boolean; estimate?: { method: 'team-position-average-v1'; games: number }; stats: Partial<Record<keyof SimulationStat, SimulationRange>>; issue: string | null };
 type BaseTotal = 'passingYards' | 'rushingYards' | 'receptions' | 'otherReceivingYards' | 'otherReceptions' | 'otherRushingYards';
 type TouchdownTotal = 'passingTouchdowns' | 'rushingTouchdowns' | 'otherReceivingTouchdowns' | 'otherRushingTouchdowns';
 export type SimulationTeamTotals = Record<BaseTotal, SimulationRange> & Partial<Record<TouchdownTotal, SimulationRange>>;
@@ -38,7 +38,7 @@ export const simulationStatKeys: Array<keyof SimulationStat> = ['passingAttempts
 
 export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: string, teams: { home: string; away: string }): NFLGameSimulation {
   const row = object(value), progress = object(row.progress), history = object(row.history);
-  const flexible = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v3'].includes(String(row.version));
+  const flexible = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3'].includes(String(row.version));
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   const integer = (n: unknown) => finite(n) && Number.isInteger(n) && n >= 0;
   const strings = (values: unknown) => Array.isArray(values) && values.every(n => typeof n === 'string');
@@ -98,11 +98,14 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
       && Array.isArray(t.players) && t.players.every(raw => {
         const p = object(raw), stats = object(p.stats);
         return typeof p.id === 'string' && /^\d{1,12}$/.test(p.id) && typeof p.name === 'string' && ['QB', 'RB', 'WR', 'TE'].includes(String(p.position))
-          && integer(p.games) && Number(p.games) <= (row.version === nflSimulationVersion ? 100 : 30) && integer(p.headToHeadGames) && Number(p.headToHeadGames) <= Number(p.games)
+          && integer(p.games) && Number(p.games) <= ([nflSimulationVersion, 'nfl-joint-bootstrap-v5'].includes(String(row.version)) ? 100 : 30) && integer(p.headToHeadGames) && Number(p.headToHeadGames) <= Number(p.games)
           && strings(p.priorTeams) && (p.priorTeams as string[]).every(id => /^\d{1,12}$/.test(id))
           && typeof p.status === 'string' && typeof p.role === 'string' && (p.issue === null || typeof p.issue === 'string')
           && (flexible ? typeof p.limited === 'boolean' : p.limited === undefined || typeof p.limited === 'boolean')
           && (row.evidenceMode !== 'full' || p.limited !== true)
+          && (p.estimate === undefined || row.version === nflSimulationVersion && row.evidenceMode === 'limited'
+            && p.limited === true && object(p.estimate).method === 'team-position-average-v1'
+            && integer(object(p.estimate).games) && Number(object(p.estimate).games) >= 4 && Number(object(p.estimate).games) <= 100)
           && p.stats !== null && typeof p.stats === 'object' && !Array.isArray(p.stats)
           && Object.entries(stats).every(([key, stat]) => simulationStatKeys.includes(key as keyof SimulationStat) && range(stat))
           && (row.version === legacyNFLSimulationVersion || (!stats.passingYards || range(stats.passingTouchdowns))
@@ -742,9 +745,13 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
       players: players.filter(p => p.teamId === team.id && (p.position !== 'QB' || context.active.some(active => active.id === p.id))).map(p => {
         const observed = observations.get(p.id) ?? [], usable = context.usable.some(row => row.id === p.id);
         const keys = usable ? Object.keys(draws[0].stats[p.id] ?? {}) as Array<keyof SimulationStat> : [];
-        return { id: p.id, name: p.name, position: p.position, games: observed.length, priorTeams: [...new Set(observed.map(row => row.teamId))],
-          headToHeadGames: observed.filter(row => row.opponentId === (team.id === game.home.id ? game.away.id : game.home.id)).length,
-          status: p.status, role: p.role, limited: keys.length > 0 && [...context.cohorts.entries()].some(([key, cohort]) => key.startsWith(`${p.id}:`) && cohort.rows.length < 8),
+        const personal = observed.filter(row => !row.basis);
+        const estimated = new Set([...context.cohorts.entries()].filter(([key]) => key.startsWith(`${p.id}:`))
+          .flatMap(([, cohort]) => cohort.rows.filter(row => row.basis).map(row => row.eventId))).size;
+        return { id: p.id, name: p.name, position: p.position, games: personal.length, priorTeams: [...new Set(personal.map(row => row.teamId))],
+          headToHeadGames: personal.filter(row => row.opponentId === (team.id === game.home.id ? game.away.id : game.home.id)).length,
+          ...(estimated ? { estimate: { method: 'team-position-average-v1' as const, games: estimated } } : {}),
+          status: p.status, role: p.role, limited: estimated > 0 || keys.length > 0 && [...context.cohorts.entries()].some(([key, cohort]) => key.startsWith(`${p.id}:`) && cohort.rows.length < 8),
           stats: Object.fromEntries(keys.map(key => [key, simulationRange(draws.map(row => row.stats[p.id]![key]!))])),
           issue: p.excluded ? 'Excluded by reported availability; no zero-valued projection is substituted.' : !usable ? 'Fewer than four verified production appearances; included only in unmodeled team remainder.' : !keys.length ? 'No supported market was recorded.' : null };
       }),

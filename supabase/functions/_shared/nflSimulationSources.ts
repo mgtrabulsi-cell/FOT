@@ -4,6 +4,7 @@ import { readBotRoster } from './gamewireBot.ts';
 import { nflSimulationRuns, nflSimulationVersion, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationObservations, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from './nflSimulation.ts';
 import { validateOvertimeEvidence } from './nflSimulationOvertime.ts';
 import { simulationLearningBaselines, simulationLearningFactors } from './nflSimulationLearning.ts';
+import { withTeamPositionEstimates } from './nflSimulationEstimates.ts';
 import type { NFLGameSimulation, SimulationBox, SimulationGame, SimulationPlayer, SimulationReference } from './nflSimulation.ts';
 
 const site = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
@@ -235,7 +236,7 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
   result.preparationIssues.push(...playerBatch.issues);
   const fetched = new Map([...teamBatch.boxes, ...playerBatch.boxes]);
   const refreshing = required.some(ref => !fetched.has(ref.id)) || active.some(player => !job.logs[player.id]?.done);
-  const observations = new Map(active.map(player => [player.id, simulationObservations(player, job.logs[player.id]?.refs ?? [], boxes, now, issue => {
+  const actuals = new Map(active.map(player => [player.id, simulationObservations(player, job.logs[player.id]?.refs ?? [], boxes, now, issue => {
     console.error('Simulation player observation excluded', issue);
     result.warnings.push(issue);
   })]));
@@ -243,6 +244,7 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     home: job.history.home.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
     away: job.history.away.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
   };
+  const observations = withTeamPositionEstimates(game, active, job.rosterPlayers, history, actuals);
   if (history.home.length < 8 || history.away.length < 8) return teamOnly(refreshing);
   result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs, undefined, overtime);
   if (quarterbacks && !result.scenarios.some(scenario => scenario.id === `${quarterbacks.home}:${quarterbacks.away}` && scenario.home && scenario.away)) {
@@ -268,6 +270,9 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
   result.evidenceMode = refreshing || result.history.home < 100 || result.history.away < 100
     || result.scenarios.some(scenario => [...scenario.home!.players, ...scenario.away!.players].some(player => player.limited)) ? 'limited' : 'full';
   result.forecastAt = new Date(now).toISOString();
+  if (result.scenarios.some(scenario => [...scenario.home!.players, ...scenario.away!.players].some(player => player.estimate))) {
+    result.warnings.push('Team-position estimates supplement markets with fewer than four personal NFL appearances. QB passing uses verified team passing production; other markets use per-participant averages among position-identified current-roster players in that team’s historical boxes. QB rushing can also use verified ten-attempt passers. NFL team/opponent volumes and existing allocation rules apply. These are uncalibrated role estimates, not personal game histories or confirmed starters.');
+  }
   result.stage = refreshing ? 'Refining player and team history' : 'Simulation complete';
   result.warnings.push(
     'Experimental joint empirical bootstrap; probabilities and 10th–90th percentile ranges are not calibrated or betting recommendations.',

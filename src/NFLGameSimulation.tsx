@@ -29,6 +29,7 @@ function TeamSimulation({ team, game, projectedScore }: { team: SimulationTeamRe
   return (
     <section className="nfl-simulation-team">
       <header className="nfl-simulation-team-title"><span>{team.abbr}</span><h3>{team.name}</h3><b>{box.score}</b></header>
+      {team.players.some(player => player.estimate) && <p className="nfl-simulation-caption">Team-position estimates are uncalibrated role estimates based on verified NFL team production, not personal game histories.</p>}
       {groups.map(group => {
         const players = team.players.filter(player => group.positions.includes(player.position));
         if (group.title === 'Receiving') players.sort((a, b) =>
@@ -44,7 +45,7 @@ function TeamSimulation({ team, game, projectedScore }: { team: SimulationTeamRe
               <th scope="row"><button type="button" className="nfl-simulation-player-link"
                 aria-label={`View ${player.name} game log`} aria-expanded={selectedPlayerId === player.id}
                 onClick={() => setSelectedPlayerId(current => current === player.id ? null : player.id)}>{player.name}</button>
-                <small>{player.position}{player.issue ? ' · Unavailable' : ''}</small></th>
+                <small>{player.position}{player.estimate ? ' · Team-position estimate' : ''}{player.issue ? ' · Unavailable' : ''}</small></th>
               {group.columns.map(key => <td key={key}>{box.players[player.id][key] !== undefined
                 ? <b>{box.players[player.id][key]}</b> : <span aria-label="No supported projection">—</span>}</td>)}
             </tr>)}</tbody>
@@ -85,6 +86,7 @@ function TeamEvidence({ team }: { team: SimulationTeamResult }) {
         <p>Whole-number lines allocate the receiving remainder across supported listed targets by projected share; the underlying expected values and ranges below are before that allocation. A projected 0 TD does not mean a zero chance of scoring. Dashes mean no supported projection, not zero production.</p>
         {team.players.map(player => <article key={player.id}>
           <h4>{player.name} · {player.position}</h4>
+          {player.estimate && <p>Team-position estimate · {player.estimate.games} verified team games · Uncalibrated. Estimated markets use team/position production, not this player’s actual game history.</p>}
           <p>{player.games} verified games{player.priorTeams.some(id => id !== team.id) ? ' · Includes prior teams' : ''}
             {player.headToHeadGames > 0 ? ` · ${player.headToHeadGames} against this opponent` : ''}</p>
           <p>{player.status} · {player.role}</p>

@@ -12,6 +12,7 @@ import { modelVersion } from '../supabase/functions/_shared/gamewaire.ts';
 import { archivePlayerForecast } from '../supabase/functions/_shared/gamewireForecasts.ts';
 import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
 import { advanceSimulation, prepareSimulation } from '../supabase/functions/_shared/nflSimulationSources.ts';
+import { withTeamPositionEstimates } from '../supabase/functions/_shared/nflSimulationEstimates.ts';
 import { loadNFLGameSimulation, loadNFLSimulationAccuracy, runNFLGameSimulation, savedNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
 import { buildSimulationAccuracy, compareSimulationAccuracy, readSimulationAccuracyScope, readSimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 import { loadSimulationLearning, simulationLearningBaselines } from '../supabase/functions/_shared/nflSimulationLearning.ts';
@@ -211,7 +212,7 @@ test('Overtime full-model scores retain exact regulation player accounting and a
   const scoreOnly = simulateNFLTeamScore(game, finals, 500, evidence);
   assert.equal(scoreOnly.overtime.attribution, 'score-only'); assert.equal(scoreOnly.home.totals, null);
 });
-test('SQL archives v5 overtime metadata and retains older v4 model rows without mutation', async () => {
+test('SQL archives current overtime metadata and retains older v4 model rows without mutation', async () => {
   const db = new PGlite();
   try {
     await db.exec('create role anon; create role authenticated; create role service_role;');
@@ -230,12 +231,12 @@ test('SQL archives v5 overtime metadata and retains older v4 model rows without 
     assert.equal(result.rows[0].payload.scenarios[0].overtime.method, 'empirical-possession-bootstrap-v1');
     const invalid = structuredClone(forecast); delete invalid.payload.scenarios[0].overtime;
     await assert.rejects(db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb)', [token, JSON.stringify(invalid)]), /Invalid verified/);
-    const legacy = structuredClone(forecast); legacy.model_version = previousNFLSimulationVersion; legacy.payload.version = previousNFLSimulationVersion;
+    const legacy = structuredClone(forecast); legacy.model_version = 'nfl-joint-bootstrap-v4'; legacy.payload.version = legacy.model_version;
     legacy.payload.scenarios.forEach(scenario => { delete scenario.overtime; delete scenario.projectedOvertime; });
     await db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb)', [token, JSON.stringify(legacy)]);
     const rows = await db.query('select model_version,payload from public.gamewire_game_forecasts order by model_version');
     assert.equal(rows.rows.length, 2);
-    assert.equal(rows.rows[0].model_version, previousNFLSimulationVersion);
+    assert.equal(rows.rows[0].model_version, 'nfl-joint-bootstrap-v4');
     assert.equal(rows.rows[0].payload.scenarios[0].overtime, undefined);
     readNFLGameSimulation(rows.rows[0].payload, game.id, kickoff, { home: '1', away: '2' });
   } finally { await db.close(); }
@@ -282,10 +283,10 @@ test('SQL freezes at the 30-minute threshold, preserves scores, upgrades confirm
     await db.query('select public.gamewire_claim_simulation($1,$2::uuid)', [game.id, token]);
     const scenarios = simulateNFLGame(game, f.history, f.players, f.observations, 500);
     let kickoff = new Date(Date.now() + 31 * 60000).toISOString();
-    const payload = simulationWithQBSelection(response(scenarios, { kickoff, version: previousNFLSimulationVersion }), scenarios[0].id);
+    const payload = simulationWithQBSelection(response(scenarios, { kickoff, version: 'nfl-joint-bootstrap-v4' }), scenarios[0].id);
     payload.qbMatchup.checkedAt = new Date().toISOString();
     payload.qbMatchup.lockedAt = new Date().toISOString(); payload.qbMatchup.revision = 4;
-    const forecast = { event_id: game.id, event_start: kickoff, season: 2026, season_type: 2, model_version: previousNFLSimulationVersion, payload };
+    const forecast = { event_id: game.id, event_start: kickoff, season: 2026, season_type: 2, model_version: payload.version, payload };
     const save = async proposed => (await db.query('select public.gamewire_save_game_simulation($1::uuid,$2::jsonb) as payload',
       [token, JSON.stringify(proposed)])).rows[0].payload;
     const freeze = async () => (await db.query('select public.gamewire_lock_due_simulations() as count')).rows[0].count;
@@ -672,6 +673,54 @@ test('Team-only draws use verified scoring and opponent allowances without inven
   }
   assert.throws(() => readNFLGameSimulation({ ...data, evidenceMode: 'limited' }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
 });
+test('Team-position estimates unlock rookie QB scenarios without fabricating personal appearances', () => {
+  const f = fixture();
+  f.observations.set('11', []);
+  const observations = withTeamPositionEstimates(game, f.players, f.players, f.history, f.observations);
+  assert.deepEqual(f.observations.get('11'), [], 'Actual game history stays untouched');
+  assert.ok(observations.get('11').every(row => row.basis === 'team-position-average-v1'));
+  const scenarios = simulateNFLGame(game, f.history, f.players, observations, 500);
+  const qb = scenarios[0].home.players.find(player => player.id === '11');
+  assert.equal(qb.games, 0); assert.equal(qb.headToHeadGames, 0); assert.deepEqual(qb.priorTeams, []);
+  assert.ok(qb.estimate.games >= 4); assert.equal(qb.limited, true); assert.ok(qb.stats.passingYards.mean > 0);
+  const payload = response(scenarios, { evidenceMode: 'limited' });
+  assert.equal(readNFLGameSimulation(payload, game.id, game.date, { home: '1', away: '2' }).evidenceMode, 'limited');
+  assert.throws(() => readNFLGameSimulation({ ...payload, evidenceMode: 'full' }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
+  const invalid = structuredClone(payload); invalid.scenarios[0].home.players.find(player => player.id === '11').estimate.games = 3;
+  assert.throws(() => readNFLGameSimulation(invalid, game.id, game.date, { home: '1', away: '2' }), /invalid/);
+  assert.deepEqual(simulationLearningBaselines(scenarios.filter(row => row.home?.players.some(player => player.estimate))), []);
+  const markup = simulationMarkup(payload, '', '', false, game.home.id);
+  assert.match(markup, /Team-position estimate/);
+});
+test('Position priors retain supported markets, reject sparse evidence and never borrow another position or opponent', () => {
+  const f = fixture(), player = f.players.find(player => player.id === '13');
+  f.history.home = f.history.home.map(box => simulationBox(rawBox(box), box.id, now));
+  for (const box of f.history.home) Object.assign(box.teams[0].players['13'], { receptions: 3, receivingYards: 24, receivingTouchdowns: 1 });
+  const supported = f.observations.get(player.id).map(row => {
+    const copy = structuredClone(row);
+    delete copy.player.receptions; delete copy.player.receivingYards; delete copy.player.receivingTouchdowns;
+    return copy;
+  });
+  const actuals = new Map(f.observations); actuals.set(player.id, supported);
+  const estimates = withTeamPositionEstimates(game, f.players, f.players, f.history, actuals);
+  const prior = estimates.get(player.id).filter(row => row.basis);
+  assert.ok(prior.length >= 4);
+  assert.ok(prior.every(row => row.player.rushingYards === undefined), 'A supported personal rushing market is not overwritten');
+  for (const row of prior) {
+    const group = Object.entries(row.team.players).filter(([id]) => f.players.some(p => p.id === id && p.position === 'RB'));
+    assert.equal(row.player.receivingYards, group.reduce((sum, [, line]) => sum + line.receivingYards, 0) / group.length);
+  }
+  const sparse = { home: f.history.home.slice(0, 3), away: f.history.away.slice(0, 3) };
+  assert.equal(withTeamPositionEstimates(game, f.players, f.players, sparse, actuals).get(player.id), supported);
+  const unknownPositions = withTeamPositionEstimates(game, f.players, [], f.history, actuals);
+  assert.equal(unknownPositions.get(player.id), supported, 'Unidentified historical receivers are not assumed to be RBs');
+  const excluded = [{ ...player, excluded: true }];
+  assert.equal(withTeamPositionEstimates(game, excluded, f.players, f.history, actuals).get(player.id), supported);
+  const qbActuals = new Map(f.observations); qbActuals.set('11', f.observations.get('11').slice(0, 3));
+  const combined = withTeamPositionEstimates(game, f.players, f.players, f.history, qbActuals).get('11');
+  const passing = combined.filter(row => row.player.passingAttempts !== undefined);
+  assert.equal(new Set(passing.map(row => row.eventId)).size, passing.length, 'A personal passing appearance is not counted again as a team estimate');
+});
 test('Unavailable possession feeds do not fabricate overtime for a score-only forecast', async () => {
   const f = fixture(), cache = simulationCache();
   const get = async url => {
@@ -1035,12 +1084,13 @@ test('Backfill is bounded, persistent and resumeable; failed boxes cannot masque
     calls++; return rawBox(boxes.get(id));
   };
   const first = await advanceSimulation(game, job, cache, get, now);
-  assert.equal(first.status, 'ready'); assert.equal(first.evidenceMode, 'team-only'); assert.equal(first.refreshing, true);
+  assert.equal(first.status, 'ready'); assert.equal(first.evidenceMode, 'limited'); assert.equal(first.refreshing, true);
+  assert.ok(first.scenarios[0].home.players.some(player => player.estimate));
   assert.equal(calls, 36); assert.equal(first.history.home + first.history.away, 36);
   const second = await advanceSimulation(game, job, cache, get, now);
   assert.equal(calls, 72); assert.equal(second.progress.completed, 72);
   const failing = await advanceSimulation(game, job, cache, async () => { throw new Error('Feed issue'); }, now);
-  assert.equal(failing.status, 'ready'); assert.equal(failing.evidenceMode, 'team-only'); assert.equal(failing.progress.completed, 72); assert.equal(failing.scenarios.length, 1);
+  assert.equal(failing.status, 'ready'); assert.equal(failing.evidenceMode, 'limited'); assert.equal(failing.progress.completed, 72); assert.ok(failing.scenarios.length > 0);
   assert.ok(failing.warnings.some(warning => warning.includes('Feed issue')));
   assert.equal(saved.size, 72);
 });
@@ -1549,6 +1599,13 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
     .every(row => row.y >= 1918), 'Footer separates text into readable lines');
   assert.equal(JSON.stringify(scenario), before);
   assert.equal(simulationGraphicTeam({ ...scenario.away, players: [], totals: null }).quarterback, undefined);
+  for (const format of ['landscape', 'instagram']) {
+    const copy = structuredClone(scenario), qb = simulationGraphicTeam(copy.away).quarterback;
+    qb.estimate = { method: 'team-position-average-v1', games: 8 };
+    drawn.length = 0;
+    await renderSimulationGraphic(copy, game.date, {}, format);
+    assert.ok(drawn.includes(`${qb.name} [team avg]`), 'Exported estimates retain their provenance');
+  }
   for (const format of ['landscape', 'instagram']) {
     const copy = structuredClone(scenario);
     copy.away.players = [];

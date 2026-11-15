@@ -31,6 +31,7 @@ export default function NFLSimulationPlayerLog({ player, game, onClose }: {
   }, [player.id, game.eventId, game.date, game.seasonYear, retry]);
   return <section className="nfl-simulation-player-log" aria-label={`${player.name} past game stats`}>
     <header><h4>{player.name} · Game log</h4><button type="button" onClick={onClose}>Close game log</button></header>
+    {player.estimate && <p>The simulation includes a team-position estimate. The log below shows only this player’s actual NFL games, not the team games used for that estimate.</p>}
     <p>Actual regular-season stats before this matchup, newest first. Full-game totals include overtime; these are not simulations. Missing stats are shown as —.</p>
     <p className="nfl-simulation-log-scroll-hint">Swipe the table sideways for more stats.</p>
     {loading && <p role="status">Loading past games…</p>}

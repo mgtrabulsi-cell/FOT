@@ -12,7 +12,8 @@ export function neutralSimulationLearning(cutoff: number): SimulationLearning['a
 }
 
 export function simulationLearningBaselines(scenarios: SimulationScenario[]): SimulationLearning['baselines'] {
-  return scenarios.filter(scenario => scenario.home && scenario.away).map(scenario => ({
+  return scenarios.filter(scenario => scenario.home && scenario.away
+    && ![...scenario.home.players, ...scenario.away.players].some(player => player.estimate)).map(scenario => ({
     scenarioId: scenario.id, teams: [scenario.home!, scenario.away!].map(team => ({
       id: team.id, score: team.score.mean, passingYards: team.totals?.passingYards.mean ?? null,
       rushingYards: team.totals?.rushingYards.mean ?? null,
@@ -37,6 +38,7 @@ export async function loadSimulationLearning(admin: SupabaseClient, cutoff: numb
       const realized = array(actuals.realized).map(object);
       const scenario = array(payload.scenarios).map(object).find(scenario => realized.some(result => result.scenarioId === scenario.id));
       if (!scenario) continue;
+      if ([scenario.home, scenario.away].some(side => array(object(side).players).some(player => object(player).estimate))) continue;
       if (object(scenario.home).totals === null || object(scenario.away).totals === null) continue;
       const learning = object(payload.learning);
       const baseline = ['simulation-walk-forward-v1', 'simulation-walk-forward-v2'].includes(String(learning.version))

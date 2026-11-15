@@ -267,7 +267,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
     const card = (y: number, label: string, player: typeof model.quarterback, keys: Array<[keyof SimulationStat, string]>) => {
       if (!player) return;
       heading(y, label, portrait ? 390 : 166);
-      text(player.name, x + 28, y + (portrait ? 115 : 82), portrait ? 44 : 34, 674);
+      text(player.name + (player.estimate ? ' [team avg]' : ''), x + 28, y + (portrait ? 115 : 82), portrait ? 44 : 34, 674);
       metrics(y + (portrait ? 235 : 112), player, keys);
     };
     card(portrait ? 370 : 348, 'QUARTERBACK', model.quarterback, [['completions', 'CMP'], ['passingAttempts', 'ATT'],
@@ -276,7 +276,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       `TOP ${model.runningBacks.length} RUNNING BACK${model.runningBacks.length === 1 ? '' : 'S'}`, portrait ? 390 : 173);
     model.runningBacks.forEach((player, i) => {
       const y = portrait ? 895 + i * 150 : 609 + i * 70;
-      text(player.name, x + 28, y, portrait ? 32 : 28, portrait ? 674 : 310);
+      text(player.name + (player.estimate ? ' [team avg]' : ''), x + 28, y, portrait ? 32 : 28, portrait ? 674 : 310);
       const keys: Array<[keyof SimulationStat, string]> = [['rushingAttempts', 'ATT'], ['rushingYards', 'RUSH YDS'], ['rushingTouchdowns', 'TD']];
       keys.forEach(([key, label], column) => {
         const left = portrait ? x + 28 + column * 225 : x + 365 + column * 118;
@@ -289,7 +289,7 @@ export async function renderSimulationGraphic(scenario: SimulationScenario, kick
       `TOP ${model.receivers.length} RECEIVER${model.receivers.length === 1 ? '' : 'S'}`, portrait ? 550 : 173);
     model.receivers.forEach((player, i) => {
       const y = portrait ? 1350 + i * 240 : 797 + i * 70;
-      text(player.name, x + 28, y, portrait ? 42 : 28, portrait ? 674 : 310);
+      text(player.name + (player.estimate ? ' [team avg]' : ''), x + 28, y, portrait ? 42 : 28, portrait ? 674 : 310);
       const keys: Array<[keyof SimulationStat, string]> = [['receptions', 'REC'], ['receivingYards', 'REC YDS'], ['receivingTouchdowns', 'REC TD']];
       keys.forEach(([key, label], column) => {
         const left = portrait ? x + 28 + column * 225 : x + 365 + column * 118;
