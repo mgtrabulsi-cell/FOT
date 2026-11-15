@@ -1010,7 +1010,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
         </div>}
         {pregameView === 'simulation' && Object.values(simulationErrors).some(issue => !/sign in/i.test(issue)) && <p className="nfl-simulation-caption" role="status">Some simulation updates could not connect. Saved scores remain visible; automatic retries continue.</p>}
         {pregameView === 'simulation' && Object.values(boardSimulations).some(result => result.warnings?.some(warning => warning.startsWith('Device storage could not save'))) && <p className="nfl-simulation-caption" role="alert">Some simulations could not be saved on this device. Check available storage and keep the app open while it retries.</p>}
-        <div className="wire-board" ref={boardRef}>
+        <div className="wire-board nfl-wire-board" ref={boardRef}>
           <header className="wire-board-header">
             <span className="eyebrow">NFL GAMES · THIS WEEK</span>
             {nflGames.length > 0 && (
@@ -1070,7 +1070,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   }
 
   return (
-    <div className="the-wire-container" ref={detailRef}>
+    <div className="the-wire-container nfl-wire-detail" ref={detailRef}>
       {pregameToggle}
       <button type="button" className="wire-back-button" onClick={closeGame}>
         <ChevronLeft size={16} aria-hidden="true" /> {backLabel}
@@ -1487,7 +1487,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
             </div>
           ) : (
             /* Player Box Score View */
-            <div className="wire-player-boxscore-view" style={{ '--wire-stat-count': boxStatCount } as React.CSSProperties}>
+            <div className={`wire-player-boxscore-view${!isUpcoming ? ' wire-game-boxscore' : ''}`} style={{ '--wire-stat-count': boxStatCount } as React.CSSProperties}>
+              {!isUpcoming && alignedCategories.length > 0 && <p className="wire-boxscore-hint">Swipe or scroll for more stats. Player names stay visible.</p>}
               {isUpcoming && currentPlayerAverages && currentPlayerAverages.failedPlayers > 0 && (
                 <div className="wire-comparison-error" role="alert">
                   <p>Season statistics could not be loaded for {currentPlayerAverages.failedPlayers} players. The remaining player statistics are shown below.</p>
@@ -1503,7 +1504,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 </div>
               ) : alignedCategories.length > 0 ? (
                 alignedCategories.map((category) => (
-                  <section className="wire-category-card" key={category.name}>
+                  <section className="wire-category-card" key={category.name}
+                    style={!isUpcoming ? { '--wire-game-stat-count': category.labels.filter(Boolean).length } as React.CSSProperties : undefined}>
                     <header className="wire-category-header">
                       <div className="wire-category-title-wrap">
                         <h3>{category.title}</h3>
@@ -1514,7 +1516,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                       </span>
                     </header>
 
-                    <div className="wire-table-scroll-container">
+                    <div className="wire-table-scroll-container" role="region" aria-label={`${category.title} statistics, scroll for more columns`} tabIndex={0}>
                       <table className={`wire-stat-table${isUpcoming ? ' wire-season-table' : ''}`} role="table" aria-label={`${activeGameTeam?.name ?? 'Team'} ${category.title}${isUpcoming ? playerStatMode === 'total' ? ' season totals' : ' season per-game averages' : ''}`}>
                         {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{Array.from({ length: boxStatCount }, (_, index) => <col key={index} />)}</colgroup>}
                         <thead role="rowgroup">

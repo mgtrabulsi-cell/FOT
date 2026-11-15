@@ -243,6 +243,33 @@ test('Mobile box-score identities use full-width rows without an unused score co
   assert.match(css, /\.wire-team-bar \{ grid-template-columns: minmax\(0, 1fr\); gap: 6px/);
   assert.match(css, /\.wire-team-half-name \{ font-size: 14px; overflow-wrap: normal; word-break: normal/);
 });
+test('Flat NFL game rows and readable box scores are strictly mobile-only, leaving desktop and NBA styling intact', () => {
+  const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
+  const marker = css.indexOf('/* Flat mobile NFL rows');
+  const start = css.lastIndexOf('@media (max-width: 760px) {', marker);
+  assert.ok(start >= 0);
+  let depth = 1, end = css.indexOf('{', start) + 1;
+  for (; end < css.length && depth; end++) {
+    if (css[end] === '{') depth++;
+    else if (css[end] === '}') depth--;
+  }
+  const mobile = css.slice(start, end);
+  for (const selector of ['.nfl-wire-board', '.nfl-wire-detail', '.wire-game-boxscore']) {
+    for (const match of css.matchAll(new RegExp(selector.replaceAll('.', '\\.'), 'g')))
+      assert.ok(match.index >= start && match.index < end, `${selector} must not change desktop`);
+  }
+  assert.match(mobile, /grid-template-areas: "teams status" "footer footer"/);
+  assert.match(mobile, /\.wire-board-team-name b \{ font-size: 16px/);
+  assert.match(mobile, /td\.wire-col-data \{ font: 400 16px/);
+  assert.match(mobile, /\.wire-empty-stat \{ display: none/);
+  assert.match(mobile, /background: #10151c; box-shadow: none/);
+  assert.doesNotMatch(mobile, /\.nba-/);
+  assert.match(css.slice(0, start), /\.wire-boxscore-hint \{ display: none/);
+  const source = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
+  assert.match(source, /!isUpcoming \? ' wire-game-boxscore' : ''/);
+  assert.match(source, /--wire-game-stat-count': category\.labels\.filter\(Boolean\)\.length/);
+  assert.match(source, /role="region" aria-label=\{`\$\{category\.title\} statistics, scroll for more columns`\} tabIndex=\{0\}/);
+});
 test('Simulation toggle remains red in both states and mobile cards reserve readable team-name space', () => {
   const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
   assert.match(css, /\.wire-pregame-mode \.wire-simulation-toggle \{[^}]*min-height: 44px;[^}]*background: #a51c28;[^}]*color: #fff/);

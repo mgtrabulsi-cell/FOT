@@ -1,5 +1,7 @@
 # GameWire
 
+On mobile screens up to 760px, The Wire's NFL game list uses flat two-team rows with larger names/scores and a separate status column. Live/final player box scores use matte, high-contrast tables, 15-16px player names and 16px stats, pinned player identities and keyboard-focusable horizontal scrolling. Empty alignment columns are hidden on mobile; favorites and all reported statistics remain available. Desktop layouts, NBA tables and pregame season-stat tables retain their existing styling.
+
 Mobile Angle posts use tighter spacing and 20px headlines while retaining 13px body text and unchanged button targets. Notification settings retain the confirmed choice when checks fail; stale checks cannot overwrite preference writes. Device permissions and expired subscriptions still require device-level attention.
 
 Owner/admin **Download sim recap** controls appear for each finished NFL game in Simulation Results and the game's simulation results view. The 1080px-wide portrait export follows the NFL SIM RECAP reference: original blue stadium backdrop, final-score card, cyan-framed breakdown, green checks/red Xs, and a factual GameWire Analysis panel. Longer pick lists expand vertically instead of hiding picks or shrinking them unreadably.

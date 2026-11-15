@@ -335,6 +335,84 @@
   .sports-theme .nba-wheel-selection { padding-top: 4px; font-size: 11px; }
   .sports-theme .nba-matchup.matchup-scoreboard { margin-top: 6px; }
 }
+.wire-boxscore-hint { display: none; }
+@media (max-width: 760px) {
+/* Flat mobile NFL rows keep the numbers, not surface effects, prominent. */
+.sports-theme .nfl-wire-board .wire-board-list { gap: 0; }
+.sports-theme .nfl-wire-board .notification-game-card > .wire-board-card {
+  grid-template-columns: minmax(0, 1fr) 92px;
+  grid-template-areas: "teams status" "footer footer";
+  grid-template-rows: auto auto;
+  gap: 14px 12px;
+  min-height: 136px;
+  padding: 18px 12px;
+  border: 0;
+  border-bottom: 1px solid #303842;
+  border-radius: 0;
+  background: #10151c;
+  box-shadow: none;
+  transform: none;
+}
+.sports-theme .nfl-wire-board .wire-board-card:hover { background: #18212b; }
+.sports-theme .nfl-wire-board .wire-board-teams { gap: 10px; }
+.sports-theme .nfl-wire-board .wire-board-team { grid-template-columns: 30px minmax(0, 1fr) 32px; gap: 10px; min-height: 34px; }
+.sports-theme .nfl-wire-board .wire-board-mark { width: 30px; height: 30px; border-radius: 5px; background: color-mix(in srgb, var(--team-color) 45%, #10151c); box-shadow: none; }
+.sports-theme .nfl-wire-board .wire-board-team-name b { font: 500 18px/1.35 'DM Sans', 'Segoe UI', sans-serif; white-space: normal; overflow-wrap: normal; flex-wrap: wrap; }
+.sports-theme .nfl-wire-board .wire-board-team-label { flex-basis: auto; white-space: normal; }
+.sports-theme .nfl-wire-board .wire-board-team-name small { font-size: 11px; }
+.sports-theme .nfl-wire-board .wire-board-score { font: 600 22px/1.3 'DM Sans', 'Segoe UI', sans-serif; text-align: right; }
+.sports-theme .nfl-wire-board .wire-board-status { padding: 0; align-items: flex-end; justify-content: center; flex-direction: column; gap: 6px; text-align: right; font: 500 14px/1.4 'DM Sans', 'Segoe UI', sans-serif; }
+.sports-theme .nfl-wire-board .wire-board-status small { font: 400 13px/1.4 'DM Sans', 'Segoe UI', sans-serif; }
+.sports-theme .nfl-wire-board .wire-board-footer { min-height: 32px; padding: 0 48px 0 0; border: 0; gap: 10px; }
+.sports-theme .nfl-wire-board .wire-board-meta { font-size: 12px; }
+.sports-theme .nfl-wire-board .wire-board-open { font-size: 12px; }
+.sports-theme .nfl-wire-board .notification-game-card > .notification-bell-control { top: auto; bottom: 12px; left: auto; right: 8px; }
+.sports-theme .nfl-wire-board .notification-game-card .notification-bell { background: #18222e; border: 1px solid #465362; border-radius: 50%; }
+.sports-theme .nfl-wire-board .notification-game-card .notification-bell-message { top: auto; bottom: 48px; left: auto; right: 0; }
+.sports-theme .nfl-wire-board .wire-game-pick { margin: 0; border-radius: 0; background: #141d28; box-shadow: none; }
+.sports-theme .nfl-wire-detail .wire-team-half,
+.sports-theme .nfl-wire-detail .wire-subtabs button,
+.sports-theme .nfl-wire-detail .wire-category-filters button { background: #17212c; border-color: #465362; border-radius: 8px; box-shadow: none; }
+.sports-theme .nfl-wire-detail .wire-team-half.active,
+.sports-theme .nfl-wire-detail .wire-subtabs button.active,
+.sports-theme .nfl-wire-detail .wire-category-filters button.active { background: #173c59; border-color: #73cfff; box-shadow: none; }
+.sports-theme .wire-game-boxscore { gap: 22px; --wire-player-width: 180px; }
+.sports-theme .wire-game-boxscore .wire-category-card { border: 0; border-radius: 0; background: #10151c; box-shadow: none; }
+.sports-theme .wire-game-boxscore .wire-category-header { padding: 14px 12px; border-bottom: 1px solid #37414c; background: #10151c; box-shadow: none; }
+.sports-theme .wire-game-boxscore .wire-category-title-wrap h3 { font: 600 21px/1.3 'DM Sans', 'Segoe UI', sans-serif; text-transform: none; letter-spacing: 0; }
+.sports-theme .wire-game-boxscore .wire-team-tag { background: #222d39; color: #dce6f2; }
+.sports-theme .wire-game-boxscore .wire-category-count { color: #bbc7d9; font-size: 12px; }
+.sports-theme .wire-game-boxscore .wire-stat-table { width: max(100%, calc(var(--wire-player-width) + var(--wire-game-stat-count, 6) * 56px)); border-collapse: separate; border-spacing: 0; font-family: 'DM Sans', 'Segoe UI', sans-serif; }
+.sports-theme .wire-game-boxscore .wire-stat-table :is(th, td) { padding: 12px 6px; border: 0; border-bottom: 1px solid #28323d; background: #10151c; text-shadow: none; }
+.sports-theme .wire-game-boxscore .wire-stat-table th { font: 600 13px/1.4 'DM Sans', 'Segoe UI', sans-serif; color: #e8edf4; }
+.sports-theme .wire-game-boxscore .wire-stat-table :is(th, td).wire-col-data { width: calc((100% - var(--wire-player-width)) / var(--wire-game-stat-count, 6)); min-width: 56px; padding: 12px 6px; }
+.sports-theme .wire-game-boxscore .wire-stat-table .wire-empty-stat { display: none; }
+.sports-theme .wire-game-boxscore .wire-stat-table td.wire-col-data { font: 400 16px/1.4 'DM Sans', 'Segoe UI', sans-serif; color: #fff; }
+.sports-theme .wire-game-boxscore .wire-stat-table :is(th, td).wire-col-athlete { width: var(--wire-player-width); min-width: var(--wire-player-width); max-width: var(--wire-player-width); padding: 10px 12px; background: #10151c; box-shadow: 1px 0 #37414c; }
+.sports-theme .wire-game-boxscore .wire-stat-table tbody tr:nth-child(even) td { background: #151d26; }
+.sports-theme .wire-game-boxscore .wire-stat-table tbody tr:hover td { background: #1d2b39; }
+.sports-theme .wire-game-boxscore .wire-athlete-cell { position: relative; display: block; width: 100%; min-height: 44px; }
+.sports-theme .wire-game-boxscore .wire-athlete-name { font: 500 16px/1.4 'DM Sans', 'Segoe UI', sans-serif; color: #fff; white-space: normal; overflow-wrap: break-word; }
+.sports-theme .wire-game-boxscore .wire-athlete-sub { display: block; min-height: 24px; padding-right: 36px; margin: 0; font: 400 12px/1.5 'DM Sans', 'Segoe UI', sans-serif; color: #bbc7d9; }
+.sports-theme .wire-game-boxscore .wire-star { position: absolute; right: -4px; bottom: -6px; width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
+.sports-theme .wire-game-boxscore .wire-table-scroll-container { scrollbar-width: thin; scrollbar-color: #8193a6 #18222e; }
+.sports-theme .wire-game-boxscore .wire-table-scroll-container::-webkit-scrollbar { display: block; height: 6px; }
+.sports-theme .wire-game-boxscore .wire-table-scroll-container::-webkit-scrollbar-thumb { background: #8193a6; border-radius: 4px; }
+.sports-theme .wire-game-boxscore .wire-table-scroll-container:focus-visible { outline: 2px solid #73cfff; outline-offset: -2px; }
+.sports-theme .wire-boxscore-hint { display: block; margin: 0; color: #c5d0dc; font-size: 12px; line-height: 1.5; }
+@media (max-width: 480px) {
+  .sports-theme .nfl-wire-board .notification-game-card > .wire-board-card { grid-template-columns: minmax(0, 1fr) 78px; gap: 12px 8px; padding: 16px 8px; }
+  .sports-theme .nfl-wire-board .wire-board-team { grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 7px; }
+  .sports-theme .nfl-wire-board .wire-board-team-name b { font-size: 16px; }
+  .sports-theme .nfl-wire-board .wire-board-mark { width: 28px; height: 28px; }
+  .sports-theme .nfl-wire-board .wire-board-score { font-size: 21px; }
+  .sports-theme .wire-game-boxscore { --wire-player-width: 148px; }
+  .sports-theme .wire-game-boxscore .wire-athlete-name { font-size: 15px; }
+  .sports-theme .wire-game-boxscore .wire-stat-table { width: max(100%, calc(var(--wire-player-width) + var(--wire-game-stat-count, 6) * 48px)); }
+  .sports-theme .wire-game-boxscore .wire-stat-table :is(th, td).wire-col-data { min-width: 48px; padding: 12px 4px; }
+}
+}
+
 .nfl-simulation {
   padding: clamp(12px, 2vw, 24px);
   border: 1px solid rgba(100, 145, 198, .35);
