@@ -50,30 +50,16 @@ begin
 end
 $$;
 
-select cron.unschedule(jobid) from cron.job where jobname = 'gamewire-poll-live-games';
-select cron.schedule(
-  'gamewire-poll-live-games',
-  '* * * * *',
-  $job$
-    select net.http_post(
-      url := (select decrypted_secret from vault.decrypted_secrets where name = 'gamewire-poll-url'),
-      headers := jsonb_build_object(
-        'Content-Type', 'application/json',
-        'x-gamewire-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'gamewire-poll-secret')
-      ),
-      body := '{}'::jsonb
-    );
-  $job$
-);
+${readFileSync(new URL('../supabase/notifications-cron.sql', import.meta.url), 'utf8')}
 `;
 
 const temporarySql = '.env.push-vault.sql';
 writeFileSync(temporarySql, sql, 'utf8');
 try {
-  execFileSync('cmd.exe', ['/d', '/s', '/c', 'npx.cmd --yes supabase db query --linked --file .env.push-vault.sql --output json'], {
+  execFileSync('cmd.exe', ['/d', '/s', '/c', 'npx.cmd --yes supabase db query --remote --file .env.push-vault.sql --yes --output json'], {
     stdio: 'inherit',
   });
-  console.log('Vault secrets and the one-minute poll schedule are configured.');
+  console.log('Vault secrets, poll leases and the 15-second poll schedule are configured.');
 } finally {
   unlinkSync(temporarySql);
 }

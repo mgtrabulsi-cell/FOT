@@ -3,6 +3,7 @@ import { createWebPushServer, isExpiredPushSubscription, sendWebPush } from '../
 import { buildPlayAlerts, summaryPlayIds, type PlayFavorite } from '../_shared/plays.ts';
 import { pushGamesFromFeed } from '../_shared/apiSportsFeed.ts';
 import { nflTeamMap } from '../_shared/nflTeamMap.ts';
+import { withinTouchdownWait, withPushPollLease } from '../_shared/pushPolling.ts';
 
 type TeamScore = { id: string; abbreviation: string; score: number };
 type GameState = {
@@ -125,10 +126,21 @@ const espnHeaders = {
 
 const pushTeamByName = new Map(nflTeamMap.map((team) => [team.name, { espnId: team.espnId, espnAbbr: team.espnAbbr }]));
 
-// API-Sports (via the live feed tables) is the primary scoreboard for score and
-// final notifications; the ESPN scoreboard remains the automatic fallback. Play
-// alerts and PAT detection still use ESPN summaries, which API-Sports lacks.
+// Push detection reads the direct scoreboard instead of waiting for the separate
+// paid-feed cache refresh. The app's primary display feed is unchanged.
 async function loadPushGames(admin: SupabaseClient) {
+  try {
+    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {
+      headers: espnHeaders, cache: 'no-store', signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) throw new Error(`NFL scoreboard returned HTTP ${response.status}`);
+    const scoreboard = asRecord(await response.json());
+    if (!Array.isArray(scoreboard.events)) throw new Error('NFL scoreboard is missing events.');
+    return scoreboard.events.map(parseEvent)
+      .filter((game): game is NonNullable<ReturnType<typeof parseEvent>> => game !== null && Boolean(game.id));
+  } catch (cause) {
+    console.error('Direct notification scoreboard unavailable; using the saved live feed', cause);
+  }
   try {
     const rows = await admin.from('live_feed_games')
       .select('status,away_name,home_name,away_score,home_score,period,clock,espn_event_id,fetched_at')
@@ -137,16 +149,10 @@ async function loadPushGames(admin: SupabaseClient) {
     const games = pushGamesFromFeed(rows.data ?? [], (name) => pushTeamByName.get(name) ?? null, new Date());
     if (games) return games;
   } catch (cause) {
-    console.error('Live feed scoreboard unavailable; using the data feed', cause);
+    console.error('Saved live feed notification scoreboard unavailable', cause);
+    throw cause;
   }
-  const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {
-    headers: espnHeaders,
-    cache: 'no-store',
-  });
-  if (!response.ok) throw new Error(`NFL scoreboard returned HTTP ${response.status}`);
-  const scoreboard = asRecord(await response.json());
-  return asArray(scoreboard.events).map(parseEvent)
-    .filter((game): game is NonNullable<ReturnType<typeof parseEvent>> => game !== null && Boolean(game.id));
+  throw new Error('Neither notification scoreboard source has a usable current slate.');
 }
 
 async function sendPlayAlerts(admin: SupabaseClient, liveGames: Array<{ id: string; away: TeamScore; home: TeamScore }>) {
@@ -165,22 +171,31 @@ async function sendPlayAlerts(admin: SupabaseClient, liveGames: Array<{ id: stri
   const pushServer = await createWebPushServer();
   const summaries = new Map<string, unknown>();
   let sent = 0;
+  for (let start = 0; start < liveGames.length; start += 3) {
+    await Promise.all(liveGames.slice(start, start + 3).map(async game => {
+      try {
+        const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(game.id)}`, {
+          headers: espnHeaders, cache: 'no-store', signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) throw new Error(`NFL play summary returned HTTP ${response.status}`);
+        summaries.set(game.id, await response.json());
+      } catch (cause) {
+        console.error('NFL notification play summary unavailable', game.id, cause);
+      }
+    }));
+  }
   for (const game of liveGames) {
-    const summaryResponse = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${encodeURIComponent(game.id)}`, {
-      headers: espnHeaders,
-      cache: 'no-store',
-    });
-    if (!summaryResponse.ok) continue;
-    const summary = await summaryResponse.json();
-    summaries.set(game.id, summary);
+    const summary = summaries.get(game.id);
+    if (!summary) continue;
     const allPlayIds = summaryPlayIds(summary);
     const previouslySeen = seenByEvent.get(`plays:${game.id}`);
     const newPlayIds = new Set(previouslySeen ? allPlayIds.filter((id) => !previouslySeen.has(id)) : []);
-    await admin.from('push_game_states').upsert({
+    const saved = await admin.from('push_game_states').upsert({
       event_id: `plays:${game.id}`,
       state: { seen: allPlayIds },
       updated_at: new Date().toISOString(),
     }, { onConflict: 'event_id' });
+    if (saved.error) throw saved.error;
     if (newPlayIds.size === 0) continue;
 
     for (const row of favoriteRows ?? []) {
@@ -204,6 +219,7 @@ async function sendPlayAlerts(admin: SupabaseClient, liveGames: Array<{ id: stri
             });
             sent += 1;
           } catch (error) {
+            console.error('NFL play push delivery failed', game.id, alert.playId, error);
             if (isExpiredPushSubscription(error)) {
               await admin.from('user_push_subscriptions').delete().eq('user_id', target.user_id).eq('endpoint', target.endpoint);
             }
@@ -227,7 +243,9 @@ Deno.serve(async (request) => {
   if (!supabaseUrl || !serviceRoleKey) return new Response('Supabase service configuration is missing.', { status: 503 });
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  let liveGamesForPlays: Array<{ id: string; away: TeamScore; home: TeamScore }> = [];
   try {
+    const scores = await withPushPollLease(admin, 'NFL', async () => {
     const games = await loadPushGames(admin);
     if (games.length === 0) return Response.json({ checked: 0, sent: 0 });
 
@@ -237,10 +255,7 @@ Deno.serve(async (request) => {
     if (stateError) throw stateError;
     const priorById = new Map((priorStates ?? []).map((row) => [row.event_id, asRecord(row.state) as unknown as GameState]));
 
-    const liveGames = games.filter((game) => game.state === 'in');
-    const { sent: playSent, summaries } = liveGames.length
-      ? await sendPlayAlerts(admin, liveGames)
-      : { sent: 0, summaries: new Map<string, unknown>() };
+    liveGamesForPlays = games.filter((game) => game.state === 'in');
 
     const changedGames: typeof games = [];
     const nextStates: Array<{ event_id: string; state: Record<string, unknown>; updated_at: string }> = [];
@@ -279,19 +294,11 @@ Deno.serve(async (request) => {
       const becameFinal = game.state === 'post' && previous.status !== 'post';
 
       let isPATPending = false;
-      const hadPendingPAT = Boolean(previous.pendingPAT);
       const isSixPointDiff = awayDiff === 6 || homeDiff === 6;
 
-      if (game.state === 'in' && (isSixPointDiff || hadPendingPAT)) {
-        const summary = summaries.get(game.id);
-        isPATPending = isTouchdownPATPending(summary, game.lastPlayText, isSixPointDiff ? 6 : 0);
-
-        if (isPATPending && hadPendingPAT && previous.pendingPAT?.pendingSince) {
-          const pendingSince = Date.parse(previous.pendingPAT.pendingSince);
-          if (Number.isFinite(pendingSince) && Date.now() - pendingSince > 180_000) {
-            isPATPending = false;
-          }
-        }
+      if (game.state === 'in' && isSixPointDiff) {
+        isPATPending = isTouchdownPATPending(undefined, game.lastPlayText, 6)
+          && withinTouchdownWait(previous.pendingPAT?.pendingSince);
       }
 
       if (isPATPending) {
@@ -350,7 +357,7 @@ Deno.serve(async (request) => {
     const { error: upsertError } = await admin.from('push_game_states').upsert(nextStates, { onConflict: 'event_id' });
     if (upsertError) throw upsertError;
 
-    if (changedGames.length === 0) return Response.json({ checked: games.length, sent: 0, playSent });
+    if (changedGames.length === 0) return Response.json({ checked: games.length, sent: 0 });
 
     const [{ data: favoriteRows, error: favoritesError }, { data: subscriptions, error: subscriptionsError }] = await Promise.all([
       admin.from('user_favorites').select('user_id,favorites'),
@@ -383,13 +390,20 @@ Deno.serve(async (request) => {
           });
           sent += 1;
         } catch (error) {
+          console.error('NFL score push delivery failed', game.id, error);
           if (isExpiredPushSubscription(error)) {
             await admin.from('user_push_subscriptions').delete().eq('user_id', target.user_id).eq('endpoint', target.endpoint);
           }
         }
       }
     }
-    return Response.json({ checked: games.length, changed: changedGames.length, sent, playSent });
+    return Response.json({ checked: games.length, changed: changedGames.length, sent });
+    });
+    if (!liveGamesForPlays.length) return scores;
+    const plays = await withPushPollLease(admin, 'NFL_PLAYS', async () =>
+      Response.json({ playSent: (await sendPlayAlerts(admin, liveGamesForPlays)).sent }));
+    const playResult = await plays.json();
+    return Response.json({ ...await scores.json(), ...(playResult.skipped ? { playSent: 0, playSkipped: true } : playResult) });
   } catch (error) {
     console.error('Live game notification poll failed.', error);
     const details = error instanceof Error ? `${error.name}: ${error.message}` : String(error);

@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+import { PGlite } from '@electric-sql/pglite';
+import { withinTouchdownWait, withPushPollLease } from '../supabase/functions/_shared/pushPolling.ts';
 import { buildNBAAlerts, nbaDate, nbaNotificationHash, parseNBAPushGame } from '../supabase/functions/_shared/nbaAlerts.ts';
 import { nbaNotificationFromHash, viewFromHash, hashForView } from '../src/services/medianNavigation.ts';
 
@@ -17,6 +22,123 @@ function fixture({ points = 34, rebounds = '8', assists = '7', status = 'in', pe
 const shot = (changes = {}) => ({ id: 'shot', sequenceNumber: '200', scoringPlay: true, shootingPlay: true, scoreValue: 3,
   team: { id: '1' }, participants: [{ athlete: { id: 'p1' } }], period: { number: 2 }, clock: { displayValue: '0.0' },
   awayScore: 51, homeScore: 50, ...changes });
+
+test('Score push cadence is 15 seconds and touchdown coalescing expires at exactly 20 seconds', () => {
+  const now = Date.parse('2026-11-15T19:00:00Z');
+  assert.equal(withinTouchdownWait(undefined, now), true);
+  assert.equal(withinTouchdownWait(new Date(now - 19999).toISOString(), now), true);
+  assert.equal(withinTouchdownWait(new Date(now - 20000).toISOString(), now), false);
+  assert.equal(withinTouchdownWait('invalid', now), false);
+  for (const file of ['notifications-cron.sql', 'nba-notifications.sql']) {
+    assert.match(readFileSync(new URL(`../supabase/${file}`, import.meta.url), 'utf8'), /'15 seconds'/);
+  }
+});
+
+test('Poll leases exclude overlapping workers, recover after expiry and protect a newer token', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec('create role anon; create role authenticated; create role service_role;');
+    const sql = readFileSync(new URL('../supabase/notifications-cron.sql', import.meta.url), 'utf8');
+    await db.exec(sql.slice(sql.indexOf('create table'), sql.indexOf('select cron.unschedule')));
+    const first = '00000000-0000-4000-8000-000000000001', next = '00000000-0000-4000-8000-000000000002';
+    const claim = async token => (await db.query('select public.claim_score_push_poll($1,$2::uuid) as claimed', ['NFL', token])).rows[0].claimed;
+    assert.equal(await claim(first), true);
+    assert.equal(await claim(next), false);
+    assert.equal((await db.query('select public.claim_score_push_poll($1,$2::uuid) as claimed', ['NBA', next])).rows[0].claimed, true);
+    assert.equal((await db.query('select public.claim_score_push_poll($1,$2::uuid) as claimed', ['NFL_PLAYS', next])).rows[0].claimed, true);
+    await db.query("update public.score_push_poll_leases set expires_at=clock_timestamp()-interval '1 second'");
+    assert.equal(await claim(next), true);
+    await db.query('select public.release_score_push_poll($1,$2::uuid)', ['NFL', first]);
+    assert.equal(await claim(first), false);
+    await db.query('select public.release_score_push_poll($1,$2::uuid)', ['NFL', next]);
+    assert.equal(await claim(first), true);
+  } finally { await db.close(); }
+});
+
+test('Lease wrapper skips overlap and releases on both successful and failed polls', async () => {
+  const calls = [];
+  const admin = { rpc: async name => { calls.push(name); return { data: name === 'claim_score_push_poll', error: null }; } };
+  await withPushPollLease(admin, 'NFL', async () => Response.json({ sent: 1 }));
+  assert.deepEqual(calls, ['claim_score_push_poll', 'release_score_push_poll']);
+  calls.length = 0;
+  await assert.rejects(withPushPollLease(admin, 'NFL', async () => { throw new Error('Feed interrupted'); }), /Feed interrupted/);
+  assert.deepEqual(calls, ['claim_score_push_poll', 'release_score_push_poll']);
+  const skipped = await withPushPollLease({ rpc: async () => ({ data: false, error: null }) }, 'NFL',
+    async () => { throw new Error('Overlapping work must not run'); });
+  assert.equal((await skipped.json()).skipped, true);
+});
+
+test('NFL score delivery precedes slow play summaries and a repeated observation does not duplicate the score', async () => {
+  let handler, release;
+  const order = [], summary = new Promise(resolve => { release = resolve; });
+  const states = new Map([['401', { event_id: '401', state: { status: 'in', period: 2, awayScore: 7, homeScore: 0 } }]]);
+  const favorites = [{ user_id: 'user', favorites: [{ type: 'team', id: '1', feedPath: 'football/nfl' }] }];
+  const subscriptions = [{ user_id: 'user', endpoint: 'device', notify_scores: true, subscription: {} }];
+  const held = new Map();
+  const admin = { rpc: async (name, args) => {
+    if (name === 'claim_score_push_poll') {
+      if (held.has(args.target_sport)) return { data: false, error: null };
+      held.set(args.target_sport, args.target_token); return { data: true, error: null };
+    }
+    if (held.get(args.target_sport) === args.target_token) held.delete(args.target_sport);
+    return { data: null, error: null };
+  },
+    from(table) {
+      let ids;
+      const query = {
+        select() { return query; }, in(_column, values) { ids = values; return query; },
+        async upsert(rows) { for (const row of Array.isArray(rows) ? rows : [rows]) states.set(row.event_id, row); return { error: null }; },
+        then(resolve, reject) { return Promise.resolve({ error: null, data: table === 'push_game_states'
+          ? [...states.values()].filter(row => ids.includes(row.event_id))
+          : table === 'user_favorites' ? favorites : subscriptions }).then(resolve, reject); },
+      };
+      return query;
+    },
+  };
+  const event = { id: '401', competitions: [{ competitors: [
+    { homeAway: 'away', team: { id: '1', abbreviation: 'AWY' }, score: '10' },
+    { homeAway: 'home', team: { id: '2', abbreviation: 'HOM' }, score: '0' },
+  ], status: { period: 2, displayClock: '2:00', type: { state: 'in' } } }] };
+  const context = vm.createContext({ exports: {}, console, Response, Date, Map, Set, URL, AbortSignal, crypto,
+    Deno: { env: { get: key => key === 'GAMEWIRE_SITE_URL' ? 'https://gamewire.us/' : 'configured' }, serve: fn => { handler = fn; } },
+    fetch: async url => {
+      if (url.endsWith('/scoreboard')) return { ok: true, json: async () => ({ events: [event] }) };
+      order.push('summary'); return { ok: true, json: async () => summary };
+    },
+    require(name) {
+      if (name.includes('supabase-js')) return { createClient: () => admin };
+      if (name.includes('webpush')) return { createWebPushServer: async () => ({}), sendWebPush: async () => { order.push('score'); }, isExpiredPushSubscription: () => false };
+      if (name.includes('pushPolling')) return { withinTouchdownWait, withPushPollLease };
+      if (name.includes('plays')) return { summaryPlayIds: () => [], buildPlayAlerts: () => [] };
+      if (name.includes('apiSportsFeed')) return {};
+      if (name.includes('nflTeamMap')) return { nflTeamMap: [] };
+      throw new Error(name);
+    },
+  });
+  const code = ts.transpileModule(readFileSync(new URL('../supabase/functions/poll-live-games/index.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  vm.runInContext(code, context);
+  const request = () => new Request('https://example.test', { method: 'POST', headers: { 'x-gamewire-cron-secret': 'configured' } });
+  const pending = handler(request());
+  await new Promise(resolve => setTimeout(resolve, 10));
+  const beforeSummary = [...order];
+  event.competitions[0].competitors[0].score = '13';
+  const concurrent = await (await handler(request())).json();
+  assert.equal(concurrent.sent, 1, 'Another score poll can deliver while the previous play summary is still blocked');
+  assert.equal(concurrent.playSkipped, true, 'Play detection does not overlap or create duplicate alerts');
+  release({});
+  const result = await (await pending).json();
+  assert.deepEqual(beforeSummary, ['score', 'summary'], JSON.stringify(result));
+  assert.equal(result.sent, 1);
+  assert.equal((await (await handler(request())).json()).sent, 0);
+  assert.equal(order.filter(value => value === 'score').length, 2);
+  event.competitions[0].competitors[0].score = '19';
+  assert.equal((await (await handler(request())).json()).sent, 0, 'The initial TD briefly coalesces with its conversion');
+  event.competitions[0].competitors[0].score = '20';
+  assert.equal((await (await handler(request())).json()).sent, 1, 'A completed seven-point score does not wait for the PAT timeout');
+  assert.equal(states.get('401').state.pendingPAT, null);
+});
 
 test('35/40/50/60 thresholds are inclusive, league-wide and each fires once', () => {
   let state = buildNBAAlerts(fixture().game, null).state;

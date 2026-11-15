@@ -77,7 +77,7 @@ grant execute on function public.claim_nba_push() to service_role;
 create extension if not exists pg_cron;
 create extension if not exists pg_net with schema extensions;
 select cron.unschedule(jobid) from cron.job where jobname = 'gamewire-nba-push';
-select cron.schedule('gamewire-nba-push', '* * * * *', $job$
+select cron.schedule('gamewire-nba-push', '15 seconds', $job$
   select net.http_post(
     url := replace((select decrypted_secret from vault.decrypted_secrets where name = 'gamewire-poll-url'),
       '/poll-live-games', '/poll-nba-games'),

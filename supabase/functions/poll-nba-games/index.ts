@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { createWebPushServer, isExpiredPushSubscription, sendWebPush } from '../_shared/webpush.ts';
 import { buildNBAAlerts, nbaDate, nbaNotificationHash, nbaRecord, parseNBAPushGame, type NBAAlertState } from '../_shared/nbaAlerts.ts';
+import { withPushPollLease } from '../_shared/pushPolling.ts';
 
 const espnBase = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 async function espn(path: string): Promise<unknown> {
@@ -121,11 +122,13 @@ Deno.serve(async (request) => {
   if (!url || !key) return new Response('Supabase configuration is missing.', { status: 503 });
   const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   try {
+    return await withPushPollLease(admin, 'NBA', async () => {
     // Deliver persisted retries even when ESPN is temporarily unavailable.
     const retried = await deliverNBAPush(admin);
     const result = await pollNBA(admin);
     const sent = await deliverNBAPush(admin);
     return Response.json({ ...result, sent: sent + retried }, { status: result.failed.length ? 502 : 200 });
+    });
   } catch (cause) {
     console.error('NBA notification poll failed', cause);
     return Response.json({ error: 'NBA notifications could not be checked.' }, { status: 500 });
