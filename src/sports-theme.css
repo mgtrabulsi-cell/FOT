@@ -377,7 +377,7 @@
 .sports-theme .nfl-wire-board .notification-game-card .notification-bell-message { top: auto; bottom: 48px; left: auto; right: 0; }
 .sports-theme .wire-game-boxscore { gap: 14px; --wire-player-width: 144px; }
 .sports-theme .wire-game-boxscore .wire-category-card { border: 0; border-radius: 0; }
-.sports-theme .wire-game-boxscore .wire-category-header { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+.sports-theme .wire-game-boxscore .wire-category-header { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); }
 .sports-theme .wire-game-boxscore .wire-player-column-label { display: none; }
 .sports-theme .wire-game-boxscore .wire-mobile-category-title { display: block; font: 600 17px/1.3 'DM Sans', 'Segoe UI', sans-serif; text-transform: none; letter-spacing: 0; white-space: normal; }
 .sports-theme .wire-game-boxscore .wire-category-count { font-size: 10px; }
