@@ -261,6 +261,10 @@ test('NFL box-score colors apply on all screens while sizing and game-row change
   assert.match(mobile, /grid-template-areas: "teams status" "footer footer"/);
   assert.match(mobile, /\.wire-board-team-name b \{ font: 500 15px/);
   assert.match(mobile, /min-height: 108px;\s*padding: 10px 12px/);
+  assert.match(mobile, /\.sports-theme \.nfl-wire-board \.notification-game-card \.wire-board-status \{[^}]*min-width: 0; max-width: 100%;[^}]*flex-direction: column/);
+  assert.match(mobile, /\.wire-board-status > \* \{ min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere/);
+  assert.match(mobile, /\.wire-board-team \{ grid-template-columns: 24px minmax\(0, 1fr\) max-content/);
+  assert.match(mobile, /\.wire-board-footer \{[^}]*flex-wrap: wrap/);
   assert.match(mobile, /td\.wire-col-data \{ font: 400 13px/);
   assert.match(mobile, /\.wire-athlete-name \{ font: 500 13px/);
   assert.match(mobile, /--wire-player-width: 124px/);

@@ -362,17 +362,19 @@
   padding: 10px 12px;
 }
 .sports-theme .nfl-wire-board .wire-board-teams { gap: 6px; }
-.sports-theme .nfl-wire-board .wire-board-team { grid-template-columns: 24px minmax(0, 1fr) 28px; gap: 7px; min-height: 26px; }
+.sports-theme .nfl-wire-board .wire-board-team { grid-template-columns: 24px minmax(0, 1fr) max-content; gap: 7px; min-height: 26px; }
 .sports-theme .nfl-wire-board .wire-board-mark { width: 24px; height: 24px; }
 .sports-theme .nfl-wire-board .wire-board-team-name b { font: 500 15px/1.3 'DM Sans', 'Segoe UI', sans-serif; white-space: normal; overflow-wrap: normal; flex-wrap: wrap; }
 .sports-theme .nfl-wire-board .wire-board-team-label { flex-basis: auto; white-space: normal; }
 .sports-theme .nfl-wire-board .wire-board-team-name small { font-size: 10px; }
 .sports-theme .nfl-wire-board .wire-board-score { font: 600 19px/1.3 'DM Sans', 'Segoe UI', sans-serif; text-align: right; }
-.sports-theme .nfl-wire-board .wire-board-status { padding: 0; align-items: flex-end; justify-content: center; flex-direction: column; gap: 4px; text-align: right; font: 500 12px/1.4 'DM Sans', 'Segoe UI', sans-serif; }
+.sports-theme .nfl-wire-board .notification-game-card .wire-board-status { min-width: 0; max-width: 100%; padding: 0; align-items: flex-end; justify-content: center; flex-direction: column; gap: 4px; text-align: right; font: 500 12px/1.4 'DM Sans', 'Segoe UI', sans-serif; }
+.sports-theme .nfl-wire-board .wire-board-status > * { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .sports-theme .nfl-wire-board .wire-board-status small { font: 400 11px/1.4 'DM Sans', 'Segoe UI', sans-serif; }
-.sports-theme .nfl-wire-board .wire-board-footer { min-height: 26px; padding: 6px 44px 0 0; gap: 8px; }
-.sports-theme .nfl-wire-board .wire-board-meta { font-size: 11px; }
-.sports-theme .nfl-wire-board .wire-board-open { font-size: 11px; }
+.sports-theme .nfl-wire-board .wire-board-footer { min-height: 26px; padding: 6px 44px 0 0; gap: 8px; flex-wrap: wrap; }
+.sports-theme .nfl-wire-board .wire-board-meta { font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+.sports-theme .nfl-wire-board .wire-board-open { min-width: 0; max-width: 100%; font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+.sports-theme .nfl-wire-board .wire-board-footer svg { flex-shrink: 0; }
 .sports-theme .nfl-wire-board .notification-game-card > .notification-bell-control { top: auto; bottom: 4px; left: auto; right: 6px; }
 .sports-theme .nfl-wire-board .notification-game-card .notification-bell-message { top: auto; bottom: 48px; left: auto; right: 0; }
 .sports-theme .wire-game-boxscore { gap: 14px; --wire-player-width: 144px; }
