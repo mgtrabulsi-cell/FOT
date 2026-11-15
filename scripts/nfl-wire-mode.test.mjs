@@ -398,6 +398,33 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   tree = render();
   assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
   assert.ok(tree.some(node => node.type === 'SimulationPanel'), 'A directly opened game also starts in simulation mode before effects run');
+  for (const boardMode of ['Matchups', 'GamewAIre simulations']) {
+    h.state.length = 0;
+    props.openGameId = undefined;
+    props.games = [{ ...game, status: 'LIVE', away: { ...game.away, score: 12 }, home: { ...game.home, score: 17 } }];
+    tree = render();
+    toggle(boardMode).props.onClick(); tree = render();
+    tree.find(node => node.props['data-game-id'] === game.id).props.onClick(); tree = render();
+    assert.equal(toggle('Player Box Score').props.className, 'active', `Live games open box scores from ${boardMode}`);
+    assert.ok(!tree.some(node => node.type === 'SimulationPanel'));
+    assert.ok(tree.some(node => node.props.value === 12) && tree.some(node => node.props.value === 17));
+    toggle('GamewAIre Simulation').props.onClick(); tree = render();
+    assert.ok(tree.some(node => node.type === 'SimulationPanel'), 'Live projections remain explicitly available');
+    tree.find(node => node.type === 'button' && node.props.className?.startsWith('wire-wheel-card')).props.onClick(); tree = render();
+    assert.equal(toggle('Player Box Score').props.className, 'active', 'Live wheel selections open player stats');
+  }
+  h.state.length = 0;
+  props.openGameId = game.id;
+  tree = render();
+  assert.equal(toggle('Player Box Score').props.className, 'active', 'Direct live links open box scores before effects run');
+  toggle('GamewAIre Simulation').props.onClick(); tree = render();
+  props.games = [...props.games, { ...props.games[0], id: 'NFL:456', eventId: '456' }];
+  props.openGameId = 'NFL:456';
+  tree = render();
+  const openEffect = h.effects.find(effect => effect.toString().includes('setSelectedGameId(openRequest)'));
+  assert.ok(openEffect);
+  openEffect(); tree = render();
+  assert.equal(toggle('Player Box Score').props.className, 'active', 'Subsequent external live-game requests open player stats');
 });
 test('Opening a simulation panel after kickoff loads its saved archive on reload', async () => {
   const h = hooks(), timers = new Map(), loaded = [];

@@ -4,6 +4,8 @@ NFL live/final player box scores use matte, high-contrast colors on both desktop
 
 Mobile NFL status labels stay stacked inside their column in both Matchups and GamewAIre simulation views. Longer labels and footer text wrap within the card, and score columns size to their contents.
 
+Opening a live NFL game from either board mode, the game wheel or a direct link defaults to Player Box Score. GamewAIre Simulation remains available as an explicit tab; pregame and final-game defaults are unchanged.
+
 Mobile Angle posts use tighter spacing and 20px headlines while retaining 13px body text and unchanged button targets. Notification settings retain the confirmed choice when checks fail; stale checks cannot overwrite preference writes. Device permissions and expired subscriptions still require device-level attention.
 
 Owner/admin **Download sim recap** controls appear for each finished NFL game in Simulation Results and the game's simulation results view. The 1080px-wide portrait export follows the NFL SIM RECAP reference: original blue stadium backdrop, final-score card, cyan-framed breakdown, green checks/red Xs, and a factual GameWire Analysis panel. Longer pick lists expand vertically instead of hiding picks or shrinking them unreadably.

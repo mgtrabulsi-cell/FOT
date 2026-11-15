@@ -348,7 +348,9 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const [pregameView, setPregameView] = useState<'stats' | 'simulation'>('simulation');
   const [resultsOpen, setResultsOpen] = useState(false);
   const { simulations: boardSimulations, errors: simulationErrors, rememberSimulation } = useNFLBoardSimulations(nflGames, pregameView === 'simulation' && !detailOpen && !resultsOpen);
-  const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>('simulation');
+  const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>(() =>
+    nflGames.find(game => game.id === selectedGameId)?.status === 'LIVE' ? 'boxscore' : 'simulation'
+  );
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [playerStatMode, setPlayerStatMode] = useState<'total' | 'average'>('total');
   const [loadedBoxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);
@@ -378,7 +380,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const selectGame = (gameId: string) => {
     userSelectedRef.current = true;
     setSelectedGameId(gameId);
-    if (pregameView === 'simulation') setSubTab('simulation');
+    if (nflGames.find(game => game.id === gameId)?.status === 'LIVE') setSubTab('boxscore');
+    else if (pregameView === 'simulation') setSubTab('simulation');
     else if (nflGames.find(game => game.id === gameId)?.status === 'UPCOMING' || subTab === 'simulation') setSubTab('boxscore');
     onSelectGame?.(gameId);
   };
@@ -407,7 +410,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
     userSelectedRef.current = true;
     setSelectedGameId(openRequest);
     setResultsOpen(false);
-    setSubTab(pregameView === 'simulation' ? 'simulation' : 'boxscore');
+    setSubTab(pregameView === 'simulation' && nflGames.find(game => game.id === openRequest)?.status !== 'LIVE' ? 'simulation' : 'boxscore');
     setDetailOpen(true);
   }, [openRequest]);
 
@@ -991,7 +994,7 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                 {live ? nflFieldPosition(game.situation) : <><MapPin size={12} aria-hidden="true" /> {game.venue || 'Venue TBD'}{intl ? `, ${intl.city ?? intl.country}` : ''}</>}
               </span>
               <span className="wire-board-open">
-                {simulationMode ? 'GamewAIre simulation' : upcoming ? 'Matchups' : live ? 'Live player stats' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
+                {live ? 'Live player stats' : simulationMode ? 'GamewAIre simulation' : upcoming ? 'Matchups' : 'Box score'} <ChevronRight size={14} aria-hidden="true" />
               </span>
             </span>
           </button>
