@@ -21,7 +21,14 @@ const reviewCode = compile('../src/AngleReviewPicks.tsx')
   .replace(/import \{ supabase \} from [^;]+;/, 'const supabase = null;')
   .replace(/from ['"].\/services\/theAngle['"]/g, `from '${new URL('../src/services/theAngle.ts', import.meta.url)}'`)
   .replace(/from ['"].\/services\/angleReviews['"]/g, `from '${new URL('../src/services/angleReviews.ts', import.meta.url)}'`);
-const { AngleReviewList } = await import(`data:text/javascript;base64,${Buffer.from(reviewCode).toString('base64')}`);
+const { AngleReviewList, default: AngleReviewPicker } = await import(`data:text/javascript;base64,${Buffer.from(reviewCode).toString('base64')}`);
+
+test('Settled-pick builder keeps the browse control without its descriptor paragraph', () => {
+  const html = renderToStaticMarkup(createElement(AngleReviewPicker, { picks: [], storyId: '', onChange() {} }));
+  assert.match(html, /Browse past settled picks/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.doesNotMatch(html, /Attach existing Hit or Miss|Originals stay unchanged|never count twice/);
+});
 
 test('Published attached settled picks show only pick text and hit/miss icons without review boilerplate or source metadata', () => {
   const picks = ['hit', 'miss'].map((result, index) => ({

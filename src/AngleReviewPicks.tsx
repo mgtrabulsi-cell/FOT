@@ -53,7 +53,6 @@ export default function AngleReviewPicker({ picks, storyId, onChange }: {
   const filtered = options.filter((pick) => `${pick.text} ${pick.title} ${pick.matchup} ${pick.game_id} ${pick.season} ${pick.week} ${pick.result}`.toLowerCase().includes(term));
   return <section className="angle-review-picker">
     <h4>Review past settled picks</h4>
-    <p>Attach existing Hit or Miss picks from any week or sport. Originals stay unchanged and reviews never count twice in Our Results.</p>
     <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide past picks' : 'Browse past settled picks'}</button>
     {open && <div>
       <label>Search past picks<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Player, team, headline, sport, or week" /></label>

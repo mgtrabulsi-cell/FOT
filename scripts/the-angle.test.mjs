@@ -10,6 +10,19 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { anglePicks, angleSport, angleSportGameId, angleSportRecords, angleThemes, angleVisibleInWeek, publishedAnglePicks, readAnglePicks, anglePublishError, angleWriteFields, birthdayNearGame, isAngleSource, readAngles, readPlayerBirthdays, selectAngleSuggestions, suggestedAngleCategory } from '../src/services/theAngle.ts';
 
+test('Angle builder omits descriptor paragraphs but retains controls, saving status and actionable errors', () => {
+  const source = readFileSync(new URL('../src/TheAngle.tsx', import.meta.url), 'utf8');
+  for (const text of ['Drafts are private.', 'Draft saved on this device.', 'Include sources and context in your storyline.',
+    'Admin picks (optional opinions).', 'Straights and parlays have separate records.', 'Photos: JPG, PNG, WebP or GIF'])
+    assert.ok(!source.includes(text), text);
+  for (const text of ['Save private draft', 'Publish angle', 'Add a pick', 'Photos and videos (optional',
+    'Post to X on first publication', 'Retry saving draft', 'Draft is not backed up. Keep this page open.',
+    'Saving draft on this device...', 'angleMediaError'])
+    assert.ok(source.includes(text), text);
+  assert.match(source, /\(draftError \|\| draftSaving\) && <p role="status">/);
+  assert.match(source, /draftError && <p className="feed-warning" role="alert">/);
+});
+
 test('Angle media accepts supported photos/videos with exact size limits and rejects empty/unsupported files', () => {
   for (const type of ['video/mp4', 'video/webm', 'video/quicktime']) {
     assert.ok(angleMediaAccept.includes(type));

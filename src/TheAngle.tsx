@@ -509,9 +509,9 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
       <span>{drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}</span>
     </div>}
     {form && <form className="angle-editor" aria-label={news ? 'Fantasy News editor' : 'Angle editor'} ref={editor} onSubmit={(event) => { event.preventDefault(); void save('published'); }}>
-      <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3><p>Drafts are private. First publish sends a push alert; edits don't.</p>
+      <h3>{form.id ? `Edit ${news ? 'news' : 'storyline'}` : news ? 'New Fantasy News' : 'New storyline'}</h3>
       {importedDraft && <p role="status">Your existing draft was not replaced. Publish or discard it to open the waiting GamewAIre draft.</p>}
-      <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : draftSaving ? 'Saving draft on this device...' : 'Draft saved on this device. It stays open until you publish or discard it.'}</p>
+      {(draftError || draftSaving) && <p role="status">{draftError ? 'Draft is not backed up. Keep this page open.' : 'Saving draft on this device...'}</p>}
       {!admin && <p role="status">Checking editing access. Your draft remains open.</p>}
       <fieldset className="angle-editor-fields" disabled={busy || !admin}>
         <label>Matchup<select value={form.game_id} onChange={(event) => {
@@ -558,7 +558,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           </label>)}</div>
         </fieldset>}
         {form.source_url && isAngleSource(form.source_url) && <p><a href={form.source_url} target="_blank" rel="noopener noreferrer">{form.source_label || 'Original source'} <ExternalLink size={12} aria-hidden="true" /></a> · Source retained automatically</p>}
-        {!form.source_url && <p>Include sources and context in your storyline.</p>}
         {(form.evidence || form.counterpoint) && <details><summary>Retained source context</summary>{form.evidence && <p>{form.evidence}</p>}{form.counterpoint && <p>{form.counterpoint}</p>}</details>}
         {field('title', 'Headline (your own words)', 140)}
         {field('narrative', 'Storyline', 1500, true)}
@@ -572,7 +571,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           setDirty(true);
         }} />}
         <div className="angle-pick-editor">
-          <p>Admin picks (optional opinions). Add each straight, sprinkle, or complete parlay separately.</p>
           {(form.picks ?? []).filter((pick) => pick.id !== form.parlay_graphic?.pickId).map((pick, index) => <div key={pick.id}>
             <label className="angle-pick-type-field">Pick {index + 1} type<select className="pick-type-select" value={pickCategory(pick)} onChange={(event) => {
               const category = pickCategories.find((value) => value === event.target.value);
@@ -583,7 +581,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
             <button type="button" onClick={() => change('picks', (form.picks ?? []).filter((item) => item.id !== pick.id))}>Remove pick {index + 1}</button>
           </div>)}
           <button type="button" onClick={() => change('picks', [...(form.picks ?? []), { id: crypto.randomUUID(), text: '', result: 'pending', category: 'straight' }])}>{form.picks?.length ? 'Add another pick' : 'Add a pick'}</button>
-          <p>Straights and parlays have separate records. Sprinkles are shown but excluded from records. Enter each parlay as one pick, not one pick per leg.</p>
         </div>
         <AngleReviewPicker picks={form.review_picks ?? []} storyId={form.id} onChange={(picks) => change('review_picks', picks)} />
         {form.parlay_graphic && <p>One tracked parlay is managed by the graphic builder above. Its generated image uses one of your four attachment slots and is included when posting to X.</p>}
@@ -596,7 +593,6 @@ export default function TheAngle({ games, season, week, user, storyId = null, st
           setActionError(''); setDirty(true); change('reviewed', false);
           setPhotos((current) => [...current, ...files.map((file) => { const preview = URL.createObjectURL(file); previews.current.add(preview); return { file, preview }; })]);
         }} />
-        <small className="livewire-photo-help">Photos: JPG, PNG, WebP or GIF · 5 MB each. Videos: MP4, WebM or MOV · 50 MB each. MP4 is recommended for compatibility. Uploaded attachment URLs are public, even in drafts. Videos stream online; selected files are kept in your local draft.</small>
         {!!photos.length && <div className="livewire-photo-previews">{photos.map((photo, index) => <div key={photo.preview}>{(photo.file ? isVideoFile(photo.file) : isPostVideo(photo.path ?? '')) ? <PostVideo src={photo.preview} label={`Video attachment preview ${index + 1}`} /> : <OfflineImage src={photo.preview} alt={`Attachment preview ${index + 1}`} />}<button type="button" onClick={() => {
           if (photo.file) { URL.revokeObjectURL(photo.preview); previews.current.delete(photo.preview); }
           setPhotos((current) => current.filter((_, item) => item !== index)); change('reviewed', false);
