@@ -1,6 +1,6 @@
 # GameWire
 
-On mobile screens up to 760px, The Wire's NFL game list uses flat two-team rows with larger names/scores and a separate status column. Live/final player box scores use matte, high-contrast tables, 15-16px player names and 16px stats, pinned player identities and keyboard-focusable horizontal scrolling. Empty alignment columns are hidden on mobile; favorites and all reported statistics remain available. Desktop layouts, NBA tables and pregame season-stat tables retain their existing styling.
+NFL live/final player box scores use matte, high-contrast colors on both desktop and mobile. Only on mobile screens up to 760px, The Wire's NFL game list uses flat two-team rows with larger names/scores and a separate status column; player box scores use 15-16px player names, 16px stats, pinned player identities and keyboard-focusable horizontal scrolling. Empty alignment columns are hidden on mobile; favorites and all reported statistics remain available. Desktop sizing and spacing, NBA tables and pregame season-stat tables remain unchanged.
 
 Mobile Angle posts use tighter spacing and 20px headlines while retaining 13px body text and unchanged button targets. Notification settings retain the confirmed choice when checks fail; stale checks cannot overwrite preference writes. Device permissions and expired subscriptions still require device-level attention.
 

@@ -243,7 +243,7 @@ test('Mobile box-score identities use full-width rows without an unused score co
   assert.match(css, /\.wire-team-bar \{ grid-template-columns: minmax\(0, 1fr\); gap: 6px/);
   assert.match(css, /\.wire-team-half-name \{ font-size: 14px; overflow-wrap: normal; word-break: normal/);
 });
-test('Flat NFL game rows and readable box scores are strictly mobile-only, leaving desktop and NBA styling intact', () => {
+test('NFL box-score colors apply on all screens while sizing and game-row changes stay mobile-only', () => {
   const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
   const marker = css.indexOf('/* Flat mobile NFL rows');
   const start = css.lastIndexOf('@media (max-width: 760px) {', marker);
@@ -254,7 +254,7 @@ test('Flat NFL game rows and readable box scores are strictly mobile-only, leavi
     else if (css[end] === '}') depth--;
   }
   const mobile = css.slice(start, end);
-  for (const selector of ['.nfl-wire-board', '.nfl-wire-detail', '.wire-game-boxscore']) {
+  for (const selector of ['.nfl-wire-board', '.nfl-wire-detail']) {
     for (const match of css.matchAll(new RegExp(selector.replaceAll('.', '\\.'), 'g')))
       assert.ok(match.index >= start && match.index < end, `${selector} must not change desktop`);
   }
@@ -262,7 +262,14 @@ test('Flat NFL game rows and readable box scores are strictly mobile-only, leavi
   assert.match(mobile, /\.wire-board-team-name b \{ font-size: 16px/);
   assert.match(mobile, /td\.wire-col-data \{ font: 400 16px/);
   assert.match(mobile, /\.wire-empty-stat \{ display: none/);
-  assert.match(mobile, /background: #10151c; box-shadow: none/);
+  const shared = css.slice(css.indexOf('/* NFL live/final box-score colors'), css.indexOf('.wire-boxscore-hint { display: none; }'));
+  assert.match(shared, /\.wire-category-header \{ background: #10151c; border-color: #37414c; box-shadow: none/);
+  assert.match(shared, /tbody tr:nth-child\(even\) td \{ background: #151d26/);
+  assert.match(shared, /\.wire-athlete-name \{ color: #fff/);
+  assert.doesNotMatch(shared, /(?:font|padding|margin|width|height|gap|display|position|border-radius)\s*:/);
+  assert.doesNotMatch(shared, /\.nba-/);
+  for (const match of css.matchAll(/\.wire-game-boxscore/g))
+    assert.ok((match.index >= css.indexOf('/* NFL live/final box-score colors') && match.index < start) || (match.index >= start && match.index < end));
   assert.doesNotMatch(mobile, /\.nba-/);
   assert.match(css.slice(0, start), /\.wire-boxscore-hint \{ display: none/);
   const source = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
