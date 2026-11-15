@@ -1,22 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
-import { loadGameSimulation } from './services/gamewireBot';
+import { loadGameSimulation, readSavedGameSimulation } from './services/gamewireBot';
 import type { Game } from './services/sportsData';
 import type { NFLGameSimulation } from '../supabase/functions/_shared/nflSimulation';
 
 export function useNFLBoardSimulations(games: Game[], enabled: boolean) {
   const [simulations, setSimulations] = useState<Record<string, NFLGameSimulation>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const rememberSimulation = useCallback((result: NFLGameSimulation) => {
-    setSimulations(previous => ({ ...previous, [result.eventId]: result.status !== 'ready' && previous[result.eventId]?.status === 'ready'
-      && Date.parse(previous[result.eventId].kickoff) === Date.parse(result.kickoff) ? { ...previous[result.eventId], refreshing: true } : result }));
-    setErrors(previous => { const updated = { ...previous }; delete updated[result.eventId]; return updated; });
+  const rememberSimulation = useCallback((result: NFLGameSimulation, clearError = true) => {
+    setSimulations(previous => {
+      const saved = previous[result.eventId], sameGame = saved && Date.parse(saved.kickoff) === Date.parse(result.kickoff);
+      if (sameGame && saved.status === 'ready' && result.status === 'ready'
+        && Date.parse(saved.forecastAt ?? '') > Date.parse(result.forecastAt ?? '')) return previous;
+      return { ...previous, [result.eventId]: result.status !== 'ready' && sameGame && saved.status === 'ready'
+        ? { ...saved, refreshing: true } : result };
+    });
+    if (clearError) setErrors(previous => { const updated = { ...previous }; delete updated[result.eventId]; return updated; });
   }, []);
   const scope = games.map(game => `${game.eventId}:${game.date}:${game.home.id}:${game.away.id}`).sort().join(',');
   useEffect(() => {
     if (!enabled || !scope) return;
     const controller = new AbortController();
-    let timer: number | undefined;
+    let timer: number | undefined, inFlight = false;
+    for (const game of games) {
+      void readSavedGameSimulation(game).then(saved => {
+        if (saved && !controller.signal.aborted) rememberSimulation(saved, false);
+      });
+    }
     const load = async () => {
+      if (inFlight || controller.signal.aborted) return;
+      inFlight = true;
       let next = 0;
       await Promise.all(Array.from({ length: Math.min(3, games.length) }, async () => {
         while (next < games.length && !controller.signal.aborted) {
@@ -32,10 +44,16 @@ export function useNFLBoardSimulations(games: Game[], enabled: boolean) {
           }
         }
       }));
+      inFlight = false;
       if (!controller.signal.aborted) timer = window.setTimeout(() => { void load(); }, 60000);
     };
+    const reconnect = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (!inFlight) void load();
+    };
     void load();
-    return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); };
+    window.addEventListener('online', reconnect);
+    return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); window.removeEventListener('online', reconnect); };
   }, [scope, enabled, rememberSimulation]);
   return { simulations, errors, rememberSimulation };
 }

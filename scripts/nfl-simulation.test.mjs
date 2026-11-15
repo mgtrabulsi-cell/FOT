@@ -1582,7 +1582,7 @@ test('Simulation graphic uses reconciled box values, usage-ranked players and bo
   await assert.rejects(renderSimulationGraphic(scenario, game.date), /export the PNG/);
 });
 
-function panelRuntime(load, supabase) {
+function panelRuntime(load, supabase, cached = null) {
   const code = ts.transpileModule(readFileSync(new URL('../src/NFLGameSimulation.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
@@ -1600,13 +1600,23 @@ function panelRuntime(load, supabase) {
     if (name.includes('supabaseClient')) return { supabase };
     if (name.includes('useSimulationGraphicAccess')) return { useSimulationGraphicAccess: () => ({ allowed: false, error: '' }) };
     if (name.includes('nflSimulation')) return { selectedSimulationScenario, projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
-    return { loadGameSimulation: load };
+    return { loadGameSimulation: load, readSavedGameSimulation: async () => cached };
   } });
   vm.runInContext(code, context);
   const render = () => { slot = 0; effects.length = 0; return context.exports.default({ game: { ...game, eventId: game.id } }); };
   render();
   return { state, effects, timers, listeners, render };
 }
+test('Simulation detail restores a saved device forecast without waiting for a stalled network request', async () => {
+  const f = fixture(), forecast = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  const panel = panelRuntime(() => new Promise(() => {}), null, forecast);
+  const stop = panel.effects[1]();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(panel.state[1], forecast);
+  assert.doesNotMatch(JSON.stringify(panel.render()), /Loading the saved GamewAIre simulation/);
+  stop();
+  assert.equal(panel.timers.size, 0);
+});
 test('Simulation team buttons retain the visible team across provider-selected QB revisions and refreshes without a chooser', () => {
   const f = fixture(), data = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   const runtime = panelRuntime(async () => data);

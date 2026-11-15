@@ -5,13 +5,36 @@ import type { RankingList } from '../../supabase/functions/_shared/gamewireRanki
 import { readNFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
 import { readSimulationAccuracyReport } from '../../supabase/functions/_shared/nflSimulationAccuracy';
 import type { Game } from './sportsData';
+import { saveGameSimulation } from './nflSimulationCache.ts';
+export { readSavedGameSimulation } from './nflSimulationCache.ts';
 export type { BotDirectory, BotFormat, BotPlayer, BotReport } from '../../supabase/functions/_shared/gamewireBot';
 export type { PlayerWeekHistory } from '../../supabase/functions/_shared/gamewireBot';
 
 export async function loadGameSimulation(game: Game, signal: AbortSignal) {
-  const value = await request<unknown>({ action: 'simulation', eventId: game.eventId, kickoff: game.date,
-    homeTeamId: game.home.id, awayTeamId: game.away.id }, signal);
-  return readNFLGameSimulation(value, game.eventId, game.date, { home: game.home.id, away: game.away.id });
+  signal.throwIfAborted();
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort = () => controller.abort();
+  const interrupted = new Promise<never>((_resolve, reject) => {
+    abort = () => { controller.abort(); reject(signal.reason ?? new Error('Simulation loading was cancelled.')); };
+    signal.addEventListener('abort', abort, { once: true });
+    timer = setTimeout(() => {
+      reject(new Error('Simulation refresh timed out. Saved simulations remain available; retrying automatically.'));
+      controller.abort();
+    }, 15000);
+  });
+  let value: unknown;
+  try {
+    value = await Promise.race([request<unknown>({ action: 'simulation', eventId: game.eventId, kickoff: game.date,
+      homeTeamId: game.home.id, awayTeamId: game.away.id }, controller.signal), interrupted]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
+  }
+  const result = readNFLGameSimulation(value, game.eventId, game.date, { home: game.home.id, away: game.away.id });
+  if (result.status === 'ready' && !await saveGameSimulation(game, result))
+    return { ...result, warnings: [...result.warnings, 'Device storage could not save this simulation for offline use. Keep the app open and retry with available storage.'] };
+  return result;
 }
 
 export async function loadSimulationAccuracy(games: Game[], signal: AbortSignal) {

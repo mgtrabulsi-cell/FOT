@@ -15,7 +15,7 @@ const game = { id: 'NFL:123', eventId: '123', feedPath: 'football/nfl', sport: '
   status: 'UPCOMING', date: new Date(Math.floor(Date.now() / 1000) * 1000 + 86400000).toISOString(), seasonYear: 2026, venue: 'Fixture stadium',
   away: { id: '1', name: 'Away Team', abbr: 'AWY', score: 0, color: '#112233' },
   home: { id: '2', name: 'Home Team', abbr: 'HOM', score: 0, color: '#112233' } };
-const snapshot = { status: 'ready', eventId: game.eventId, kickoff: game.date.replace('.000Z', 'Z'), scenarios: [{
+const snapshot = { status: 'ready', warnings: [], eventId: game.eventId, kickoff: game.date.replace('.000Z', 'Z'), scenarios: [{
   id: 'fixture', issue: null, home: { id: '2', score: { mean: 28.2 } }, away: { id: '1', score: { mean: 21.7 } },
 }, { id: 'backup', issue: null, home: { id: '2', score: { mean: 30.2 } }, away: { id: '1', score: { mean: 14.7 } } },
 { id: 'unsupported', issue: 'Insufficient QB evidence', home: null, away: null }] };
@@ -30,6 +30,113 @@ function hooks() {
 }
 const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements)
   : [node, ...elements(node.props?.children)];
+
+function cachedForecast() {
+  const matchup = { id: game.eventId, date: game.date, season: 2026, seasonType: 2, home: game.home, away: game.away };
+  const refs = teamId => Array.from({ length: 8 }, (_, i) => ({
+    id: String(100 + i), teamId, opponentId: '9', season: 2026, seasonType: 2,
+    date: new Date(Date.parse(game.date) - (i + 2) * 86400000).toISOString(),
+    scores: { own: teamId === '2' ? 28 : 21, opponent: teamId === '2' ? 17 : 24, home: true },
+  }));
+  return { status: 'ready', version: simulation.nflSimulationVersion, eventId: game.eventId, kickoff: game.date,
+    checkedAt: new Date().toISOString(), forecastAt: new Date().toISOString(), stage: 'Simulation complete',
+    progress: { completed: 16, total: 200 }, history: { home: 8, away: 8, target: 100 },
+    runs: 500, calibrated: false, warnings: [], injuries: [], evidenceMode: 'team-only',
+    scenarios: [simulation.simulateNFLTeamScore(matchup, { home: refs('2'), away: refs('1') }, 500)] };
+}
+
+test('Device simulations survive a cold restart, reject mismatches, and never replace ready forecasts with incomplete or older data', async () => {
+  const records = new Map(), logged = [];
+  let fail = false;
+  const runtime = () => {
+    const context = vm.createContext({ exports: {}, Date, Error, Map, console: { error: (...args) => logged.push(args) },
+      require(name) {
+        if (name.includes('draftStorage')) return { createDraftStorage: () => ({
+          load: async key => records.get(key),
+          save: async (key, value) => { if (fail) throw new Error('Storage quota'); records.set(key, structuredClone(value)); },
+        }) };
+        return simulation;
+      } });
+    vm.runInContext(compile('../src/services/nflSimulationCache.ts'), context);
+    return context.exports;
+  };
+  const first = runtime(), forecast = cachedForecast();
+  assert.equal(await first.saveGameSimulation(game, forecast), true);
+  const restarted = runtime();
+  assert.deepEqual(await restarted.readSavedGameSimulation(game), forecast);
+  assert.equal(await restarted.readSavedGameSimulation({ ...game, date: new Date(Date.parse(game.date) + 3600000).toISOString() }), null);
+  assert.equal(await restarted.readSavedGameSimulation({ ...game, home: { ...game.home, id: '9' } }), null);
+  const collecting = { ...forecast, status: 'collecting', forecastAt: null, scenarios: [] };
+  assert.equal(await restarted.saveGameSimulation(game, collecting), false);
+  assert.deepEqual(await runtime().readSavedGameSimulation(game), forecast);
+  const older = { ...forecast, forecastAt: new Date(Date.parse(forecast.forecastAt) - 60000).toISOString() };
+  assert.equal(await restarted.saveGameSimulation(game, older), true);
+  assert.deepEqual(await runtime().readSavedGameSimulation(game), forecast);
+  fail = true;
+  assert.equal(await restarted.saveGameSimulation(game, forecast), false);
+  assert.ok(logged.some(args => String(args[0]).includes('offline use')));
+  const name = [...records.keys()][0];
+  records.set(name, { ...forecast, eventId: '999' });
+  assert.equal(await runtime().readSavedGameSimulation(game), null);
+});
+
+test('The full saved slate restores even when the first network workers never respond', async () => {
+  const h = hooks(), listeners = new Map();
+  let requests = 0;
+  const context = vm.createContext({ exports: {}, AbortController, Error, console, window: {
+    setTimeout: () => 1, clearTimeout() {},
+    addEventListener: (key, value) => listeners.set(key, value), removeEventListener: key => listeners.delete(key),
+  }, require(name) {
+    if (name === 'react') return h.react;
+    return {
+      readSavedGameSimulation: async item => ({ ...snapshot, eventId: item.eventId, kickoff: item.date }),
+      loadGameSimulation: () => { requests++; return new Promise(() => {}); },
+    };
+  } });
+  vm.runInContext(compile('../src/useNFLBoardSimulations.ts'), context);
+  const games = Array.from({ length: 16 }, (_, i) => ({ ...game, eventId: String(i) }));
+  context.exports.useNFLBoardSimulations(games, true);
+  const stop = h.effects[0]();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(Object.keys(h.state[0]).length, 16);
+  assert.equal(requests, 3, 'Network concurrency remains bounded');
+  listeners.get('online')();
+  assert.equal(requests, 3, 'Reconnect does not create overlapping worker batches');
+  stop();
+  assert.equal(listeners.size, 0);
+});
+
+test('Simulation refreshes have a bounded deadline and release aborted requests', async () => {
+  const timers = new Map(), signals = [];
+  let next = 0;
+  const context = vm.createContext({ exports: {}, AbortController, Error, Response, console,
+    setTimeout: (callback, delay) => { timers.set(++next, { callback, delay }); return next; },
+    clearTimeout: id => timers.delete(id),
+    require(name) {
+      if (name.includes('supabaseClient')) return { supabase: {
+        auth: { getSession: async () => ({ data: { session: { access_token: 'fixture' } }, error: null }) },
+        functions: { invoke: (_name, options) => { signals.push(options.signal); return new Promise(() => {}); } },
+      } };
+      return {};
+    } });
+  vm.runInContext(compile('../src/services/gamewireBot.ts'), context);
+  const pending = context.exports.loadGameSimulation(game, new AbortController().signal);
+  const rejected = assert.rejects(pending, /timed out/);
+  await new Promise(resolve => setImmediate(resolve));
+  const timeout = [...timers.values()][0];
+  assert.equal(timeout.delay, 15000);
+  timeout.callback();
+  await rejected;
+  assert.equal(signals[0].aborted, true);
+  assert.equal(timers.size, 0);
+  const caller = new AbortController();
+  const cancelled = context.exports.loadGameSimulation(game, caller.signal);
+  const cancellation = assert.rejects(cancelled, /cancelled/);
+  caller.abort(new Error('cancelled'));
+  await cancellation;
+  assert.equal(timers.size, 0);
+});
+
 test('Simulation graphic access fails closed and only owner/admin roles can display downloads', async () => {
   for (const role of ['owner', 'admin', 'member', null, 'query-error']) {
     const h = hooks(), timers = [], listeners = new Map(), errors = [];
@@ -260,7 +367,7 @@ test('Opening a simulation panel after kickoff loads its saved archive on reload
     if (name.includes('supabaseClient')) return { supabase: null };
     if (name.includes('useSimulationGraphicAccess')) return { useSimulationGraphicAccess: () => ({ allowed: false, error: '' }) };
     if (name.includes('/nflSimulation')) return simulation;
-    if (name.includes('gamewireBot')) return { loadGameSimulation: async received => {
+    if (name.includes('gamewireBot')) return { readSavedGameSimulation: async () => null, loadGameSimulation: async received => {
       assert.equal(received.date, pastGame.date); requests++;
       return archive;
     } };
@@ -280,9 +387,10 @@ test('Scoreboard simulation loading is bounded, preserves saved results on failu
   let nextTimer = 0, active = 0, peak = 0, fail = false;
   const context = vm.createContext({ exports: {}, AbortController, Error, console: { error() {} }, window: {
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id),
+    addEventListener() {}, removeEventListener() {},
   }, require(name) {
     if (name === 'react') return h.react;
-    return { loadGameSimulation: async game => {
+    return { readSavedGameSimulation: async () => null, loadGameSimulation: async game => {
       active++; peak = Math.max(peak, active);
       await new Promise(resolve => setImmediate(resolve)); active--;
       if (fail) throw new Error('Offline');

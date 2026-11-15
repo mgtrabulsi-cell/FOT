@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Game } from './services/sportsData';
-import { loadGameSimulation } from './services/gamewireBot';
+import { loadGameSimulation, readSavedGameSimulation } from './services/gamewireBot';
 import { supabase } from './services/supabaseClient';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
 import NFLSimulationAccuracy from './NFLSimulationAccuracy';
@@ -121,6 +121,11 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
     setError('');
     setResponse(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) ? previous : null);
     setForecast(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) ? previous : null);
+    void readSavedGameSimulation(game).then(saved => {
+      if (!saved || controller.signal.aborted) return;
+      setResponse(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) && previous.status === 'ready' ? previous : saved);
+      setForecast(previous => previous?.eventId === game.eventId && Date.parse(previous.kickoff) === Date.parse(game.date) ? previous : saved);
+    });
     const load = async () => {
       if (inFlight || controller.signal.aborted) return;
       inFlight = true;
@@ -132,7 +137,9 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
         setError('');
         setResponse(result);
         if (result.status === 'ready') onForecast?.(result);
-        if (result.status === 'ready') setForecast(result);
+        if (result.status === 'ready') setForecast(previous => previous?.eventId === result.eventId
+          && Date.parse(previous.kickoff) === Date.parse(result.kickoff)
+          && Date.parse(previous.forecastAt ?? '') > Date.parse(result.forecastAt ?? '') ? previous : result);
         if (Date.parse(game.date) <= Date.now() && result.status === 'ready') return;
         const delay = locked ? 60000 : ++attempts >= 60 || result.status === 'ready' && !result.refreshing ? 300000 : result.status === 'collecting' ? 30000 : 60000;
         timer = window.setTimeout(() => { void load(); }, delay);
@@ -205,6 +212,9 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
       {error && !displayed && <div className="nfl-simulation-caption">
         <p role={locked ? 'alert' : 'status'}>{locked ? error : `${forecast ? 'Your saved simulation remains available while updates reconnect.' : 'Preparing your simulation. A feed interruption is delaying updates.'} Automatic retries continue, including when your connection returns.`}</p>
       </div>}
+      {error && displayed && <p className="nfl-simulation-caption" role="status">Showing the saved simulation. Updates could not connect; automatic retries continue.</p>}
+      {displayed?.warnings.filter(warning => warning.startsWith('Device storage could not save')).map(warning =>
+        <p key={warning} className="nfl-simulation-caption" role="alert">{warning}</p>)}
       {!response && !error && <p role="status">Loading the saved GamewAIre simulation…</p>}
       {!displayed && response && !error && !locked && <p role="status">Preparing your GamewAIre simulation. Updates load automatically.</p>}
       {displayed && (

@@ -1008,6 +1008,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
         {pregameView === 'simulation' && Object.values(simulationErrors).some(issue => /sign in/i.test(issue)) && <div className="nfl-simulation-caption">
           <p role="status">Sign in to view GamewAIre simulation scores.</p>
         </div>}
+        {pregameView === 'simulation' && Object.values(simulationErrors).some(issue => !/sign in/i.test(issue)) && <p className="nfl-simulation-caption" role="status">Some simulation updates could not connect. Saved scores remain visible; automatic retries continue.</p>}
+        {pregameView === 'simulation' && Object.values(boardSimulations).some(result => result.warnings?.some(warning => warning.startsWith('Device storage could not save'))) && <p className="nfl-simulation-caption" role="alert">Some simulations could not be saved on this device. Check available storage and keep the app open while it retries.</p>}
         <div className="wire-board" ref={boardRef}>
           <header className="wire-board-header">
             <span className="eyebrow">NFL GAMES · THIS WEEK</span>
