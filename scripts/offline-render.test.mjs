@@ -16,7 +16,13 @@ const breakdownCode = ts.transpileModule(readFileSync(new URL('../src/GamewaireB
   { compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX } }).outputText
   .replace(/from ["']react\/jsx-runtime["']/g, `from '${import.meta.resolve('react/jsx-runtime')}'`);
 const breakdownURL = `data:text/javascript;base64,${Buffer.from(breakdownCode).toString('base64')}`;
-const compiled = ts.transpileModule(source, {
+// Pin snapshot renders to stats; live/default navigation is covered by nfl-wire-mode.test.mjs.
+const statsSource = source.replace(
+  /(const \[subTab, setSubTab\] = useState<[^>]+>)\([\s\S]*?\n  \);/,
+  "$1('boxscore');",
+);
+assert.notEqual(statsSource, source, 'The snapshot fixture must select the stats subtab');
+const compiled = ts.transpileModule(statsSource, {
   compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX },
 }).outputText
   .replace(/from ['"]\.\/GamewaireBreakdown['"]/g, `from '${breakdownURL}'`)
@@ -40,11 +46,9 @@ const compiled = ts.transpileModule(source, {
   .replace(/import \{ ScoreTicker \} from ['"].\/ScoreTicker.tsx['"];/, 'const ScoreTicker = ({ value }) => value;')
   .replace(/import \{ getInterfaceScale \} from ['"].\/uiScale['"];/, 'const getInterfaceScale = () => 1;')
   .replace(/import \{ usePublicDataRevision \} from ['"].\/usePublicDataRevision['"];/, 'const usePublicDataRevision = () => 0;');
-// These snapshots exercise the stats toggle; simulation-first openings have separate Wire mode tests.
-assert.equal((compiled.match(/useState\('simulation'\)/g) ?? []).length, 2);
+assert.equal((compiled.match(/useState\('simulation'\)/g) ?? []).length, 1);
 const statsCompiled = compiled
-  .replace("useState('simulation')", "useState('stats')")
-  .replace("useState('simulation')", "useState('boxscore')");
+  .replace("useState('simulation')", "useState('stats')");
 const { default: TheWire } = await import(`data:text/javascript;base64,${Buffer.from(statsCompiled).toString('base64')}`);
 const { default: TeamComparison } = await import(`data:text/javascript;base64,${Buffer.from(statsCompiled.replace("useState('boxscore')", "useState('teamStats')")).toString('base64')}`);
 
