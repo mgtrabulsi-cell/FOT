@@ -1521,7 +1521,10 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
                         {isUpcoming && <colgroup><col className="wire-season-athlete-column" />{Array.from({ length: boxStatCount }, (_, index) => <col key={index} />)}</colgroup>}
                         <thead role="rowgroup">
                           <tr role="row">
-                            <th className="wire-col-athlete" scope="col" role="columnheader">Player</th>
+                            <th className="wire-col-athlete" scope="col" role="columnheader" aria-label="Player">
+                              <span className="wire-player-column-label">Player</span>
+                              {!isUpcoming && <span className="wire-mobile-category-title" aria-hidden="true">{category.title}</span>}
+                            </th>
                             {category.labels.map((lbl, idx) => (
                               <th key={idx} className={`wire-col-data${!lbl ? ' wire-empty-stat' : ''}`} aria-hidden={!lbl || undefined} scope="col" role="columnheader">{lbl}</th>
                             ))}

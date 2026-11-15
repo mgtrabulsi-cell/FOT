@@ -245,7 +245,7 @@ test('Mobile box-score identities use full-width rows without an unused score co
 });
 test('NFL box-score colors apply on all screens while sizing and game-row changes stay mobile-only', () => {
   const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');
-  const marker = css.indexOf('/* Flat mobile NFL rows');
+  const marker = css.indexOf('/* Compact mobile NFL sizing');
   const start = css.lastIndexOf('@media (max-width: 760px) {', marker);
   assert.ok(start >= 0);
   let depth = 1, end = css.indexOf('{', start) + 1;
@@ -259,8 +259,16 @@ test('NFL box-score colors apply on all screens while sizing and game-row change
       assert.ok(match.index >= start && match.index < end, `${selector} must not change desktop`);
   }
   assert.match(mobile, /grid-template-areas: "teams status" "footer footer"/);
-  assert.match(mobile, /\.wire-board-team-name b \{ font-size: 16px/);
-  assert.match(mobile, /td\.wire-col-data \{ font: 400 16px/);
+  assert.match(mobile, /\.wire-board-team-name b \{ font: 500 15px/);
+  assert.match(mobile, /min-height: 108px;\s*padding: 10px 12px/);
+  assert.match(mobile, /td\.wire-col-data \{ font: 400 13px/);
+  assert.match(mobile, /\.wire-athlete-name \{ font: 500 13px/);
+  assert.match(mobile, /--wire-player-width: 124px/);
+  assert.match(mobile, /\.wire-star \{[^}]*min-width: 24px; min-height: 24px/);
+  assert.match(mobile, /\.wire-mobile-category-title \{ display: block; font: 600 17px/);
+  assert.match(mobile, /\.wire-athlete-sub:empty \{ display: none/);
+  for (const rule of mobile.matchAll(/[^{}]*\.nfl-wire-board[^{}]*\{([^{}]*)\}/g))
+    assert.doesNotMatch(rule[1], /(?:background|color|box-shadow|border(?:-color|-left|-radius)?)\s*:/, 'Mobile game rows must retain the shared GameWire theme');
   assert.match(mobile, /\.wire-empty-stat \{ display: none/);
   const shared = css.slice(css.indexOf('/* NFL live/final box-score colors'), css.indexOf('.wire-boxscore-hint { display: none; }'));
   assert.match(shared, /\.wire-category-header \{ background: #10151c; border-color: #37414c; box-shadow: none/);
@@ -275,6 +283,7 @@ test('NFL box-score colors apply on all screens while sizing and game-row change
   const source = readFileSync(new URL('../src/TheWire.tsx', import.meta.url), 'utf8');
   assert.match(source, /!isUpcoming \? ' wire-game-boxscore' : ''/);
   assert.match(source, /--wire-game-stat-count': category\.labels\.filter\(Boolean\)\.length/);
+  assert.match(source, /!isUpcoming && <span className="wire-mobile-category-title" aria-hidden="true">\{category\.title\}/);
   assert.match(source, /role="region" aria-label=\{`\$\{category\.title\} statistics, scroll for more columns`\} tabIndex=\{0\}/);
 });
 test('Simulation toggle remains red in both states and mobile cards reserve readable team-name space', () => {
