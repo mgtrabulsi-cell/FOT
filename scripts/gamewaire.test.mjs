@@ -178,7 +178,7 @@ test('Qualifying estimates retain a complete output shape and a moved line is re
   assert.equal(pick.sampleSize, 30);
   assert.ok(pick.ev > 0 && pick.conservativeEV > 0);
   assert.equal(evaluate([{ ...quote, line: 35.5 }]).picks.length, 0);
-  assert.equal(evaluate([{ ...quote, american: -1000 }]).picks.length, 0);
+  assert.equal(evaluate([{ ...quote, american: -1000 }]).picks.length, 1);
 });
 
 test('The engine abstains for missing, stale, future, incomplete, unverified and early-season data', () => {
@@ -198,7 +198,7 @@ test('Settings affect actual selection, minimum quality, recent weighting and di
   assert.equal(evaluate([quote], evidence, { ...settings, direction: 'under' }).picks.length, 0);
   assert.equal(evaluate([quote], evidence, { ...settings, player: 'Another player' }).picks.length, 0);
   assert.equal(evaluate([quote], evidence, { ...settings, minQuality: 0.9 }).picks.length, 0);
-  assert.equal(evaluate([{ ...quote, american: 100 }], evidence, { ...settings, minEV: 1 }).picks.length, 0);
+  assert.equal(evaluate([{ ...quote, american: 100 }], evidence, { ...settings, minEV: 1 }).picks.length, 1);
   assert.notEqual(evaluate([quote], evidence, { ...settings, recentWeight: 0 }).picks[0].probability,
     evaluate([quote], evidence, { ...settings, recentWeight: 0.6 }).picks[0].probability);
   assert.throws(() => engine.readSettings({ ...settings, markets: ['invented'] }, 'NBA'));
@@ -253,14 +253,14 @@ test('Conversational blurbs use only saved player or team evidence without inven
   assert.doesNotMatch(team, /minutes per game|averaging.*assists/);
 });
 
-test('Every analyzed game gets a supported team lean, with failed value screens excluded from Top Picks', () => {
+test('Supported team leans qualify independently of odds value, without relaxing evidence checks', () => {
   const team = { ...quote, key: 'team', market: 'h2h', subject: 'Boston Celtics', side: 'Boston Celtics', line: null, american: -10000 };
   const data = new Map([[team.key, evidence]]);
   const failed = engine.evaluate([team], data, settings, now, 8);
   assert.ok(failed.teamLean);
-  assert.equal(failed.teamLean.qualifies, false);
-  assert.equal(failed.picks.length, 0);
-  assert.match(failed.teamLean.reason, /Not a Top Pick/);
+  assert.equal(failed.teamLean.qualifies, true);
+  assert.equal(failed.picks.length, 1);
+  assert.match(failed.teamLean.reason, /not EV or odds value/);
   for (const change of [{ eligible: false }, { samples: [] }, { quality: 0.1 }]) {
     assert.equal(engine.evaluate([team], new Map([[team.key, { ...evidence, ...change }]]), settings, now).teamLean, undefined);
   }
@@ -427,8 +427,8 @@ test('Top Picks rank model win probability before value, with deterministic ties
   assert.ok(result.picks[0].probability > result.picks[1].probability);
   assert.ok(result.picks[0].conservativeEV < result.picks[1].conservativeEV);
   const ml = { ...quote, key: 'unqualified-ml', market: 'h2h', side: 'Boston Celtics', line: null, american: -10000 };
-  assert.equal(engine.evaluate([ml], new Map([[ml.key, evidence]]), { ...settings, markets: ['h2h'] }, now).picks.length, 0,
-    'Moneyline focus never bypasses value thresholds');
+  assert.equal(engine.evaluate([ml], new Map([[ml.key, evidence]]), { ...settings, markets: ['h2h'] }, now).picks.length, 1,
+    'Moneyline selection ignores value thresholds');
 });
 
 test('Game leans choose highest model probability even when a lower-probability alternative passes value screens', () => {
@@ -439,7 +439,7 @@ test('Game leans choose highest model probability even when a lower-probability 
   const lower = { ...evidence, samples: evidence.samples.map((row, i) => ({ ...row, value: i < 21 ? 20 : -20 })) };
   const result = engine.evaluate(quotes, new Map([[quotes[0].key, evidence], [quotes[1].key, lower]]), settings, now);
   assert.equal(result.teamLean.pick.key, 'likely');
-  assert.equal(result.teamLean.qualifies, false);
+  assert.equal(result.teamLean.qualifies, true);
   assert.match(result.teamLean.reason, /Highest supported model win probability/);
   assert.ok(result.teamLean.pick.probability > engine.evaluate([quotes[1]], new Map([[quotes[1].key, lower]]), settings, now).teamLean.pick.probability);
 });
@@ -554,7 +554,7 @@ test('Early-season NBA totals and player minutes use real previous-season eviden
 });
 
 test('Adjusted team forecasts retain real observed averages and valid point/push outcomes', () => {
-  const team = { ...quote, market: 'spreads', side: 'Boston Celtics', line: -28.5 };
+  const team = { ...quote, market: 'spreads', side: 'Boston Celtics', line: -24.5 };
   const pick = evaluate([team], { ...evidence, adjustment: -1.5 }, { ...settings, markets: ['spreads'] }).picks[0];
   assert.ok(pick);
   assert.equal(pick.pushProbability, 0, 'Half-point spreads cannot push after a fractional opponent adjustment');
@@ -1210,7 +1210,7 @@ test('Member scoreboard shortlist ranks every saved matchup, records only select
   const base = evaluate().picks[0];
   const rows = Array.from({ length: 5 }, (_, index) => {
     const pick = { ...base, key: `team-${index}`, market: 'h2h', subject: quote.home,
-      identifiers: { espnEventId: `espn-${index}` }, conservativeEV: .1 + index / 100, samples: [], risks: ['Uncalibrated'] };
+      identifiers: { espnEventId: `espn-${index}` }, probability: .6 + index / 100, conservativeEV: .1 - index / 100, risks: ['Uncalibrated'] };
     return { event_id: `provider-${index}`, event_start: quote.start, status: 'completed',
       payload: { modelVersion: engine.modelVersion, teamLean: { pick, qualifies: index !== 4 } } };
   });
@@ -1219,20 +1219,21 @@ test('Member scoreboard shortlist ranks every saved matchup, records only select
     const spread = { ...moneyline, key: 'event|spreads|Boston', market: 'spreads', line: -20.5, american: 150, noVig: .5 };
     const report = evaluate([moneyline, spread], evidence, { ...settings, markets: ['h2h', 'spreads'] });
     assert.equal(report.winnerLean.pick.market, 'h2h');
-    assert.equal(report.winnerLean.qualifies, false);
+    assert.equal(report.winnerLean.qualifies, true);
     assert.equal(report.teamLean.pick.market, 'h2h');
-    assert.ok(report.picks.every(pick => pick.key !== moneyline.key), 'Coverage must not turn a lean into a qualifying bet');
+    assert.ok(report.picks.some(pick => pick.key === moneyline.key), 'The highest-probability supported side remains eligible despite negative EV');
   });
   test('NBA daily coverage fills three distinct games with labeled winner leans, but short slates get one winner total', () => {
     const base = evaluate([{ ...quote, market: 'h2h', line: null, subject: quote.home, side: quote.home }]).picks[0];
     const picks = Array.from({ length: 4 }, (_, i) => ({ ...base, key: `daily-${i}`, eventId: `provider-${i}`,
       identifiers: { espnEventId: `nba-${i}` }, probability: .65 + i * .04 }));
-    const winners = picks.slice(1).map(pick => ({ pick: { ...pick, ev: -.1, edge: -.05, conservativeEV: -.3 }, qualifies: false }));
+    const winners = picks.slice(1).map(pick => ({ pick: { ...pick, ev: -.1, edge: -.05, conservativeEV: -.3 }, qualifies: true }));
     const result = scoreboard.scoreboardPicks([picks[0]], now, { nbaGames: 4, winnerLeans: [...winners, winners[0]] });
     assert.equal(result.length, 3);
     assert.equal(new Set(result.map(pick => pick.eventId)).size, 3);
     assert.equal(result[0].label, 'GamewAIre Pick');
-    assert.ok(result.slice(1).every(pick => pick.label === 'GamewAIre Winner Lean' && /not a value-qualified pick/.test(pick.reason)));
+    assert.deepEqual(result.map(pick => pick.eventId), ['nba-3', 'nba-2', 'nba-1']);
+    assert.ok(result.every(pick => pick.label === 'GamewAIre Pick' && !/value-qualified/.test(pick.reason)));
     for (const count of [1, 2]) {
       const short = scoreboard.scoreboardPicks([], now, { nbaGames: count, winnerLeans: winners.slice(0, count) });
       assert.equal(short.length, 1);
@@ -1247,7 +1248,7 @@ test('Member scoreboard shortlist ranks every saved matchup, records only select
   test('Pending NBA games count toward daily coverage without triggering the 1–2-game rule or additional paid requests', async () => {
     const base = evaluate([{ ...quote, market: 'h2h', line: null, subject: quote.home, side: quote.home }]).picks[0];
     const rows = [0, 1].map(i => ({ event_id: `provider-${i}`, event_start: quote.start, status: 'no_qualifying',
-      payload: { modelVersion: engine.modelVersion, winnerLean: { qualifies: false,
+      payload: { modelVersion: engine.modelVersion, winnerLean: { qualifies: true,
         pick: { ...base, key: `winner-${i}`, identifiers: { espnEventId: `nba-${i}` }, ev: -.1, edge: -.05, conservativeEV: -.3 } } } }));
     const api = endpoint({ role: 'member', scoreboardRows: rows,
       scoreboardJobs: [{ event_id: 'provider-2', event_start: quote.start, status: 'pending' }] });

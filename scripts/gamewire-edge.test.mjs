@@ -81,7 +81,9 @@ const games = Array.from({ length: 4 }, (_, index) => ({
 }));
 const picks = games.map((game, index) => ({
   key: String(index), market: 'h2h', sport: 'NBA', subject: game.home.name, start: game.date, line: null,
-  home: game.home.name, away: game.away.name, modelVersion, samples: [], risks: ['Role uncertainty.'], book: 'Saved book',
+  home: game.home.name, away: game.away.name, modelVersion,
+  samples: Array.from({ length: 20 }, (_, i) => ({ value: 10, date: new Date(now - (i + 1) * 86400000).toISOString() })),
+  probability: .6 + index / 100, pushProbability: 0, risks: ['Role uncertainty.'], book: 'Saved book',
   identifiers: { espnEventId: game.eventId }, updatedAt: new Date(now - 60000).toISOString(), dataAt: new Date(now).toISOString(),
   american: -110, edge: .1, ev: .2, conservativeEV: .05 + index / 100, quality: .9, sampleSize: 20, noVig: .5,
 }));
@@ -95,7 +97,7 @@ test('Missing upgraded analyses are pending information, not a misleading zero-o
   assert.equal(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 1 }, games), '');
   assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 0 }, games.map(game => ({ ...game, status: 'FINAL' }))), /not created retroactively/);
 });
-test('Scoreboards select at most three distinct qualifying games without record-based or Watch fillers', () => {
+test('Scoreboards rank at most three distinct supported games by probability without value gating', () => {
   const result = rankWireTeams(games, picks, now);
   assert.equal(Object.keys(result).length, 3);
   assert.equal(result['3:h3'].rank, 1);
@@ -104,7 +106,8 @@ test('Scoreboards select at most three distinct qualifying games without record-
   assert.doesNotMatch(result['3:h3'].reason, /Saved book|Role uncertainty|conservative expected value|uncalibrated|Saved pregame price/);
   const fallback = rankWireTeams(games, [], now);
   assert.equal(Object.keys(fallback).length, 0);
-  for (const patch of [{ noVig: null }, { ev: -.1 }, { sampleSize: 3 }, { updatedAt: new Date(now - 600001).toISOString() },
+  assert.equal(Object.keys(rankWireTeams(games, picks.map(pick => ({ ...pick, ev: -.1, edge: -.1, conservativeEV: -.2 })), now)).length, 3);
+  for (const patch of [{ noVig: null }, { samples: [] }, { sampleSize: 3 }, { updatedAt: new Date(now - 600001).toISOString() },
     { dataAt: new Date(now + 60001).toISOString() }, { identifiers: { espnEventId: 'other' } }, { modelVersion: 'old-model' }]) {
     assert.equal(Object.keys(rankWireTeams(games, picks.map(pick => ({ ...pick, ...patch })), now)).length, 0);
   }
@@ -113,7 +116,7 @@ test('Scoreboards select at most three distinct qualifying games without record-
   for (const status of ['LIVE', 'FINAL']) assert.equal(Object.keys(rankWireTeams(games.map(game => ({ ...game, status })), picks, now + 86400000)).length, 3);
   assert.equal(Object.keys(rankWireTeams(games.map(game => ({ ...game, date: new Date(now + 86400000).toISOString() })), picks, now)).length, 0);
   assert.equal(Object.keys(rankWireTeams(games.map(game => ({ ...game, period: 'Postponed' })), picks, now)).length, 0);
-  const opposite = { ...picks[3], subject: games[3].away.name, key: 'opposite', conservativeEV: .99 };
+  const opposite = { ...picks[3], subject: games[3].away.name, key: 'opposite', probability: .8, conservativeEV: -.1 };
   const distinct = rankWireTeams(games, [...picks, opposite], now);
   assert.equal(Object.keys(distinct).length, 3);
   assert.equal(distinct['3:a3'].rank, 1);
@@ -160,8 +163,8 @@ test('Live and final bells reserve a shared middle column while retaining a 44px
   assert.match(css, /\.wire-team-pick-note \{[^}]*background: #c62836;[^}]*color: #fff/);
   assert.match(css, /b:has\(\.wire-team-pick-note\) \{ flex-wrap: wrap/);
 });
-test('Shared breakdown template uses verified statistics, saved prices and decisive-outcome probability edges', () => {
-  const pick = { ...picks[0], sport: 'NFL', probability: .6, pushProbability: .1, american: -110,
+test('Historical breakdowns retain their original price and decisive-outcome probability diagnostics', () => {
+  const pick = { ...picks[0], modelVersion: 'probability-first-v11', sport: 'NFL', probability: .6, pushProbability: .1, american: -110,
     teamContext: { team: 'Home 0', season: 2026, games: 8, pointsScored: 26.4, pointsAllowed: 18.7, rank: 3, leagueSize: 32 },
     opponents: [{ team: 'Away 0', season: 2026, games: 8, pointsScored: 21.5, pointsAllowed: 24, rank: 25, leagueSize: 32 }] };
   const text = pickBreakdown(pick), paragraphs = text.split('\n\n');
@@ -193,7 +196,7 @@ test('Shared narrative preserves prop/totals evidence and rejects mismatched tea
     const text = pickBreakdown(pick);
     assert.equal(text.split('\n\n').length, 4);
     assert.match(text, /GamewAIre Verdict:/);
-    assert.match(text, /60\.0% of the time/);
+    assert.match(text, /60\.0% win chance/);
     assert.doesNotMatch(text, /NaN|Infinity|current moneyline/);
   }
   const mismatched = pickBreakdown({ ...picks[0], teamContext: { team: 'Wrong team', games: 8, season: 2026, pointsScored: 99, pointsAllowed: 88 },

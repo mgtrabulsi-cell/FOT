@@ -66,8 +66,8 @@ export async function loadWireSelections(admin: SupabaseClient, sport: WireSport
     analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
     upcomingAnalyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion && Date.parse(row.event_start) > now).length,
     pendingGames: countJobs(['pending', 'running']), failedGames: countJobs(['failed']),
-    note: sport === 'NBA' ? 'Three distinct games per Eastern day, or one winner selection total on a 1–2-game slate. Value-qualified picks are prioritized; coverage-only winner leans are labeled separately. Missing evidence is not invented. No paid odds refresh or post publication is triggered.'
-      : 'Ranked across saved matchup analyses. NFL moneyline picks must also match the saved default simulation winner; missing or tied simulations receive no moneyline label. No paid odds refresh or post publication is triggered.',
+    note: sport === 'NBA' ? 'Three distinct games per Eastern day, or one selection total on a 1–2-game slate. Supported picks compete only on estimated win probability, never EV or odds value. Missing evidence is not invented. No paid odds refresh or post publication is triggered.'
+      : 'Ranked across saved matchup analyses only by estimated win probability, never EV or odds value. NFL moneyline picks must also match the saved default simulation winner; missing or tied simulations receive no moneyline label. No paid odds refresh or post publication is triggered.',
   } };
 }
 

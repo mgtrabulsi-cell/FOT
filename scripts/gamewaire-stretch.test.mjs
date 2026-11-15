@@ -62,19 +62,19 @@ test('Stretch never duplicates a player across markets and never adds extras whe
   assert.deepEqual(full.picks, normal.picks);
   assert.deepEqual(full.stretchKeys, []);
   const allStretch = evaluate(quotes, evidence, { ...settings, minEV: 1 }, now, 8, 3);
-  assert.equal(allStretch.status, 'no_qualifying');
-  assert.equal(allStretch.picks.length, 0);
+  assert.equal(allStretch.status, 'completed');
+  assert.deepEqual(allStretch.picks, result.picks);
   assert.equal(allStretch.stretchKeys.length, 0);
 });
-test('Unqualified team leans remain Watch context outside qualifying picks', () => {
+test('Value thresholds do not exclude supported team leans; invalid evidence still does', () => {
   const team = { ...quotes[0], sport: 'NFL', key: 'team', market: 'h2h', subject: 'Home', side: 'Home', line: null };
   const data = new Map([...evidence, [team.key, evidence.get(quotes[0].key)]]);
   const options = { ...settings, minEV: 1 };
   const result = evaluate([...quotes, team], data, options, now, 8, 3);
-  assert.equal(result.picks.length, 0);
+  assert.equal(result.picks.length, 2);
   assert.deepEqual(result.stretchKeys, []);
-  assert.equal(result.teamLean.qualifies, false);
-  assert.equal(evaluate([team], data, options, now).picks.length, 0, 'Scheduled lean-only analysis does not manufacture Top Picks');
+  assert.equal(result.teamLean.qualifies, true);
+  assert.equal(evaluate([team], data, options, now).picks.length, 1, 'Scheduled lean-only analysis uses the same supported probability policy');
   data.set(team.key, { ...data.get(team.key), eligible: false });
   assert.ok(!evaluate([...quotes, team], data, options, now, 8, 3).picks.some((pick) => pick.key === team.key));
 });

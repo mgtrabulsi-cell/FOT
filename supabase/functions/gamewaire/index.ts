@@ -335,12 +335,12 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       report = { ...(isSoccer(sport) ? evaluateSoccer(alignedQuotes, data.evidence, settings, Date.now()) : evaluate(alignedQuotes, alignedEvidence, settings, Date.now(), playerAnalysis ? 5 : 8, minimumPlayerPicks, learning)), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (alignedQuotes.length !== quotes.length) report.warnings.push('NFL moneyline markets opposing the saved simulation winner were excluded. If the simulation is missing or tied, moneyline selections wait; no replacement value pick is forced.');
-      if (playerAnalysis) report.warnings.push('Probability-first analysis: positive EV is not required. Estimates are experimental, not guarantees or betting recommendations. NFL player distributions follow the saved game simulation; NBA props must agree with the weighted analysis projection.');
+      report.warnings.push('Probability-only selection: EV, odds value and payout do not determine eligibility or ranking. Estimates are experimental, not guarantees or betting recommendations. NFL player distributions follow the saved game simulation; NBA props must agree with the weighted analysis projection.');
       if (aiKey && !isSoccer(sport) && report.picks.length) await explain(report.picks, aiKey, env.get('OPENAI_MODEL') || 'gpt-4.1-mini', fetcher);
       else if (!aiKey) report.warnings.push('OPENAI_API_KEY is not configured. Quantitative calculations work; explanations use verified templates, not AI prose.');
     }
     if (minimumPlayerPicks && report.picks.filter((pick: Candidate) => pick.market.startsWith('player_')).length < minimumPlayerPicks) {
-      report.warnings.push(`Fewer than ${minimumPlayerPicks} distinct players have verified, fresh, complete markets priced at -200 or better and sufficient eligible data. Missing or unsafe player props were not invented.`);
+      report.warnings.push(`Fewer than ${minimumPlayerPicks} distinct players have verified, fresh, complete markets and sufficient projection-supported data. Missing or unsafe player props were not invented.`);
     }
     const availableMarkets = new Set(allQuotes.map((quote) => quote.market));
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));

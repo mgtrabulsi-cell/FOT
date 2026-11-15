@@ -1,4 +1,4 @@
-import { array, decimalOdds, expectedValue, fairAmericanOdds, impliedProbability, isAllowedPickSide, isSoccer, normalize, numeric, object, soccerModelVersion, text, valueClassification } from './gamewaire.ts';
+import { array, decimalOdds, expectedValue, fairAmericanOdds, impliedProbability, isAllowedPickSide, isSoccer, normalize, numeric, object, rankTopPicks, soccerModelVersion, text, valueClassification } from './gamewaire.ts';
 import type { Candidate, Evaluation, Evidence, Observation, Quote, Settings, SoccerSport, TeamLean } from './gamewaire.ts';
 import { publicJSON } from './gamewaireSources.ts';
 import type { Matchup } from './gamewaireSources.ts';
@@ -141,13 +141,12 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     if (!singleSided && (quote.noVig === null || !Number.isFinite(quote.noVig) || quote.noVig <= 0 || quote.noVig >= 1)) { reject('Complete matched three-way match-winner or two-way over/under sportsbook prices required; a verified single-sided player price is also supported.'); continue; }
     if (quote.market !== 'h2h' && (quote.line === null || quote.line < 0 || quote.line * 2 % 1 !== 0 || !['Over', 'Under'].includes(quote.side))) { reject('Only whole/half-goal or stat over/under lines are supported; quarter lines require split settlement.'); continue; }
     try { decimalOdds(quote.american); } catch { reject('Invalid sportsbook price.'); continue; }
-    if (quote.market.startsWith('player_') && quote.american < -200) { reject('Player price worse than -200 excluded.'); continue; }
     if (!best.has(quote.key) || decimalOdds(quote.american) > decimalOdds(best.get(quote.key)!.american)) best.set(quote.key, quote);
   }
   for (const quote of best.values()) {
     const data = evidence.get(quote.key), reject = (reason: string) => rejected.push({ key: quote.key, reason });
     if (!data?.eligible || data.soccerLeague !== quote.sport) { reject(data?.reason ?? 'Verified same-league soccer evidence unavailable.'); continue; }
-    if (data.quality < settings.minQuality || !Number.isFinite(Date.parse(data.fetchedAt)) || now - Date.parse(data.fetchedAt) > 3_600_000 || Date.parse(data.fetchedAt) > now + 60_000
+    if (!Number.isFinite(data.quality) || data.quality > 1 || data.quality < settings.minQuality || !Number.isFinite(Date.parse(data.fetchedAt)) || now - Date.parse(data.fetchedAt) > 3_600_000 || Date.parse(data.fetchedAt) > now + 60_000
       || data.samples.some(row => !Number.isFinite(row.value) || !Number.isFinite(Date.parse(row.date)) || Date.parse(row.date) >= Math.min(now, Date.parse(quote.start)) || row.season !== data.currentSeason)) { reject('Stale, future, invalid or wrong-season evidence.'); continue; }
     let win = 0, push = 0, projection = 0;
     const average = (rows: Observation[], key: 'pointsFor' | 'pointsAgainst') => rows.reduce((sum, row) => sum + row[key]!, 0) / rows.length;
@@ -190,7 +189,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
       return rows.reduce((sum, row) => sum + row.value, 0) / rows.length;
     };
     const priceRisks = quote.priceCoverage === 'single-sided'
-      ? [...data.risks, 'Single-sided sportsbook player market: no opposite price was supplied. No no-vig probability or opposite selection is inferred. Value screens compare verified appearance estimates with the actual offered price.'] : data.risks;
+      ? [...data.risks, 'Single-sided sportsbook player market: no opposite price was supplied. No no-vig probability or opposite selection is inferred. The verified appearance estimate, not the offered price or EV, determines ranking.'] : data.risks;
     const pick: Candidate = { ...quote, modelVersion: soccerModelVersion, probability: win, pushProbability: push, implied, edge, ev, conservativeEV,
       projection, sampleSize: data.samples.length, effectiveSample: n, last5: observedAverage(5), last10: observedAverage(10), seasonAverage: observedAverage(data.samples.length),
       quality: data.quality, dataAt: data.fetchedAt, samples: data.samples, risks: priceRisks, facts, explanation: [...facts, ...priceRisks].join(' '),
@@ -199,11 +198,19 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     pick.valueClass = valueClassification(pick);
     supported.push(pick);
   }
-  const qualified = (pick: Candidate) => pick.edge >= Math.max(.03, settings.minEdge) && pick.ev >= Math.max(.05, settings.minEV) && pick.conservativeEV > 0;
-  supported.sort((a, b) => b.probability - a.probability || b.conservativeEV - a.conservativeEV);
-  const leans = supported.filter(pick => pick.market === 'h2h');
-  const teamLean: TeamLean | undefined = leans[0] ? { pick: leans[0], qualifies: qualified(leans[0]), reason: 'Highest supported regulation-time outcome probability, including draw. Coverage lean only unless value-qualified; not a recommendation or guarantee.' } : undefined;
-  const picks = supported.filter(pick => settings.markets.includes(pick.market) && qualified(pick)).slice(0, 8);
-  for (const pick of supported.filter(pick => !qualified(pick))) rejected.push({ key: pick.key, reason: 'Supported estimate fails conservative value thresholds; no value pick forced.' });
+  const qualified = (pick: Candidate) => pick.market === 'h2h' || pick.line !== null && pick.projection > pick.line + 1e-8;
+  const ordered = rankTopPicks(supported);
+  const leans = ordered.filter(pick => pick.market === 'h2h');
+  const teamLean: TeamLean | undefined = leans[0] ? { pick: leans[0], qualifies: true, reason: 'Highest supported regulation-time outcome probability, including draw. EV and odds value do not determine selection; not a recommendation or guarantee.' } : undefined;
+  const picks: Candidate[] = [], subjects = new Set<string>();
+  let gameMarket = false;
+  for (const pick of ordered.filter(pick => settings.markets.includes(pick.market) && qualified(pick))) {
+    const player = pick.market.startsWith('player_'), identity = normalize(pick.subject);
+    if (player ? subjects.has(identity) : gameMarket) continue;
+    picks.push(pick);
+    if (player) subjects.add(identity); else gameMarket = true;
+    if (picks.length === 8) break;
+  }
+  for (const pick of supported.filter(pick => !qualified(pick))) rejected.push({ key: pick.key, reason: 'The model projection does not support the selected Over.' });
   return { status: picks.length ? 'completed' : supported.length ? 'no_qualifying' : 'insufficient_data', picks, rejected, teamLean, winnerLean: teamLean };
 }

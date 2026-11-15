@@ -33,14 +33,16 @@ test('draw is a real outcome, never a push; Poisson mass and outcomes normalize'
   assert.ok(Math.abs(leans.reduce((sum, row) => sum + row.probability, 0) - 1) < 1e-12);
   assert.ok(leans.every(row => row.pushProbability === 0));
   assert.ok(leans[0].probability > .3);
-  assert.equal(evaluate([quote]).picks.length, 0, 'Small sample uncertainty must not force a value bet');
+  assert.equal(evaluate([quote]).picks.length, 1, 'Supported three-way outcomes do not need positive EV or a 50% probability');
+  assert.equal(evaluate(quotes).picks.length, 1, 'Mutually exclusive outcomes never fill multiple game slots');
 });
 test('integer totals model push mass, half-lines do not and quarter-lines are rejected', () => {
-  const total = { ...quote, key: 'total', market: 'totals', subject: 'Away @ Home', side: 'Over', line: 2, american: 2000 };
+  const total = { ...quote, key: 'total', market: 'totals', subject: 'Away @ Home', side: 'Over', line: 1, american: 2000 };
   const integer = evaluate([total]).picks[0];
   assert.ok(integer.pushProbability > 0);
   assert.ok(integer.probability + integer.pushProbability <= 1);
-  assert.equal(evaluate([{ ...total, line: 2.5 }]).picks[0].pushProbability, 0);
+  assert.equal(evaluate([{ ...total, line: 1.5 }]).picks[0].pushProbability, 0);
+  assert.equal(evaluate([{ ...total, line: 2.5 }]).picks.length, 0, 'A high payout cannot override an unsupported Over projection');
   assert.match(evaluate([{ ...total, line: 2.25 }]).rejected[0].reason, /quarter/);
 });
 test('stale, future, wrong-season and missing evidence cannot generate candidates', () => {

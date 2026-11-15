@@ -1788,17 +1788,19 @@ test('Saved NFL simulation alignment validates archival identities, kickoff and 
   await assert.rejects(savedNFLGameSimulation({ from: () => failed }, game.id, api.kickoff), /Could not verify/);
 });
 
-test('Automatic NFL scoreboard picks cannot promote a losing moneyline or force a replacement value pick', () => {
+test('Automatic NFL picks retain simulation-winner alignment but ignore odds value', () => {
   const f = fixture(), forecast = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
   forecast.scenarios[0].home.score.mean = 27; forecast.scenarios[0].away.score.mean = 20;
   const candidate = { key: 'home-ml', sport: 'NFL', market: 'h2h', modelVersion, home: game.home.name, away: game.away.name,
     subject: game.home.name, side: game.home.name, start: game.date, line: null, american: -110, noVig: .5, quality: .9, probability: .7,
     ev: .3, edge: .15, conservativeEV: .1, updatedAt: new Date(now - 1000).toISOString(), dataAt: new Date(now).toISOString(),
-    sampleSize: 20, samples: [], risks: [], facts: [], identifiers: { espnEventId: game.id } };
+    pushProbability: 0, sampleSize: 20,
+    samples: Array.from({ length: 20 }, (_, i) => ({ value: 10, date: new Date(now - (i + 1) * 86400000).toISOString() })),
+    risks: [], facts: [], identifiers: { espnEventId: game.id } };
   const options = { nflSimulations: new Map([[game.id, forecast]]) };
   assert.equal(scoreboardPicks([candidate], now, options).length, 1);
   assert.equal(scoreboardPicks([{ ...candidate, subject: game.away.name, side: game.away.name }], now, options).length, 0);
-  assert.equal(scoreboardPicks([{ ...candidate, ev: -.1, conservativeEV: -.1 }], now, options).length, 0);
+  assert.equal(scoreboardPicks([{ ...candidate, ev: -.1, edge: -.1, conservativeEV: -.1 }], now, options).length, 1);
   assert.equal(scoreboardPicks([candidate], now, { nflSimulations: new Map() }).length, 0);
   assert.equal(scoreboardPicks([{ ...candidate, market: 'spreads', line: 3.5, subject: game.away.name }], now, options).length, 1);
   assert.equal(scoreboardPicks([candidate], Date.parse(game.date) + 1, options).length, 1, 'Original picks are retained after kickoff');

@@ -1,4 +1,4 @@
-import { impliedProbability, isSoccer, normalize, pickBlurb } from './gamewaire.ts';
+import { impliedProbability, isSoccer, modelVersion, normalize, pickBlurb } from './gamewaire.ts';
 import type { Candidate } from './gamewaire.ts';
 
 export const gamewaireMarketLabels: Record<string, string> = {
@@ -42,6 +42,18 @@ function modelComparison(pick: Candidate) {
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 3);
   if (teamPick && recent.length === 3)
     sentences.push(`Recent form: ${pick.subject} won ${recent.filter(row => row.value > 0).length} of their last three recorded games${pick.market === 'spreads' ? ' outright, not necessarily against the spread' : ''}.`);
+  if (pick.modelVersion?.startsWith(modelVersion)) {
+    sentences.push('The model uses verified prior-game outcomes and supported projections. Sportsbook prices and EV do not determine the estimate or selection.');
+    if (![pick.probability, pick.pushProbability].every(Number.isFinite) || pick.probability < 0 || pick.pushProbability < 0
+      || pick.pushProbability >= 1 || pick.probability + pick.pushProbability > 1 + 1e-8) {
+      sentences.push('Verified model probabilities are unavailable for this saved pick, so no percentage is shown.');
+      return sentences.join(' ');
+    }
+    sentences.push(`GamewAIre estimates a ${(pick.probability * 100).toFixed(1)}% win chance for this selection.`);
+    if (pick.pushProbability > 0)
+      sentences.push(`The model separately estimates a ${(pick.pushProbability * 100).toFixed(1)}% push chance.`);
+    return sentences.join(' ');
+  }
   sentences.push('The model uses weighted prior-game outcomes and market pricing.');
   const push = pick.pushProbability;
   const valid = [pick.probability, push, pick.american].every(Number.isFinite)

@@ -22,9 +22,9 @@ test('Both sports select the four highest-probability distinct players, not the 
     assert.deepEqual(result.picks.map(p => p.subject), ['Player 0', 'Player 1', 'Player 2', 'Player 3']);
     assert.ok(result.picks.some(p => p.ev < 0), 'Negative-EV higher-probability candidates remain eligible');
     assert.ok(result.picks.every(p => p.projection > p.line && p.probability > .5));
-    assert.ok(result.picks.every(p => p.facts.some(f => f.includes('not by positive EV'))));
+    assert.ok(result.picks.every(p => p.facts.some(f => f.includes('never EV, odds value or payout'))));
     assert.equal(new Set(result.picks.map(p => p.subject)).size, 4);
-    assert.equal(evaluate(quotes, data, settings, now).picks.length, 0, 'Legacy team/value mode is not silently relaxed');
+    assert.equal(evaluate(quotes, data, settings, now).picks.length, 4, 'Lean-only and legacy modes also ignore value thresholds');
     const team = { ...quotes[0], key: 'team', subject: 'Home', side: 'Home', market: 'h2h', line: null };
     const full = evaluate([...quotes, team], new Map([...data, [team.key, evidence(12)]]), settings, now, 5, 4);
     assert.equal(full.picks.length, 5);

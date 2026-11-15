@@ -14,11 +14,12 @@ test('Primetime detection uses Eastern weekday and 7 PM cutoff across DST, not U
   for (const date of [start, '2026-11-02T01:20:00Z', '2026-11-03T01:20:00Z', '2026-12-04T00:00:00Z']) assert.equal(isNFLPrimetime(date), true, date);
   for (const date of ['2026-11-01T18:00:00Z', '2026-11-01T23:59:00Z', '2026-10-31T00:15:00Z', 'invalid']) assert.equal(isNFLPrimetime(date), false, date);
 });
-test('Primetime never forces eight props or a team pick when value screens fail', () => {
+test('Primetime ignores value thresholds without forcing missing or unsupported props', () => {
   const team = { ...quotes[0], key: 'team', subject: 'Home', side: 'Home', market: 'h2h', line: null };
   const data = new Map([...evidence, [team.key, evidence.get(quotes[0].key)]]);
   const result = evaluate([...quotes, team], data, { ...defaultSettings, markets: ['player_reception_yds'], minEdge: 1 }, now, 9, 8);
-  assert.equal(result.picks.length, 0);
+  assert.equal(result.picks.length, 9);
+  assert.equal(result.picks.filter(pick => pick.market.startsWith('player_')).length, 8);
   assert.equal(result.stretchKeys.length, 0);
   assert.ok(result.picks.every((q) => !('stretch' in q)));
   const limited = evaluate(quotes.slice(0, 5), evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8);
@@ -37,7 +38,7 @@ test('Defensive yardage parser reads opponent statistics only and rejects wrong 
   assert.throws(() => nflOpponentYardage(body, '1', 2026, 7), /game count/);
   assert.throws(() => nflOpponentYardage({ ...body, results: {} }, '1', 2026), /unavailable/);
 });
-test('NBA and NFL prop odds stop at -200 for normal and Stretch candidates without restricting team leans', () => {
+test('NBA and NFL supported prop prices have no -200 cap or value threshold', () => {
   for (const sport of ['NBA', 'NFL']) for (const minEdge of [0, 1]) {
     const prices = [-400, -210, -201, -200, -199, -110, 100, 210];
     const pool = prices.map((american, i) => ({ ...quotes[0], sport, american, key: `price-${i}`, subject: `Player ${i}` }));
@@ -46,10 +47,10 @@ test('NBA and NFL prop odds stop at -200 for normal and Stretch candidates witho
       samples: Array.from({ length: 12 }, (_, i) => ({ value: 80, date: new Date(now - (1 + i) * 86400000).toISOString() })) }]));
     const result = evaluate([...pool, team], data, { ...defaultSettings, markets: ['player_reception_yds'], minEdge, minEV: 0 }, now, 9, 8);
     const props = result.picks.filter((q) => q.market.startsWith('player_'));
-    assert.deepEqual(props.map((q) => q.american).sort((a, b) => a - b), minEdge === 1 ? [] : prices.slice(3));
-    assert.equal(result.rejected.filter((q) => /-200 or better/.test(q.reason)).length, 3);
+    assert.deepEqual(props.map((q) => q.american).sort((a, b) => a - b), prices);
+    assert.equal(result.rejected.filter((q) => /-200 or better/.test(q.reason)).length, 0);
     assert.equal(result.teamLean.pick.american, -400);
-    if (minEdge === 1) assert.ok(props.every((q) => result.stretchKeys.includes(q.key)));
+    assert.deepEqual(result.stretchKeys, []);
     const duplicate = evaluate([...pool, { ...pool[3], american: -250, book: 'Worse book' }], data,
       { ...defaultSettings, markets: ['player_reception_yds'], minEdge: 0 }, now, 9, 8);
     assert.equal(duplicate.picks.find((q) => q.key === pool[3].key).american, -200);
@@ -68,12 +69,12 @@ test('Situational records use real consecutive games within each season, not ATS
   assert.equal(form.latestResult, 'tie');
   assert.deepEqual(form.primetime, { wins: 2, losses: 2, ties: 1 });
 });
-test('Opponent yardage weakness breaks equal-probability ties but does not override higher model probability', () => {
+test('Opponent context remains available but only probability and stable keys determine ranking', () => {
   const base = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_reception_yds'] }, now, 9, 8).picks[0];
   const opponent = { team: 'Away', pointsAllowed: 25, pointsScored: 22, games: 7, rank: 24, leagueSize: 32, season: 2026, fetchedAt: new Date(now).toISOString() };
   const weak = { ...base, key: 'z', opponents: [{ ...opponent, yardage: { receiving: { perGame: 280, rank: 30 } } }] };
   const strong = { ...base, key: 'a', opponents: [{ ...opponent, yardage: { receiving: { perGame: 180, rank: 3 } } }] };
-  assert.equal(rankTopPicks([strong, weak])[0].key, 'z');
+  assert.equal(rankTopPicks([strong, weak])[0].key, 'a');
   assert.equal(rankTopPicks([{ ...strong, probability: base.probability + 0.02 }, weak])[0].key, 'a', 'Supported model probability leads matchup tiebreakers');
   assert.equal(rankTopPicks([{ ...strong, side: 'Under' }, { ...weak, side: 'Under' }])[0].key, 'a');
   assert.equal(weak.probability, base.probability);

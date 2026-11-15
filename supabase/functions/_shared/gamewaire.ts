@@ -4,9 +4,9 @@ export const soccerSports = ['EPL', 'Serie A', 'La Liga', 'Bundesliga'] as const
 export type SoccerSport = typeof soccerSports[number];
 export type Sport = 'NFL' | 'NBA' | SoccerSport;
 export const isSoccer = (sport: string): sport is SoccerSport => (soccerSports as readonly string[]).includes(sport);
-export const soccerModelVersion = 'soccer-evidence-v1';
-export const modelVersion = 'probability-first-v11';
-export const probabilityModelVersion = 'probability-evidence-v11';
+export const soccerModelVersion = 'soccer-probability-v2';
+export const modelVersion = 'probability-only-v12';
+export const probabilityModelVersion = 'probability-evidence-v12';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -20,7 +20,7 @@ export type Settings = {
   minEV: number; minEdge: number; minQuality: number; recentWeight: number;
 };
 export const defaultSettings: Settings = {
-  markets: [], direction: 'over', player: '', minEV: 0.05, minEdge: 0.03, minQuality: 0.75, recentWeight: 0.4,
+  markets: [], direction: 'over', player: '', minEV: 0, minEdge: 0, minQuality: 0.75, recentWeight: 0.4,
 };
 export function fullAnalysisSettings(settings: Settings, sport: Sport): Settings {
   return { ...settings, direction: 'over', markets: isSoccer(sport) ? settings.markets : [...new Set([...settings.markets, ...markets[sport]])] };
@@ -291,14 +291,10 @@ export function pickBlurb(pick: Candidate) {
   return [...sentences.slice(0, 4), `${takeaway.slice(0, -1)}${caveat}${recentAgainst ? '; recent production is a counterpoint, not supporting evidence' : ''}${player ? '; sportsbook lines may vary' : ''}.`].join(' ');
 }
 export function rankTopPicks<T extends Candidate>(picks: T[]): T[] {
-  return [...picks].sort((a, b) => b.probability - a.probability || b.quality - a.quality
-    || b.conservativeEV - a.conservativeEV || b.ev - a.ev || b.edge - a.edge
-    || Number(b.market === 'h2h') - Number(a.market === 'h2h')
-    || matchupPreference(b) - matchupPreference(a)
-    || (b.rotation?.involvement ?? 0) - (a.rotation?.involvement ?? 0)
-    || (b.rotation?.minutes ?? 0) - (a.rotation?.minutes ?? 0)
-    || gamewaireGrade(b).score - gamewaireGrade(a).score
-    || a.key.localeCompare(b.key));
+  return [...picks].sort(comparePickProbability);
+}
+export function comparePickProbability(a: Candidate, b: Candidate) {
+  return b.probability - a.probability || a.key.localeCompare(b.key);
 }
 export function matchupPreference(pick: Candidate) {
   if (pick.sport === 'NFL' && ['h2h', 'spreads'].includes(pick.market) && pick.teamForm) {
@@ -404,7 +400,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
   learning: Map<string, LearningAdjustment> = new Map()): Evaluation {
   if (quotes.some(quote => isSoccer(quote.sport))) throw new Error('Soccer requires the dedicated three-way regulation-time evaluator.');
   const rejected: Evaluation['rejected'] = [], candidates: Candidate[] = [], teamOptions: TeamLean[] = [];
-  const probabilityFirst = minimumPlayerPicks === 4;
+  const fourPlayerAnalysis = minimumPlayerPicks === 4;
   const best = new Map<string, Quote>();
   for (const quote of quotes) {
     if (!Number.isFinite(Date.parse(quote.updatedAt)) || !Number.isFinite(Date.parse(quote.start))
@@ -413,9 +409,6 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       rejected.push({ key: quote.key, reason: 'Invalid price, probability, line or timestamp.' }); continue;
     }
     if ((!settings.markets.includes(quote.market) && !['h2h', 'spreads'].includes(quote.market)) || (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player)))) continue;
-    if (quote.market.startsWith('player_') && quote.american < -200) {
-      rejected.push({ key: quote.key, reason: 'Player props must be priced at -200 or better; worse prices are excluded, including Stretch picks.' }); continue;
-    }
     if (!isAllowedPickSide(quote)) { rejected.push({ key: quote.key, reason: 'GamewAIre totals and player props are Over-only; Under selections are excluded.' }); continue; }
     if (settings.direction !== 'both' && ['Over', 'Under'].includes(quote.side) && quote.side.toLowerCase() !== settings.direction) continue;
     if (Date.parse(quote.start) <= now) { rejected.push({ key: quote.key, reason: 'Game has started; pregame analysis only.' }); continue; }
@@ -430,7 +423,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const data = evidence.get(quote.key);
     const reject = (reason: string) => rejected.push({ key: quote.key, reason });
     if (!data?.eligible) { reject(data?.reason ?? 'Verified matchup/player data unavailable.'); continue; }
-    if (data.quality < settings.minQuality || now - Date.parse(data.fetchedAt) > 60 * 60_000 || Date.parse(data.fetchedAt) > now + 60_000 || !Number.isFinite(Date.parse(data.fetchedAt))) {
+    if (!Number.isFinite(data.quality) || data.quality > 1 || data.quality < settings.minQuality || now - Date.parse(data.fetchedAt) > 60 * 60_000 || Date.parse(data.fetchedAt) > now + 60_000 || !Number.isFinite(Date.parse(data.fetchedAt))) {
       reject('Insufficient data completeness or stale source data.'); continue;
     }
     const samples = data.samples.filter((row) => Number.isFinite(row.value) && Number.isFinite(Date.parse(row.date)) && Date.parse(row.date) < now && Date.parse(row.date) < Date.parse(quote.start))
@@ -470,7 +463,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const effectiveSample = 1 / weights.reduce((sum, value) => sum + value * value, 0);
     const conditionalWin = 1 - push > 0 ? Math.min(1, wins / (1 - push)) : 0;
     const decisiveSample = effectiveSample * (1 - push);
-    const baseConditional = (conditionalWin * decisiveSample + quote.noVig * 4) / (decisiveSample + 4);
+    const baseConditional = (conditionalWin * decisiveSample + .5 * 4) / (decisiveSample + 4);
     const adjustment = learning.get(pickLearningKey(quote.market, quote.side)) ?? learnAdjustment([], 'probability', now);
     const conditional = adjustment?.active ? adjustedPickProbability(baseConditional, quote.market, quote.side, adjustment.adjustment) : baseConditional;
     const probability = conditional * (1 - push);
@@ -480,9 +473,8 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const edge = conditional - implied, ev = expectedValue(probability, push, quote.american);
     const conservativeEV = expectedValue(conservative, push, quote.american);
     const projection = values.reduce((sum, value, i) => sum + value * weights[i], 0);
-    const projectionAgrees = sign * (projection - threshold) > 1e-8;
-    const qualifies = probabilityFirst ? probability > .5 && projectionAgrees
-      : edge >= Math.max(.03, settings.minEdge) && ev >= Math.max(.05, settings.minEV) && conservativeEV > 0;
+    const projectionAgrees = Number.isFinite(projection) && sign * (projection - threshold) > 1e-8;
+    const qualifies = projectionAgrees;
     const facts = [
       `${quote.subject}: ${quote.side}${quote.line === null ? '' : ` ${quote.line}`} at ${quote.american > 0 ? '+' : ''}${quote.american} (${quote.book}).`,
       `The weighted baseline projection is ${projection.toFixed(1)} from ${samples.length} prior games.`,
@@ -490,7 +482,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       `Estimated EV ${(ev * 100).toFixed(1)}% of one unit, including pushes. This baseline is not calibrated or independently validated.`,
     ];
     if (data.simulationProjection !== undefined) facts.push('The player distribution is scaled to the saved game-specific GamewAIre simulation projection; this is a heuristic, not a calibrated probability.');
-    if (probabilityFirst) facts.push('Selected by estimated win probability and projection agreement, not by positive EV. A higher hit probability does not establish a profitable price.');
+    facts.push('Ranking uses estimated win probability with projection agreement, never EV, odds value or payout. A neutral four-observation prior is used; sportsbook prices do not enter the probability estimate. A higher hit probability does not establish a profitable price.');
     if (adjustment?.active) facts.push(`A bounded ${((conditional - baseConditional) * 100).toFixed(1)} percentage-point settled-result correction passed chronological validation on ${adjustment.validationGames} later games. This does not establish universal calibration or guarantee future improvement.`);
     const candidate: Candidate = { ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,
       valueClass: valueClassification({ edge, ev, conservativeEV, quality: data.quality }),
@@ -504,12 +496,10 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       facts, explanation: facts.join(' '), identifiers: data.identifiers, baseline,
       previousSeasonAverage: previous.length ? mean(previous.map((row) => row.value)) : undefined, rotation: data.rotation, opponents: data.opponents, teamContext: data.teamContext, teamForm: data.teamForm, matchupForm: data.matchupForm };
     if (['h2h', 'spreads'].includes(quote.market)) teamOptions.push({ pick: candidate, qualifies,
-      reason: probabilityFirst ? qualifies ? 'Passes probability-first selection and projection agreement; positive EV is not required.'
-        : 'Does not pass probability-first selection and projection agreement. Not a Top Pick.'
-        : qualifies ? 'Passes the current value and uncertainty screens.' : 'Does not pass the current edge, EV or conservative uncertainty screen. Not a Top Pick.' });
+      reason: qualifies ? 'Supported by the model projection; ranked only by estimated win probability, not EV or odds value.'
+        : 'The model projection does not support this side. Not an eligible pick.' });
     if (!qualifies) {
-      reject(probabilityFirst ? 'Estimated win probability must exceed 50% and the projection must support the selected side.'
-        : 'Exact price fails edge, EV or conservative uncertainty threshold.'); continue;
+      reject('The model projection must support the selected side.'); continue;
     }
     candidates.push(candidate);
   }
@@ -518,7 +508,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
   for (const candidate of rankTopPicks(candidates)) {
     const player = candidate.market.startsWith('player_');
     const identity = normalize(candidate.subject);
-    if (player && probabilityFirst && picks.filter(pick => pick.market.startsWith('player_')).length >= 4) continue;
+    if (player && fourPlayerAnalysis && picks.filter(pick => pick.market.startsWith('player_')).length >= 4) continue;
     if (player && minimumPlayerPicks === 8 && picks.filter((pick) => pick.market.startsWith('player_')).length >= 8) {
       rejected.push({ key: candidate.key, reason: 'Excluded after eight distinct primetime player selections.' }); continue;
     }
@@ -528,14 +518,13 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     picks.push(candidate); subjects.add(identity); if (!player) teamMarket = true;
     if (picks.length === limit) break;
   }
-  const selectedLean = [...teamOptions].sort((a, b) => b.pick.probability - a.pick.probability
-    || b.pick.quality - a.pick.quality || b.pick.conservativeEV - a.pick.conservativeEV
-    || b.pick.ev - a.pick.ev || b.pick.edge - a.pick.edge || a.pick.key.localeCompare(b.pick.key))[0];
+  const orderedLeans = [...teamOptions].sort((a, b) => comparePickProbability(a.pick, b.pick));
+  const selectedLean = orderedLeans.find(row => row.qualifies) ?? orderedLeans[0];
   const teamLean = selectedLean ? { ...selectedLean,
     reason: `Highest supported model win probability for this game (${(selectedLean.pick.probability * 100).toFixed(1)}%). ${
       selectedLean.pick.probability < .6 ? 'Low-confidence lean; retained for game coverage, not a high-confidence selection. ' : ''
     }${selectedLean.reason}` } : undefined;
-  if (teamLean?.qualifies && !picks.some((pick) => pick.key === teamLean.pick.key)) {
+  if (teamLean?.qualifies && !teamMarket && !picks.some((pick) => pick.key === teamLean.pick.key)) {
     const existing = picks.findIndex((pick) => !pick.market.startsWith('player_'));
     const displaced = existing >= 0 ? picks.splice(existing, 1)[0] : picks.length >= limit ? picks.pop() : undefined;
     if (displaced) rejected.push({ key: displaced.key, reason: 'Excluded to reserve one qualifying moneyline/spread slot for this game.' });
@@ -543,8 +532,8 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (previouslyRejected >= 0) rejected.splice(previouslyRejected, 1);
     picks.push(teamLean.pick);
   }
-  const winnerLean = teamOptions.filter(row => row.pick.sport === 'NBA' && row.pick.market === 'h2h')
-    .sort((a, b) => b.pick.probability - a.pick.probability || b.pick.conservativeEV - a.pick.conservativeEV || a.pick.key.localeCompare(b.pick.key))[0];
+  const winnerOptions = orderedLeans.filter(row => row.pick.sport === 'NBA' && row.pick.market === 'h2h');
+  const winnerLean = winnerOptions.find(row => row.qualifies) ?? winnerOptions[0];
   return { status: picks.length ? 'completed' : !best.size && rejected.some((row) => row.reason.startsWith('Stale')) ? 'stale_odds'
     : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks: rankTopPicks(picks), rejected, teamLean,
     ...(winnerLean ? { winnerLean } : {}), ...(minimumPlayerPicks ? { stretchKeys: [] } : {}) };
