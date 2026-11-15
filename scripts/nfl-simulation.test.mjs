@@ -766,6 +766,12 @@ test('Reduced cached team/player samples produce a box score without waiting for
   assert.equal(unsupported.scenarios[0].id, 'team-only');
   assert.deepEqual(unsupported.scenarios[0].home.players, []);
   assert.equal(unsupported.scenarios[0].home.totals, null);
+  const selected = await advanceSimulation(game, job, simulationCache(values), async () => { throw new Error('Unexpected feed request'); },
+    now, undefined, { home: '11', away: '21' });
+  assert.deepEqual(selected.scenarios.map(scenario => scenario.id), ['11:21'], 'Scheduled workers only compute the automatically selected QB pair');
+  const allPairs = await advanceSimulation(game, job, simulationCache(values), async () => { throw new Error('Unexpected feed request'); }, now);
+  assert.deepEqual(selected.scenarios[0], allPairs.scenarios.find(scenario => scenario.id === '11:21'),
+    'Removing unused pairings leaves selected projections and all 1,000 draws unchanged');
 });
 test('Only verified upcoming regular-season/playoff games may be simulated', () => {
   const raw = rawBox(fixture().history.home[0]);

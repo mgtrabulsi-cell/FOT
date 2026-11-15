@@ -245,8 +245,10 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     away: job.history.away.flatMap(ref => boxes.has(ref.id) ? [boxes.get(ref.id)!] : []),
   };
   const observations = withTeamPositionEstimates(game, active, job.rosterPlayers, history, actuals);
+  const scenarioPlayers = quarterbacks ? job.players.filter(player => player.position !== 'QB'
+    || player.id === (player.teamId === game.home.id ? quarterbacks.home : quarterbacks.away)) : job.players;
   if (history.home.length < 8 || history.away.length < 8) return teamOnly(refreshing);
-  result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs, undefined, overtime);
+  result.scenarios = simulateNFLGame(game, history, scenarioPlayers, observations, result.runs, undefined, overtime);
   if (quarterbacks && !result.scenarios.some(scenario => scenario.id === `${quarterbacks.home}:${quarterbacks.away}` && scenario.home && scenario.away)) {
     result.warnings.push('The selected QB matchup lacks verified player history; the forecast is team-only, with no substitute quarterback or player statistics.');
     return teamOnly(refreshing);
@@ -255,7 +257,7 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     result.learning = { version: 'simulation-walk-forward-v2', adjustments: learning.adjustments,
       playerAdjustments: learning.playerAdjustments ?? {}, baselines: simulationLearningBaselines(result.scenarios) };
     if ([...Object.values(learning.adjustments), ...Object.values(learning.playerAdjustments ?? {})].some(adjustment => adjustment.active)) {
-      result.scenarios = simulateNFLGame(game, history, job.players, observations, result.runs,
+      result.scenarios = simulateNFLGame(game, history, scenarioPlayers, observations, result.runs,
         simulationLearningFactors(learning.adjustments), overtime, learning.playerAdjustments);
     }
   }
