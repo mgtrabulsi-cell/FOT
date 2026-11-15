@@ -81,6 +81,19 @@ const evidence = { eligible: true, fetchedAt: new Date(now).toISOString(), quali
   samples: Array.from({ length: 30 }, (_, index) => ({ date: new Date(now - (index + 1) * 86_400_000).toISOString(), value: index < 27 ? 30 : 10 })) };
 const evaluate = (quotes = [quote], data = evidence, options = settings, time = now) => engine.evaluate(quotes, new Map(quotes.map((q) => [q.key, data])), options, time);
 
+test('Sim-aligned NFL margins can be negative and keep exact projected-side agreement; production cannot be negative', () => {
+  const spread = { ...quote, sport: 'NFL', market: 'spreads', key: 'sim-spread', subject: quote.home, side: quote.home, line: 7.5 };
+  const aligned = { ...evidence, simulationProjection: -4 };
+  const result = evaluate([spread], aligned, { ...settings, markets: ['spreads'] });
+  assert.equal(result.picks.length, 1);
+  assert.ok(Math.abs(result.picks[0].projection - -4) < 1e-8);
+  assert.equal(evaluate([{ ...spread, line: 3.5 }], aligned, { ...settings, markets: ['spreads'] }).picks.length, 0);
+  const prop = { ...quote, sport: 'NFL', market: 'player_reception_yds' };
+  const invalid = evaluate([prop], aligned, { ...settings, markets: ['player_reception_yds'] });
+  assert.equal(invalid.picks.length, 0);
+  assert.match(invalid.rejected[0].reason, /Invalid saved simulation projection/);
+});
+
 test('Saved games leave review only after a matching confirmed final, not at tipoff, delay or postponement', async () => {
   const game = { sport: 'NBA', event_id: 'odds-id', event_start: '2026-10-27T23:00:00Z', matchup: 'LA Lakers @ Boston Celtics' };
   const event = { date: game.event_start, competitions: [{ status: { type: { completed: true, state: 'post' } },
@@ -1099,6 +1112,7 @@ for (const sport of engine.soccerSports) test(`${sport} on-demand backend uses v
   assert.ok(fixture.rpc.every(call => !call.name.includes('publish') && !call.name.includes('schedule')));
 });
 function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, creditBudget = true, publicationVersion = engine.modelVersion, publicationPicks = [], eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
+  publicationSport = 'NBA', publicationAlignment = null, savedSimulation,
   scoreboardRows = [], scoreboardError = null, scoreboardJobs = [], scoreboardJobsError = null,
   settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
@@ -1120,7 +1134,8 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
         maybeSingle: async () => ({ data: table === 'livewire_roles' ? { role }
           : table === 'gamewaire_picks' ? settlementConflict ? null : { id: 'pick' }
           : table === 'sports_resources' ? eventCache
-          : table === 'gamewaire_runs' && builder.columns === 'payload,sport' ? { sport: 'NBA', payload: { modelVersion: publicationVersion, picks: publicationPicks } }
+          : table === 'gamewaire_runs' && builder.columns === 'payload,sport,event_start' ? { sport: publicationSport, event_start: quote.start,
+            payload: { modelVersion: publicationVersion, picks: publicationPicks, simulationAlignment: publicationAlignment } }
           : table === 'gamewaire_runs' ? cachedRun : null, error: null }),
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: table === 'gamewaire_runs' && builder.columns?.includes('event_start,payload,status')
@@ -1149,7 +1164,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       if (name.includes('gamewaireAutomaticPicks')) return automaticTools;
       if (name.includes('gamewaireSchedule')) return { ...schedule, planScheduledAnalyses: async () => {} };
       if (name.includes('gamewaireScoreboard')) return scoreboard;
-      if (name.includes('nflSimulationBackend')) return simulationBackend;
+      if (name.includes('nflSimulationBackend')) return { ...simulationBackend, savedNFLGameSimulation: async () => savedSimulation };
       if (name.includes('nflSimulationAlignment')) return simulationAlignment;
       if (name.includes('gamewaireSoccer')) return soccer;
       if (name.includes('gamewaireSources')) return { ...sources, resolveMatchup: async () => ({}), collectEvidence: async (quotes) => ({
@@ -1176,6 +1191,32 @@ test('Publication rejects saved Under candidates without changing existing publi
   assert.ok(!api.rpc.some(call => call.name === 'gamewaire_publish'));
   assert.equal((await api.run({ ...body, keys: ['over'] })).status, 200);
   assert.equal(api.writes.length, 0, 'Policy enforcement does not edit historical picks');
+});
+test('NFL publication and cache reuse require the exact saved simulation revision, without depending on JSON field order', async () => {
+  const forecast = { status: 'ready', eventId: '123', version: 'test-model', forecastAt: new Date(now - 60000).toISOString(),
+    scenarios: [{ id: 'one:two', issue: null, home: {}, away: {} }] };
+  const stamp = simulationAlignment.simulationAlignmentStamp(forecast);
+  const publicationAlignment = Object.fromEntries(Object.entries(stamp).reverse());
+  const options = { publicationSport: 'NFL', publicationAlignment, savedSimulation: forecast };
+  const body = { action: 'publish', runId: '00000000-0000-4000-8000-000000000001', keys: ['over'] };
+  const current = endpoint(options);
+  assert.equal((await current.run(body)).status, 200);
+  assert.equal(current.fetches.length, 0);
+  const changed = endpoint({ ...options, savedSimulation: { ...forecast, forecastAt: new Date(now).toISOString() } });
+  assert.equal((await changed.run(body)).status, 409);
+  assert.equal((await changed.run({ action: 'publishLean', runId: body.runId })).status, 409);
+  assert.ok(!changed.rpc.some(row => row.name.startsWith('gamewaire_publish')));
+  const cacheSettings = { ...engine.defaultSettings, markets: ['h2h', 'spreads'] };
+  const cachedRun = { id: body.runId, sport: 'NFL', event_id: 'event', event_start: quote.start,
+    created_at: new Date(now - 1000).toISOString(), status: 'no_qualifying', settings: cacheSettings,
+    payload: { modelVersion: engine.modelVersion, playerPropMinimum: 0, picks: [], simulationAlignment: publicationAlignment } };
+  const request = { action: 'analyze', sport: 'NFL', eventId: 'event', settings: cacheSettings };
+  const cache = endpoint({ configured: true, cachedRun, savedSimulation: forecast });
+  assert.equal((await (await cache.run(request)).json()).cached, true);
+  assert.equal(cache.fetches.length, 0);
+  const stale = endpoint({ configured: true, cachedRun, savedSimulation: { ...forecast, forecastAt: new Date(now).toISOString() } });
+  assert.notEqual((await (await stale.run(request)).json()).cached, true);
+  assert.equal(stale.fetches.length, 1);
 });
 test('NFL events endpoint ignores date restriction and returns the full upcoming slate in kickoff order', async () => {
   const events = [

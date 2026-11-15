@@ -7,7 +7,7 @@ import * as jsxRuntime from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { archivedProjectionOvertimeEvidence, modelProjectedOvertime, projectedSimulationScore, selectedSimulationScenario, legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerWeights, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
 import * as qbMatchup from '../supabase/functions/_shared/nflSimulationMatchup.ts';
-import { alignSimulationEvidence, reconcileSimulationProjections, simulationAllowsMoneyline } from '../supabase/functions/_shared/nflSimulationAlignment.ts';
+import { alignSimulationEvidence, matchesSimulationAlignment, reconcileSimulationProjections, simulationAlignmentStamp, simulationAllowsMoneyline, simulationAllowsTeamPick } from '../supabase/functions/_shared/nflSimulationAlignment.ts';
 import { modelVersion } from '../supabase/functions/_shared/gamewaire.ts';
 import { archivePlayerForecast } from '../supabase/functions/_shared/gamewireForecasts.ts';
 import { scoreboardPicks } from '../supabase/functions/_shared/gamewaireScoreboard.ts';
@@ -301,6 +301,9 @@ test('SQL freezes at the 30-minute threshold, preserves scores, upgrades confirm
     assert.equal(await freeze(), 1); assert.equal(await freeze(), 0);
     const locked = (await db.query('select payload from public.gamewire_game_forecasts')).rows[0].payload;
     assert.ok(locked.qbMatchup.lockedAt); assert.equal(locked.qbMatchup.revision, 0);
+    const newModel = { ...forecast, event_start: kickoff, model_version: nflSimulationVersion,
+      payload: { ...locked, version: nflSimulationVersion } };
+    assert.equal(await save(newModel), null, 'A model rollout cannot replace a different model after the matchup freeze');
     const drift = { ...forecast, event_start: kickoff, payload: structuredClone(locked) };
     drift.payload.scenarios[0].home.score.mean += 7;
     const stable = await save(drift);
@@ -685,6 +688,8 @@ test('Team-position estimates unlock rookie QB scenarios without fabricating per
   assert.ok(qb.estimate.games >= 4); assert.equal(qb.limited, true); assert.ok(qb.stats.passingYards.mean > 0);
   const payload = response(scenarios, { evidenceMode: 'limited' });
   assert.equal(readNFLGameSimulation(payload, game.id, game.date, { home: '1', away: '2' }).evidenceMode, 'limited');
+  assert.equal(readNFLGameSimulation({ ...payload, version: 'nfl-joint-bootstrap-v6' }, game.id, game.date,
+    { home: '1', away: '2' }).evidenceMode, 'limited', 'Previously saved estimated forecasts remain readable after model rollout');
   assert.throws(() => readNFLGameSimulation({ ...payload, evidenceMode: 'full' }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
   const invalid = structuredClone(payload); invalid.scenarios[0].home.players.find(player => player.id === '11').estimate.games = 3;
   assert.throws(() => readNFLGameSimulation(invalid, game.id, game.date, { home: '1', away: '2' }), /invalid/);
@@ -892,6 +897,58 @@ test('Quarterback production, individual production and defense change the same 
   assert.ok(adjusted[0].home.matchup.passingYardsMultiplier > 1);
   assert.ok(better[0].home.score.mean > first[0].home.score.mean);
   assert.ok(better[0].home.players.find(p => p.position === 'WR').stats.receivingYards.mean > first[0].home.players.find(p => p.position === 'WR').stats.receivingYards.mean);
+});
+test('Filling missing players divides remaining opportunity without diluting verified catches or carries', () => {
+  const f = fixture();
+  for (const [id, rows] of f.observations) f.observations.set(id, rows.map(row => ({ ...row, player: rows[0].player, team: rows[0].team })));
+  for (const boxes of [f.history.home, f.history.away]) for (const box of boxes) box.teams = boxes[0].teams;
+  const baseline = simulateNFLGame(game, f.history, f.players, f.observations, 500)[0].home;
+  const added = ['WR', 'RB'].map((position, i) => ({ ...f.players.find(p => p.position === position && p.teamId === '1'),
+    id: String(16 + i), name: `Estimated ${position}` }));
+  for (const p of added) {
+    const rows = f.observations.get(p.position === 'WR' ? '14' : '13');
+    f.observations.set(p.id, rows.map(row => ({ ...row, basis: 'team-position-average-v1',
+      player: { ...row.player, receptions: 12, receivingYards: 144,
+        ...(p.position === 'RB' ? { rushingAttempts: 25, rushingYards: 125 } : {}) } })));
+  }
+  const filled = simulateNFLGame(game, f.history, [...f.players, ...added], f.observations, 500)[0].home;
+  for (const id of ['13', '14', '15']) {
+    const before = baseline.players.find(p => p.id === id), after = filled.players.find(p => p.id === id);
+    assert.deepEqual(after.stats.receptions, before.stats.receptions);
+    assert.deepEqual(after.stats.receivingYards, before.stats.receivingYards);
+    assert.deepEqual(after.stats.rushingAttempts, before.stats.rushingAttempts);
+    assert.deepEqual(after.stats.rushingYards, before.stats.rushingYards);
+  }
+  assert.ok(filled.players.find(p => p.id === '16').stats.receptions.mean > 0);
+  assert.ok(filled.players.find(p => p.id === '17').stats.rushingAttempts.mean > 0);
+  const box = roundedSimulationBox(filled);
+  assert.equal(box.totals.passingYards, box.listed.receivingYards);
+  assert.equal(box.totals.rushingYards, box.listed.rushingYards + box.remainder.otherRushingYards);
+});
+test('Established stable-volume receivers get bounded favorable-matchup upside, not an unconditional star boost', () => {
+  const f = fixture({ weakDefense: 2 });
+  for (const p of f.players) f.observations.set(p.id, f.observations.get(p.id).map((row, i) => ({ ...row,
+    teamId: p.teamId, date: new Date(Date.parse(game.date) - (i + 2) * 7 * 86400000).toISOString() })));
+  const yards = players => simulateNFLGame(game, f.history, players, f.observations, 500)[0].home.players.find(p => p.id === '14').stats.receivingYards.mean;
+  const uncertain = () => f.players.map(p => p.id === '14' ? { ...p, uncertain: true } : p);
+  const ordinary = yards(uncertain()), supported = yards(f.players);
+  assert.ok(supported > ordinary * 1.05, `${supported} should exceed ordinary response ${ordinary}`);
+  assert.ok(supported <= ordinary * 1.35 + 1);
+  const originals = f.observations.get('14');
+  for (const rows of [
+    originals.slice(0, 7),
+    originals.map((row, i) => i < 3 ? { ...row, player: { ...row.player, receptions: 1 } } : row),
+    originals.map(row => ({ ...row, basis: 'team-position-average-v1' })),
+    originals.map(row => ({ ...row, date: new Date(Date.parse(game.date) - 60 * 86400000).toISOString() })),
+  ]) {
+    f.observations.set('14', rows);
+    assert.equal(yards(f.players), yards(uncertain()), 'Sparse, falling, estimated or stale workloads do not get extra upside');
+  }
+  f.observations.set('14', originals);
+  const normal = fixture().history.away;
+  f.history.away = normal;
+  assert.equal(yards(f.players), yards(uncertain()), 'Ordinary defenses do not qualify');
+  assert.ok(supported <= yards(f.players) * 1.35 + 1, 'Full matchup response, not just the extra boost, stays capped at 35 percent');
 });
 test('Verified touchdown evidence distinguishes recorded zero from missing stats and enforces passing/receiving accounting', () => {
   const raw = rawBox(fixture().history.home[0]);
@@ -1875,7 +1932,8 @@ test('Automatic NFL picks retain simulation-winner alignment but ignore odds val
   assert.equal(scoreboardPicks([{ ...candidate, subject: game.away.name, side: game.away.name }], now, options).length, 0);
   assert.equal(scoreboardPicks([{ ...candidate, ev: -.1, edge: -.1, conservativeEV: -.1 }], now, options).length, 1);
   assert.equal(scoreboardPicks([candidate], now, { nflSimulations: new Map() }).length, 0);
-  assert.equal(scoreboardPicks([{ ...candidate, market: 'spreads', line: 3.5, subject: game.away.name }], now, options).length, 1);
+  assert.equal(scoreboardPicks([{ ...candidate, market: 'spreads', line: 3.5, subject: game.away.name }], now, options).length, 0);
+  assert.equal(scoreboardPicks([{ ...candidate, market: 'spreads', line: 100, subject: game.away.name }], now, options).length, 1);
   assert.equal(scoreboardPicks([candidate], Date.parse(game.date) + 1, options).length, 1, 'Original picks are retained after kickoff');
 });
 
@@ -1892,6 +1950,31 @@ test('Four-prop evidence resolves saved simulation players by verified team and 
     assert.equal(alignSimulationEvidence([quote], source, invalid).get(quote.key).eligible, false);
   assert.equal(alignSimulationEvidence([{ ...quote, home: 'Wrong Team' }], source, forecast).get(quote.key).eligible, false);
   assert.equal(alignSimulationEvidence([quote], new Map([[quote.key, { ...evidence, identifiers: { teamId: '2', playerId: '14' } }]]), forecast).get(quote.key).eligible, false);
+});
+test('Team markets and cache/publication stamps follow the same selected simulation without relying on JSON key order', () => {
+  const f = fixture(), forecast = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  forecast.scenarios[0].home.score = { mean: 27, median: 27, p10: 27, p90: 27 };
+  forecast.scenarios[0].away.score = { mean: 20, median: 20, p10: 20, p90: 20 };
+  const home = { key: 'home-spread', sport: 'NFL', market: 'spreads', start: game.date,
+    home: game.home.name, away: game.away.name, subject: game.home.name, side: game.home.name, line: -6.5 };
+  const away = { ...home, key: 'away-spread', subject: game.away.name, side: game.away.name, line: 7.5 };
+  const total = { ...home, key: 'total', market: 'totals', side: 'Over', line: 46.5 };
+  const source = new Map([home, away, total].map(quote => [quote.key, { eligible: true, identifiers: { espnEventId: game.id } }]));
+  const aligned = alignSimulationEvidence([home, away, total], source, forecast);
+  assert.equal(aligned.get(home.key).simulationProjection, 7);
+  assert.equal(aligned.get(away.key).simulationProjection, -7);
+  assert.equal(aligned.get(total.key).simulationProjection, 47);
+  for (const quote of [home, away, total]) assert.equal(simulationAllowsTeamPick(quote, forecast), true);
+  for (const quote of [{ ...home, line: -7.5 }, { ...away, line: 6.5 }, { ...total, line: 47.5 }])
+    assert.equal(simulationAllowsTeamPick(quote, forecast), false);
+  assert.equal(alignSimulationEvidence([home], source, undefined).get(home.key).eligible, false);
+  const stamp = simulationAlignmentStamp(forecast);
+  assert.equal(matchesSimulationAlignment(Object.fromEntries(Object.entries(stamp).reverse()), forecast), true);
+  for (const changed of [{ ...stamp, version: 'old' }, { ...stamp, forecastAt: '2026-11-01T18:00:00Z' },
+    { ...stamp, scenarioId: 'another-pair' }, null]) assert.equal(matchesSimulationAlignment(changed, forecast), false);
+  assert.equal(matchesSimulationAlignment(stamp, undefined), false);
+  const legacy = { ...forecast, version: 'nfl-joint-bootstrap-v5', evidenceMode: 'limited' };
+  assert.equal(readNFLGameSimulation(legacy, game.id, game.date, { home: '1', away: '2' }).version, legacy.version);
 });
 
 test('Simulation diagnostics permissions reset on account changes and ignore stale admin checks', async () => {

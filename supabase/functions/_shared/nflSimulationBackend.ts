@@ -90,7 +90,8 @@ export async function loadNFLGameSimulation(admin: SupabaseClient, eventId: stri
   }
   const waiting = await admin.from('gamewire_simulation_jobs').select('response,next_run_at,last_error,model_version').eq('event_id', eventId).maybeSingle();
   if (waiting.error) throw new Error('Could not read NFL simulation progress.');
-  if (saved?.status === 'ready') return { ...await savedOvertimeFinal(admin, saved, now), refreshing: saved.refreshing === true || saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000,
+  const frozen = saved?.qbMatchup?.lockedAt || now >= Date.parse(kickoff) - simulationLockLead;
+  if (saved?.status === 'ready') return { ...await savedOvertimeFinal(admin, saved, now), refreshing: !frozen && (saved.refreshing === true || saved.version !== nflSimulationVersion || Date.parse(saved.forecastAt ?? '') <= now - 10 * 60000),
     warnings: waiting.data?.last_error ? [...saved.warnings, `Background preparation issue: ${waiting.data.last_error}`] : saved.warnings };
   if (!waiting.data || waiting.data.model_version !== nflSimulationVersion) {
     if (!waiting.data && !await claim()) throw new Error('Simulation request limit reached (60 per account per hour). Scheduled background preparation continues.');
@@ -122,7 +123,7 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
     const row = await admin.from('gamewire_simulation_jobs').select('payload,response').eq('event_id', eventId).maybeSingle();
     if (row.error) throw new Error('Could not load the saved NFL simulation work.');
     const latest = await admin.from('gamewire_game_forecasts').select('payload,event_start').eq('event_id', eventId)
-      .eq('model_version', nflSimulationVersion).maybeSingle();
+      .in('model_version', readableNFLSimulationVersions).order('model_version', { ascending: false }).limit(1).maybeSingle();
     if (latest.error) throw new Error('Could not read the current QB matchup lock.');
     const previousForecast = latest.data?.payload
       ? readNFLGameSimulation(latest.data.payload, game.id, game.date, { home: game.home.id, away: game.away.id }) : undefined;
@@ -143,7 +144,9 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
     };
     let job = row.data?.payload as SimulationJob | null;
     let choices = simulationQBChoices(game, job?.players ?? job?.rosterPlayers ?? [], confirmedSimulationQBs(summary, game), previousForecast);
-    let result = previousForecast?.qbMatchup?.lockedAt && !confirmedSimulationMatchupChanged(previousForecast, choices)
+    const retainOlderLock = previousForecast && previousForecast.version !== nflSimulationVersion
+      && (previousForecast.qbMatchup?.lockedAt || now >= Date.parse(game.date) - simulationLockLead);
+    let result = retainOlderLock || previousForecast?.qbMatchup?.lockedAt && !confirmedSimulationMatchupChanged(previousForecast, choices)
       ? previousForecast : undefined;
     if (!result) {
       if (!job || job.version !== nflSimulationVersion || Date.parse(job.createdAt) < now - 5 * 60000) {
@@ -163,9 +166,9 @@ export async function runNFLGameSimulation(admin: SupabaseClient, eventId: strin
       const learning = await loadSimulationLearning(admin, now);
       result = await advanceSimulation(game, job, cache, get, now, learning, { home: choices.home.id, away: choices.away.id });
     }
-    result = applySimulationQBMatchup(result, choices, now);
+    if (!retainOlderLock) result = applySimulationQBMatchup(result, choices, now);
     result = readNFLGameSimulation(result, game.id, game.date, { home: game.home.id, away: game.away.id });
-    if (result.status === 'ready') {
+    if (result.status === 'ready' && result.version === nflSimulationVersion) {
       const verifiedSummary = await get(`${site}/summary?event=${eventId}`);
       const verified = simulationGame(verifiedSummary, eventId, Date.now());
       if (verified.date !== game.date || verified.home.id !== game.home.id || verified.away.id !== game.away.id) throw new Error('The matchup changed during simulation. Retry with the updated schedule.');

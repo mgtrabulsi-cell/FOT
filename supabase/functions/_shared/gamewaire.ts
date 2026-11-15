@@ -5,8 +5,8 @@ export type SoccerSport = typeof soccerSports[number];
 export type Sport = 'NFL' | 'NBA' | SoccerSport;
 export const isSoccer = (sport: string): sport is SoccerSport => (soccerSports as readonly string[]).includes(sport);
 export const soccerModelVersion = 'soccer-probability-v2';
-export const modelVersion = 'probability-only-v12';
-export const probabilityModelVersion = 'probability-evidence-v12';
+export const modelVersion = 'probability-only-v13';
+export const probabilityModelVersion = 'probability-evidence-v13';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -450,10 +450,12 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const weights = samples.map((row, index) => blended ? row.weight!
       : (1 - settings.recentWeight) / samples.length + (index < 10 ? settings.recentWeight / Math.min(10, samples.length) : 0));
     if (data.simulationProjection !== undefined) {
-      if (!Number.isFinite(data.simulationProjection) || data.simulationProjection < 0) { reject('Invalid saved simulation projection.'); continue; }
+      const margin = quote.market === 'h2h' || quote.market === 'spreads';
+      if (!Number.isFinite(data.simulationProjection) || !margin && data.simulationProjection < 0) { reject('Invalid saved simulation projection.'); continue; }
       const baselineMean = values.reduce((sum, value, i) => sum + value * weights[i], 0);
-      if (baselineMean <= 0 && data.simulationProjection > 0) { reject('No supported production distribution for the saved simulation projection.'); continue; }
-      for (let i = 0; i < values.length; i++) values[i] = baselineMean > 0 ? values[i] * data.simulationProjection / baselineMean : 0;
+      if (!margin && baselineMean <= 0 && data.simulationProjection > 0) { reject('No supported production distribution for the saved simulation projection.'); continue; }
+      for (let i = 0; i < values.length; i++) values[i] = margin ? values[i] + data.simulationProjection - baselineMean
+        : baselineMean > 0 ? values[i] * data.simulationProjection / baselineMean : 0;
     }
     const sign = quote.side === 'Under' ? -1 : 1;
     const nbaMoneyline = quote.sport === 'NBA' && quote.market === 'h2h';
@@ -481,7 +483,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       `Observed current-season last 5 average ${mean(current.slice(0, 5).map((row) => row.value)).toFixed(1)}; last 10 average ${mean(current.slice(0, 10).map((row) => row.value)).toFixed(1)}.`,
       `Estimated EV ${(ev * 100).toFixed(1)}% of one unit, including pushes. This baseline is not calibrated or independently validated.`,
     ];
-    if (data.simulationProjection !== undefined) facts.push('The player distribution is scaled to the saved game-specific GamewAIre simulation projection; this is a heuristic, not a calibrated probability.');
+    if (data.simulationProjection !== undefined) facts.push('The production distribution is aligned to the saved game-specific GamewAIre simulation projection; this is a heuristic, not a calibrated probability.');
     facts.push('Ranking uses estimated win probability with projection agreement, never EV, odds value or payout. A neutral four-observation prior is used; sportsbook prices do not enter the probability estimate. A higher hit probability does not establish a profitable price.');
     if (adjustment?.active) facts.push(`A bounded ${((conditional - baseConditional) * 100).toFixed(1)} percentage-point settled-result correction passed chronological validation on ${adjustment.validationGames} later games. This does not establish universal calibration or guarantee future improvement.`);
     const candidate: Candidate = { ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,

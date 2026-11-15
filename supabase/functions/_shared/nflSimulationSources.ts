@@ -273,7 +273,7 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     || result.scenarios.some(scenario => [...scenario.home!.players, ...scenario.away!.players].some(player => player.limited)) ? 'limited' : 'full';
   result.forecastAt = new Date(now).toISOString();
   if (result.scenarios.some(scenario => [...scenario.home!.players, ...scenario.away!.players].some(player => player.estimate))) {
-    result.warnings.push('Team-position estimates supplement markets with fewer than four personal NFL appearances. QB passing uses verified team passing production; other markets use per-participant averages among position-identified current-roster players in that team’s historical boxes. QB rushing can also use verified ten-attempt passers. NFL team/opponent volumes and existing allocation rules apply. These are uncalibrated role estimates, not personal game histories or confirmed starters.');
+    result.warnings.push('Team-position estimates supplement markets with fewer than four personal NFL appearances. QB passing uses verified team passing production; other markets use per-participant averages among position-identified current-roster players in that team’s historical boxes. QB rushing can also use verified ten-attempt passers. Estimated receiving/rushing workloads share the unmodeled remainder without diluting verified personal allocations. These are uncalibrated role estimates, not personal game histories or confirmed starters.');
   }
   result.stage = refreshing ? 'Refining player and team history' : 'Simulation complete';
   result.warnings.push(
@@ -281,6 +281,7 @@ export async function advanceSimulation(game: SimulationGame, job: SimulationJob
     `Team history: ${result.history.home} home-team and ${result.history.away} away-team completed regular-season/playoff games, targeting 100 each; recency half-life 24 games and matching home/away weight 1.5×.`,
     'Player history: up to 100 verified production appearances across teams; recent and current-season production receives stronger weight, and same-opponent samples receive 1.5× weight.',
     'Defensive adjustments use observed passing/rushing yards per opportunity and points per yard, relative to historical opponent samples; coefficients are heuristic, not fitted injury effects.',
+    'Established, active players with stable recent same-team workloads can receive a stronger yardage response to exceptionally favorable verified defenses, capped at a 1.35 matchup multiplier before bounded learning. Sparse, estimated, stale or falling workloads do not receive this extra upside; no named player is assigned a guaranteed yardage target.',
     'Every QB pairing is conditional, not a confirmed starter. Player markets require at least four verified category appearances; fewer than eight are labeled limited evidence. Listed questionable players are assumed to participate at observed usage.',
     'Reported out/inactive players are excluded from current allocations. Unmodeled players retain a team remainder; no specific injured-player replacement or numerical OL/defensive injury penalty is invented.',
     'Touchdowns use verified per-opportunity player production and opponent allowances. Passing/receiving touchdowns reconcile and scoring is bounded below by six points per offensive touchdown in every draw.',

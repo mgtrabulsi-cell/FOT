@@ -1,7 +1,7 @@
 import { modelVersion, normalize, rankTopPicks } from './gamewaire.ts';
 import type { Candidate, TeamLean } from './gamewaire.ts';
 import { pickBreakdown } from './gamewaireNarrative.ts';
-import { simulationAllowsMoneyline } from './nflSimulationAlignment.ts';
+import { simulationAllowsTeamPick } from './nflSimulationAlignment.ts';
 import type { NFLGameSimulation } from './nflSimulation.ts';
 
 export type ScoreboardPick = { eventId: string; start: string; team: string; market?: 'h2h' | 'spreads'; opponent?: string; evidenceAt?: string; rank: number; label: 'GamewAIre Pick' | 'GamewAIre Winner Lean'; reason: string; savedAt: string };
@@ -26,7 +26,7 @@ export function scoreboardPicks(candidates: Candidate[], now = Date.now(), optio
       && Date.parse(sample.date) < Date.parse(pick.dataAt) && Date.parse(sample.date) < Date.parse(pick.start))
     && Array.isArray(pick.risks);
   const eligible = (pick: Candidate) => verified(pick)
-    && (!options.nflSimulations || Date.parse(pick.start) <= now || simulationAllowsMoneyline(pick, options.nflSimulations.get(pick.identifiers?.espnEventId ?? '')));
+    && (!options.nflSimulations || Date.parse(pick.start) <= now || simulationAllowsTeamPick(pick, options.nflSimulations.get(pick.identifiers?.espnEventId ?? '')));
   const pool = [...candidates, ...(options.winnerLeans ?? [])
     .filter(({ pick, qualifies }) => qualifies && pick.sport === 'NBA' && pick.market === 'h2h' && pick.line === null && pick.pushProbability === 0)
     .map(({ pick }) => pick)];

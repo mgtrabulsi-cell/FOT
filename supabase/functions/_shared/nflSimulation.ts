@@ -3,10 +3,10 @@ import { overtimeRulesSource, readOvertimeDrives, simulateOvertime, validateOver
 import type { OvertimeDrive, OvertimeEvidence } from './nflSimulationOvertime.ts';
 import type { SimulationQBMatchup } from './nflSimulationMatchup.ts';
 
-export const nflSimulationVersion = 'nfl-joint-bootstrap-v6';
-export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v5';
+export const nflSimulationVersion = 'nfl-joint-bootstrap-v7';
+export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v6';
 export const legacyNFLSimulationVersion = 'nfl-joint-bootstrap-v1';
-export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3', 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
+export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v5', 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3', 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
 export const nflSimulationRuns = 1000;
 export type SimulationPosition = 'QB' | 'RB' | 'WR' | 'TE';
 export type SimulationStat = { passingAttempts: number; completions: number; passingYards: number; passingTouchdowns: number; rushingAttempts: number; rushingYards: number; rushingTouchdowns: number; receptions: number; receivingYards: number; receivingTouchdowns: number };
@@ -38,7 +38,7 @@ export const simulationStatKeys: Array<keyof SimulationStat> = ['passingAttempts
 
 export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: string, teams: { home: string; away: string }): NFLGameSimulation {
   const row = object(value), progress = object(row.progress), history = object(row.history);
-  const flexible = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3'].includes(String(row.version));
+  const flexible = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v5', 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3'].includes(String(row.version));
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   const integer = (n: unknown) => finite(n) && Number.isInteger(n) && n >= 0;
   const strings = (values: unknown) => Array.isArray(values) && values.every(n => typeof n === 'string');
@@ -98,12 +98,12 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
       && Array.isArray(t.players) && t.players.every(raw => {
         const p = object(raw), stats = object(p.stats);
         return typeof p.id === 'string' && /^\d{1,12}$/.test(p.id) && typeof p.name === 'string' && ['QB', 'RB', 'WR', 'TE'].includes(String(p.position))
-          && integer(p.games) && Number(p.games) <= ([nflSimulationVersion, 'nfl-joint-bootstrap-v5'].includes(String(row.version)) ? 100 : 30) && integer(p.headToHeadGames) && Number(p.headToHeadGames) <= Number(p.games)
+          && integer(p.games) && Number(p.games) <= ([nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v5'].includes(String(row.version)) ? 100 : 30) && integer(p.headToHeadGames) && Number(p.headToHeadGames) <= Number(p.games)
           && strings(p.priorTeams) && (p.priorTeams as string[]).every(id => /^\d{1,12}$/.test(id))
           && typeof p.status === 'string' && typeof p.role === 'string' && (p.issue === null || typeof p.issue === 'string')
           && (flexible ? typeof p.limited === 'boolean' : p.limited === undefined || typeof p.limited === 'boolean')
           && (row.evidenceMode !== 'full' || p.limited !== true)
-          && (p.estimate === undefined || row.version === nflSimulationVersion && row.evidenceMode === 'limited'
+          && (p.estimate === undefined || [nflSimulationVersion, previousNFLSimulationVersion].includes(String(row.version)) && row.evidenceMode === 'limited'
             && p.limited === true && object(p.estimate).method === 'team-position-average-v1'
             && integer(object(p.estimate).games) && Number(object(p.estimate).games) >= 4 && Number(object(p.estimate).games) <= 100)
           && p.stats !== null && typeof p.stats === 'object' && !Array.isArray(p.stats)
@@ -402,6 +402,15 @@ function allocate(total: number, shares: number[]): number[] {
   for (let i = 0; i < remaining; i++) result[order[i].i]++;
   return result;
 }
+function allocateWithEstimates(total: number, shares: number[], estimated: boolean[]): number[] {
+  const personal = shares.map((share, i) => estimated[i] ? 0 : share);
+  const remaining = Math.max(.1, 1 - personal.reduce((sum, share) => sum + share, 0));
+  const reserved = allocate(total, [...personal, remaining]);
+  // Priors divide the unmodeled remainder; they cannot renormalize verified workloads downward.
+  const priors = shares.map((share, i) => estimated[i] ? share : 0);
+  const rest = allocate(reserved[shares.length], [...priors, Math.max(.1, remaining - priors.reduce((sum, share) => sum + share, 0))]);
+  return [...shares.map((_share, i) => reserved[i] + rest[i]), rest[shares.length]];
+}
 function allocateCapped(total: number, shares: number[], caps: number[]): number[] {
   const result = shares.map(() => 0);
   let remaining = total;
@@ -667,7 +676,31 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
       const allowedPassTD = weighted(defenseRows, defenseWeights, row => row.opponent.passingTouchdowns) / Math.max(1, weighted(defenseRows, defenseWeights, row => row.opponent.passingAttempts));
       const allowedRushTD = weighted(defenseRows, defenseWeights, row => row.opponent.rushingTouchdowns) / Math.max(1, weighted(defenseRows, defenseWeights, row => row.opponent.rushingAttempts));
       const ratio = (a: number, b: number) => Math.sqrt(Math.max(.5, Math.min(1.5, a / Math.max(.01, b))));
-      return { active, usable, cohorts, passAdjustment: ratio(allowedPass, referencePass), rushAdjustment: ratio(allowedRush, referenceRush),
+      const upside = new Map<string, number>();
+      const personalQB = cohorts.get(`${qb.id}:passing`)?.rows.filter(row => !row.basis) ?? [];
+      const recentDefense = defenseRows.filter(row => Date.parse(row.date) >= Date.UTC(game.season, 6, 1)).slice(0, 5);
+      for (const p of usable) for (const market of ['receiving', 'rushing'] as const) {
+        const cohort = cohorts.get(`${p.id}:${market}`);
+        if (!cohort || cohort.rows.some(row => row.basis) || p.uncertain || personalQB.length < 4 || recentDefense.length < 4) continue;
+        const rows = cohort.rows, opportunity = market === 'receiving' ? 'receptions' : 'rushingAttempts';
+        const recent = rows.slice(0, 3), prior = rows.slice(3, 8);
+        if (rows.length < 8 || recent.some(row => row.teamId !== teamId
+          || Date.parse(game.date) - Date.parse(row.date) > 28 * 86400000)) continue;
+        const volume = mean(recent.map(row => row.player[opportunity]!));
+        const share = mean(recent.map(row => row.player[opportunity]! / Math.max(1, row.team[opportunity])));
+        if (volume < (market === 'receiving' ? 3 : 8) || share < (market === 'receiving' ? .2 : .35)
+          || volume < .8 * mean(prior.map(row => row.player[opportunity]!))) continue;
+        const yards = market === 'receiving' ? 'passingYards' : 'rushingYards';
+        const attempts = market === 'receiving' ? 'passingAttempts' : 'rushingAttempts';
+        const referenceRate = market === 'receiving' ? referencePass : referenceRush;
+        const seasonRate = market === 'receiving' ? allowedPass : allowedRush;
+        const recentRate = recentDefense.reduce((sum, row) => sum + row.opponent[yards], 0)
+          / Math.max(1, recentDefense.reduce((sum, row) => sum + row.opponent[attempts], 0));
+        if (recentRate < referenceRate * 1.25 || seasonRate < referenceRate * 1.15) continue;
+        const ordinary = ratio(seasonRate, referenceRate);
+        upside.set(`${p.id}:${market}`, Math.max(1, Math.min(1.35, recentRate / Math.max(.01, referenceRate)) / ordinary));
+      }
+      return { active, usable, cohorts, upside, passAdjustment: ratio(allowedPass, referencePass), rushAdjustment: ratio(allowedRush, referenceRush),
         scoringAdjustment: ratio(allowedScoring, referenceScoring), passTDAdjustment: ratio(allowedPassTD, referencePassTD), rushTDAdjustment: ratio(allowedRushTD, referenceRushTD) };
     };
     const homeSetup = setup(game.home.id, homeQB, awayRows, awayWeight), awaySetup = setup(game.away.id, awayQB, homeRows, homeWeight);
@@ -683,11 +716,13 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
       const receivers = context.usable.filter(p => p.position !== 'QB' && context.cohorts.has(`${p.id}:receiving`));
       const receivingSamples = receivers.map(p => sample(p, 'receiving'));
       const catchShares = receivingSamples.map((row, i) => row.player.receptions! / Math.max(1, row.team.receptions) * factor(receivers[i], 'receptions'));
-      const catches = allocate(completions, [...catchShares, Math.max(.1, 1 - catchShares.reduce((a, b) => a + b, 0))]);
+      const catches = allocateWithEstimates(completions, catchShares,
+        receivers.map(p => context.cohorts.get(`${p.id}:receiving`)!.rows.some(row => !!row.basis)));
       const qbYPC = Math.max(0, qbStats.passingYards! / Math.max(1, qbStats.completions!));
       const baseReceiverYards = receivers.map((_p, i) => {
         const observed = receivingSamples[i].player;
-        return Math.max(0, Math.round(catches[i] * observed.receivingYards! / Math.max(1, observed.receptions!) * context.passAdjustment));
+        return Math.max(0, Math.round(catches[i] * observed.receivingYards! / Math.max(1, observed.receptions!) * context.passAdjustment
+          * (context.upside.get(`${receivers[i].id}:receiving`) ?? 1)));
       });
       const passFactor = factor(qb, 'passingYards', learned.passingYards);
       const receiverYards = baseReceiverYards.map((yards, i) => Math.round(yards * factor(receivers[i], 'receivingYards', passFactor)));
@@ -698,10 +733,12 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
       const rushingSamples = rushers.map(p => sample(p, 'rushing'));
       const rushShares = rushingSamples.map((row, i) => row.player.rushingAttempts! / Math.max(1, row.team.rushingAttempts) * factor(rushers[i], 'rushingAttempts'));
       const attempts = Math.max(0, Math.round((own.rushingAttempts + allowed.rushingAttempts) / 2));
-      const carries = allocate(attempts, [...rushShares, Math.max(.1, 1 - rushShares.reduce((a, b) => a + b, 0))]);
+      const carries = allocateWithEstimates(attempts, rushShares,
+        rushers.map(p => context.cohorts.get(`${p.id}:rushing`)!.rows.some(row => !!row.basis)));
       const baseRushing = rushers.map((_p, i) => {
         const observed = rushingSamples[i].player;
-        return Math.max(0, Math.round(carries[i] * observed.rushingYards! / Math.max(1, observed.rushingAttempts!) * context.rushAdjustment));
+        return Math.max(0, Math.round(carries[i] * observed.rushingYards! / Math.max(1, observed.rushingAttempts!) * context.rushAdjustment
+          * (context.upside.get(`${rushers[i].id}:rushing`) ?? 1)));
       });
       const rushing = baseRushing.map((yards, i) => Math.round(yards * factor(rushers[i], 'rushingYards', learned.rushingYards)));
       const baseOtherRushingYards = Math.max(0, Math.round(carries[carries.length - 1] * Math.max(0, own.rushingYards / Math.max(1, own.rushingAttempts)) * context.rushAdjustment));
