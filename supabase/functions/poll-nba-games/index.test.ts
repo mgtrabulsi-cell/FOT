@@ -9,7 +9,7 @@ Deno.test('NBA dispatcher authorizes cron, retries persisted alerts, rechecks de
   const payloads: Record<string, unknown>[] = [], writes: Record<string, unknown>[] = [], saved: Record<string, unknown>[] = [];
   let handler: (request: Request) => Promise<Response> = async () => new Response('Not initialized');
   let queue: Record<string, unknown>[] = [], notify = true, favorite = true, failPush = false, failBoard = false, summaryFails = false;
-  let dbCalls = 0;
+  let dbCalls = 0, pollHeld = false;
   const event = { id: '401', date: new Date().toISOString(), competitions: [{ status: { period: 1, displayClock: '5:00', type: { state: 'in' } },
     competitors: [{ homeAway: 'away', team: { id: '1', abbreviation: 'ATL' }, score: '10' }, { homeAway: 'home', team: { id: '2', abbreviation: 'BOS' }, score: '8' }] }] };
   try {
@@ -34,6 +34,8 @@ Deno.test('NBA dispatcher authorizes cron, retries persisted alerts, rechecks de
       if (path.endsWith('/scoreboard')) return failBoard ? new Response('Unavailable', { status: 503 }) : Response.json({ events: [event] });
       if (path.endsWith('/summary')) return summaryFails ? new Response('Unavailable', { status: 503 }) : Response.json({ header: { competitions: [] } });
       dbCalls++;
+      if (path.endsWith('/rpc/claim_score_push_poll')) return Response.json(!pollHeld);
+      if (path.endsWith('/rpc/release_score_push_poll')) return new Response(null, { status: 204 });
       if (path.endsWith('/rpc/claim_nba_push')) { const pending = queue; queue = []; return Response.json(pending); }
       if (path.endsWith('/rpc/save_nba_push_poll')) { saved.push(await request.json()); return Response.json(true); }
       if (path.endsWith('/nba_push_states')) return Response.json([]);
@@ -76,6 +78,9 @@ Deno.test('NBA dispatcher authorizes cron, retries persisted alerts, rechecks de
     const response = await handler(new Request('https://example.invalid', { method: 'POST', headers: { 'x-gamewire-cron-secret': 'test-secret' } }));
     const outcome = await response.json();
     assert(response.status === 502 && outcome.sent === 1, 'ESPN outages surface failure but queued deliveries still run');
+    pollHeld = true; queue = [delivery];
+    const skipped = await handler(new Request('https://example.invalid', { method: 'POST', headers: { 'x-gamewire-cron-secret': 'test-secret' } }));
+    assert((await skipped.json()).skipped === true && queue.length === 1, 'Overlapping polls leave pending deliveries for the lease holder');
   } finally {
     globalThis.fetch = originalFetch;
     Object.defineProperty(Deno, 'serve', { configurable: true, writable: true, value: originalServe });
