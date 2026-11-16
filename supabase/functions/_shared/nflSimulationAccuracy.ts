@@ -1,5 +1,5 @@
 import { array, object, text } from './gamewaire.ts';
-import { projectedSimulationScore, readNFLGameSimulation, nflSimulationVersion } from './nflSimulation.ts';
+import { projectedSimulationScore, readNFLGameSimulation, roundedSimulationBox, nflSimulationVersion } from './nflSimulation.ts';
 import type { NFLGameSimulation, SimulationStat } from './nflSimulation.ts';
 
 export const simulationAccuracyStats = {
@@ -11,7 +11,7 @@ export const simulationAccuracyStats = {
 export type SimulationAccuracyScope = { eventId: string; kickoff: string; homeTeamId: string; awayTeamId: string };
 export type SimulationAccuracyPlayer = {
   playerId: string; name: string; position: string; team: string; stat: keyof SimulationStat;
-  projected: number; actual: number; error: number;
+  projected: number; actual: number; error: number; displayed?: number; estimated?: boolean;
 };
 export const featuredSimulationMinimums: Partial<Record<keyof SimulationStat, number>> = {
   rushingYards: 30, receivingYards: 30, passingYards: 200, passingTouchdowns: 2,
@@ -26,9 +26,43 @@ export type SimulationAccuracyGame = {
   eventId: string; kickoff: string; forecastAt: string; version: string; settledAt: string; scenario: string;
   home: { id: string; name: string; abbr: string; projected: number; actual: number };
   away: { id: string; name: string; abbr: string; projected: number; actual: number };
-  error: number; players: SimulationAccuracyPlayer[]; issues: string[]; overtime?: boolean;
+  error: number; players: SimulationAccuracyPlayer[]; issues: string[]; overtime?: boolean; regulationOnly?: boolean;
 };
 export type SimulationAccuracyReport = { games: SimulationAccuracyGame[]; issues: string[]; pending: number };
+export function strongSimulationPerformances(report: SimulationAccuracyReport) {
+  const categories = [
+    { label: 'Receiving', yards: 'receivingYards', touchdowns: 'receivingTouchdowns', minimumYards: 50, minimumTouchdowns: 1 },
+    { label: 'Rushing', yards: 'rushingYards', touchdowns: 'rushingTouchdowns', minimumYards: 50, minimumTouchdowns: 1 },
+    { label: 'Passing', yards: 'passingYards', touchdowns: 'passingTouchdowns', minimumYards: 200, minimumTouchdowns: 2 },
+  ] as const;
+  return report.games.flatMap(game => {
+    if (game.regulationOnly !== true || !Number.isFinite(Date.parse(game.kickoff))
+      || !Number.isFinite(Date.parse(game.forecastAt)) || Date.parse(game.forecastAt) >= Date.parse(game.kickoff)
+      || !Number.isFinite(Date.parse(game.settledAt)) || Date.parse(game.settledAt) < Date.parse(game.kickoff)) return [];
+    const players = new Map<string, SimulationAccuracyPlayer[]>();
+    for (const player of game.players) {
+      const key = JSON.stringify([player.playerId, player.team]);
+      const rows = players.get(key) ?? [];
+      rows.push(player); players.set(key, rows);
+    }
+    return [...players.values()].flatMap(rows => categories.flatMap(category => {
+      const pairs = rows.filter(row => row.stat === category.yards || row.stat === category.touchdowns);
+      const yards = pairs.find(row => row.stat === category.yards), touchdowns = pairs.find(row => row.stat === category.touchdowns);
+      if (pairs.length !== 2 || !yards || !touchdowns || yards.name !== touchdowns.name || yards.position !== touchdowns.position
+        || !['QB', 'RB', 'WR', 'TE'].includes(yards.position) || category.label === 'Passing' && yards.position !== 'QB'
+        || pairs.some(row => row.estimated || !Number.isFinite(row.actual))
+        || yards.displayed === undefined || touchdowns.displayed === undefined
+        || !Number.isInteger(yards.displayed) || !Number.isInteger(touchdowns.displayed)
+        || yards.displayed < category.minimumYards || touchdowns.displayed < category.minimumTouchdowns
+        || !Number.isInteger(touchdowns.actual) || touchdowns.actual < 0) return [];
+      const met = yards.actual >= yards.displayed && touchdowns.actual >= touchdowns.displayed;
+      const outcome = !met ? 'missed' : yards.actual > yards.displayed || touchdowns.actual > touchdowns.displayed ? 'exceeded' : 'met';
+      return [{ game, playerId: yards.playerId, name: yards.name, team: yards.team, position: yards.position,
+        category: category.label, outcome, yards: { ...yards, projected: yards.displayed },
+        touchdowns: { ...touchdowns, projected: touchdowns.displayed } }];
+    }));
+  });
+}
 export function fullPlayerPerformances(report: SimulationAccuracyReport) {
   return report.games.flatMap(game => {
     const players = new Map<string, SimulationAccuracyPlayer[]>();
@@ -89,6 +123,7 @@ export function compareSimulationAccuracy(forecast: NFLGameSimulation, actualVal
   if (!comparablePlayers) issues.push('Player rankings excluded: this regulation-only forecast does not have verified regulation-only actuals (overtime or verification pending).');
   let missing = 0;
   if (comparablePlayers) for (const [team, actualTeam] of [[home, actualHome], [away, actualAway]] as const) {
+    const displayed = team.totals ? roundedSimulationBox({ ...team, totals: team.totals }) : null;
     for (const player of team.players) {
       if (player.issue) { missing++; continue; }
       const actualPlayer = object(object(actualTeam.players)[player.id]);
@@ -97,7 +132,9 @@ export function compareSimulationAccuracy(forecast: NFLGameSimulation, actualVal
         if (projected === undefined) continue;
         if (!finite(projected) || !finite(actual)) { missing++; continue; }
         players.push({ playerId: player.id, name: player.name, position: player.position, team: team.abbr,
-          stat, projected, actual, error: Math.abs(projected - actual) });
+          stat, projected, actual, error: Math.abs(projected - actual),
+          ...(displayed?.players[player.id]?.[stat] !== undefined ? { displayed: displayed.players[player.id][stat] } : {}),
+          ...(player.estimate ? { estimated: true } : {}) });
       }
     }
   }
@@ -108,7 +145,7 @@ export function compareSimulationAccuracy(forecast: NFLGameSimulation, actualVal
     away: { id: away.id, name: away.name, abbr: away.abbr, projected: awayScore, actual: actualAway.points },
     ...(published?.overtime ? { overtime: true } : {}),
     error: (Math.abs(homeScore - actualHome.points) + Math.abs(awayScore - actualAway.points)) / 2,
-    players, issues };
+    players, issues, regulationOnly: actuals.regulationOnly === true };
 }
 
 export function buildSimulationAccuracy(scopes: SimulationAccuracyScope[], values: unknown[], now = Date.now()): SimulationAccuracyReport {
@@ -150,11 +187,14 @@ export function readSimulationAccuracyReport(value: unknown, scope: SimulationAc
         && Date.parse(text(game.forecastAt)) < Date.parse(target.kickoff) && Date.parse(text(game.settledAt)) >= Date.parse(target.kickoff)
         && finite(game.error) && game.error >= 0 && typeof game.version === 'string' && typeof game.scenario === 'string'
         && (game.overtime === undefined || typeof game.overtime === 'boolean')
+        && (game.regulationOnly === undefined || typeof game.regulationOnly === 'boolean')
         && validStrings(game.issues) && Array.isArray(game.players) && game.players.every(rawPlayer => {
           const player = object(rawPlayer);
           return ['playerId', 'name', 'position', 'team'].every(key => typeof player[key] === 'string')
             && typeof player.stat === 'string' && Object.prototype.hasOwnProperty.call(simulationAccuracyStats, player.stat)
-            && finite(player.projected) && finite(player.actual) && finite(player.error) && player.error >= 0;
+            && finite(player.projected) && finite(player.actual) && finite(player.error) && player.error >= 0
+            && (player.displayed === undefined || finite(player.displayed) && Number.isInteger(player.displayed) && player.displayed >= 0)
+            && (player.estimated === undefined || typeof player.estimated === 'boolean');
         });
     });
   if (!valid) throw new Error('The simulation accuracy results were invalid or mismatched. Retry; no substitute results are shown.');

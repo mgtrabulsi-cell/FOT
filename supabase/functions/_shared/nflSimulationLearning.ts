@@ -12,12 +12,11 @@ export function neutralSimulationLearning(cutoff: number): SimulationLearning['a
 }
 
 export function simulationLearningBaselines(scenarios: SimulationScenario[]): SimulationLearning['baselines'] {
-  return scenarios.filter(scenario => scenario.home && scenario.away
-    && ![...scenario.home.players, ...scenario.away.players].some(player => player.estimate)).map(scenario => ({
+  return scenarios.filter(scenario => scenario.home && scenario.away).map(scenario => ({
     scenarioId: scenario.id, teams: [scenario.home!, scenario.away!].map(team => ({
       id: team.id, score: team.score.mean, passingYards: team.totals?.passingYards.mean ?? null,
       rushingYards: team.totals?.rushingYards.mean ?? null,
-      players: team.players.map(player => ({ id: player.id, position: player.position,
+      players: team.players.filter(player => !player.estimate && !player.issue).map(player => ({ id: player.id, position: player.position,
         stats: Object.fromEntries(Object.entries(player.stats).map(([key, range]) => [key, range.mean])) })),
     })),
   }));
@@ -36,18 +35,33 @@ export async function loadSimulationLearning(admin: SupabaseClient, cutoff: numb
     for (const row of saved.data ?? []) {
       const payload = object(row.payload), actuals = object(row.actuals);
       const realized = array(actuals.realized).map(object);
-      const scenario = array(payload.scenarios).map(object).find(scenario => realized.some(result => result.scenarioId === scenario.id));
+      const realizedScenarios = array(payload.scenarios).map(object).filter(scenario => realized.some(result => result.scenarioId === scenario.id));
+      const scenario = realizedScenarios[0];
       if (!scenario) continue;
-      if ([scenario.home, scenario.away].some(side => array(object(side).players).some(player => object(player).estimate))) continue;
+      const hasEstimates = [scenario.home, scenario.away].some(side => array(object(side).players).some(player => object(player).estimate));
       if (object(scenario.home).totals === null || object(scenario.away).totals === null) continue;
       const learning = object(payload.learning);
       const baseline = ['simulation-walk-forward-v1', 'simulation-walk-forward-v2'].includes(String(learning.version))
         ? array(learning.baselines).map(object).find(baseline => baseline.scenarioId === scenario.id) : undefined;
-      if (learning.version && !baseline) continue;
+      const neutralTeams = simulationLearningMetrics.every(metric => {
+        const adjustment = object(object(learning.adjustments)[metric]);
+        return adjustment.active === false && adjustment.adjustment === 1;
+      });
+      const neutralPlayers = learning.playerAdjustments !== null && typeof learning.playerAdjustments === 'object'
+        && !Array.isArray(learning.playerAdjustments) && Object.values(object(learning.playerAdjustments)).every(value => {
+          const adjustment = object(value);
+          return adjustment.active === false && adjustment.adjustment === 1;
+        });
+      const recoverNeutral = learning.version === 'simulation-walk-forward-v2' && neutralTeams && neutralPlayers;
+      if (learning.version && !baseline && !recoverNeutral) continue;
       const sides = baseline ? array(baseline.teams).map(object) : [scenario.home, scenario.away].map(value => {
         const team = object(value), totals = object(team.totals);
         return { id: team.id, score: numeric(object(team.score).mean),
-          passingYards: numeric(object(totals.passingYards).mean), rushingYards: numeric(object(totals.rushingYards).mean) };
+          passingYards: numeric(object(totals.passingYards).mean), rushingYards: numeric(object(totals.rushingYards).mean),
+          players: array(team.players).map(object).filter(player => !player.estimate && !player.issue).map(player => ({
+            id: player.id, position: player.position,
+            stats: Object.fromEntries(Object.entries(object(player.stats)).map(([key, range]) => [key, numeric(object(range).mean)])),
+          })) };
       });
       const finals = array(actuals.teams).map(object);
       if (sides.length !== 2 || finals.length !== 2 || new Set(sides.map(side => side.id)).size !== 2
@@ -59,6 +73,7 @@ export async function loadSimulationLearning(admin: SupabaseClient, cutoff: numb
         actual: observations.reduce((sum, value) => sum + value.actual, 0) / observations.length, observations,
       });
       for (const metric of simulationLearningMetrics) {
+        if (hasEstimates) continue;
         if (metric !== 'score' && actuals.regulationOnly !== true) continue;
         const predicted = sides.map(side => numeric(side[metric]));
         const observed = sides.map(side => numeric(finals.find(final => final.id === side.id)?.[metric === 'score' ? 'points' : metric]));
@@ -66,11 +81,10 @@ export async function loadSimulationLearning(admin: SupabaseClient, cutoff: numb
         const observations = predicted.flatMap((prediction, index) => prediction! > 0 ? [{ prediction: prediction!, actual: observed[index]! }] : []);
         if (observations.length === 2) groups[metric].push(sample(metric, observations));
       }
-      const neutralLegacy = learning.version === 'simulation-walk-forward-v1' && simulationLearningMetrics.every(metric => {
-        const adjustment = object(object(learning.adjustments)[metric]);
-        return adjustment.active === false && adjustment.adjustment === 1;
-      });
-      if ((!neutralLegacy && learning.version !== 'simulation-walk-forward-v2') || actuals.regulationOnly !== true) continue;
+      const neutralLegacy = learning.version === 'simulation-walk-forward-v1' && neutralTeams;
+      if ((!neutralLegacy && learning.version !== 'simulation-walk-forward-v2') || actuals.regulationOnly !== true
+        || realizedScenarios.length !== 1 || scenario.issue
+        || (text(object(payload.qbMatchup).scenarioId) && object(payload.qbMatchup).scenarioId !== scenario.id)) continue;
       const perGame = new Map<SimulationPlayerLearningKey, NonNullable<LearningSample['observations']>>();
       for (const side of sides) {
         const actualPlayers = object(finals.find(final => final.id === side.id)?.players);
@@ -79,6 +93,8 @@ export async function loadSimulationLearning(admin: SupabaseClient, cutoff: numb
         if (new Set(players.map(player => player.id)).size !== players.length) continue;
         for (const player of players) {
           if (!['QB', 'RB', 'WR', 'TE'].includes(text(player.position)) || !text(player.id)) continue;
+          const originalPlayer = array(originalTeam?.players).map(object).find(original => original.id === player.id);
+          if (!originalPlayer || originalPlayer.position !== player.position || originalPlayer.estimate || originalPlayer.issue) continue;
           const stats = object(player.stats), actual = object(actualPlayers[text(player.id)]);
           for (const stat of simulationStatKeys) {
             const prediction = numeric(neutralLegacy ? object(stats[stat]).mean : stats[stat]), observed = numeric(actual[stat]);

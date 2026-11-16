@@ -6,7 +6,7 @@ import ts from 'typescript';
 import * as sports from '../src/services/sportsData.ts';
 import * as nflSituation from '../src/services/nflSituation.ts';
 import * as simulation from '../supabase/functions/_shared/nflSimulation.ts';
-import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
+import { featuredSimulationMinimums, fullPlayerPerformances, strongSimulationPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 
 const compile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -532,14 +532,61 @@ test('Live scoring area polls all plays, preserves them offline and cleans up on
   assert.equal(timers.size, 0);
   stopFinal();
 });
+test('Strong combined calls count exceeding either component only when both published targets are met', () => {
+  const players = [];
+  const add = (id, actualYards, actualTDs, extra = {}) => {
+    players.push(...[
+      { stat: 'receivingYards', projected: 49.6, displayed: 50, actual: actualYards },
+      { stat: 'receivingTouchdowns', projected: .6, displayed: 1, actual: actualTDs },
+    ].map(row => ({ playerId: id, name: id, position: 'WR', team: 'AWY', error: 0, ...row, ...extra })));
+  };
+  add('yards exceeded', 80, 1);
+  add('TDs exceeded', 50, 2);
+  add('exact', 50, 1);
+  add('TD missed', 80, 0);
+  add('yards missed', 40, 2);
+  add('estimated', 100, 2, { estimated: true });
+  add('missing published', 100, 2, { displayed: undefined });
+  const report = { pending: 0, issues: [], games: [{ eventId: '123', kickoff: '2026-11-15T18:00:00Z',
+    forecastAt: '2026-11-15T17:00:00Z', settledAt: '2026-11-15T22:00:00Z', regulationOnly: true, players }] };
+  const result = strongSimulationPerformances(report);
+  assert.deepEqual(result.map(row => [row.name, row.outcome]), [
+    ['yards exceeded', 'exceeded'], ['TDs exceeded', 'exceeded'], ['exact', 'met'], ['TD missed', 'missed'], ['yards missed', 'missed'],
+  ]);
+  assert.equal(result[0].yards.projected, 50, 'Compare the published integer line, not an unrounded expectation');
+  assert.equal(result[0].touchdowns.projected, 1, 'Expected touchdown counts are not treated as probabilities');
+  const duplicate = structuredClone(report);
+  duplicate.games[0].players.push({ ...players[0] });
+  assert.ok(!strongSimulationPerformances(duplicate).some(row => row.name === 'yards exceeded'), 'Duplicate comparisons cannot inflate results');
+  const crossTeam = structuredClone(report);
+  crossTeam.games[0].players[1].team = 'HOM';
+  assert.ok(!strongSimulationPerformances(crossTeam).some(row => row.name === 'yards exceeded'));
+  const late = structuredClone(report);
+  late.games[0].forecastAt = late.games[0].kickoff;
+  assert.deepEqual(strongSimulationPerformances(late), [], 'Post-kickoff forecasts cannot become performance calls');
+  const rushing = structuredClone(report);
+  rushing.games[0].players = rushing.games[0].players.map(row => ({ ...row, position: 'RB',
+    stat: row.stat === 'receivingYards' ? 'rushingYards' : 'rushingTouchdowns' }));
+  assert.deepEqual(strongSimulationPerformances(rushing).map(row => row.outcome), result.map(row => row.outcome));
+  const passing = structuredClone(report);
+  passing.games[0].players = players.slice(0, 2).map(row => ({ ...row, position: 'QB',
+    stat: row.stat === 'receivingYards' ? 'passingYards' : 'passingTouchdowns',
+    displayed: row.stat === 'receivingYards' ? 250 : 2, actual: row.stat === 'receivingYards' ? 280 : 2 }));
+  assert.equal(strongSimulationPerformances(passing)[0].outcome, 'exceeded');
+  report.games[0].regulationOnly = false;
+  assert.deepEqual(strongSimulationPerformances(report), [], 'Old-model and current-model calls both require verified regulation results');
+});
 test('Accuracy UI shows simulated and actual lines and ranks players only within the chosen statistic', async () => {
   const h = hooks(), timers = new Map(), jsx = (type, props) => ({ type, props });
   const report = { pending: 0, issues: [], games: [{ eventId: game.eventId, kickoff: game.date, scenario: 'Verified QB',
+    forecastAt: new Date(Date.parse(game.date) - 3600000).toISOString(),
+    settledAt: new Date(Date.parse(game.date) + 4 * 3600000).toISOString(), regulationOnly: true,
     away: { abbr: 'AWY', projected: 22.5, actual: 21 }, home: { abbr: 'HOM', projected: 28.5, actual: 28 }, error: 1, issues: [],
     players: [
       { playerId: '6', name: 'Low volume passer', stat: 'passingYards', projected: 100, actual: 100, error: 0, team: 'AWY', position: 'QB' },
       { playerId: '2', name: 'Less close', stat: 'passingYards', projected: 280, actual: 250, error: 30, team: 'HOM', position: 'QB' },
-      { playerId: '1', name: 'Closest passer', stat: 'passingYards', projected: 244, actual: 250, error: 6, team: 'AWY', position: 'QB' },
+      { playerId: '1', name: 'Closest passer', stat: 'passingYards', projected: 244, displayed: 244, actual: 250, error: 6, team: 'AWY', position: 'QB' },
+      { playerId: '1', name: 'Closest passer', stat: 'passingTouchdowns', projected: 1.8, displayed: 2, actual: 3, error: 1.2, team: 'AWY', position: 'QB' },
       { playerId: '4', name: 'Third passer', stat: 'passingYards', projected: 290, actual: 250, error: 40, team: 'AWY', position: 'QB' },
       { playerId: '5', name: 'Fourth passer', stat: 'passingYards', projected: 300, actual: 250, error: 50, team: 'HOM', position: 'QB' },
       { playerId: '3', name: 'Receiver', stat: 'receptions', projected: 7, actual: 8, error: 1, team: 'AWY', position: 'WR' },
@@ -552,7 +599,7 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
     if (name === 'react') return h.react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.includes('gamewireBot')) return { loadSimulationAccuracy: async () => report };
-    if (name.includes('nflSimulationAccuracy')) return { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats };
+    if (name.includes('nflSimulationAccuracy')) return { featuredSimulationMinimums, fullPlayerPerformances, strongSimulationPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats };
     return {};
   } });
   vm.runInContext(compile('../src/NFLSimulationAccuracy.tsx'), context);
@@ -561,6 +608,9 @@ test('Accuracy UI shows simulated and actual lines and ranks players only within
   render(); const stop = h.effects[0]();
   await new Promise(resolve => setImmediate(resolve));
   let tree = render();
+  const exceededSection = tree.find(node => node.props['aria-label'] === 'Exceeded strong projections');
+  assert.ok(elements(exceededSection).some(node => node.type === 'h5' && node.props.children === 'Closest passer'));
+  assert.ok(elements(exceededSection).some(node => node.type === 'strong' && node.props.children === 'Exceeded the pregame call'));
   const playerNames = () => tree.filter(node => node.type === 'th' && node.props.scope === 'row').map(node => node.props.children.filter(value => typeof value === 'string').join(''));
   assert.match(playerNames()[4], /Low volume passer/);
   assert.match(playerNames()[5], /Closest passer/);

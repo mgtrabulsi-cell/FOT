@@ -15,7 +15,7 @@ import { advanceSimulation, prepareSimulation } from '../supabase/functions/_sha
 import { withTeamPositionEstimates } from '../supabase/functions/_shared/nflSimulationEstimates.ts';
 import { loadNFLGameSimulation, loadNFLSimulationAccuracy, runNFLGameSimulation, savedNFLGameSimulation, settleNFLGameSimulations, warmNFLGameSimulations } from '../supabase/functions/_shared/nflSimulationBackend.ts';
 import { buildSimulationAccuracy, compareSimulationAccuracy, readSimulationAccuracyScope, readSimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
-import { loadSimulationLearning, simulationLearningBaselines } from '../supabase/functions/_shared/nflSimulationLearning.ts';
+import { loadSimulationLearning, neutralSimulationLearning, simulationLearningBaselines } from '../supabase/functions/_shared/nflSimulationLearning.ts';
 import { readOvertimeDrives, simulateOvertime, validateOvertimeEvidence } from '../supabase/functions/_shared/nflSimulationOvertime.ts';
 import { PGlite } from '@electric-sql/pglite';
 
@@ -379,7 +379,8 @@ test('Player learning counts games, preserves original baselines, excludes OT/DN
         stats: { receptions: 5, receivingYards: 100, receivingTouchdowns: 1 } })) }));
     return { event_id: String(i), event_start: new Date(start).toISOString(), settled_at: new Date(start + 4 * 3600000).toISOString(),
       payload: { forecastAt: new Date(start - 3600000).toISOString(),
-        scenarios: [{ id: 'real', home: { id: '1', totals: {}, score: { mean: 999 } }, away: { id: '2', totals: {}, score: { mean: 999 } } }],
+        scenarios: [{ id: 'real', home: { id: '1', totals: {}, score: { mean: 999 }, players: teams[0].players },
+          away: { id: '2', totals: {}, score: { mean: 999 }, players: teams[1].players } }],
         learning: { version: 'simulation-walk-forward-v2', baselines: [{ scenarioId: 'real', teams }] } },
       actuals: { regulationOnly: true, realized: [{ scenarioId: 'real' }], teams: teams.map(team => ({
         id: team.id, points: 22, passingYards: 220, rushingYards: 110,
@@ -432,6 +433,47 @@ test('Historical neutral v5 player expectations can train, but adjusted legacy o
           baselines: [{ scenarioId: 'real', teams: teams.map(team => ({ id: team.id, score: 20, passingYards: 200, rushingYards: 100 })) }] } },
       actuals: { regulationOnly: true, realized: [{ scenarioId: 'real' }],
         teams: teams.map(team => ({ id: team.id, points: 22, players: { [`${team.id}4`]: { receivingYards: 110 } } })) } };
+  });
+
+  test('Verified players learn beside estimates; neutral archived baselines recover safely without success-only sampling', async () => {
+    const clock = Date.parse('2026-11-15T12:00:00Z');
+    const rows = Array.from({ length: 40 }, (_, i) => {
+      const start = clock - (50 - i) * 86400000;
+      const sides = ['1', '2'].map(id => ({
+        id, score: { mean: 20 }, totals: { passingYards: { mean: 200 }, rushingYards: { mean: 100 } },
+        players: [
+          { id: `${id}1`, position: 'WR', stats: { receivingYards: { mean: 100 }, receivingTouchdowns: { mean: 1 } } },
+          { id: `${id}2`, position: 'RB', estimate: { method: 'team-position-average-v1', games: 8 },
+            stats: { rushingYards: { mean: 50 } } },
+        ],
+      }));
+      const scenario = { id: 'real', home: sides[0], away: sides[1] };
+      return { event_id: String(i), event_start: new Date(start).toISOString(), settled_at: new Date(start + 4 * 3600000).toISOString(),
+        payload: { forecastAt: new Date(start - 3600000).toISOString(), scenarios: [scenario],
+          learning: { version: 'simulation-walk-forward-v2', adjustments: neutralSimulationLearning(clock),
+            playerAdjustments: {}, baselines: simulationLearningBaselines([scenario]) } },
+        actuals: { regulationOnly: true, realized: [{ scenarioId: 'real' }], teams: sides.map(side => ({
+          id: side.id, points: 22, players: { [`${side.id}1`]: { receivingYards: 110, receivingTouchdowns: 2 },
+            [`${side.id}2`]: { rushingYards: 100 } },
+        })) } };
+    });
+    const admin = { from() { const q = { select: () => q, eq: () => q, not: () => q, lt: () => q, gt: () => q,
+      order: () => q, range: async () => ({ data: rows, error: null }) }; return q; } };
+    let learned = await loadSimulationLearning(admin, clock);
+    assert.equal(learned.playerAdjustments['WR:receivingYards'].adjustment, 1.1);
+    assert.equal(learned.playerAdjustments['WR:receivingTouchdowns'].active, true);
+    assert.equal(learned.playerAdjustments['RB:rushingYards'], undefined, 'Estimated players do not train');
+    assert.equal(learned.adjustments.score.trainingGames, 0, 'Mixed estimated scenarios still do not train team corrections');
+    rows.forEach(row => row.payload.learning.baselines = []);
+    learned = await loadSimulationLearning(admin, clock);
+    assert.equal(learned.playerAdjustments['WR:receivingYards'].active, true, 'Explicitly neutral old archives need not lose verified players');
+    rows.forEach(row => row.payload.learning.playerAdjustments = { 'WR:receivingYards': { ...neutralSimulationLearning(clock).score, active: true, adjustment: 1.1 } });
+    assert.deepEqual((await loadSimulationLearning(admin, clock)).playerAdjustments, {}, 'Adjusted outputs cannot replace missing originals');
+    rows.forEach(row => row.payload.learning.playerAdjustments = {});
+    rows.slice(30).forEach(row => row.actuals.teams.forEach(side => { side.players[`${side.id}1`].receivingYards = 90; }));
+    assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, false, 'Later misses veto an optimistic correction');
+    rows.forEach(row => row.payload.qbMatchup = { scenarioId: 'unrealized' });
+    assert.deepEqual((await loadSimulationLearning(admin, clock)).playerAdjustments, {}, 'Unpublished alternative QB scenarios never train player corrections');
   });
   const admin = { from() { const q = { select: () => q, eq: () => q, not: () => q, lt: () => q, gt: () => q, order: () => q,
     range: async () => ({ data: rows, error: null }) }; return q; } };
@@ -560,6 +602,9 @@ test('Accuracy uses the realized pregame scenario, exact team errors and reporte
   assert.equal(result.home.projected, Math.round(scenario.home.score.mean));
   assert.equal(result.away.projected, Math.round(scenario.away.score.mean));
   assert.equal(result.players.find(row => row.stat === 'passingYards').error, Math.abs(player.stats.passingYards.mean - 250));
+  assert.equal(result.players.find(row => row.stat === 'passingYards').displayed,
+    roundedSimulationBox(scenario.home).players[player.id].passingYards, 'Published comparisons use the same reconciled stat line as the game UI');
+  assert.equal(result.regulationOnly, true);
   assert.equal(result.players.find(row => row.stat === 'passingTouchdowns').actual, 0);
   assert.ok(result.players.every(row => row.playerId === player.id));
   assert.ok(result.issues.some(issue => /missing stats and DNPs/.test(issue)));
@@ -693,7 +738,10 @@ test('Team-position estimates unlock rookie QB scenarios without fabricating per
   assert.throws(() => readNFLGameSimulation({ ...payload, evidenceMode: 'full' }, game.id, game.date, { home: '1', away: '2' }), /invalid/);
   const invalid = structuredClone(payload); invalid.scenarios[0].home.players.find(player => player.id === '11').estimate.games = 3;
   assert.throws(() => readNFLGameSimulation(invalid, game.id, game.date, { home: '1', away: '2' }), /invalid/);
-  assert.deepEqual(simulationLearningBaselines(scenarios.filter(row => row.home?.players.some(player => player.estimate))), []);
+  const baselines = simulationLearningBaselines(scenarios);
+  assert.equal(baselines.length, scenarios.length);
+  assert.ok(baselines[0].teams.find(team => team.id === '1').players.every(player => player.id !== '11'));
+  assert.ok(baselines[0].teams.some(team => team.players.length > 0), 'Verified teammates keep their original baselines');
   const markup = simulationMarkup(payload, '', '', false, game.home.id);
   assert.match(markup, /Team-position estimate/);
 });

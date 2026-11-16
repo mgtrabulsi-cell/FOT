@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { Game } from './services/sportsData';
 import { loadSimulationAccuracy } from './services/gamewireBot';
-import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy';
+import { featuredSimulationMinimums, fullPlayerPerformances, strongSimulationPerformances, isFeaturedSimulationPlayer, simulationAccuracyStats } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationAccuracyReport } from '../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
 import NFLSimulationResultsDownloads from './NFLSimulationResultsDownloads';
@@ -61,6 +61,8 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
     .sort((a, b) => a.error - b.error || a.game.eventId.localeCompare(b.game.eventId) || a.playerId.localeCompare(b.playerId)) ?? [];
   const playerHighlights = playerRows.filter(isFeaturedSimulationPlayer).slice(0, 3);
   const performances = report ? fullPlayerPerformances(report) : [];
+  const strongPerformances = report ? strongSimulationPerformances(report) : [];
+  const exceeded = strongPerformances.filter(player => player.outcome === 'exceeded');
   const featuredMinimum = featuredSimulationMinimums[stat];
   return <section className="nfl-simulation-accuracy" aria-label={weekly ? 'Selected week simulation accuracy' : 'Game simulation accuracy'}>
     <header><h3>{weekly ? 'This slate’s simulation accuracy' : 'Simulation vs. final results'}</h3>
@@ -121,6 +123,18 @@ export default function NFLSimulationAccuracy({ games, weekly = false }: { games
       </div>
       </section>
       </div>
+      <section className="nfl-full-performances" aria-label="Exceeded strong projections">
+        <h4>Exceeded strong projections <small>{exceeded.length} calls</small></h4>
+        <p>Published calls of 50+ rushing/receiving yards and 1+ TD, or 200+ passing yards and 2+ TDs. Both components must be met and at least one exceeded. Uses the displayed pregame stat line, not a touchdown probability.</p>
+        <p>{strongPerformances.length} verified calls: {exceeded.length} exceeded, {strongPerformances.filter(player => player.outcome === 'met').length} matched exactly, {strongPerformances.filter(player => player.outcome === 'missed').length} missed. Missing or estimated player lines are excluded.</p>
+        <div className="nfl-full-performance-grid">{exceeded.map(player => <article className="nfl-accuracy-card" key={`${player.game.eventId}:${player.team}:${player.playerId}:${player.category}`}>
+          <h5>{player.name}</h5>
+          <p>{player.position} · {player.team} · {player.category} · {player.game.away.abbr} – {player.game.home.abbr}</p>
+          <strong className="nfl-performance-match">Exceeded the pregame call</strong>
+          <p>Projected {player.yards.projected} yards + {player.touchdowns.projected} TD; actual {player.yards.actual} yards + {player.touchdowns.actual} TD.</p>
+        </article>)}</div>
+        {!strongPerformances.length && <p>No eligible verified combined calls yet.</p>}
+      </section>
       <section className="nfl-full-performances" aria-label="Full Player Performances">
         <h4>Full Player Performances <small>{performances.length} qualifying</small></h4>
         <p>Receiving performance calls matched, even when exact yardage differed. Both simulation and actual must have at least 60 receiving yards and 5 catches, with simulated receiving TDs at least 0.5 and actual receiving TDs at least 1. Projected TDs are expected counts, not probabilities or guaranteed touchdowns.</p>
