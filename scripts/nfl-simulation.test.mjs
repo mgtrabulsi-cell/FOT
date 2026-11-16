@@ -435,7 +435,14 @@ test('Historical neutral v5 player expectations can train, but adjusted legacy o
         teams: teams.map(team => ({ id: team.id, points: 22, players: { [`${team.id}4`]: { receivingYards: 110 } } })) } };
   });
 
-  test('Verified players learn beside estimates; neutral archived baselines recover safely without success-only sampling', async () => {
+  const admin = { from() { const q = { select: () => q, eq: () => q, not: () => q, lt: () => q, gt: () => q, order: () => q,
+    range: async () => ({ data: rows, error: null }) }; return q; } };
+  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, true);
+  rows[0].payload.learning.adjustments.passingYards = { active: true, adjustment: 1.1 };
+  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, false);
+});
+
+test('Verified players learn beside estimates; neutral archived baselines recover safely without success-only sampling', async () => {
     const clock = Date.parse('2026-11-15T12:00:00Z');
     const rows = Array.from({ length: 40 }, (_, i) => {
       const start = clock - (50 - i) * 86400000;
@@ -474,12 +481,6 @@ test('Historical neutral v5 player expectations can train, but adjusted legacy o
     assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, false, 'Later misses veto an optimistic correction');
     rows.forEach(row => row.payload.qbMatchup = { scenarioId: 'unrealized' });
     assert.deepEqual((await loadSimulationLearning(admin, clock)).playerAdjustments, {}, 'Unpublished alternative QB scenarios never train player corrections');
-  });
-  const admin = { from() { const q = { select: () => q, eq: () => q, not: () => q, lt: () => q, gt: () => q, order: () => q,
-    range: async () => ({ data: rows, error: null }) }; return q; } };
-  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, true);
-  rows[0].payload.learning.adjustments.passingYards = { active: true, adjustment: 1.1 };
-  assert.equal((await loadSimulationLearning(admin, clock)).playerAdjustments['WR:receivingYards'].active, false);
 });
 
 test('Position-specific player corrections change the joint draws without breaking caps or team accounting', () => {
