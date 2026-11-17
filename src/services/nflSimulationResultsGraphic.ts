@@ -33,24 +33,27 @@ export function simulationTouchdownSnapshot(report: SimulationAccuracyReport, ga
       players.set(key, [...(players.get(key) ?? []), player]);
     }
     return [...players.values()].flatMap(stats => {
-      if (stats.length !== 2 || new Set(stats.map(row => row.stat)).size !== 2
+      if (new Set(stats.map(row => row.stat)).size !== stats.length
         || !stats.every(row => row.name === stats[0].name && row.position === stats[0].position
           && Number.isFinite(row.projected) && row.projected >= 0
+          && (row.displayed === undefined || Number.isInteger(row.displayed) && row.displayed >= 0)
           && Number.isInteger(row.actual) && row.actual >= 0)) return [];
-      const projected = stats.reduce((sum, row) => sum + row.projected, 0);
+      const projected = stats.reduce((sum, row) => sum + (row.displayed ?? Math.round(row.projected)), 0);
       const actual = stats.reduce((sum, row) => sum + row.actual, 0);
-      // Match the whole-touchdown call shown in the simulation, not any nonzero mean.
-      if (Math.round(projected) < 1 || actual < 1) return [];
+      if (projected < 1 || actual < 1) return [];
+      const partial = stats.length < 2;
       return [{ title: stats[0].name,
         context: `${stats[0].position} | ${stats[0].team} | ${game.away.abbr} at ${game.home.abbr}`,
-        away: game.away.abbr, home: game.home.abbr, simulated: `${Math.round(projected)} TD`,
-        actual: `${actual} TD`, difference: 'Projected scorer | Verified rushing + receiving TDs' }];
+        away: game.away.abbr, home: game.home.abbr, simulated: `${projected}${partial ? '+' : ''} TD`,
+        actual: `${actual}${partial ? '+' : ''} TD`, difference: partial
+          ? `Projected scorer | Verified ${stats[0].stat === 'rushingTouchdowns' ? 'rushing' : 'receiving'} TDs; other category unavailable`
+          : 'Projected scorer | Verified rushing + receiving TDs' }];
     });
   });
   if (!rows.length) throw new Error('No verified projected touchdown scorers have scored in this slate yet.');
   const base = simulationResultsGraphicSnapshot(report, games, 'games', 'passingYards', now);
   return { ...base, kind: 'touchdowns', statistic: 'Touchdown scorers', rows,
-    sections: [{ title: 'Touchdown calls that scored', note: 'Rushing + receiving TDs only; passing TDs excluded', rows }] };
+    sections: [{ title: 'Touchdown calls that scored', note: 'Displayed pregame calls; rushing/receiving only. + = verified minimum; other category unavailable.', rows }] };
 }
 
 export function simulationPlayerSummarySnapshot(report: SimulationAccuracyReport, games: Game[],

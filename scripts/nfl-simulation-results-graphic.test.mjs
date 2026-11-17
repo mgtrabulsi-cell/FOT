@@ -71,14 +71,40 @@ test('Touchdown graphic includes every verified scorer without a top-three cap o
     { playerId: 'qb', name: 'Passer', position: 'QB', team: 'AWY', stat: 'passingTouchdowns', projected: 3, actual: 3 },
   ];
   const snapshot = simulationTouchdownSnapshot(data, scopes, now);
-  assert.equal(snapshot.rows.length, 12);
+  assert.equal(snapshot.rows.length, 13);
   assert.equal(snapshot.sections.length, 1);
   assert.equal(snapshot.rows[0].simulated, '1 TD');
   await renderSimulationResultsGraphic(snapshot);
   assert.ok(drawn.includes('#12 Player 11'));
+  assert.ok(drawn.includes('#13 Player missing'));
+  assert.equal(snapshot.rows[12].actual, '1+ TD');
   assert.ok(canvas.height > 1350);
   data.games[0].players = pair('miss', 1, 0);
   assert.throws(() => simulationTouchdownSnapshot(data, scopes, now), /No verified projected touchdown scorers/);
+});
+test('Touchdown exports follow every displayed allocated call and do not require an unreported zero in the other TD category', () => {
+  const { simulationTouchdownSnapshot } = graphicHarness(), data = report();
+  const stat = (id, kind, projected, displayed, actual) => ({
+    playerId: id, name: id, position: 'WR', team: 'AWY', stat: kind, projected, displayed, actual, error: Math.abs(projected - actual),
+  });
+  data.games[0].players = [
+    stat('allocated', 'receivingTouchdowns', .2, 1, 2),
+    stat('allocated', 'rushingTouchdowns', .1, 0, 0),
+    stat('receiver-only', 'receivingTouchdowns', .3, 1, 1),
+    stat('rusher-only', 'rushingTouchdowns', .4, 1, 1),
+    stat('not-displayed', 'receivingTouchdowns', .8, 0, 1),
+    stat('fraction-only', 'receivingTouchdowns', .3, undefined, 1),
+    stat('rounded-legacy', 'receivingTouchdowns', .7, undefined, 1),
+    stat('did-not-score', 'receivingTouchdowns', .9, 1, 0),
+    stat('split-fractions', 'receivingTouchdowns', .3, 0, 1),
+    stat('split-fractions', 'rushingTouchdowns', .3, 0, 0),
+  ];
+  const snapshot = simulationTouchdownSnapshot(data, scopes, now);
+  assert.deepEqual(Array.from(snapshot.rows, row => row.title), ['allocated', 'receiver-only', 'rusher-only', 'rounded-legacy']);
+  assert.equal(snapshot.rows[0].simulated, '1 TD');
+  assert.equal(snapshot.rows[0].actual, '2 TD');
+  assert.equal(snapshot.rows[1].actual, '1+ TD');
+  assert.match(snapshot.rows[1].difference, /receiving TDs; other category unavailable/);
 });
 test('Game graphic snapshots the top three but grades the entire selected week and freezes copied values', () => {
   const { simulationResultsGraphicSnapshot } = graphicHarness(), data = report();
