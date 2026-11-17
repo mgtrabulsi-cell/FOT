@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
 import { loadGameSimulation, loadSimulationAccuracy } from './services/gamewireBot';
-import { renderSimulationResultsGraphic, simulationResultsGraphicSnapshot, simulationSlateGraphicSnapshot, simulationPlayerSummarySnapshot, simulationTouchdownSnapshot } from './services/nflSimulationResultsGraphic';
+import { renderSimulationResultsGraphic, renderSimulationTouchdownGraphics, simulationResultsGraphicSnapshot, simulationSlateGraphicSnapshot, simulationPlayerSummarySnapshot, simulationTouchdownSnapshot } from './services/nflSimulationResultsGraphic';
 import type { SimulationResultsGraphicKind } from './services/nflSimulationResultsGraphic';
 import type { Game } from './services/sportsData';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
@@ -40,7 +40,7 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
         : kind === 'slate' || kind === 'winners' ? simulationSlateGraphicSnapshot(report, games, forecasts, Date.now(), kind,
         closingSpreads.flatMap(row => row ? [row] : []))
         : simulationResultsGraphicSnapshot(report, games, kind, stat);
-      const blob = await renderSimulationResultsGraphic(snapshot);
+      const blob = kind === 'touchdowns' ? await renderSimulationTouchdownGraphics(snapshot) : await renderSimulationResultsGraphic(snapshot);
       if (controller.signal.aborted) throw new Error('The simulation graphic download was cancelled.');
       return blob;
     } finally { requests.current.delete(controller); }
@@ -51,7 +51,7 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
     <div>{(['games', 'players', 'performances', 'slate', 'winners', 'player-summary', 'touchdowns'] as const).map(kind => <ResultsGraphicDownload key={kind} generate={() => generate(kind)} disabled={false}
       filename={`GameWire-Weekly-Simulation-${kind === 'touchdowns' ? 'Touchdown-Scorers' : kind === 'player-summary' ? 'Player-Top-3-Categories' : kind === 'winners' ? 'Full-Slate-Winners' : kind === 'slate' ? 'Full-Slate-Spreads' : kind === 'games' ? 'Games' : kind === 'performances' ? 'Full-Player-Performances' : stat}.png`}
       label={kind === 'touchdowns' ? 'Download · All touchdown calls that scored' : kind === 'player-summary' ? 'Download · Player top 3 by category' : kind === 'winners' ? 'Download · Full slate winners' : kind === 'slate' ? 'Download · Full slate spreads' : kind === 'games' ? 'Download Instagram · Game results' : kind === 'performances' ? 'Download Instagram · Full Player Performances' : 'Download Instagram · Player props'}
-      description={kind === 'touchdowns' ? 'All verified rushing + receiving touchdown calls that scored'
+      description={kind === 'touchdowns' ? '1080 x 1350 Instagram slides · 10 scorers per slide · every qualifier included · individual save links below'
         : kind === 'player-summary' ? '1080px-wide PNG · four top-three categories · simulated and actual stat lines'
         : kind === 'winners' ? '1080px-wide PNG · every game · simulated winner and win/loss record'
         : kind === 'slate' ? '1080px-wide PNG · every game · provider closing lines and simulation ATS grades'

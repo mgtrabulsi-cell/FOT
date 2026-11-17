@@ -4,19 +4,26 @@ import { renderResultsGraphic } from './services/gamewaireResultsGraphic';
 
 export function ResultsGraphicDownload({ generate, disabled, filename, description, alt, label = 'Download results graphic',
   snapshotNote = 'Snapshot from your last download. Download again after grading or changing results.' }: {
-  generate: () => Promise<Blob>; disabled: boolean; filename: string; description: string; alt: string; label?: string; snapshotNote?: string;
+  generate: () => Promise<Blob | Blob[]>; disabled: boolean; filename: string; description: string; alt: string; label?: string; snapshotNote?: string;
 }) {
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [preview, setPreview] = useState('');
-  const url = useRef('');
-  useEffect(() => () => { if (url.current) URL.revokeObjectURL(url.current); }, []);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [previews, setPreviews] = useState<string[]>([]);
+  const urls = useRef<string[]>([]);
+  useEffect(() => () => { urls.current.forEach(url => URL.revokeObjectURL(url)); }, []);
+  const slideFilename = (index: number, count: number) => count === 1 ? filename
+    : filename.replace(/\.png$/i, '') + `-${index + 1}-of-${count}.png`;
   const download = async () => {
     setBusy(true); setError('');
     try {
-      const blob = await generate();
-      if (url.current) URL.revokeObjectURL(url.current);
-      url.current = URL.createObjectURL(blob); setPreview(url.current);
-      const link = document.createElement('a');
-      link.href = url.current; link.download = filename; link.click();
+      const result = await generate(), blobs = Array.isArray(result) ? result : [result];
+      if (!blobs.length) throw new Error('No graphic slides were created. Retry.');
+      urls.current.forEach(url => URL.revokeObjectURL(url));
+      urls.current = []; setPreviews([]);
+      for (const blob of blobs) urls.current.push(URL.createObjectURL(blob));
+      setPreviews([...urls.current]);
+      urls.current.forEach((url, index) => {
+        const link = document.createElement('a');
+        link.href = url; link.download = slideFilename(index, blobs.length); link.click();
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The results graphic could not be exported. Retry.');
     } finally { setBusy(false); }
@@ -25,9 +32,11 @@ export function ResultsGraphicDownload({ generate, disabled, filename, descripti
     <button type="button" disabled={disabled || busy} onClick={() => void download()}>{busy ? 'Creating graphic...' : label}</button>
     <small>{description}</small>
     {error && <p role="alert" className="feed-warning">{error}</p>}
-    {preview && <details><summary>View downloaded graphic</summary>
-      <img src={preview} alt={alt} />
-      <a href={preview} download={filename}>Save PNG again</a>
+    {!!previews.length && <details open={previews.length > 1}><summary>{previews.length > 1 ? `View and save all ${previews.length} slides` : 'View downloaded graphic'}</summary>
+      {previews.map((preview, index) => <div key={preview}>
+        <img src={preview} alt={`${alt}${previews.length > 1 ? `, slide ${index + 1} of ${previews.length}` : ''}`} />
+        <a href={preview} download={slideFilename(index, previews.length)}>{previews.length > 1 ? `Save slide ${index + 1} of ${previews.length}` : 'Save PNG again'}</a>
+      </div>)}
       <p className="gai-note">{snapshotNote}</p>
     </details>}
   </div>;

@@ -57,7 +57,7 @@ test('Weekly winner record covers all verified games, with ties and no-winner fo
   assert.equal(record.ties, 1); assert.equal(record.noWinner, 1);
 });
 test('Touchdown graphic includes every verified scorer without a top-three cap or passing TDs', async () => {
-  const { simulationTouchdownSnapshot, renderSimulationResultsGraphic, drawn, canvas } = graphicHarness();
+  const { simulationTouchdownSnapshot, renderSimulationTouchdownGraphics, drawn, canvas } = graphicHarness();
   const data = report();
   const pair = (id, projected, actual) => ['rushingTouchdowns', 'receivingTouchdowns'].map((stat, index) => ({
     playerId: id, name: `Player ${id}`, position: 'RB', team: 'AWY', stat,
@@ -74,13 +74,72 @@ test('Touchdown graphic includes every verified scorer without a top-three cap o
   assert.equal(snapshot.rows.length, 13);
   assert.equal(snapshot.sections.length, 1);
   assert.equal(snapshot.rows[0].simulated, '1 TD');
-  await renderSimulationResultsGraphic(snapshot);
+  const slides = await renderSimulationTouchdownGraphics(snapshot);
+  assert.equal(slides.length, 2);
   assert.ok(drawn.includes('#12 Player 11'));
   assert.ok(drawn.includes('#13 Player missing'));
   assert.equal(snapshot.rows[12].actual, '1+ TD');
-  assert.ok(canvas.height > 1350);
+  assert.equal(canvas.height, 1350);
   data.games[0].players = pair('miss', 1, 0);
   assert.throws(() => simulationTouchdownSnapshot(data, scopes, now), /No verified projected touchdown scorers/);
+});
+test('Touchdown Instagram pagination preserves every scorer in order at readable fixed dimensions', async () => {
+  for (const count of [1, 10, 11, 20, 21, 45]) {
+    const h = graphicHarness(), data = report();
+    data.games[0].players = Array.from({ length: count }, (_, i) => ({
+      playerId: String(i), name: `Scorer ${i}`, position: 'WR', team: 'AWY',
+      stat: 'receivingTouchdowns', projected: .4, displayed: 1, actual: 1, error: .6,
+    }));
+    const snapshot = h.simulationTouchdownSnapshot(data, scopes, now);
+    const slides = await h.renderSimulationTouchdownGraphics(snapshot);
+    assert.equal(slides.length, Math.ceil(count / 10));
+    assert.equal(h.canvas.width, 1080); assert.equal(h.canvas.height, 1350);
+    const names = h.labels.filter(row => /^#\d+ Scorer/.test(row.value));
+    assert.equal(names.length, count);
+    names.forEach((row, i) => {
+      assert.equal(row.value, `#${i + 1} Scorer ${i}`);
+      assert.match(row.font, /21px/);
+      assert.ok(row.y <= 810, 'Scorers stay above the slide footer');
+    });
+    if (count > 10) await assert.rejects(h.renderSimulationResultsGraphic(snapshot), /multi-slide/);
+  }
+});
+test('Multi-slide download exposes every numbered save link and cleans up old preview URLs', async () => {
+  const slots = [], downloads = [], revoked = [];
+  let cursor = 0, sequence = 0, cleanup, generated = [new Blob(['one']), new Blob(['two'])];
+  const jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, Error, Array,
+    URL: { createObjectURL: () => `blob:${++sequence}`, revokeObjectURL: url => revoked.push(url) },
+    document: { createElement: () => ({ click() { downloads.push({ href: this.href, filename: this.download }); } }) },
+    require(name) {
+      if (name === 'react') return {
+        useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => slots[i] = value]; },
+        useRef(initial) { const i = cursor++; return slots[i] ??= { current: initial }; },
+        useEffect(fn) { cleanup = fn(); },
+      };
+      if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+      return {};
+    } });
+  vm.runInContext(ts.transpileModule(readFileSync(new URL('../src/GamewaireResultsDownload.tsx', import.meta.url), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, context);
+  const render = () => { cursor = 0; return context.exports.ResultsGraphicDownload({
+    generate: async () => generated, disabled: false, filename: 'Scorers.png', description: 'Slides', alt: 'Scorers',
+  }); };
+  let tree = render();
+  tree.props.children[0].props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  tree = render();
+  const details = tree.props.children.find(row => row?.type === 'details');
+  assert.equal(details.props.open, true);
+  assert.equal(details.props.children[1].length, 2);
+  assert.equal(details.props.children[1][1].props.children[1].props.download, 'Scorers-2-of-2.png');
+  assert.deepEqual(downloads.map(row => row.filename), ['Scorers-1-of-2.png', 'Scorers-2-of-2.png']);
+  generated = new Blob(['single']);
+  tree.props.children[0].props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  render();
+  assert.deepEqual(revoked, ['blob:1', 'blob:2']);
+  assert.equal(downloads[2].filename, 'Scorers.png');
+  cleanup();
+  assert.deepEqual(revoked, ['blob:1', 'blob:2', 'blob:3']);
 });
 test('Touchdown exports follow every displayed allocated call and do not require an unreported zero in the other TD category', () => {
   const { simulationTouchdownSnapshot } = graphicHarness(), data = report();
