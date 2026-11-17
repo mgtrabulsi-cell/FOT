@@ -188,7 +188,7 @@
 .nba-simulation-panel, .nba-simulation-leaders { display: grid; gap: 14px; padding: 18px; border: 1px solid #2b435e; border-radius: 12px; background: #081626; min-width: 0; }
 .nba-simulation-panel h3, .nba-simulation-panel h4, .nba-simulation-leaders h3, .nba-simulation-leaders h4 { margin: 0; }
 .nba-simulation-leader-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
-.nba-simulation-leaders { gap: 10px; margin-bottom: 16px; font-size: 12px; }
+.nba-simulation-leaders { gap: 10px; width: 100%; max-width: 920px; margin: 0 auto 16px; font-size: 12px; }
 .nba-simulation-leaders header h3 { font-size: 17px; }
 .nba-simulation-leaders .nba-note { margin: 0; font-size: 11px; line-height: 1.5; }
 .nba-simulation-leader-grid article { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 12px; border: 1px solid #31516b; border-radius: 10px; background: linear-gradient(140deg,#142c43,#07111e); overflow-wrap: anywhere; }

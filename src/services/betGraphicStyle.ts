@@ -126,23 +126,25 @@ export async function renderBetGraphic({ title, subtitle, rows, summary, note, s
   rows.forEach((row, index) => {
     const y = 250 + index * 150;
     panel(52, y, 976, 150, 16);
-    line(220, y + 29, 220, y + 121);
-    const labelParts = row.label.toUpperCase().split(/\s+/);
-    ctx.textAlign = 'center';
-    if (labelParts.length > 1) {
-      const middle = Math.ceil(labelParts.length / 2);
-      text(labelParts.slice(0, middle).join(' '), 140, y + 58, 24, 110, white, true, 700, false, true);
-      text(labelParts.slice(middle).join(' '), 140, y + 92, 24, 110, white, true, 700, false, true);
-    } else text(row.label.toUpperCase(), 140, y + 75, 39, 110, white, true, 700, false, true);
-    ctx.textAlign = 'left';
-    const hasOdds = !!row.odds, contentWidth = hasOdds ? 580 : 690;
+    if (row.label) {
+      line(220, y + 29, 220, y + 121);
+      const labelParts = row.label.toUpperCase().split(/\s+/);
+      ctx.textAlign = 'center';
+      if (labelParts.length > 1) {
+        const middle = Math.ceil(labelParts.length / 2);
+        text(labelParts.slice(0, middle).join(' '), 140, y + 58, 24, 110, white, true, 700, false, true);
+        text(labelParts.slice(middle).join(' '), 140, y + 92, 24, 110, white, true, 700, false, true);
+      } else text(row.label.toUpperCase(), 140, y + 75, 39, 110, white, true, 700, false, true);
+      ctx.textAlign = 'left';
+    }
+    const hasOdds = !!row.odds, contentWidth = (hasOdds ? 580 : 690) + (row.label ? 0 : 168);
     if (hasOdds) {
       line(874, y + 29, 874, y + 121);
       ctx.textAlign = 'right';
       text(row.odds!, 994, y + 85, 43, 102);
       ctx.textAlign = 'left';
     }
-    let left = 252, available = contentWidth;
+    let left = row.label ? 252 : 84, available = contentWidth;
     if (row.photo) {
       const ratio = Math.min(78 / row.photo.naturalWidth, 100 / row.photo.naturalHeight);
       const w = row.photo.naturalWidth * ratio, h = row.photo.naturalHeight * ratio;

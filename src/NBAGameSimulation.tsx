@@ -42,9 +42,8 @@ export function NBADailyPerformers({ forecasts, games, date }: { forecasts: NBAG
     const refreshed = await Promise.all(games.map(game => loadNBASimulation(game, signal)));
     const leaders = nbaDailyPerformers(refreshed, date);
     return renderNBASimulationGraphic('The Daily Triple / Top 3 PRA', `${date} | ${refreshed.filter(row => row.status === 'ready').length}/${games.length} games ready`,
-      leaders.map((player, index) => ({ title: `#${index + 1} ${player.name} | ${player.team} vs ${player.opponent}`,
-        detail: `${value(player.stats.pra.mean)} projected PRA | ${player.status}`,
-        line: line(player), note: `Saved ${stamp(player.forecastAt!)} | ${player.games} appearances${player.limited ? ' | Limited sample' : ''}` })));
+      leaders.map(player => ({ title: player.name, detail: '',
+        line: `${line(player)} | ${value(player.stats.pra.mean)} PRA`, note: '' })));
   };
   return <section className="nba-simulation-leaders" aria-label="Daily top three projected PRA performers">
     <header><span className="eyebrow">THE DAILY TRIPLE</span><h3>Daily projected PRA leaders</h3></header>

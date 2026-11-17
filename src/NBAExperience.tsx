@@ -373,7 +373,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
     if (hasLiveGames && !hadLiveGames.current) { setBoardView('matchups'); setTab('players'); }
     hadLiveGames.current = hasLiveGames;
   }, [hasLiveGames]);
-  const simulations = useBoardSimulations(nbaGames, mode === 'wire' && (boardView === 'simulation' || tab === 'simulation'),
+  const simulations = useBoardSimulations(nbaGames, mode === 'wire' && (boardView !== 'results' || tab === 'simulation'),
     loadNBASimulation, readSavedNBASimulation);
   const currentForecasts = nbaGames.flatMap(game => {
     const saved = simulations.simulations[game.eventId];
@@ -448,7 +448,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
     {status === 'error' && <div className="nba-warning" role="status"><span>NBA scoreboard could not be refreshed.{nbaGames.length ? ' Showing the last available games.' : ''}</span><button type="button" onClick={onRetry}>Retry scoreboard</button></div>}
     {!nbaGames.length && status === 'ready' && <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Use the date arrows or Today to pick another day.</span></div>}
     {boardView === 'results' && <NBASimulationResults games={nbaGames} />}
-    {boardView === 'simulation' && !showingDetails && !!nbaGames.length && <NBADailyPerformers forecasts={currentForecasts} games={nbaGames}
+    {boardView !== 'results' && !showingDetails && !!nbaGames.length && <NBADailyPerformers forecasts={currentForecasts} games={nbaGames}
       date={nbaCalendarDate(new Date(nbaGames[0].date))} />}
     {mode === 'wire' && !showingDetails && boardView !== 'results' && !!nbaGames.length && <div className="wire-board" ref={boardRef}>
       <header className="wire-board-header"><span className="eyebrow">NBA GAMES · SELECT A MATCHUP</span></header>

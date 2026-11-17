@@ -61,14 +61,16 @@ function renderer({ noBlob = false, imageError = false, stadiumError = false } =
 test('NBA forecasts use stadium branding and organized detail rows with no cropped text or betting labels', async () => {
   const r = renderer();
   await r.renderNBASimulationGraphic('The Daily Triple / Top 3 PRA', '2026-11-17 | 5/5 games ready',
-    Array.from({ length: 3 }, (_, i) => ({ title: `#${i + 1} Player Name | BOS vs NY`,
-      detail: '45.0 projected PRA | Active', line: '28.0 PTS / 10.0 REB / 7.0 AST',
+    Array.from({ length: 3 }, (_, i) => ({ title: `Player Name ${i + 1}`,
+      detail: '45 projected PRA | Active', line: '28 PTS / 10 REB / 7 AST | 45 PRA',
       note: 'Saved 11/17/2026, 10:00 AM | 30 appearances' })));
   assert.equal(r.images.length, 2);
   assert.equal(r.canvas.height, 890);
   assert.ok(r.texts.some(row => row.text === 'DAILY TRIPLE'));
   assert.ok(r.texts.some(row => row.text.includes('NBA MODEL ESTIMATES')));
   assert.ok(!r.texts.some(row => /EDITORIAL SELECTIONS|BEST BETS|HIT|MISS/.test(row.text)));
+  assert.ok(!r.texts.some(row => /appearances|Active|Saved 11|NBA #/.test(row.text)));
+  assert.equal(r.texts.filter(row => row.x === 84).length, 6, 'Only the name and projected stat line appear in each full-width player row');
   for (const row of r.texts) {
     assert.ok(row.y >= 0 && row.y < r.canvas.height, row.text);
     if (row.x === 252) assert.ok(row.x + row.bounds.width <= 1028, row.text);

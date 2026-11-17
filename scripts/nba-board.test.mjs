@@ -29,6 +29,7 @@ test('NBA simulations keep projected and actual scores separate, expose daily le
   const app = setup('wire', new Map(), undefined, { simulationForecasts: { [game.eventId]: forecast } });
   const button = label => app.nodes().find(node => node.type === 'button' && node.props.children === label);
   assert.equal(button('Matchups').props['aria-pressed'], true);
+  assert.ok(app.nodes().some(node => node.type === 'NBADailyPerformers'), 'PRA leaders are visible in Matchups');
   app.props.games = [{ ...game, status: 'UPCOMING' }]; app.render();
   button('GamewAIre simulations').props.onClick(); app.render();
   assert.deepEqual(app.nodes().filter(node => node.props?.className === 'wire-board-score').map(node => node.props.children), [114, 121]);
@@ -46,6 +47,7 @@ test('NBA simulations keep projected and actual scores separate, expose daily le
   button('Simulation Results').props.onClick(); app.render();
   assert.ok(app.nodes().some(node => node.type === 'NBASimulationResults'));
   assert.ok(!app.nodes().some(node => node.props?.className === 'wire-board-score'));
+  assert.ok(!app.nodes().some(node => node.type === 'NBADailyPerformers'), 'Results do not mix daily projections into settled results');
   app.unmount();
 });
 test('NBA finished games keep the left-side notification layout and visible final scores', () => {

@@ -8,9 +8,10 @@ export async function renderNBASimulationGraphic(title: string, subtitle: string
     title: title.startsWith('The Daily Triple') ? 'DAILY TRIPLE' : 'NBA SIM',
     subtitle: `${title} / ${subtitle}`,
     typography: 'brand',
-    rows: rows.map((row, index) => ({
-      label: title.startsWith('The Daily Triple') ? `NBA #${index + 1}` : 'NBA',
-      name: row.title, detail: row.detail, selection: row.line, note: row.note,
+    rows: rows.map(row => ({
+      label: title.startsWith('The Daily Triple') ? '' : 'NBA',
+      name: row.title, selection: row.line,
+      ...(title.startsWith('The Daily Triple') ? {} : { detail: row.detail, note: row.note }),
     })),
     summary: title.startsWith('The Daily Triple') ? 'PROJECTED POINTS + REBOUNDS + ASSISTS' : 'GAMEWAIRE / NBA SIMULATIONS',
     note: 'Experimental estimates / Conditional on playing / Not betting recommendations',
