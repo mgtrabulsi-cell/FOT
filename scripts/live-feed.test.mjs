@@ -19,7 +19,7 @@ test('scoreboard and matchup views omit saved-schedule and provider banners', ()
   assert.doesNotMatch(wire, /Saved pregame projections remain visible after kickoff|Simulation score updates are reconnecting|<summary>Update details<\/summary>/);
   assert.match(wire, /Sign in to view GamewAIre simulation scores/);
   const refresh = readFileSync(new URL('../src/useNFLBoardSimulations.ts', import.meta.url), 'utf8');
-  assert.match(refresh, /console\.error\('NFL scoreboard simulation update failed'/);
+  assert.match(refresh, /console\.error\('Scoreboard simulation update failed'/);
 });
 
 const nflGame = (overrides = {}) => ({
