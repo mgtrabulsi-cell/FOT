@@ -178,3 +178,22 @@
 .nba-b2b-badge { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 3px 6px; margin-left: 6px; border: 1px solid #d9770680; border-radius: 4px; background: #451a03; color: #fde68a; font: 700 10px/1.2 var(--mono); letter-spacing: .4px; text-decoration: none; vertical-align: middle; }
 .nba-b2b-badge:hover { background: #78350f; color: #fff; }
 .nba-b2b-badge:focus-visible { outline: 2px solid #fbbf24; outline-offset: 2px; }
+.nba-simulation-panel, .nba-simulation-leaders { display: grid; gap: 14px; padding: 18px; border: 1px solid #2b435e; border-radius: 12px; background: #081626; min-width: 0; }
+.nba-simulation-panel h3, .nba-simulation-panel h4, .nba-simulation-leaders h3, .nba-simulation-leaders h4 { margin: 0; }
+.nba-simulation-leader-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.nba-simulation-leader-grid article { display: grid; gap: 10px; padding: 16px; border: 1px solid #31516b; border-radius: 10px; background: linear-gradient(140deg,#142c43,#07111e); }
+.nba-simulation-leader-grid article > strong { color: #55d8a1; font-size: 30px; }
+.nba-simulation-leader-grid article > strong small { font-size: 12px; }
+.nba-simulation-leader-grid p { margin: 0; }
+.nba-simulation-leader-grid small { color: #bfd0e3; line-height: 1.5; }
+.nba-simulation-score { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.nba-simulation-score > div { display: grid; justify-items: center; gap: 8px; padding: 18px; border: 1px solid #31516b; border-radius: 10px; }
+.nba-simulation-score strong { font-size: 40px; color: #55d8a1; }
+.nba-simulation-panel .nba-table th small { display: block; color: #b6c8dd; font-size: 11px; font-weight: 400; white-space: normal; }
+.nba-simulation-panel .nba-table-scroll { max-width: 100%; }
+.nba-simulation-panel details > summary { cursor: pointer; padding: 12px 0; }
+@media (max-width:760px) {
+  .nba-simulation-leader-grid { grid-template-columns: 1fr; }
+  .nba-simulation-panel, .nba-simulation-leaders { padding: 12px; }
+  .nba-simulation-score > div { padding: 12px; }
+}

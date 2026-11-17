@@ -20,6 +20,9 @@ verify_jwt = false
 [functions.poll-nba-games]
 verify_jwt = false
 
+[functions.nba-simulation]
+verify_jwt = false
+
 [functions.sync-sports-resources]
 verify_jwt = false
 

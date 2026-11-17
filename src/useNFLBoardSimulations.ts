@@ -4,9 +4,15 @@ import type { Game } from './services/sportsData';
 import type { NFLGameSimulation } from '../supabase/functions/_shared/nflSimulation';
 
 export function useNFLBoardSimulations(games: Game[], enabled: boolean) {
-  const [simulations, setSimulations] = useState<Record<string, NFLGameSimulation>>({});
+  return useBoardSimulations<NFLGameSimulation>(games, enabled, loadGameSimulation, readSavedGameSimulation);
+}
+export function useBoardSimulations<T extends { eventId: string; kickoff: string; status: string; forecastAt: string | null; refreshing?: boolean }>(
+  games: Game[], enabled: boolean, loadSimulation: (game: Game, signal: AbortSignal) => Promise<T>,
+  readSimulation: (game: Game) => Promise<T | null>,
+) {
+  const [simulations, setSimulations] = useState<Record<string, T>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const rememberSimulation = useCallback((result: NFLGameSimulation, clearError = true) => {
+  const rememberSimulation = useCallback((result: T, clearError = true) => {
     setSimulations(previous => {
       const saved = previous[result.eventId], sameGame = saved && Date.parse(saved.kickoff) === Date.parse(result.kickoff);
       if (sameGame && saved.status === 'ready' && result.status === 'ready'
@@ -22,7 +28,7 @@ export function useNFLBoardSimulations(games: Game[], enabled: boolean) {
     const controller = new AbortController();
     let timer: number | undefined, inFlight = false;
     for (const game of games) {
-      void readSavedGameSimulation(game).then(saved => {
+      void readSimulation(game).then(saved => {
         if (saved && !controller.signal.aborted) rememberSimulation(saved, false);
       });
     }
@@ -34,12 +40,12 @@ export function useNFLBoardSimulations(games: Game[], enabled: boolean) {
         while (next < games.length && !controller.signal.aborted) {
           const game = games[next++];
           try {
-            const result = await loadGameSimulation(game, controller.signal);
+            const result = await loadSimulation(game, controller.signal);
             if (controller.signal.aborted) return;
             rememberSimulation(result);
           } catch (cause) {
             if (controller.signal.aborted) return;
-            console.error('NFL scoreboard simulation update failed', game.eventId, cause);
+            console.error('Scoreboard simulation update failed', game.eventId, cause);
             setErrors(previous => ({ ...previous, [game.eventId]: cause instanceof Error ? cause.message : 'Simulation scores could not update.' }));
           }
         }
@@ -54,6 +60,6 @@ export function useNFLBoardSimulations(games: Game[], enabled: boolean) {
     void load();
     window.addEventListener('online', reconnect);
     return () => { controller.abort(); if (timer !== undefined) window.clearTimeout(timer); window.removeEventListener('online', reconnect); };
-  }, [scope, enabled, rememberSimulation]);
+  }, [scope, enabled, rememberSimulation, loadSimulation, readSimulation]);
   return { simulations, errors, rememberSimulation };
 }

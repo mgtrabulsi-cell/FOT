@@ -9,6 +9,9 @@ import { gameSnapshotKey, readRenderSnapshot, nbaResourceSnapshots, readNBADirec
 import { saveNBASummary } from './services/nbaPreload';
 import { nbaPreviousGame } from './services/nbaBackToBack';
 import { nbaLiveScore } from './services/nbaLiveScore';
+import NBAGameSimulation, { NBADailyPerformers, NBASimulationResults } from './NBAGameSimulation';
+import { useBoardSimulations } from './useNFLBoardSimulations';
+import { loadNBASimulation, readSavedNBASimulation } from './services/nbaSimulation';
 import { gameClockLabel, nbaCalendarDate } from './services/sportsData';
 import {
   fetchNBALeague, fetchNBAPlayerProfile, fetchNBAPointsPerGame, fetchNBARoster, fetchNBASummary, fetchNBATeamSeason,
@@ -357,12 +360,26 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
   const [selectedId, setSelectedId] = useState(initialGameId ?? '');
   const [openedGameId, setOpenedGameId] = useState<string | null>(null);
   useEffect(() => {
-    if (openGameId) { setSelectedId(openGameId); setOpenedGameId(openGameId); }
+    if (openGameId) { setSelectedId(openGameId); setOpenedGameId(openGameId); setBoardView('matchups'); setTab('players'); }
   }, [openGameId]);
   const boardRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<string | null>(null);
-  const [tab, setTab] = useState<'players' | 'teams' | 'plays'>('players');
+  const [tab, setTab] = useState<'players' | 'teams' | 'plays' | 'simulation'>('players');
+  const [boardView, setBoardView] = useState<'matchups' | 'simulation' | 'results'>(() =>
+    nbaGames.some(game => game.status === 'LIVE') ? 'matchups' : 'simulation');
+  const hasLiveGames = nbaGames.some(game => game.status === 'LIVE'), hadLiveGames = useRef(hasLiveGames);
+  useEffect(() => {
+    if (hasLiveGames && !hadLiveGames.current) { setBoardView('matchups'); setTab('players'); }
+    hadLiveGames.current = hasLiveGames;
+  }, [hasLiveGames]);
+  const simulations = useBoardSimulations(nbaGames, mode === 'wire' && (boardView === 'simulation' || tab === 'simulation'),
+    loadNBASimulation, readSavedNBASimulation);
+  const currentForecasts = nbaGames.flatMap(game => {
+    const saved = simulations.simulations[game.eventId];
+    return saved && Date.parse(saved.kickoff) === Date.parse(game.date) && saved.homeTeamId === game.home.id && saved.awayTeamId === game.away.id ? [saved] : [];
+  });
+  const simulationFor = (game: Game) => currentForecasts.find(row => row.eventId === game.eventId);
   const [teamId, setTeamId] = useState('');
   const [boxTeamId, setBoxTeamId] = useState('');
   const [profile, setProfile] = useState<{ player: NBAPlayer; team: Team; season?: number } | null>(null);
@@ -410,7 +427,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
   const awayLost = finalScore && awayScore !== undefined && homeScore !== undefined && awayScore < homeScore;
   const homeLost = finalScore && awayScore !== undefined && homeScore !== undefined && homeScore < awayScore;
   const boxTeam = game && (game.home.id === boxTeamId ? game.home : game.away);
-  const selectGame = (item: Game) => { setSelectedId(item.id); setOpenedGameId(item.id); setTab('players'); setTeamId(''); setBoxTeamId(''); setProfile(null); onSelectGame?.(item.id); };
+  const selectGame = (item: Game) => { setSelectedId(item.id); setOpenedGameId(item.id); setTab(boardView === 'simulation' && item.status !== 'LIVE' ? 'simulation' : 'players'); setTeamId(''); setBoxTeamId(''); setProfile(null); onSelectGame?.(item.id); };
   if (mode === 'stats') return <div className="nfl-players-directory nba-stat-hub" aria-label="NBA Stat Hub">
     <div className="nfl-directory-controls">{game ? <section className="nfl-game-wheel" data-swipe-back-ignore><span className="eyebrow">SELECT GAME</span><DraggableTabs className="nfl-game-wheel-tabs" ariaLabel="NBA games" options={nbaGames.map((item) => ({ key: item.id, label: `${item.away.abbr} @ ${item.home.abbr}`, secondary: item.status === 'LIVE' ? `LIVE · ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'FINAL' : gameDate(item.date, true) }))} selected={game.id} onSelect={(id) => { const item = nbaGames.find((entry) => entry.id === id); if (item) selectGame(item); }} /></section> : status === 'loading' ? <p className="nfl-empty-note" role="status">Loading NBA games…</p> : status === 'error' ? <p className="nfl-empty-note" role="status">Cannot refresh NBA scores. Retry or browse teams below.</p> : <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Browse teams below or pick another date.</span></div>}</div>
     {status === 'error' && <div className="feed-warning" role="status">Could not refresh NBA games. <button type="button" onClick={onRetry}>Retry</button></div>}
@@ -422,25 +439,36 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
   </div>;
   return <section className={`nba-experience nba-${mode}`} aria-label={mode === 'wire' ? 'NBA Wire' : 'NBA Stat Hub'}>
     <header className="nba-heading"><div><span className="eyebrow">NBA</span><h2>{heading}</h2></div><button type="button" onClick={() => { onRetry(); summary.retry(); league.retry(); }}>Refresh</button></header>
+    <div className="nba-segments" role="group" aria-label="NBA Wire views">
+      {([{ key: 'matchups', label: 'Matchups' }, { key: 'simulation', label: 'GamewAIre simulations' }, { key: 'results', label: 'Simulation Results' }] as const).map(view =>
+        <button type="button" key={view.key} aria-pressed={boardView === view.key} className={view.key === 'simulation' ? 'wire-simulation-toggle' : undefined}
+          onClick={() => { setBoardView(view.key); setOpenedGameId(null); setTab(view.key === 'simulation' ? 'simulation' : 'players'); }}>{view.label}</button>)}
+    </div>
     {status === 'loading' && !nbaGames.length && <p role="status">Loading NBA games…</p>}
     {status === 'error' && <div className="nba-warning" role="status"><span>NBA scoreboard could not be refreshed.{nbaGames.length ? ' Showing the last available games.' : ''}</span><button type="button" onClick={onRetry}>Retry scoreboard</button></div>}
     {!nbaGames.length && status === 'ready' && <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Use the date arrows or Today to pick another day.</span></div>}
-    {mode === 'wire' && !showingDetails && !!nbaGames.length && <div className="wire-board" ref={boardRef}>
+    {boardView === 'results' && <NBASimulationResults games={nbaGames} />}
+    {boardView === 'simulation' && !showingDetails && !!nbaGames.length && <NBADailyPerformers forecasts={currentForecasts} games={nbaGames}
+      date={nbaCalendarDate(new Date(nbaGames[0].date))} />}
+    {mode === 'wire' && !showingDetails && boardView !== 'results' && !!nbaGames.length && <div className="wire-board" ref={boardRef}>
       <header className="wire-board-header"><span className="eyebrow">NBA GAMES · SELECT A MATCHUP</span></header>
       <ol className="wire-board-list">{visibleGames.map((item) => <li key={item.id} className={`notification-game-card${item.status === 'LIVE' ? ' is-live-game' : item.status === 'FINAL' ? ' is-final-game' : ''}`}>
         <NotificationBell />
         <div className={`wire-board-card nba-board-card${item.status === 'LIVE' ? ' is-live' : ''}`}>
           <span className="wire-board-status">{item.status === 'LIVE' ? <><span className="live-pill"><i /> LIVE</span><small>{gameClockLabel(item.period, item.clock)}</small></> : item.status === 'FINAL' ? <span className="wire-board-final">FINAL</span> : <><span>{gameDate(item.date, true)}</span>{item.nbaMarket?.spread != null && <small className="wire-board-spread">Spread <b>{item.home.abbr} {item.nbaMarket.spread > 0 ? '+' : ''}{item.nbaMarket.spread}</b></small>}</>}</span>
-          <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className={`wire-board-team${item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? ' is-loser' : ''}`} key={side.id}>
+          <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className={`wire-board-team${boardView !== 'simulation' && item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? ' is-loser' : ''}`} key={side.id}>
             <TeamAbbrMark className="wire-board-mark" abbr={side.abbr} color={side.color} name={side.name} />
             <span className="wire-board-team-name"><b><span className="wire-board-team-label">{side.name}</span>
               {teamPicks[`${item.eventId}:${side.id}`] && <span className="wire-team-pick-note">{teamPicks[`${item.eventId}:${side.id}`].label}</span>}
               <BackToBackBadge game={item} team={side} previousGames={previousGames} />
             </b><small>{side.abbr}{side.record ? ` · ${side.record}` : ''}</small></span>
-            <strong className="wire-board-score">{item.status === 'UPCOMING' ? '' : side.score}</strong>
+            <strong className="wire-board-score">{boardView === 'simulation'
+              ? simulationFor(item)?.status === 'ready' ? Math.round((side.id === item.home.id ? simulationFor(item)!.home! : simulationFor(item)!.away!).score.mean) : '—'
+              : item.status === 'UPCOMING' ? '' : side.score}</strong>
           </span>)}</span>
-          <span className="wire-board-footer"><span className="wire-board-meta">{item.venue}</span><button type="button" className="wire-board-open nba-board-open" data-game-id={item.id} onClick={() => selectGame(item)} aria-label={`${item.away.name} at ${item.home.name}, ${item.status === 'LIVE' ? `live ${gameClockLabel(item.period, item.clock)}` : item.status === 'FINAL' ? 'final' : gameDate(item.date, true)}${item.status === 'UPCOMING' && item.nbaMarket?.spread != null ? `. Spread ${item.home.abbr} ${item.nbaMarket.spread > 0 ? '+' : ''}${item.nbaMarket.spread}` : ''}. Open ${item.status === 'UPCOMING' ? 'matchups' : 'box score'}`}>{item.status === 'UPCOMING' ? 'Matchups' : 'Box score'}<ChevronRight size={14} aria-hidden="true" /></button></span>
+          <span className="wire-board-footer"><span className="wire-board-meta">{boardView === 'simulation' ? `PREGAME SIM · ${simulationFor(item)?.stage ?? 'Preparing'}` : item.venue}</span><button type="button" className="wire-board-open nba-board-open" data-game-id={item.id} onClick={() => selectGame(item)} aria-label={`${item.away.name} at ${item.home.name}, ${item.status === 'LIVE' ? `live ${gameClockLabel(item.period, item.clock)}` : item.status === 'FINAL' ? 'final' : gameDate(item.date, true)}${item.status === 'UPCOMING' && item.nbaMarket?.spread != null ? `. Spread ${item.home.abbr} ${item.nbaMarket.spread > 0 ? '+' : ''}${item.nbaMarket.spread}` : ''}. Open ${item.status === 'LIVE' ? 'box score' : boardView === 'simulation' ? 'simulation' : item.status === 'UPCOMING' ? 'matchups' : 'box score'}`}>{item.status === 'LIVE' ? 'Box score' : boardView === 'simulation' ? 'Simulation' : item.status === 'UPCOMING' ? 'Matchups' : 'Box score'}<ChevronRight size={14} aria-hidden="true" /></button></span>
         </div>
+        {boardView === 'simulation' && simulations.errors[item.eventId] && <p className="feed-warning" role="status">{simulations.errors[item.eventId]}</p>}
         {[item.away, item.home].map(side => {
           const pick = teamPicks[`${item.eventId}:${side.id}`];
           return pick ? <details className="wire-game-pick" key={side.id}>
@@ -476,7 +504,8 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
     {mode === 'wire' && game && showingDetails && <>
       <ResourceMessage {...summary} />
       {currentSummary?.plays.length ? <LatestPlay play={currentSummary.plays[currentSummary.plays.length - 1]} game={game} /> : <p className="nba-note" role="status">{upcoming ? 'Latest play will appear when the game starts.' : summary.loading ? 'Loading data…' : 'No recent play is available yet.'}</p>}
-      <div className="nba-segments" role="group" aria-label="NBA game detail views">{([{ key: 'players', label: 'Player Box Score' }, { key: 'teams', label: 'Team Comparison' }, { key: 'plays', label: 'Play-by-Play' }] as const).map((item) => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}</div>
+      <div className="nba-segments" role="group" aria-label="NBA game detail views">{([{ key: 'players', label: 'Player Box Score' }, { key: 'teams', label: 'Team Comparison' }, { key: 'plays', label: 'Play-by-Play' }, { key: 'simulation', label: 'GamewAIre Simulation' }] as const).map((item) => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}</div>
+      {tab === 'simulation' && <NBAGameSimulation key={game.eventId} game={game} forecast={simulationFor(game)} error={simulations.errors[game.eventId]} />}
       {tab === 'players' && boxTeam && <><div className="nba-segments nba-team-toggle" role="group" aria-label="Box score team">{[game.away, game.home].map((side) => <button type="button" key={side.id} style={{ '--team-bar-color': side.color ? `#${side.color.replace(/^#/, '')}` : '#4a6385' } as CSSProperties} aria-pressed={boxTeam.id === side.id} onClick={() => setBoxTeamId(side.id)}><TeamAbbrMark abbr={side.abbr} color={side.color} name={side.name} />{side.name}</button>)}</div>
         {upcoming ? <><p className="nba-note">Pregame rosters · open a player for actual season statistics. Starters are not confirmed.</p><Roster key={`${boxTeam.id}:${game.seasonYear}`} team={boxTeam} season={game.seasonYear} query={query} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} /></> : <PlayerBox key={boxTeam.id} team={boxTeam} box={currentSummary?.teams.find((item) => item.id === boxTeam.id)} favorites={favorites} toggle={onToggleFavorite} open={openPlayer} live={game.status === 'LIVE'} />}
       </>}

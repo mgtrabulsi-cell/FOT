@@ -23,6 +23,28 @@ const away = { id: '1', name: 'Atlanta Hawks', abbr: 'ATL', score: 100, record: 
 const home = { id: '2', name: 'Boston Celtics', abbr: 'BOS', score: 99, record: '0-1' };
 const game = { id: 'NBA:401', eventId: '401', feedPath: 'basketball/nba', league: 'NBA', seasonYear: 2027,
   date: '2026-10-23T23:00:00Z', status: 'LIVE', period: 'Q4', clock: '1:00', away, home, venue: 'Arena' };
+test('NBA simulations keep projected and actual scores separate, expose daily leaders and results, and restore live Matchups at tipoff', () => {
+  const forecast = { eventId: game.eventId, kickoff: game.date, homeTeamId: home.id, awayTeamId: away.id, status: 'ready',
+    home: { score: { mean: 121.3 } }, away: { score: { mean: 114.2 } }, stage: 'Simulation complete' };
+  const app = setup('wire', new Map(), undefined, { simulationForecasts: { [game.eventId]: forecast } });
+  const button = label => app.nodes().find(node => node.type === 'button' && node.props.children === label);
+  assert.equal(button('Matchups').props['aria-pressed'], true);
+  app.props.games = [{ ...game, status: 'UPCOMING' }]; app.render();
+  button('GamewAIre simulations').props.onClick(); app.render();
+  assert.deepEqual(app.nodes().filter(node => node.props?.className === 'wire-board-score').map(node => node.props.children), [114, 121]);
+  assert.ok(app.nodes().some(node => node.type === 'NBADailyPerformers'));
+  app.nodes().find(node => node.props?.['data-game-id']).props.onClick(); app.render();
+  assert.ok(app.nodes().some(node => node.type === 'NBASimulationPanel'), 'Pregame simulation cards open their forecasts');
+  app.props.games = [game]; app.render();
+  assert.equal(button('Matchups').props['aria-pressed'], true);
+  assert.ok(!app.nodes().some(node => node.type === 'NBASimulationPanel'), 'Tipoff restores actual player box scores');
+  button('GamewAIre simulations').props.onClick(); app.render();
+  assert.equal(button('GamewAIre simulations').props['aria-pressed'], true, 'An explicit live simulation switch remains available');
+  button('Simulation Results').props.onClick(); app.render();
+  assert.ok(app.nodes().some(node => node.type === 'NBASimulationResults'));
+  assert.ok(!app.nodes().some(node => node.props?.className === 'wire-board-score'));
+  app.unmount();
+});
 test('NBA finished games keep the left-side notification layout and visible final scores', () => {
   const app = setup();
   app.props.games = [{ ...game, status: 'FINAL' }];
@@ -127,6 +149,8 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       if (name === './services/nbaData') return data;
       if (name === './services/nbaBackToBack') return { nbaPreviousGame };
       if (name === './services/nbaLiveScore') return { nbaLiveScore };
+      if (name === './useNFLBoardSimulations') return { useBoardSimulations: () => ({ simulations: dataOverrides.simulationForecasts ?? {}, errors: {} }) };
+      if (name === './NBAGameSimulation') return { default: 'NBASimulationPanel', NBADailyPerformers: 'NBADailyPerformers', NBASimulationResults: 'NBASimulationResults' };
       if (name === './services/sportsData') return { nbaCalendarDate, gameClockLabel };
       if (name === './services/renderSnapshots') return {
         readLastNBAStatHub: () => snapshots.get('nbaStatHub:last') ?? null,
