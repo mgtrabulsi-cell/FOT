@@ -104,7 +104,10 @@ test('Touchdown Instagram pagination preserves every scorer in order at readable
       assert.match(row.font, /21px/);
       assert.ok(row.y <= 810, 'Scorers stay above the slide footer');
     });
-    test('Weekly TD record counts each projected player once, includes misses and keeps unknown outcomes pending', async () => {
+    if (count > 10) await assert.rejects(h.renderSimulationResultsGraphic(snapshot), /multi-slide/);
+  }
+});
+test('Weekly TD record counts each projected player once, includes misses and keeps unknown outcomes pending', async () => {
       const h = graphicHarness(), data = report();
       data.games = [data.games[0]];
       const stat = (id, kind, displayed, actual) => ({ playerId: id, name: id, position: 'RB', team: 'AWY',
@@ -133,9 +136,6 @@ test('Touchdown Instagram pagination preserves every scorer in order at readable
       assert.ok(h.drawn.includes('3 PENDING'));
       const wrong = forecast(games[0], ['bad']); wrong.kickoff = games[1].date;
       assert.throws(() => h.simulationTouchdownSnapshot(data, games, now, [{ eventId: '1', forecast: wrong }]), /does not match/);
-    });
-    if (count > 10) await assert.rejects(h.renderSimulationResultsGraphic(snapshot), /multi-slide/);
-  }
 });
 test('Multi-slide download exposes every numbered save link and cleans up old preview URLs', async () => {
   const slots = [], downloads = [], revoked = [];
