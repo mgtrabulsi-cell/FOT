@@ -22,7 +22,12 @@ const statsSource = source.replace(
   "$1('boxscore');",
 );
 assert.notEqual(statsSource, source, 'The snapshot fixture must select the stats subtab');
-const compiled = ts.transpileModule(statsSource, {
+const statsPregameSource = statsSource.replace(
+  /(const \[pregameView, setPregameView\] = useState<[^>]+>)\([^\n]+\);/,
+  "$1('stats');",
+);
+assert.notEqual(statsPregameSource, statsSource, 'The snapshot fixture must select the stats pregame view');
+const compiled = ts.transpileModule(statsPregameSource, {
   compilerOptions: { module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.ReactJSX },
 }).outputText
   .replace(/from ['"]\.\/GamewaireBreakdown['"]/g, `from '${breakdownURL}'`)
@@ -46,9 +51,7 @@ const compiled = ts.transpileModule(statsSource, {
   .replace(/import \{ ScoreTicker \} from ['"].\/ScoreTicker.tsx['"];/, 'const ScoreTicker = ({ value }) => value;')
   .replace(/import \{ getInterfaceScale \} from ['"].\/uiScale['"];/, 'const getInterfaceScale = () => 1;')
   .replace(/import \{ usePublicDataRevision \} from ['"].\/usePublicDataRevision['"];/, 'const usePublicDataRevision = () => 0;');
-assert.equal((compiled.match(/useState\('simulation'\)/g) ?? []).length, 1);
-const statsCompiled = compiled
-  .replace("useState('simulation')", "useState('stats')");
+const statsCompiled = compiled;
 const { default: TheWire } = await import(`data:text/javascript;base64,${Buffer.from(statsCompiled).toString('base64')}`);
 const { default: TeamComparison } = await import(`data:text/javascript;base64,${Buffer.from(statsCompiled.replace("useState('boxscore')", "useState('teamStats')")).toString('base64')}`);
 
