@@ -25,11 +25,6 @@ export default function NFLSimulationRecapDownloads({ games }: { games: Game[] }
   if (!finals.length) return null;
   return <section className="nfl-simulation-results-downloads" aria-label="Per-game NFL sim recap graphics">
     <h4>NFL sim recap</h4>
-    <p>Download a recap for each final. Pregame, game-linked Analyst Desk picks are checked against the final box score.
-      Supported picks from general NFL posts are matched by team or full player identity. Ambiguous picks remain labeled for review;
-      explicit admin grades are identified. No results or posts are changed.</p>
-    <p>When there are no matched pregame admin picks, the recap shows selected saved-simulation highlights, not a betting record.
-      Spread highlights require a recorded pregame line. Player comparisons may await final-stat verification.</p>
     {finals.map(game => <ResultsGraphicDownload key={`${game.eventId}:${game.date}`} disabled={false}
       generate={() => generate(game)} label={`Download sim recap · ${game.away.abbr} at ${game.home.abbr}`}
       filename={`GameWire-NFL-Sim-Recap-${game.away.abbr}-${game.home.abbr}-${game.date.slice(0, 10)}.png`}

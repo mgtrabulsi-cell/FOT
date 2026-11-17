@@ -7,7 +7,7 @@ import { projectedSimulationScore, selectedSimulationScenario } from '../../supa
 import type { NFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLClosingSpread } from './nflClosingSpread';
 
-export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances' | 'slate' | 'winners' | 'player-summary';
+export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances' | 'slate' | 'winners' | 'player-summary' | 'touchdowns';
 export type SimulationWinnerRecord = { wins: number; losses: number; ties: number; noWinner: number };
 type SimulationSpreadGrade = 'covered' | 'missed' | 'push' | 'pending' | 'unavailable' | 'win' | 'loss' | 'tie';
 export type SimulationResultsGraphicSnapshot = {
@@ -22,6 +22,36 @@ export type SimulationResultsGraphicSnapshot = {
 };
 
 export type SimulationSlateForecast = { eventId: string; forecast?: NFLGameSimulation; error?: string };
+
+export function simulationTouchdownSnapshot(report: SimulationAccuracyReport, games: Game[],
+  now = Date.now()): SimulationResultsGraphicSnapshot {
+  const rows = report.games.flatMap(game => {
+    const players = new Map<string, SimulationAccuracyPlayer[]>();
+    for (const player of game.players) {
+      if (player.stat !== 'rushingTouchdowns' && player.stat !== 'receivingTouchdowns') continue;
+      const key = JSON.stringify([player.playerId, player.team]);
+      players.set(key, [...(players.get(key) ?? []), player]);
+    }
+    return [...players.values()].flatMap(stats => {
+      if (stats.length !== 2 || new Set(stats.map(row => row.stat)).size !== 2
+        || !stats.every(row => row.name === stats[0].name && row.position === stats[0].position
+          && Number.isFinite(row.projected) && row.projected >= 0
+          && Number.isInteger(row.actual) && row.actual >= 0)) return [];
+      const projected = stats.reduce((sum, row) => sum + row.projected, 0);
+      const actual = stats.reduce((sum, row) => sum + row.actual, 0);
+      // Match the whole-touchdown call shown in the simulation, not any nonzero mean.
+      if (Math.round(projected) < 1 || actual < 1) return [];
+      return [{ title: stats[0].name,
+        context: `${stats[0].position} | ${stats[0].team} | ${game.away.abbr} at ${game.home.abbr}`,
+        away: game.away.abbr, home: game.home.abbr, simulated: `${Math.round(projected)} TD`,
+        actual: `${actual} TD`, difference: 'Projected scorer | Verified rushing + receiving TDs' }];
+    });
+  });
+  if (!rows.length) throw new Error('No verified projected touchdown scorers have scored in this slate yet.');
+  const base = simulationResultsGraphicSnapshot(report, games, 'games', 'passingYards', now);
+  return { ...base, kind: 'touchdowns', statistic: 'Touchdown scorers', rows,
+    sections: [{ title: 'Touchdown calls that scored', note: 'Rushing + receiving TDs only; passing TDs excluded', rows }] };
+}
 
 export function simulationPlayerSummarySnapshot(report: SimulationAccuracyReport, games: Game[],
   now = Date.now()): SimulationResultsGraphicSnapshot {
@@ -192,9 +222,11 @@ export function simulationResultsGraphicSnapshot(report: SimulationAccuracyRepor
 
 export async function renderSimulationResultsGraphic(snapshot: SimulationResultsGraphicSnapshot): Promise<Blob> {
   const fullSlate = snapshot.kind === 'slate' || snapshot.kind === 'winners';
-  const playerSummary = snapshot.kind === 'player-summary';
-  if (playerSummary && (!snapshot.sections || snapshot.sections.length !== 4
-    || snapshot.sections.some(section => section.rows.length > 3)
+  const touchdowns = snapshot.kind === 'touchdowns';
+  const playerSummary = snapshot.kind === 'player-summary' || touchdowns;
+  if (playerSummary && (!snapshot.sections || (!touchdowns && snapshot.sections.length !== 4)
+    || touchdowns && snapshot.sections.length !== 1
+    || !touchdowns && snapshot.sections.some(section => section.rows.length > 3)
     || snapshot.sections.reduce((sum, section) => sum + section.rows.length, 0) !== snapshot.rows.length))
     throw new Error('The player graphic requires four complete category sections with up to three results each.');
   if (snapshot.rows.length < 1 || (!fullSlate && !playerSummary && snapshot.rows.length > 3))
@@ -262,7 +294,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   ctx.save(); ctx.shadowColor = red; ctx.shadowBlur = 12;
   line([[445, 73], [478, 73], [487, 56], [493, 91], [499, 36], [506, 84], [513, 65], [519, 73], [754, 73]], red, 2); ctx.restore();
   ctx.letterSpacing = '4px';
-  text(playerSummary ? 'PLAYER RESULTS - TOP 3 PER CATEGORY' : fullSlate ? `FULL SLATE - ${snapshot.rows.length} GAMES` : snapshot.kind === 'performances' ? `${snapshot.rows.length} FULL PLAYER PERFORMANCES`
+  text(touchdowns ? `TOUCHDOWN CALLS - ${snapshot.rows.length} SCORERS` : playerSummary ? 'PLAYER RESULTS - TOP 3 PER CATEGORY' : fullSlate ? `FULL SLATE - ${snapshot.rows.length} GAMES` : snapshot.kind === 'performances' ? `${snapshot.rows.length} FULL PLAYER PERFORMANCES`
     : `TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 60, 126, 25, 678, muted, true);
   ctx.letterSpacing = '0px';
   text(snapshot.slate, 60, 153, 17, 678, muted);
@@ -282,7 +314,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
   if (playerSummary) {
     let cursor = 300;
     for (const section of snapshot.sections!) {
-      text(`${section.title.toUpperCase()} - TOP ${section.rows.length}`, 36, cursor + 24, 23, 696, blue, true);
+      text(`${section.title.toUpperCase()} - ${touchdowns ? 'ALL' : 'TOP'} ${section.rows.length}`, 36, cursor + 24, 23, 696, blue, true);
       text(section.note, 36, cursor + 46, 13, 696, muted);
       cursor += 60;
       if (!section.rows.length) {
@@ -308,8 +340,10 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     }
     line([[35, cursor], [733, cursor]], '#4a82aa', 1);
     text(`${snapshot.rows.length} qualifying results | ${snapshot.pending} pending games | ${snapshot.excluded} excluded`, 36, cursor + 26, 14, 696, muted);
-    text('Simulated stat displays are rounded; rankings and errors use original means.', 36, cursor + 49, 12, 696, muted);
-    text('Receiving ranks average each stat’s absolute error divided by its actual value.', 36, cursor + 70, 12, 696, muted);
+    text(touchdowns ? 'Every verified scorer with a rounded simulation total of at least one TD.'
+      : 'Simulated stat displays are rounded; rankings and errors use original means.', 36, cursor + 49, 12, 696, muted);
+    text(touchdowns ? 'Rushing + receiving totals. Passing touchdowns are not scores by the passer.'
+      : 'Receiving ranks average each stat’s absolute error divided by its actual value.', 36, cursor + 70, 12, 696, muted);
     text(`Downloaded ${new Date(snapshot.capturedAt).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET`, 36, cursor + 105, 11, 500, muted);
     text('gamewire.us', 604, cursor + 105, 18, 130, white, true);
     return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)

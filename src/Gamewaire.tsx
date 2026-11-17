@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, ArrowRight, BarChart3, Bot, Crosshair, Layers, Star } from 'lucide-react';
+import { Activity, ArrowRight, Bot, Layers } from 'lucide-react';
 import { isSavedGamePastReview, loadCompletedSavedGames, savedGameKey } from './services/gamewaireGames';
 import { defaultSettings, fullAnalysisSettings, isAllowedPickSide, engineRequest, gamewaireGrade, loadEngineHistory, markets, modelVersion, performance, performanceGroups, probabilityGrade, rankTopPicks, isSoccer, soccerSports, soccerModelVersion } from './services/gamewaire';
 import { pickBreakdown } from '../supabase/functions/_shared/gamewaireNarrative.ts';
@@ -401,56 +401,37 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     <header className="gai-hero gai-home-hero">
       <div className="gai-hero-copy"><span className="eyebrow">NFL + NBA + SOCCER · MODEL-DRIVEN INSIGHTS</span>
         <h2>THE <em>ANALYSIS ENGINE</em></h2>
-        <p>Data. Matchups. A clearer view.</p>
-        <small>Compare real prices and model estimates. Verified data. No promise of profit.</small>
-        <button type="button" className="gai-latest-link" onClick={openPublishedPicks}>View published picks <ArrowRight size={19} aria-hidden="true" /></button></div>
-      <div className="gai-hero-features" aria-label="Analysis features">
-        <div><b>01</b><span>Sportsbook<br />lines &amp; prices</span></div>
-        <div><b>02</b><span>Statistical<br />analysis</span></div>
-        <div><b>03</b><span>Moneylines &amp;<br />rotation players</span></div>
-        <div><b>04</b><span>Transparent<br />model ratings</span></div>
-      </div>
-    </header>
-    <section className="gai-record-overview" aria-label="GamewAIre record overview">
-      <div className="gai-results-heading"><div><span className="eyebrow">THE RECORD · ALL TIME · ALL SPORTS</span><h3>GamewAIre results</h3></div>
-        <button onClick={() => openResults('all')}>View full results</button></div>
+        <small>All-time results · All sports · Verified finals</small>
+    <section className="gai-engine-record" aria-label="GamewAIre results">
       {!loaded ? <p className="gai-note">{error ? 'Record unavailable until saved results reload.' : 'Loading recorded results…'}</p> :
         <div className="gai-record-cards">
           {([['top', 'Top Picks'], ['leans', 'Game Leans'], ['automatic', 'Automatic Picks'], ['all', 'All Picks']] as const).map(([view, label]) => {
             const rows = picks.filter((pick) => view === 'all' || (view === 'automatic' ? pick.is_automatic : view === 'top' ? pick.is_top_pick : pick.is_game_lean));
             const summary = performance(rows.map((pick) => ({ probability: pick.probability, pushProbability: pick.push_probability,
               american: pick.american, result: pick.result, withdrawn: pick.withdrawn })));
-            const Icon = view === 'top' ? Crosshair : view === 'leans' ? BarChart3 : Star;
-            return <div key={view} className="gai-record-card">
-              <button type="button" className="gai-record-open" onClick={view === 'automatic' ? () => openResults(view) : openPublishedPicks} aria-label={`View published picks for ${label}`} />
-              <Icon className="gai-record-icon" size={28} aria-hidden="true" />
+            return <button key={view} className="gai-engine-stat" onClick={() => openResults(view)} aria-label={`View ${label} results`}>
               <span className="gai-record-label">{label}</span>
-              <strong>{summary.wins}<small> Hit · </small>{rows.filter((pick) => pick.result === 'loss').length}<small> Missed</small></strong>
-              <span><span className={summary.winRate !== null && summary.winRate > 0.5 ? 'gai-hit-rate-positive' : undefined}>{percent(summary.winRate)}</span> hit rate · {summary.pending} pending</span>
-              <button type="button" className="gai-record-link" onClick={() => openResults(view)} aria-label={`View ${label} results`}>See results <span aria-hidden="true">→</span></button>
-            </div>;
+              <strong>{summary.wins} W · {rows.filter((pick) => pick.result === 'loss').length} L</strong>
+              <span>{percent(summary.winRate)} hit · {summary.pending} pending</span>
+            </button>;
           })}
         </div>}
-      <p className="gai-note">Published and recorded automatic picks · Verified final results and admin corrections · Pushes and voids excluded from hit rate. All Picks counts shared selections once.</p>
-    </section>
-    {!candidateView && <section className="gai-latest-published" aria-label="Featured published pick">
-      <div className="gai-home-heading"><h3>Featured published pick</h3><button type="button" onClick={openPublishedPicks}>View all picks <ArrowRight size={17} aria-hidden="true" /></button></div>
-      <p className="gai-note">Featured from your selected league, {memberSport === 'NFL' ? 'week' : 'date'} and game. Saved published prices, not live odds.</p>
+      <small>Pushes / voids excluded. Shared selections counted once.</small>
+    </section></div>
+    <section className="gai-engine-featured" aria-label="Featured published admin pick">
+      <span className="eyebrow">TOP PUBLISHED ADMIN PICK</span>
       {!loaded || weekLoading ? <p role="status">Loading published picks...</p>
         : error || (memberSport === 'NFL' && weekError) ? <p className="gai-note">Published picks could not be verified. Retry the feed below.</p>
-        : publishedPicks.length ? <article className="gai-featured-pick">
-          <div className="gai-featured-matchup"><span>{publishedPicks[0].away}</span><small>vs.</small><span>{publishedPicks[0].home}</span></div>
-          <div className="gai-featured-selection"><h4>{pickTitle(publishedPicks[0])}</h4>
-            <span className="gai-tag"><Star size={14} aria-hidden="true" />{publishedPicks[0].isGameLean ? 'Game Lean' : 'Top Pick'}</span>
-            <p>{odds(publishedPicks[0].american)} · {publishedPicks[0].book} · {stamp(publishedPicks[0].start)}</p>
-          </div>
-          <span className={`gai-probability-badge${publishedPicks[0].probability >= .5 ? ' is-positive' : ''}`}
-            aria-label={`Estimated probability grade ${probabilityGrade(publishedPicks[0].probability)}`}>
-            {probabilityGrade(publishedPicks[0].probability)}</span>
-          <div className="gai-featured-reason"><GamewaireBreakdown text={pickBreakdown(publishedPicks[0])} /></div>
-        </article>
+        : publishedPicks.length ? <>
+          <h3>{pickTitle(publishedPicks[0])}</h3>
+          <p>{publishedPicks[0].away} @ {publishedPicks[0].home}</p>
+          <strong>{percent(publishedPicks[0].probability)} estimated hit</strong>
+          <small>{odds(publishedPicks[0].american)} · {publishedPicks[0].book} · Saved price</small>
+          <button type="button" onClick={openPublishedPicks}>View published picks <ArrowRight size={17} aria-hidden="true" /></button>
+        </>
         : <p className="gai-note">No published picks for these filters yet. Choose another league, week or date below.</p>}
-    </section>}
+    </section>
+    </header>
     <nav className="gai-quick-access" aria-label="GamewAIre quick access">
       <h3>Quick access</h3>
       <div>
@@ -466,6 +447,9 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
         <button type="button" onClick={() => openSoccerGames()}><Layers size={27} aria-hidden="true" /><b>{status?.canAnalyze ? 'Soccer games & picks' : 'Published soccer picks'}</b><ArrowRight size={18} aria-hidden="true" /></button>
       </div>
     </nav>
+    {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
+    {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
+    {status?.canAnalyze && <details className="gai-admin-workspace"><summary>Analysis tools &amp; saved games</summary>
     {status?.canAnalyze && <section className="gai-scheduled" aria-label="Soccer game analysis">
       <h3>Pull picks from soccer games</h3>
       <p className="gai-note">Choose a league below and load upcoming games. NFL includes all upcoming provider-listed games, not just one date; other leagues use the selected Eastern date. Totals and player props are Over-only; spreads and moneylines remain eligible. Select a matchup, then run analysis to pull its supported picks. Review the saved report before publishing. Opening this section or loading games uses no odds credits; running analysis may use the displayed credits.</p>
@@ -474,8 +458,6 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           aria-pressed={candidateView && sport === league} onClick={() => openSoccerGames(league)}>{league === 'EPL' ? 'Premier League' : league}</button>)}
       </div>
     </section>}
-    {error && <p role="alert" className="feed-warning">{error} <button onClick={refreshHistory}>Retry</button></p>}
-    {!loaded && !error && <p role="status">Loading saved GamewAIre reports…</p>}
     {status?.canAnalyze && <section id="gai-saved-games" className="gai-scheduled" aria-label="Saved analyses">
       <h3>Saved analyses · 0 credits to open</h3>
       <p className="gai-note">Choose a game to review. Finished games leave this list; published results stay saved.</p>
@@ -512,6 +494,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       </details>
       {actionError && <p role="alert" className="feed-warning">{actionError}</p>}
     </section>}
+    </details>}
     <div className="gai-dashboard">
     <aside className="gai-filters gai-outline" aria-label="Game filters">
     <h3>Game filters</h3>
@@ -591,7 +574,10 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       </div>}
       {candidateView ? <section aria-label="Analysis reports">
         <a className="gai-back-games" href="#gai-saved-games" onClick={(event) => {
-          event.preventDefault(); document.getElementById('gai-saved-games')?.scrollIntoView({ block: 'start',
+          event.preventDefault();
+          const tools = document.querySelector<HTMLDetailsElement>('.gai-admin-workspace');
+          if (tools) tools.open = true;
+          document.getElementById('gai-saved-games')?.scrollIntoView({ block: 'start',
             behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
         }}>Choose another saved game · 0 credits</a>
         {!!matchingRuns.length && <details className="gai-report-picker"><summary>Saved analysis reports</summary><label>Report<select value={report?.id ?? ''} onChange={(event) => setSelectedRun(event.target.value)}>{matchingRuns.map((run) => <option key={run.id} value={run.id}>{run.matchup} · {stamp(run.created_at)} · {statusLabels[run.status]}</option>)}</select></label></details>}

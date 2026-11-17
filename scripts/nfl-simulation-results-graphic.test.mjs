@@ -56,6 +56,30 @@ test('Weekly winner record covers all verified games, with ties and no-winner fo
   assert.equal(record.wins, 2); assert.equal(record.losses, 1);
   assert.equal(record.ties, 1); assert.equal(record.noWinner, 1);
 });
+test('Touchdown graphic includes every verified scorer without a top-three cap or passing TDs', async () => {
+  const { simulationTouchdownSnapshot, renderSimulationResultsGraphic, drawn, canvas } = graphicHarness();
+  const data = report();
+  const pair = (id, projected, actual) => ['rushingTouchdowns', 'receivingTouchdowns'].map((stat, index) => ({
+    playerId: id, name: `Player ${id}`, position: 'RB', team: 'AWY', stat,
+    projected: index ? 0 : projected, actual: index ? 0 : actual, error: 0,
+  }));
+  data.games[0].players = [
+    ...Array.from({ length: 12 }, (_, i) => pair(String(i), .7, 1)).flat(),
+    ...pair('miss', 1, 0), ...pair('not-called', .2, 1),
+    pair('missing', 1, 1)[0],
+    ...pair('invalid', NaN, 1),
+    { playerId: 'qb', name: 'Passer', position: 'QB', team: 'AWY', stat: 'passingTouchdowns', projected: 3, actual: 3 },
+  ];
+  const snapshot = simulationTouchdownSnapshot(data, scopes, now);
+  assert.equal(snapshot.rows.length, 12);
+  assert.equal(snapshot.sections.length, 1);
+  assert.equal(snapshot.rows[0].simulated, '1 TD');
+  await renderSimulationResultsGraphic(snapshot);
+  assert.ok(drawn.includes('#12 Player 11'));
+  assert.ok(canvas.height > 1350);
+  data.games[0].players = pair('miss', 1, 0);
+  assert.throws(() => simulationTouchdownSnapshot(data, scopes, now), /No verified projected touchdown scorers/);
+});
 test('Game graphic snapshots the top three but grades the entire selected week and freezes copied values', () => {
   const { simulationResultsGraphicSnapshot } = graphicHarness(), data = report();
   const snapshot = simulationResultsGraphicSnapshot(data, scopes, 'games', 'passingYards', now);

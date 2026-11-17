@@ -356,7 +356,29 @@
 .gai-quick-access > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .gai-panel .gai-quick-access button { display: grid; grid-template-columns: 30px minmax(0, 1fr) 20px; align-items: center; gap: 14px; padding: 22px 16px; background: linear-gradient(135deg, #152235, #0a111e); text-align: left; }
 .gai-quick-access button > svg:last-child { color: #ff3657; }
+#gai-bets-panel:not([hidden]) { display: flex; flex-direction: column; gap: 18px; }
+#gai-bets-panel > * { order: 4; }
+#gai-bets-panel > .gai-home-hero { order: 0; }
+#gai-bets-panel > .gai-quick-access { order: 1; }
+#gai-bets-panel > .gai-dashboard { order: 2; }
+#gai-bets-panel > .gai-admin-workspace { order: 3; }
+.gai-home-hero { grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 22px; }
+.gai-home-hero .gai-hero-copy { max-width: 100%; }
+.gai-engine-record .gai-record-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.gai-panel .gai-engine-stat { display: grid; gap: 7px; padding: 12px 8px; text-align: left; min-width: 0; background: #071321d9; }
+.gai-engine-stat strong { font-size: 18px; }
+.gai-engine-stat span { font-size: 11px; }
+.gai-engine-featured { position: relative; z-index: 1; display: grid; gap: 10px; padding: 18px; border: 1px solid #34455d; border-radius: 8px; background: #071321de; }
+.gai-engine-featured h3, .gai-engine-featured p { margin: 0; }
+.gai-engine-featured strong { color: #55d8a1; }
+.gai-engine-featured small { color: #bcc9da; }
+.gai-engine-featured button { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gai-quick-access > div { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.gai-panel .gai-quick-access button { padding: 12px; gap: 8px; font-size: 12px; }
+.gai-admin-workspace > summary { cursor: pointer; padding: 12px 0; }
 @media (max-width: 760px) {
+  .gai-home-hero { grid-template-columns: 1fr; }
+  .gai-engine-record .gai-record-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gai-home-hero { min-height: 210px; padding: 18px; }
   .gai-home-hero h2 { font-size: clamp(26px, 6vw, 36px); max-width: 100%; }
   .gai-home-hero .gai-hero-copy { max-width: 100%; }

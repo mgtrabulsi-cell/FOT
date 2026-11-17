@@ -345,12 +345,22 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
   const boardRef = useRef<HTMLDivElement>(null);
   const returnToGameRef = useRef<string | null>(null);
   const [selectedTeamSide, setSelectedTeamSide] = useState<'away' | 'home'>('away');
-  const [pregameView, setPregameView] = useState<'stats' | 'simulation'>('simulation');
+  const [pregameView, setPregameView] = useState<'stats' | 'simulation'>(() => nflGames.some(game => game.status === 'LIVE') ? 'stats' : 'simulation');
+  const hasLiveGames = nflGames.some(game => game.status === 'LIVE');
+  const hadLiveGames = useRef(hasLiveGames);
   const [resultsOpen, setResultsOpen] = useState(false);
   const { simulations: boardSimulations, errors: simulationErrors, rememberSimulation } = useNFLBoardSimulations(nflGames, pregameView === 'simulation' && !detailOpen && !resultsOpen);
   const [subTab, setSubTab] = useState<'boxscore' | 'teamStats' | 'simulation'>(() =>
-    nflGames.find(game => game.id === selectedGameId)?.status === 'LIVE' ? 'boxscore' : 'simulation'
+    pregameView === 'simulation' && nflGames.find(game => game.id === selectedGameId)?.status !== 'LIVE' ? 'simulation' : 'boxscore'
   );
+  useEffect(() => {
+    if (hasLiveGames && !hadLiveGames.current) {
+      setPregameView('stats');
+      setResultsOpen(false);
+      setSubTab('boxscore');
+    }
+    hadLiveGames.current = hasLiveGames;
+  }, [hasLiveGames]);
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [playerStatMode, setPlayerStatMode] = useState<'total' | 'average'>('total');
   const [loadedBoxScore, setBoxScore] = useState<NFLBoxScoreData | null>(null);

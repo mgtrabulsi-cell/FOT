@@ -403,6 +403,7 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
     props.openGameId = undefined;
     props.games = [{ ...game, status: 'LIVE', away: { ...game.away, score: 12 }, home: { ...game.home, score: 17 } }];
     tree = render();
+    assert.equal(toggle('Matchups').props['aria-pressed'], true, 'A live slate defaults to Matchups');
     toggle(boardMode).props.onClick(); tree = render();
     tree.find(node => node.props['data-game-id'] === game.id).props.onClick(); tree = render();
     assert.equal(toggle('Player Box Score').props.className, 'active', `Live games open box scores from ${boardMode}`);
@@ -425,6 +426,20 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   assert.ok(openEffect);
   openEffect(); tree = render();
   assert.equal(toggle('Player Box Score').props.className, 'active', 'Subsequent external live-game requests open player stats');
+  h.state.length = 0;
+  props.openGameId = undefined;
+  props.games = [game];
+  tree = render();
+  assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true);
+  const liveTransition = () => h.effects.find(effect => effect.toString().includes('hadLiveGames.current'))();
+  liveTransition();
+  props.games = [{ ...game, status: 'LIVE' }];
+  tree = render();
+  liveTransition(); tree = render();
+  assert.equal(toggle('Matchups').props['aria-pressed'], true, 'Kickoff automatically switches the board to Matchups');
+  toggle('GamewAIre simulations').props.onClick(); tree = render();
+  liveTransition(); tree = render();
+  assert.equal(toggle('GamewAIre simulations').props['aria-pressed'], true, 'A manual switch remains available after kickoff');
 });
 test('Opening a simulation panel after kickoff loads its saved archive on reload', async () => {
   const h = hooks(), timers = new Map(), loaded = [];

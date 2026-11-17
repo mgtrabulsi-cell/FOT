@@ -786,14 +786,12 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.match(report, /Top Picks &amp; Game Leans/);
   assert.match(report, /Player Lab &amp; Props/);
   assert.match(report, /Results &amp; History/);
-  assert.match(report, /class="gai-featured-pick"/);
-  assert.match(report, /Featured from your selected league/);
-  assert.match(report, /Saved published prices, not live odds/);
+  assert.match(report, /class="gai-engine-featured"/);
+  assert.match(report, /TOP PUBLISHED ADMIN PICK/);
+  assert.match(report, /Saved price/);
   assert.match(report, /GameWire player analysis/);
-  assert.equal((report.match(/class="gai-record-open"/g) ?? []).length, 4);
-  assert.equal((report.match(/>See results <span/g) ?? []).length, 4);
+  assert.equal((report.match(/class="gai-engine-stat"/g) ?? []).length, 4);
   for (const label of ['Top Picks', 'Game Leans', 'Automatic Picks', 'All Picks']) {
-    assert.ok(report.includes(`aria-label="View published picks for ${label}"`));
     assert.ok(report.includes(`aria-label="View ${label} results"`));
   }
   assert.doesNotMatch(report, /Admin weekly ranking editor/);
@@ -816,11 +814,15 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
   assert.ok(report.includes(`${candidate.subject} averages ${candidate.seasonAverage.toFixed(1)} points`));
   assert.match(report, /GamewAIre&#x27;s selection is/);
   assert.match(report, /<details id="gai-results" class="gai-history">/);
-  assert.match(report, /aria-label="GamewAIre record overview"/);
+  assert.match(report, /aria-label="GamewAIre results"/);
   assert.match(report, /aria-label="View Top Picks results"/);
   assert.match(report, /aria-label="View Game Leans results"/);
   assert.match(report, /aria-label="View All Picks results"/);
-  assert.ok(report.indexOf('GamewAIre record overview') < report.indexOf('class="gai-dashboard"'));
+  assert.ok(report.indexOf('GamewAIre results') < report.indexOf('class="gai-dashboard"'));
+  const heroEnd = report.indexOf('</header>');
+  assert.ok(report.indexOf('class="gai-engine-stat"') < heroEnd);
+  assert.ok(report.indexOf('class="gai-engine-featured"') < heroEnd);
+  assert.ok(heroEnd < report.indexOf('aria-label="GamewAIre quick access"'));
   assert.match(empty, /Loading recorded results|GamewAIre results/);
   fixture([status, [run], [], true]);
   const admin = renderToStaticMarkup(createElement(Page));
@@ -1034,7 +1036,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     assert.ok(output.includes(`<dt>Win rate</dt><dd${view === 'top' ? '' : ' class="gai-hit-rate-positive"'}>${rate}`),
       'Each record calculates its own summary and colors only rates above 50 percent green');
     assert.match(output, /Top Pick \+ Game Lean/);
-    assert.match(output, /class="gai-record-card"/);
+    assert.match(output, /class="gai-engine-stat"/);
   }
   sourceState[33] = 'automatic';
   sourceState[2] = [...sourceState[2], { ...leanRecord, id: 'automatic-record', is_game_lean: false, is_automatic: true, result: 'loss' }];
