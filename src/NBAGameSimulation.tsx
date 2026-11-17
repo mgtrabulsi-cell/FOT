@@ -10,7 +10,7 @@ import { loadNBAAccuracy, loadNBASimulation } from './services/nbaSimulation';
 import { renderNBASimulationGraphic } from './services/nbaSimulationGraphic';
 import type { Game } from './services/sportsData';
 
-const value = (n: number) => n.toFixed(1);
+const value = (n: number) => Math.round(n).toString();
 const stamp = (time: string) => new Date(time).toLocaleString();
 const line = (player: NBAPlayerProjection) => `${value(player.stats.points.mean)} PTS / ${value(player.stats.rebounds.mean)} REB / ${value(player.stats.assists.mean)} AST`;
 function NBAGraphicDownload({ generate, ...props }: Omit<ComponentProps<typeof ResultsGraphicDownload>, 'generate'> & {
@@ -101,6 +101,7 @@ export default function NBAGameSimulation({ game, forecast, error }: { game: Gam
                 <td>{value(player.stats.minutes.mean)}</td><td>{value(player.stats.points.mean)}</td><td>{value(player.stats.rebounds.mean)}</td><td>{value(player.stats.assists.mean)}</td>
                 <td><b>{value(player.stats.pra.mean)}</b></td><td>{value(player.stats[stat].p10)}–{value(player.stats[stat].p90)}</td></tr>)}</tbody></table>
         </div>{!team.players.length && <p>No players have sufficient verified personal evidence.</p>}
+        <details><summary>Player matchup adjustments</summary>{team.players.map(player => <p key={player.id}><b>{player.name}:</b> {player.matchup}</p>)}</details>
       </section>)}
       <NBAGraphicDownload generate={generate} disabled={false} filename={`GameWire-NBA-Simulation-${game.eventId}.png`}
         label="Download NBA simulation" description="Projected team scores and all supported player lines" alt="NBA game simulation with projected player points rebounds assists and PRA" />

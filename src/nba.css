@@ -171,6 +171,13 @@
   .nba-filter { flex-wrap: wrap; }
 }
 .nba-board-card { position: relative; }
+.nba-experience.nba-wire .notification-game-card > .nba-board-card { grid-template-columns: 76px 44px minmax(0, 1fr); grid-template-areas: "status bell teams" "footer footer footer"; column-gap: 8px; }
+.nba-board-alerts { grid-area: bell; position: relative; align-self: center; z-index: 2; }
+.nba-board-alerts .notification-bell-message { left: 0; right: auto; width: min(260px, calc(100vw - 120px)); }
+@media (max-width: 640px) {
+  .nba-experience.nba-wire .notification-game-card > .nba-board-card { grid-template-columns: 44px minmax(0, 1fr); grid-template-areas: "status status" "bell teams" "footer footer"; column-gap: 4px; }
+  .nba-wire .nba-board-card .wire-board-status { padding-right: 0; flex-direction: row; justify-content: space-between; }
+}
 .nba-experience button.nba-board-open { padding: 0; border: 0; background: none; color: #c7d3e4; cursor: pointer; min-height: 0; font: 600 11px var(--mono); }
 .nba-board-open::after { content: ''; position: absolute; inset: 0; border-radius: 8px; }
 .nba-experience button.nba-board-open:focus-visible { outline: none; }

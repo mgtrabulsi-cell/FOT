@@ -453,8 +453,8 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
     {mode === 'wire' && !showingDetails && boardView !== 'results' && !!nbaGames.length && <div className="wire-board" ref={boardRef}>
       <header className="wire-board-header"><span className="eyebrow">NBA GAMES · SELECT A MATCHUP</span></header>
       <ol className="wire-board-list">{visibleGames.map((item) => <li key={item.id} className={`notification-game-card${item.status === 'LIVE' ? ' is-live-game' : item.status === 'FINAL' ? ' is-final-game' : ''}`}>
-        <NotificationBell />
         <div className={`wire-board-card nba-board-card${item.status === 'LIVE' ? ' is-live' : ''}`}>
+          <div className="nba-board-alerts"><NotificationBell /></div>
           <span className="wire-board-status">{item.status === 'LIVE' ? <><span className="live-pill"><i /> LIVE</span><small>{gameClockLabel(item.period, item.clock)}</small></> : item.status === 'FINAL' ? <span className="wire-board-final">FINAL</span> : <><span>{gameDate(item.date, true)}</span>{item.nbaMarket?.spread != null && <small className="wire-board-spread">Spread <b>{item.home.abbr} {item.nbaMarket.spread > 0 ? '+' : ''}{item.nbaMarket.spread}</b></small>}</>}</span>
           <span className="wire-board-teams">{[item.away, item.home].map((side) => <span className={`wire-board-team${boardView !== 'simulation' && item.status === 'FINAL' && side.score < (side.id === item.away.id ? item.home.score : item.away.score) ? ' is-loser' : ''}`} key={side.id}>
             <TeamAbbrMark className="wire-board-mark" abbr={side.abbr} color={side.color} name={side.name} />

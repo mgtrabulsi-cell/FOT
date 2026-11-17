@@ -32,6 +32,9 @@ test('NBA simulations keep projected and actual scores separate, expose daily le
   app.props.games = [{ ...game, status: 'UPCOMING' }]; app.render();
   button('GamewAIre simulations').props.onClick(); app.render();
   assert.deepEqual(app.nodes().filter(node => node.props?.className === 'wire-board-score').map(node => node.props.children), [114, 121]);
+  const alerts = app.nodes().find(node => node.props?.className === 'nba-board-alerts');
+  const card = app.nodes().find(node => node.props?.className === 'wire-board-card nba-board-card');
+  assert.ok(alerts && card.props.children.includes(alerts), 'The notification control has a reserved in-card column, not an absolute score overlay');
   assert.ok(app.nodes().some(node => node.type === 'NBADailyPerformers'));
   app.nodes().find(node => node.props?.['data-game-id']).props.onClick(); app.render();
   assert.ok(app.nodes().some(node => node.type === 'NBASimulationPanel'), 'Pregame simulation cards open their forecasts');

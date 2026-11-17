@@ -208,6 +208,7 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
   const teamRuns = { home: [] as number[], away: [] as number[] };
   const playerRuns = new Map<string, Record<keyof NBAStatLine | 'pra', number[]>>();
   const preparePlayers = (rows: NBAObservation[], opponent: NBAObservation[], team: NBASimulationTeam) => {
+    const opponentId = team.id === game.home.id ? game.away.id : game.home.id;
     const candidates = roster.filter(player => player.teamId === team.id && !player.excluded).flatMap(player => {
       const samples = rows.filter(row => row.players[player.id]?.minutes > 0);
       if (samples.length < 3) { warnings.push(`${player.name}: fewer than three verified appearances; no personal projection.`); return []; }
@@ -215,7 +216,21 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
       if (minutes < 3) return [];
       const total = samples.reduce((sum, row) => sum + row.players[player.id].minutes, 0);
       const rate = (stat: 'points' | 'rebounds' | 'assists') => samples.reduce((sum, row) => sum + row.players[player.id][stat], 0) / total;
+      const recentSeasons = samples.filter(row => row.season === game.season || row.season === game.season - 1);
+      const headToHead = recentSeasons.filter(row => row.opponentId === opponentId);
+      const seasonWeight = (row: NBAObservation) => row.season === game.season ? 2 : 1;
+      const exposureRate = (pool: NBAObservation[], stat: 'points' | 'rebounds' | 'assists') =>
+        pool.reduce((sum, row) => sum + seasonWeight(row) * row.players[player.id][stat] * 100 / row.possessions, 0)
+        / pool.reduce((sum, row) => sum + seasonWeight(row) * row.players[player.id].minutes, 0);
+      const opponentFactor = (stat: 'points' | 'rebounds' | 'assists') => {
+        if (headToHead.length < 3) return 1;
+        const baseline = exposureRate(recentSeasons, stat);
+        if (baseline <= 0) return 1;
+        // Shrink opponent-specific per-minute/pace evidence toward the player's broader history.
+        return clamp(1 + (exposureRate(headToHead, stat) / baseline - 1) * headToHead.length / (headToHead.length + 8), .8, 1.2);
+      };
       return [{ player, samples, minutes: clamp(minutes, 0, 48), draw: weighted(samples),
+        headToHead, opponentFactors: { points: opponentFactor('points'), rebounds: opponentFactor('rebounds'), assists: opponentFactor('assists') },
         foundation: { points: rate('points'), rebounds: rate('rebounds'), assists: rate('assists') } }];
     });
     const totalMinutes = candidates.reduce((sum, player) => sum + player.minutes, 0);
@@ -240,9 +255,9 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
         const exposure = candidate.minutes * pace / sample.possessions;
         // A 12-minute personal-rate prior prevents a one-minute cameo becoming a full-game outlier.
         const rate = (stat: 'points' | 'rebounds' | 'assists') => (line[stat] + candidate.foundation[stat] * 12) / (line.minutes + 12);
-        const points = rate('points') * exposure * prepared.pointsFactor;
-        const rebounds = rate('rebounds') * exposure * prepared.reboundsFactor;
-        const assists = rate('assists') * exposure * prepared.assistsFactor;
+        const points = rate('points') * exposure * clamp(prepared.pointsFactor * candidate.opponentFactors.points, .75, 1.3);
+        const rebounds = rate('rebounds') * exposure * clamp(prepared.reboundsFactor * candidate.opponentFactors.rebounds, .75, 1.3);
+        const assists = rate('assists') * exposure * clamp(prepared.assistsFactor * candidate.opponentFactors.assists, .75, 1.3);
         const id = `${candidate.player.teamId}:${candidate.player.id}`;
         const stats = playerRuns.get(id) ?? { points: [], rebounds: [], assists: [], minutes: [], pra: [] };
         stats.points.push(points); stats.rebounds.push(rebounds); stats.assists.push(assists);
@@ -256,12 +271,15 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
     ...team, score: range(teamRuns[key].map(n => n * (learning?.score.adjustment ?? 1))), winProbability: key === 'home' ? homeWins / nbaSimulationRuns : 1 - homeWins / nbaSimulationRuns,
     pace: round(mean([...rows, ...opponent].map(row => row.possessions))), offensiveRating: round(mean(rows.map(row => row.points / row.possessions * 100))),
     opponentDefensiveRating: round(mean(opponent.map(row => row.allowed / row.possessions * 100))),
-    players: prepared.candidates.map(({ player, samples }) => {
+    players: prepared.candidates.map(({ player, samples, headToHead, opponentFactors }) => {
       const stats = playerRuns.get(`${player.teamId}:${player.id}`)!;
       const adjusted = (key: 'points' | 'rebounds' | 'assists' | 'pra') => range(stats[key].map(n => n * (learning?.pra.adjustment ?? 1)));
       return { ...player, games: samples.length, limited: samples.length < 8, stats: {
         points: adjusted('points'), rebounds: adjusted('rebounds'), assists: adjusted('assists'), minutes: range(stats.minutes), pra: adjusted('pra') },
-        matchup: `${prepared.pointsFactor >= 1.02 ? 'Scoring runway' : prepared.pointsFactor <= .98 ? 'Tough scoring test' : 'Balanced scoring matchup'} · ${samples.length} sampled appearances; recent-minute role, not a confirmed starter.`,
+        matchup: `${prepared.pointsFactor >= 1.02 ? 'Scoring runway' : prepared.pointsFactor <= .98 ? 'Tough scoring test' : 'Balanced scoring matchup'} · ${samples.length} sampled appearances; recent-minute role, not a confirmed starter. `
+          + (headToHead.length >= 3
+            ? `${headToHead.length} opponent appearances (${headToHead.filter(row => row.season === game.season).length} current season / ${headToHead.filter(row => row.season === game.season - 1).length} prior season); opponent-history adjustments PTS ${Math.round((opponentFactors.points - 1) * 100)}%, REB ${Math.round((opponentFactors.rebounds - 1) * 100)}%, AST ${Math.round((opponentFactors.assists - 1) * 100)}%, shrunk for sample size.`
+            : `${headToHead.length}/3 required current/prior-season opponent appearances; no personal head-to-head adjustment.`),
       };
     }).sort((a, b) => b.stats.pra.mean - a.stats.pra.mean || a.id.localeCompare(b.id)),
   });

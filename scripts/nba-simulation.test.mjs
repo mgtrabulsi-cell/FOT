@@ -56,6 +56,37 @@ test('NBA bootstrap is deterministic, uses correlated personal lines and respect
   assert.equal(parse(forecast), forecast);
   assert.equal(input.length, 24);
 });
+test('NBA personal opponent history raises or lowers projections using current/prior-season evidence without forced boosts', () => {
+  const rows = observations();
+  const own = rows.filter(row => row.teamId === '1');
+  for (const [i, row] of own.entries()) {
+    row.players['110'].points = i < 4 ? 45 : 15;
+    row.players['110'].rebounds = i < 4 ? 14 : 6;
+    row.players['110'].assists = i < 4 ? 12 : 4;
+    if (i < 4) row.season = i < 2 ? game.season : game.season - 1;
+  }
+  const project = input => simulateNBAGame(game, input, roster, now).home.players.find(p => p.id === '110');
+  const baseline = project(rows);
+  const favorable = structuredClone(rows);
+  favorable.filter(row => row.teamId === '1').slice(0, 4).forEach(row => row.opponentId = '2');
+  const raised = project(favorable);
+  assert.ok(raised.stats.points.mean > baseline.stats.points.mean);
+  assert.ok(raised.stats.rebounds.mean > baseline.stats.rebounds.mean);
+  assert.ok(raised.stats.assists.mean > baseline.stats.assists.mean);
+  assert.match(raised.matchup, /4 opponent appearances \(2 current season \/ 2 prior season\)/);
+  const tough = structuredClone(rows);
+  tough.filter(row => row.teamId === '1').slice(4, 8).forEach(row => row.opponentId = '2');
+  assert.ok(project(tough).stats.pra.mean < baseline.stats.pra.mean);
+  const thin = structuredClone(rows);
+  thin.filter(row => row.teamId === '1').slice(0, 2).forEach(row => row.opponentId = '2');
+  assert.equal(project(thin).stats.pra.mean, baseline.stats.pra.mean);
+  const old = structuredClone(favorable);
+  old.filter(row => row.teamId === '1').slice(0, 4).forEach(row => row.season = game.season - 2);
+  assert.match(project(old).matchup, /0\/3 required/);
+  const emptyCategory = structuredClone(favorable);
+  emptyCategory.filter(row => row.teamId === '1').forEach(row => row.players['110'].assists = 0);
+  assert.equal(project(emptyCategory).stats.assists.mean, 0);
+});
 test('NBA insufficient evidence stays collecting; missing appearances and post-tipoff data never manufacture projections', () => {
   assert.equal(simulateNBAGame(game, observations().filter(row => row.teamId === '1'), roster, now).status, 'collecting');
   const rows = observations();
@@ -78,6 +109,33 @@ test('NBA daily performers rank three distinct players by matchup-adjusted PRA o
   assert.deepEqual(nbaDailyPerformers([first], '2026-11-18'), []);
   second.status = 'collecting';
   assert.ok(nbaDailyPerformers([first, second], '2026-11-17').every(p => p.eventId === first.eventId));
+});
+test('NBA player tables display whole-number projections without rounding the stored model', () => {
+  const forecast = simulateNBAGame(game, observations(), roster, now);
+  const player = forecast.home.players[0];
+  player.stats.points.mean = 28.7;
+  player.stats.rebounds.mean = 8.3;
+  player.stats.assists.mean = 6.8;
+  player.stats.pra.mean = 43.8;
+  const jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, require(name) {
+    if (name === 'react') return { useState: initial => [initial, () => {}] };
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    return {};
+  } });
+  vm.runInContext(compile('../src/NBAGameSimulation.tsx'), context);
+  const tree = context.exports.default({ game: { ...game, eventId: game.id }, forecast });
+  const nodes = [];
+  const visit = value => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') { nodes.push(value); visit(value.props?.children); }
+  };
+  visit(tree);
+  const row = nodes.find(node => node.type === 'tr' && node.props.children[0]?.props.children[0] === player.name);
+  const values = row.props.children.filter(node => node.type === 'td').map(node => node.props.children);
+  assert.equal(values[1], '29'); assert.equal(values[2], '8'); assert.equal(values[3], '7');
+  assert.equal(values[4].props.children, '44');
+  assert.equal(player.stats.points.mean, 28.7, 'Display formatting must not mutate evidence or learning baselines');
 });
 test('NBA learning retains explicit neutral baselines and no correction activates without validated settled evidence', () => {
   const baseline = simulateNBAGame(game, observations(), roster, now, neutral());
