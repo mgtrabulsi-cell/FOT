@@ -3,7 +3,7 @@ import { featuredSimulationMinimums, fullPlayerPerformances, isFeaturedSimulatio
 import type { SimulationAccuracyGame, SimulationAccuracyReport, SimulationAccuracyPlayer } from '../../supabase/functions/_shared/nflSimulationAccuracy';
 import type { SimulationStat } from '../../supabase/functions/_shared/nflSimulation';
 import type { Game } from './sportsData';
-import { projectedSimulationScore, roundedSimulationBox, selectedSimulationScenario } from '../../supabase/functions/_shared/nflSimulation';
+import { projectedSimulationScore, selectedSimulationScenario } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLClosingSpread } from './nflClosingSpread';
 
@@ -20,7 +20,6 @@ export type SimulationResultsGraphicSnapshot = {
       actualAway: number | null; actualHome: number | null; closingLine: number | null; closingProvider: string | null } }>;
   sections?: Array<{ title: string; note: string; rows: SimulationResultsGraphicSnapshot['rows'] }>;
   page?: { index: number; count: number; offset: number; total: number };
-  touchdownRecord?: { hits: number; projected: number; pending: number; unavailable: number };
 };
 
 export type SimulationSlateForecast = { eventId: string; forecast?: NFLGameSimulation; error?: string };
@@ -38,9 +37,7 @@ export async function renderSimulationTouchdownGraphics(snapshot: SimulationResu
 }
 
 export function simulationTouchdownSnapshot(report: SimulationAccuracyReport, games: Game[],
-  now = Date.now(), forecasts: SimulationSlateForecast[] = []): SimulationResultsGraphicSnapshot {
-  const calls = new Map<string, 'hit' | 'miss' | 'pending'>();
-  const key = (eventId: string, playerId: string, team: string) => JSON.stringify([eventId, playerId, team]);
+  now = Date.now()): SimulationResultsGraphicSnapshot {
   const rows = report.games.flatMap(game => {
     const players = new Map<string, SimulationAccuracyPlayer[]>();
     for (const player of game.players) {
@@ -56,10 +53,7 @@ export function simulationTouchdownSnapshot(report: SimulationAccuracyReport, ga
           && Number.isInteger(row.actual) && row.actual >= 0)) return [];
       const projected = stats.reduce((sum, row) => sum + (row.displayed ?? Math.round(row.projected)), 0);
       const actual = stats.reduce((sum, row) => sum + row.actual, 0);
-      if (projected < 1) return [];
-      calls.set(key(game.eventId, stats[0].playerId, stats[0].team),
-        actual >= 1 ? 'hit' : stats.length === 2 ? 'miss' : 'pending');
-      if (actual < 1) return [];
+      if (projected < 1 || actual < 1) return [];
       const partial = stats.length < 2;
       return [{ title: stats[0].name,
         context: `${stats[0].position} | ${stats[0].team} | ${game.away.abbr} at ${game.home.abbr}`,
@@ -69,32 +63,9 @@ export function simulationTouchdownSnapshot(report: SimulationAccuracyReport, ga
           : 'Projected scorer | Verified rushing + receiving TDs' }];
     });
   });
-  let unavailable = 0;
-  for (const saved of forecasts) {
-    const game = games.find(game => game.eventId === saved.eventId), forecast = saved.forecast;
-    if (!game || !forecast || forecast.status !== 'ready') { unavailable++; continue; }
-    if (forecast.eventId !== game.eventId || Date.parse(forecast.kickoff) !== Date.parse(game.date))
-      throw new Error('A touchdown forecast does not match the selected slate.');
-    const scenario = selectedSimulationScenario(forecast);
-    if (!scenario?.home || !scenario.away) { unavailable++; continue; }
-    for (const team of [scenario.away, scenario.home]) {
-      const box = team.totals ? roundedSimulationBox({ ...team, totals: team.totals }) : null;
-      for (const player of team.players) {
-        if (player.issue) continue;
-        const total = (['rushingTouchdowns', 'receivingTouchdowns'] as const).reduce((sum, stat) => {
-          const value = box?.players[player.id]?.[stat] ?? player.stats[stat]?.mean;
-          return sum + (value === undefined ? 0 : Math.round(value));
-        }, 0);
-        const id = key(game.eventId, player.id, team.abbr);
-        if (total >= 1 && !calls.has(id)) calls.set(id, 'pending');
-      }
-    }
-  }
   if (!rows.length) throw new Error('No verified projected touchdown scorers have scored in this slate yet.');
   const base = simulationResultsGraphicSnapshot(report, games, 'games', 'passingYards', now);
   return { ...base, kind: 'touchdowns', statistic: 'Touchdown scorers', rows,
-    touchdownRecord: { hits: [...calls.values()].filter(result => result === 'hit').length, projected: calls.size,
-      pending: [...calls.values()].filter(result => result === 'pending').length, unavailable },
     sections: [{ title: 'Touchdown calls that scored', note: 'Displayed pregame calls; rushing/receiving only. + = verified minimum; other category unavailable.', rows }] };
 }
 
@@ -344,26 +315,27 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     : `TOP ${snapshot.rows.length} ${snapshot.kind === 'games' ? 'GAME SIMULATIONS' : 'PLAYER SIMULATIONS'}`, 60, 126, 25, 678, muted, true);
   ctx.letterSpacing = '0px';
   text(snapshot.slate, 60, 153, 17, 678, muted);
-  panel(178, 94, '#06caff');
-  ctx.fillStyle = blue; ctx.beginPath(); ctx.moveTo(71, 204); ctx.lineTo(96, 204); ctx.lineTo(92, 225); ctx.lineTo(84, 236); ctx.lineTo(75, 225); ctx.closePath(); ctx.fill();
-  line([[71, 211], [62, 211], [65, 224], [76, 231]], blue, 4);
-  line([[96, 211], [107, 211], [103, 224], [92, 231]], blue, 4);
-  ctx.fillRect(80, 232, 8, 13); ctx.fillRect(72, 245, 24, 6);
-  line([[142, 195], [142, 255]], '#7cbce0', 1);
-  line([[571, 195], [571, 255]], '#7cbce0', 1);
-  text(touchdowns ? 'WEEKLY TD SCORER RECORD' : snapshot.kind === 'winners' ? 'SIMULATED-WINNER RECORD' : snapshot.kind === 'slate' ? 'CLOSING-LINE ATS RECORD' : 'SELECTED-WEEK WINNER RECORD', 174, 208, 17, 385, blue);
   const record = snapshot.record;
-  if (touchdowns && !snapshot.touchdownRecord) throw new Error('The touchdown scorer record is unavailable. Refresh the graphic.');
-  text(touchdowns ? `${snapshot.touchdownRecord!.hits} / ${snapshot.touchdownRecord!.projected} HIT` : snapshot.kind === 'slate' ? `${record.wins}W - ${record.losses}L - ${record.ties}P`
-    : `${record.wins}W - ${record.losses}L - ${record.ties}T`, 174, 255, 48, 385, metallic(255), true);
-  text(touchdowns ? `${snapshot.touchdownRecord!.pending} PENDING` : `${snapshot.verified} ${fullSlate ? 'GRADED' : 'VERIFIED'}`, 650, 223, 17, 138, muted, true, 'center');
-  text(touchdowns ? 'SCORERS' : 'GAMES', 650, 242, 17, 138, muted, true, 'center');
+  if (!touchdowns) {
+    panel(178, 94, '#06caff');
+    ctx.fillStyle = blue; ctx.beginPath(); ctx.moveTo(71, 204); ctx.lineTo(96, 204); ctx.lineTo(92, 225); ctx.lineTo(84, 236); ctx.lineTo(75, 225); ctx.closePath(); ctx.fill();
+    line([[71, 211], [62, 211], [65, 224], [76, 231]], blue, 4);
+    line([[96, 211], [107, 211], [103, 224], [92, 231]], blue, 4);
+    ctx.fillRect(80, 232, 8, 13); ctx.fillRect(72, 245, 24, 6);
+    line([[142, 195], [142, 255]], '#7cbce0', 1);
+    line([[571, 195], [571, 255]], '#7cbce0', 1);
+    text(snapshot.kind === 'winners' ? 'SIMULATED-WINNER RECORD' : snapshot.kind === 'slate' ? 'CLOSING-LINE ATS RECORD' : 'SELECTED-WEEK WINNER RECORD', 174, 208, 17, 385, blue);
+    text(snapshot.kind === 'slate' ? `${record.wins}W - ${record.losses}L - ${record.ties}P`
+      : `${record.wins}W - ${record.losses}L - ${record.ties}T`, 174, 255, 48, 385, metallic(255), true);
+    text(`${snapshot.verified} ${fullSlate ? 'GRADED' : 'VERIFIED'}`, 650, 223, 17, 138, muted, true, 'center');
+    text('GAMES', 650, 242, 17, 138, muted, true, 'center');
+  }
   if (touchdowns) {
-    text(`VERIFIED SCORERS${snapshot.page ? ` / SLIDE ${snapshot.page.index} OF ${snapshot.page.count}` : ''}`, 44, 304, 18, 430, blue, true);
-    text('SIM TD', 510, 304, 14, 100, muted, false, 'center');
-    text('ACTUAL TD', 650, 304, 14, 120, muted, false, 'center');
+    text(`VERIFIED SCORERS${snapshot.page ? ` / SLIDE ${snapshot.page.index} OF ${snapshot.page.count}` : ''}`, 44, 210, 18, 430, blue, true);
+    text('SIM TD', 510, 210, 14, 100, muted, false, 'center');
+    text('ACTUAL TD', 650, 210, 14, 120, muted, false, 'center');
     snapshot.rows.forEach((row, index) => {
-      const y = 320 + index * 52;
+      const y = 230 + index * 60;
       panel(y, 48, green);
       text(`#${(snapshot.page?.offset ?? 0) + index + 1} ${row.title}`, 48, y + 22, 21, 390, white, true);
       text(row.context, 48, y + 40, 12, 390, muted);
@@ -372,7 +344,7 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     });
     text('Displayed pregame calls / Verified rushing + receiving scores only', 44, 879, 14, 680, muted);
     text('+ means the other TD category is unavailable; shown total is a verified minimum.', 44, 903, 12, 680, muted);
-    text(`${snapshot.pending} pending games / ${snapshot.touchdownRecord!.unavailable} unavailable forecasts / ${snapshot.excluded} excluded`, 44, 930, 13, 500, muted);
+    text(`${snapshot.pending} pending games / ${snapshot.excluded} excluded`, 44, 930, 13, 500, muted);
     text('gamewire.us', 600, 930, 18, 130, white, true);
     return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob)
       : reject(new Error('Your browser could not export the touchdown slide. Retry.')), 'image/png'));

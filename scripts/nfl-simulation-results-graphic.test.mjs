@@ -72,7 +72,6 @@ test('Touchdown graphic includes every verified scorer without a top-three cap o
   ];
   const snapshot = simulationTouchdownSnapshot(data, scopes, now);
   assert.equal(snapshot.rows.length, 13);
-  assert.deepEqual({ ...snapshot.touchdownRecord }, { hits: 13, projected: 14, pending: 0, unavailable: 0 });
   assert.equal(snapshot.sections.length, 1);
   assert.equal(snapshot.rows[0].simulated, '1 TD');
   const slides = await renderSimulationTouchdownGraphics(snapshot);
@@ -95,8 +94,8 @@ test('Touchdown Instagram pagination preserves every scorer in order at readable
     const slides = await h.renderSimulationTouchdownGraphics(snapshot);
     assert.equal(slides.length, Math.ceil(count / 10));
     assert.equal(h.canvas.width, 1080); assert.equal(h.canvas.height, 1350);
-    assert.equal(h.drawn.filter(value => value === `${count} / ${count} HIT`).length, slides.length,
-      'Every slide carries the complete weekly record, never a per-page count');
+    assert.ok(!h.drawn.some(value => /RECORD|\bHIT\b|\d+W - \d+L/.test(value)),
+      'Touchdown slides have no weekly scorer record or game-winner record');
     const names = h.labels.filter(row => /^#\d+ Scorer/.test(row.value));
     assert.equal(names.length, count);
     names.forEach((row, i) => {
@@ -106,36 +105,6 @@ test('Touchdown Instagram pagination preserves every scorer in order at readable
     });
     if (count > 10) await assert.rejects(h.renderSimulationResultsGraphic(snapshot), /multi-slide/);
   }
-});
-test('Weekly TD record counts each projected player once, includes misses and keeps unknown outcomes pending', async () => {
-      const h = graphicHarness(), data = report();
-      data.games = [data.games[0]];
-      const stat = (id, kind, displayed, actual) => ({ playerId: id, name: id, position: 'RB', team: 'AWY',
-        stat: kind, projected: displayed, displayed, actual, error: Math.abs(displayed - actual) });
-      data.games[0].players = [
-        stat('two-td-call', 'rushingTouchdowns', 2, 1), stat('two-td-call', 'receivingTouchdowns', 0, 0),
-        stat('miss', 'rushingTouchdowns', 1, 0), stat('miss', 'receivingTouchdowns', 0, 0),
-        stat('partial', 'receivingTouchdowns', 1, 0),
-      ];
-      const games = [{ eventId: '1', date: data.games[0].kickoff }, { eventId: '2', date: '2026-11-09T23:00:00Z' },
-        { eventId: '3', date: '2026-11-09T23:00:00Z' }];
-      const forecast = (game, ids) => ({ eventId: game.eventId, kickoff: game.date, status: 'ready',
-        qbMatchup: { scenarioId: 'published' }, scenarios: [{ id: 'published',
-          home: { abbr: 'HOM', totals: null, players: [] }, away: { abbr: 'AWY', totals: null,
-            players: ids.map(id => ({ id, stats: { rushingTouchdowns: { mean: 1 } } })) } }] });
-      const snapshot = h.simulationTouchdownSnapshot(data, games, now, [
-        { eventId: '1', forecast: forecast(games[0], ['two-td-call', 'unverified']) },
-        { eventId: '2', forecast: forecast(games[1], ['future']) },
-        { eventId: '3', error: 'Archive unavailable' },
-      ]);
-      assert.deepEqual({ ...snapshot.touchdownRecord }, { hits: 1, projected: 5, pending: 3, unavailable: 1 });
-      assert.equal(snapshot.rows.length, 1, 'Only scorers are listed; missed and pending calls still count in the record');
-      await h.renderSimulationTouchdownGraphics(snapshot);
-      assert.ok(h.drawn.includes('WEEKLY TD SCORER RECORD'));
-      assert.ok(h.drawn.includes('1 / 5 HIT'));
-      assert.ok(h.drawn.includes('3 PENDING'));
-      const wrong = forecast(games[0], ['bad']); wrong.kickoff = games[1].date;
-      assert.throws(() => h.simulationTouchdownSnapshot(data, games, now, [{ eventId: '1', forecast: wrong }]), /does not match/);
 });
 test('Multi-slide download exposes every numbered save link and cleans up old preview URLs', async () => {
   const slots = [], downloads = [], revoked = [];
@@ -357,10 +326,8 @@ test('Each download refreshes the entire selected week and uses the fresh winner
   const touchdownSlides = await slateTree.props.children.find(node => node.type === 'div').props.children[6].props.generate();
   const touchdown = JSON.parse(await touchdownSlides[0].text());
   assert.equal(touchdown.kind, 'touchdowns');
-  assert.deepEqual(fetched.slice(before).sort(), ['1', '2', 'missing', 'pending'],
-    'TD record refreshes every saved forecast, including games already in the results report');
-  assert.equal(touchdown.touchdownRecord.hits, 1);
-  assert.equal(touchdown.touchdownRecord.unavailable, 1);
+  assert.equal(fetched.length, before, 'Scorer-only slides do not fetch extra archives for a removed record');
+  assert.equal(touchdown.rows.length, 1);
   graphicAccess = false;
   assert.equal(context.exports.default({ games: scopes, stat: 'receptions' }), null);
   assert.equal(calls, 8, 'Public viewers cannot mount or generate the weekly download controls');

@@ -20,7 +20,7 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
       const report = await loadSimulationAccuracy(games, controller.signal);
       if (controller.signal.aborted) throw new Error('The simulation graphic download was cancelled.');
       const fullSlate = kind === 'slate' || kind === 'winners';
-      const [forecasts, closingSpreads] = await Promise.all([fullSlate || kind === 'touchdowns' ? Promise.all(games.filter(game => kind === 'touchdowns' || !report.games.some(row => row.eventId === game.eventId)).map(async game => {
+      const [forecasts, closingSpreads] = await Promise.all([fullSlate ? Promise.all(games.filter(game => !report.games.some(row => row.eventId === game.eventId)).map(async game => {
         try { return { eventId: game.eventId, forecast: await loadGameSimulation(game, controller.signal) }; }
         catch (cause) {
           if (controller.signal.aborted) throw cause;
@@ -35,7 +35,7 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
           return null;
         }
       })) : Promise.resolve([])]);
-      const snapshot = kind === 'touchdowns' ? simulationTouchdownSnapshot(report, games, Date.now(), forecasts)
+      const snapshot = kind === 'touchdowns' ? simulationTouchdownSnapshot(report, games)
         : kind === 'player-summary' ? simulationPlayerSummarySnapshot(report, games)
         : kind === 'slate' || kind === 'winners' ? simulationSlateGraphicSnapshot(report, games, forecasts, Date.now(), kind,
         closingSpreads.flatMap(row => row ? [row] : []))
