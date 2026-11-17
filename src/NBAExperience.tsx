@@ -439,11 +439,11 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
   </div>;
   return <section className={`nba-experience nba-${mode}`} aria-label={mode === 'wire' ? 'NBA Wire' : 'NBA Stat Hub'}>
     <header className="nba-heading"><div><span className="eyebrow">NBA</span><h2>{heading}</h2></div><button type="button" onClick={() => { onRetry(); summary.retry(); league.retry(); }}>Refresh</button></header>
-    <div className="nba-segments" role="group" aria-label="NBA Wire views">
+    <section className="wire-pregame-mode" aria-label="NBA pregame display"><div role="group" aria-label="NBA Wire views">
       {([{ key: 'matchups', label: 'Matchups' }, { key: 'simulation', label: 'GamewAIre simulations' }, { key: 'results', label: 'Simulation Results' }] as const).map(view =>
         <button type="button" key={view.key} aria-pressed={boardView === view.key} className={view.key === 'simulation' ? 'wire-simulation-toggle' : undefined}
           onClick={() => { setBoardView(view.key); setOpenedGameId(null); setTab(view.key === 'simulation' ? 'simulation' : 'players'); }}>{view.label}</button>)}
-    </div>
+    </div></section>
     {status === 'loading' && !nbaGames.length && <p role="status">Loading NBA games…</p>}
     {status === 'error' && <div className="nba-warning" role="status"><span>NBA scoreboard could not be refreshed.{nbaGames.length ? ' Showing the last available games.' : ''}</span><button type="button" onClick={onRetry}>Retry scoreboard</button></div>}
     {!nbaGames.length && status === 'ready' && <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Use the date arrows or Today to pick another day.</span></div>}

@@ -55,8 +55,25 @@ function renderer({ noBlob = false, imageError = false, stadiumError = false } =
   vm.runInContext(compile('../src/services/betGraphicStyle.ts'), context);
   style = context.exports;
   vm.runInContext(compile('../src/services/bestBetGraphic.ts'), context);
+  vm.runInContext(`{ ${compile('../src/services/nbaSimulationGraphic.ts')} }`, context);
   return { ...context.exports, texts, lines, canvas, images, crops, fills };
 }
+test('NBA forecasts use stadium branding and organized detail rows with no cropped text or betting labels', async () => {
+  const r = renderer();
+  await r.renderNBASimulationGraphic('The Daily Triple / Top 3 PRA', '2026-11-17 | 5/5 games ready',
+    Array.from({ length: 3 }, (_, i) => ({ title: `#${i + 1} Player Name | BOS vs NY`,
+      detail: '45.0 projected PRA | Active', line: '28.0 PTS / 10.0 REB / 7.0 AST',
+      note: 'Saved 11/17/2026, 10:00 AM | 30 appearances' })));
+  assert.equal(r.images.length, 2);
+  assert.equal(r.canvas.height, 890);
+  assert.ok(r.texts.some(row => row.text === 'DAILY TRIPLE'));
+  assert.ok(r.texts.some(row => row.text.includes('NBA MODEL ESTIMATES')));
+  assert.ok(!r.texts.some(row => /EDITORIAL SELECTIONS|BEST BETS|HIT|MISS/.test(row.text)));
+  for (const row of r.texts) {
+    assert.ok(row.y >= 0 && row.y < r.canvas.height, row.text);
+    if (row.x === 252) assert.ok(row.x + row.bounds.width <= 1028, row.text);
+  }
+});
 test('Manual Best Bet graphic validates draft shape, odds and required separate selections', () => {
   const r = renderer(), draft = r.newBestBetGraphic();
   assert.match(r.bestBetGraphicError(draft), /sport and selection/);

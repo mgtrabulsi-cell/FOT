@@ -3,6 +3,7 @@ import { loadGamewireGraphicAssets } from './gamewaireResultsGraphic';
 export type BetGraphicRow = {
   label: string; name: string; selection: string; odds?: string;
   result?: 'pending' | 'hit' | 'miss'; photo?: HTMLImageElement | null;
+  detail?: string; note?: string;
 };
 export const betGraphicHeight = (count: number) => 440 + count * 150;
 
@@ -28,8 +29,8 @@ async function loadNameFont() {
   if (!faces.length || !document.fonts.check(font)) throw new Error('The graphic name font could not load. Reconnect and retry.');
 }
 
-export async function renderBetGraphic({ title, subtitle, rows, summary, note, scale = 1, typography = 'balanced' }: {
-  title: string; subtitle: string; rows: BetGraphicRow[]; summary: string; note: string; scale?: number; typography?: 'balanced' | 'brand';
+export async function renderBetGraphic({ title, subtitle, rows, summary, note, scale = 1, typography = 'balanced', footerLabel = 'EDITORIAL SELECTIONS' }: {
+  title: string; subtitle: string; rows: BetGraphicRow[]; summary: string; note: string; scale?: number; typography?: 'balanced' | 'brand'; footerLabel?: string;
 }): Promise<Blob> {
   const [logo, stadium] = await Promise.all([loadGamewireGraphicAssets(), stadiumImage(), loadNameFont()]);
   const height = betGraphicHeight(rows.length), width = 1080;
@@ -148,7 +149,9 @@ export async function renderBetGraphic({ title, subtitle, rows, summary, note, s
       ctx.drawImage(row.photo, left + (78 - w) / 2, y + (150 - h) / 2, w, h);
       left += 96; available -= 96;
     }
-    if (row.name) text(row.name, left, y + 55, 35, available, white, false, 600);
+    const hasDetails = row.detail !== undefined || row.note !== undefined;
+    if (row.name) text(row.name, left, y + (hasDetails ? 32 : 55), hasDetails ? 27 : 35, available, white, false, 600);
+    if (row.detail) text(row.detail, left, y + 56, 16, available, muted, false);
     let selectionLines: string[] = [], selectionSize = row.name ? 30 : 35;
     for (; selectionSize >= 18; selectionSize--) {
       ctx.font = `${brandTypography ? 'italic 600' : '400'} ${selectionSize}px "DM Sans"`;
@@ -163,8 +166,10 @@ export async function renderBetGraphic({ title, subtitle, rows, summary, note, s
       if (lines.length <= 2 && lines.every(value => ctx.measureText(value).width <= available)) { selectionLines = lines; break; }
     }
     if (!selectionLines.length) throw new Error('A selection is too long to fit. Shorten it before exporting.');
-    const selectionY = row.name ? y + 93 : y + (selectionLines.length === 1 ? 87 : 65);
+    const selectionY = hasDetails ? y + 85 : row.name ? y + 93 : y + (selectionLines.length === 1 ? 87 : 65);
+    if (hasDetails) selectionSize = Math.min(selectionSize, 23);
     selectionLines.forEach((value, i) => text(value, left, selectionY + i * selectionSize * 1.15, selectionSize, available, white, false));
+    if (row.note) text(row.note, left, y + 136, 14, available, muted, false);
     if (row.result && row.result !== 'pending') {
       text(row.result === 'hit' ? 'HIT' : 'MISS', left, y + 130, 16, available, row.result === 'hit' ? '#6dff88' : '#ff6573');
     }
@@ -173,6 +178,6 @@ export async function renderBetGraphic({ title, subtitle, rows, summary, note, s
   panel(52, footer, 976, 83, 24, true);
   text(summary, 94, footer + 55, 34, 850, '#75ff8e');
   text(note, 64, height - 48, 16, 950, muted, false);
-  text('GAMEWIRE.US  /  EDITORIAL SELECTIONS  /  NO GUARANTEED OUTCOMES', 64, height - 20, 13, 950, muted, false);
+  text(`GAMEWIRE.US  /  ${footerLabel}  /  NO GUARANTEED OUTCOMES`, 64, height - 20, 13, 950, muted, false);
   return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Your browser could not export the PNG. Retry.')), 'image/png'));
 }

@@ -233,19 +233,18 @@ test('NBA device forecasts restore on cold start, preserve newer ready data and 
   response = initial; failStorage = true;
   assert.ok((await api.loadNBASimulation(frontendGame, signal)).warnings.some(warning => warning.includes('Device storage')));
 });
-test('NBA graphic exports grow to fit every result and keep text inside the PNG without player likenesses', async () => {
-  const drawn = [], canvas = { width: 0, height: 0, toBlob: callback => callback(new Blob(['png'])) };
-  const ctx = new Proxy({
-    measureText(text) { return { width: text.length * Number(this.font.match(/(\d+)px/)[1]) * .5 }; },
-    fillText(text, x, y) { assert.ok(x >= 0 && x + this.measureText(text).width <= canvas.width && y < canvas.height); drawn.push(text); },
-  }, { get: (target, key) => key in target ? target[key] : () => {} });
-  canvas.getContext = () => ctx;
+test('NBA graphics reuse the Best Bet renderer and preserve every supported row without player likenesses', async () => {
+  let rendered;
   const context = vm.createContext({ exports: {}, Error, Blob, Math,
-    document: { createElement: () => canvas }, require: () => ({ loadGamewireGraphicAssets: async () => {} }) });
+    require: () => ({ renderBetGraphic: async options => { rendered = options; return new Blob(['png']); } }) });
   vm.runInContext(compile('../src/services/nbaSimulationGraphic.ts'), context);
   await context.exports.renderNBASimulationGraphic('NBA results', 'Verified archived forecasts', Array.from({ length: 40 }, (_, i) =>
     ({ title: `Player ${i}`, detail: 'Personal game evidence', line: '20 PTS / 10 REB / 5 AST', note: '35 projected PRA' })));
-  assert.equal(canvas.width, 1080); assert.ok(canvas.height > 1350); assert.ok(drawn.includes('Player 39'));
+  assert.equal(rendered.typography, 'brand');
+  assert.equal(rendered.rows.length, 40);
+  assert.equal(rendered.rows[39].name, 'Player 39');
+  assert.equal(rendered.rows[39].note, '35 projected PRA');
+  assert.ok(rendered.rows.every(row => !row.photo && !row.odds && !row.result));
   await assert.rejects(context.exports.renderNBASimulationGraphic('Empty', 'Slate', []), /No verified/);
 });
 test('NBA database leases, pregame locks, late availability revisions, immutable finals and RLS are enforced', async () => {

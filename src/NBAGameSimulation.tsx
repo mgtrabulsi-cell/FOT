@@ -53,8 +53,9 @@ export function NBADailyPerformers({ forecasts, games, date }: { forecasts: NBAG
     <div className="nba-simulation-leader-grid">{players.map((player, index) => <article key={player.id}>
       <span className="eyebrow">#{index + 1} · {player.team} vs {player.opponent}</span><h4>{player.name}</h4>
       <strong>{value(player.stats.pra.mean)} <small>projected PRA</small></strong><p>{line(player)}</p>
-      <small>P10–P90: {value(player.stats.pra.p10)}–{value(player.stats.pra.p90)} PRA · {value(player.stats.minutes.mean)} MIN</small>
-      <p>{player.matchup}</p><small>{player.status}{player.limited ? ' · Limited sample' : ''}</small>
+      <small>{value(player.stats.minutes.mean)} MIN · {player.status}{player.limited ? ' · Limited sample' : ''}</small>
+      <details><summary>Matchup &amp; range</summary><p>{player.matchup}</p>
+        <small>P10–P90: {value(player.stats.pra.p10)}–{value(player.stats.pra.p90)} PRA</small></details>
     </article>)}</div>
     {!players.length && <p role="status">No supported player projections yet. The background preparation refreshes automatically.</p>}
     <small>Conditional on playing. Usage-ranked players, not confirmed starters. Experimental estimates, not betting recommendations.</small>
