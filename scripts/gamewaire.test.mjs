@@ -696,7 +696,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/import GamewaireResultsDownload from [^;]+;/, 'const GamewaireResultsDownload=()=>"Download results graphic";')
     .replace(/import GamewaireBestBetsDownload from [^;]+;/, 'const GamewaireBestBetsDownload=()=>"Download Instagram Best Bets";')
     .replace(/import GamewireBot from [^;]+;/, 'const GamewireBot=()=>"GameWire player analysis";')
-    .replace(/import GamewireRankings from [^;]+;/, 'const GamewireRankings=()=>"Admin weekly ranking editor";')
+    .replace(/import GamewireRankings from [^;]+;/, 'const GamewireRankings=()=>rankingAccess?"Admin weekly ranking editor":null;')
     .replace(/import GamewairePickOrder from [^;]+;/, 'const GamewairePickOrder=({picks,visibleKeys,renderPick})=>{const visible=picks.filter(p=>!visibleKeys||visibleKeys.includes(p.key));return visible.map((p,i)=>renderPick(p,i+1,visible.map(p=>p.key)));};')
     .replace(/import \{ subscribePickOrderRefresh \} from [^;]+;/, 'const subscribePickOrderRefresh=()=>()=>{};')
     .replace(/import \{ loadPublishedNFLWeek \} from [^;]+;/, 'const loadPublishedNFLWeek=()=>{};')
@@ -704,7 +704,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     .replace(/from ['"]\.\/services\/gamewairePresentation['"]/g, `from '${new URL('../src/services/gamewairePresentation.ts', import.meta.url)}'`)
     .replace(/from ['"]\.\/services\/gamewaireGames['"]/g, `from '${new URL('../src/services/gamewaireGames.ts', import.meta.url)}'`)
     .replace(/import ['"]\.\/gamewaire\.css['"];/, '')
-    .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = []; export const fixture = (values) => { states=values; slot=0; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
+    .replace(/import \{ useEffect, useState \} from ['"]react['"];/, `let slot = 0, states = [], rankingAccess = false; export const fixture = (values, canEditRankings = !!values[0]?.canAnalyze) => { states=values; slot=0; rankingAccess=canEditRankings; }; const useEffect=()=>{}; const useState=(initial)=>[slot in states?states[slot++]:((slot++),typeof initial==='function'?initial():initial),()=>{}];`)
     .replace(/from ['"]react\/jsx-runtime['"]/g, `from '${import.meta.resolve('react/jsx-runtime')}'`)
     .replace(/from ['"]lucide-react['"]/g, `from '${import.meta.resolve('lucide-react')}'`)
     .replace(/import \{[^;]+\} from ['"]\.\/services\/gamewaire['"];/, `    import { defaultSettings, fullAnalysisSettings, isAllowedPickSide, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb, isSoccer, soccerSports, soccerModelVersion } from '${new URL('../supabase/functions/_shared/gamewaire.ts', import.meta.url)}'; const engineRequest=()=>{}; const loadEngineHistory=()=>{};`)
@@ -795,6 +795,10 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
     assert.ok(report.includes(`aria-label="View ${label} results"`));
   }
   assert.doesNotMatch(report, /Admin weekly ranking editor/);
+  fixture(memberState, true);
+  const adminReport = renderToStaticMarkup(createElement(Page));
+  assert.match(adminReport, /Admin weekly ranking editor/, 'A non-designated admin can enter rankings');
+  assert.doesNotMatch(adminReport, /Admin analysis controls/, 'Ranking access does not grant paid analysis management');
   assert.match(report, /class="gai-pick angle-card gai-best-bet"/);
   assert.match(report, /Book A/);
   assert.match(report, /loss/);

@@ -66,9 +66,10 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
       return json({ error: 'Choose a valid NFL event, teams and kickoff for simulation.' }, 400);
     const editingRankings = input.action === 'rankings' || input.action === 'save-rankings';
     if (editingRankings) {
-      const permission = await client.rpc('gamewaire_can_admin');
+      const permission = await admin.from('livewire_roles').select('role').eq('user_id', user.data.user.id).maybeSingle();
       if (permission.error) throw new Error('Could not verify ranking editor permissions.');
-      if (permission.data !== true) return json({ error: 'Only GamewAIre admins can edit weekly rankings.' }, 403);
+      if (!permission.data || !['owner', 'admin'].includes(permission.data.role))
+        return json({ error: 'Only owners and admins can edit weekly rankings.' }, 403);
       try { rankingScope(input); } catch (cause) { return json({ error: cause instanceof Error ? cause.message : 'Invalid ranking scope.' }, 400); }
     }
     if (['breakdown', 'history'].includes(text(input.action)) && (!/^\d{1,12}$/.test(text(input.playerId)) || !['ppr', 'half', 'standard'].includes(text(input.format))

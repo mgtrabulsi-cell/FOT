@@ -394,7 +394,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
     <div id="gai-bot-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bot-tab"
       hidden={section !== 'bot'} tabIndex={0}>
       <GamewireBot />
-      {status?.canAnalyze && <GamewireRankings />}
+      <GamewireRankings />
     </div>
     <div id="gai-bets-panel" className="gai-section-panel" role="tabpanel" aria-labelledby="gai-bets-tab"
       hidden={section !== 'bets'} tabIndex={0}>

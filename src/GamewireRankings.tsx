@@ -3,11 +3,13 @@ import { loadBotDirectory, loadBotRankings, saveBotRankings } from './services/g
 import type { BotDirectory } from './services/gamewireBot';
 import { matchRankingPaste } from '../supabase/functions/_shared/gamewireRankings';
 import type { RankingList } from '../supabase/functions/_shared/gamewireRankings';
+import { useSimulationGraphicAccess } from './useSimulationGraphicAccess';
 
 type Scope = Omit<RankingList, 'playerIds' | 'publishedAt'>;
 type Entry = { playerId: string; input: string; error: string };
 const failure = (cause: unknown) => cause instanceof Error ? cause.message : 'Weekly rankings could not be updated. Retry.';
 export default function GamewireRankings() {
+  const access = useSimulationGraphicAccess();
   const [open, setOpen] = useState(false), [directory, setDirectory] = useState<BotDirectory | null>(null);
   const [scope, setScope] = useState<Scope | null>(null), [entries, setEntries] = useState<Entry[]>([]);
   const [paste, setPaste] = useState(''), [busy, setBusy] = useState(false), [dirty, setDirty] = useState(false);
@@ -16,6 +18,8 @@ export default function GamewireRankings() {
   const controller = useRef<AbortController | null>(null);
   const searchInput = useRef<HTMLInputElement | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
+  if (!access.allowed) return access.error
+    ? <p role="alert" className="feed-warning">Could not verify ranking editor permissions. Reconnect or sign in again to retry.</p> : null;
   const load = async (next?: Scope) => {
     if ((dirty || paste.trim()) && !window.confirm('Discard the unpublished ranking changes and load this list?')) return;
     controller.current?.abort();

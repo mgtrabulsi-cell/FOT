@@ -124,7 +124,7 @@ test('Missing weekly games, kickoff lock, postseason and transferred player iden
 
 const endpointCode = ts.transpileModule(readFileSync(new URL('../supabase/functions/gamewire-bot/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function endpoint({ allowed = true, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, expiredDirectory = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], forecastRows = [], finalSummary = null, upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false, scoreboard = board, weekBoards = {} } = {}) {
+function endpoint({ allowed = true, role = allowed ? 'owner' : 'member', roleFailure = false, user = true, anonymous = false, claim = true, cacheFailure = false, pubFailure = false, cold = false, expiredDirectory = false, badLogs = false, pubs = [], graphics = [], rankings = [], projections = [], forecastRows = [], finalSummary = null, upstreamFail = false, primaryWeekFail = false, primaryRosterFail = false, scoreboard = board, weekBoards = {} } = {}) {
   const calls = [], writes = [], rpcs = [], queries = [], cache = new Map(), expires = new Date(now + 3600000).toISOString();
   if (!cold) cache.set('nfl:directory:v2:2026', { payload: { season: 2026, week: 8, seasonType: 2, players: [player], positions: { [player.id]: 'RB' }, warnings: [], checkedAt: new Date(now).toISOString() }, expires_at: expiredDirectory ? new Date(now - 1000).toISOString() : expires });
   const client = {
@@ -137,7 +137,9 @@ function endpoint({ allowed = true, user = true, anonymous = false, claim = true
         select: () => builder, eq: (key, value) => { filters[key] = value; return builder; },
         gt: () => builder, gte: () => builder, lte: () => builder, limit: () => builder, not: () => builder, order: () => builder,
         update: () => builder,
-        maybeSingle: async () => ({ data: cache.get(filters.cache_key) ?? null, error: cacheFailure ? { message: 'DB failed' } : null }),
+        maybeSingle: async () => table === 'livewire_roles'
+          ? { data: role ? { role } : null, error: roleFailure ? { message: 'DB failed' } : null }
+          : { data: cache.get(filters.cache_key) ?? null, error: cacheFailure ? { message: 'DB failed' } : null },
         upsert: async (value) => { writes.push(table); cache.set(value.cache_key, value); return { error: null }; },
         then: (resolve) => Promise.resolve({ data: table === 'gamewire_player_forecasts' ? forecastRows : table === 'fantasy_graphics' ? graphics : table === 'gamewire_fantasy_rankings' ? rankings : pubs, error: pubFailure ? { message: 'DB failed' } : null }).then(resolve),
       }; return builder;
@@ -825,13 +827,14 @@ test('Player analysis uses the same blue robot and pulse mark as the welcome ban
 });
 test('Ranking quick-add filters position and existing ranks, supports keyboard/reorder, bulk review and publish retry', async () => {
   const state = [], refs = [], saves = [];
-  let stateIndex = 0, refIndex = 0, rejectSave = false, confirmDiscard = false, confirms = 0;
+  let stateIndex = 0, refIndex = 0, rejectSave = false, confirmDiscard = false, confirms = 0, canEdit = true, accessError = '';
   const other = { ...player, id: '456', name: 'Another Runner' }, receiver = { ...player, id: '789', name: 'Test Receiver', position: 'WR' };
   const code = ts.transpileModule(readFileSync(new URL('../src/GamewireRankings.tsx', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const context = vm.createContext({ exports: {}, AbortController, Error, Event, setTimeout, clearTimeout, window: { setTimeout, clearTimeout,
     confirm() { confirms++; return confirmDiscard; }, dispatchEvent() { return true; } }, require(name) {
     if (name === 'react/jsx-runtime') return jsxRuntime;
+    if (name.includes('useSimulationGraphicAccess')) return { useSimulationGraphicAccess: () => ({ allowed: canEdit, error: accessError }) };
     if (name === 'react') return { useEffect() {}, useRef(initial) { return refs[refIndex++] ??= { current: initial }; },
       useState(initial) { const i = stateIndex++; if (!(i in state)) state[i] = initial; return [state[i], (next) => { state[i] = next; }]; } };
     if (name.includes('_shared/gamewireRankings')) return rankingTools;
@@ -884,6 +887,31 @@ test('Ranking quick-add filters position and existing ranks, supports keyboard/r
   assert.ok(find(render(), (n) => n.props?.['aria-label'] === 'Rank 2 player'), 'Unmatched pasted name remains reviewable');
   confirmDiscard = true; button('Reload saved list').props.onClick(); await new Promise(setImmediate);
   assert.equal(ranks().length, 0);
+  canEdit = false;
+  assert.equal(render(), null, 'Members cannot see the editor');
+  accessError = 'Role lookup unavailable';
+  assert.equal(render().props.role, 'alert');
+  const page = readFileSync(new URL('../src/Gamewaire.tsx', import.meta.url), 'utf8');
+  assert.match(page, /<GamewireRankings \/>/);
+  assert.doesNotMatch(page, /canAnalyze && <GamewireRankings/);
+});
+test('Every owner/admin can read and publish top-30 lists without designated analysis-account access', async () => {
+  const body = { season: 2026, week: 8, format: 'ppr', position: 'RB', playerIds: ['123'] };
+  for (const role of ['owner', 'admin']) for (const action of ['rankings', 'save-rankings']) {
+    const api = endpoint({ allowed: false, role, rankings: [ranking] });
+    const response = await api.run({ ...body, action });
+    assert.equal(response.status, 200, `${role}: ${action}`);
+    assert.equal(api.rpcs.includes('gamewaire_can_admin'), false);
+    assert.equal(api.queries.find(query => query.table === 'livewire_roles').filters.user_id, 'member', 'Permission uses the verified caller, not the designated account or request input');
+  }
+  for (const role of [null, 'member', 'editor']) {
+    const api = endpoint({ allowed: false, role });
+    assert.equal((await api.run({ ...body, action: 'save-rankings' })).status, 403);
+    assert.equal(api.writes.length, 0);
+  }
+  const failure = endpoint({ roleFailure: true });
+  assert.equal((await failure.run({ ...body, action: 'save-rankings' })).status, 502);
+  assert.equal(failure.writes.length, 0);
 });
 test('Ranking editor endpoints deny members and validate scope, position and duplicate players before publishing', async () => {
   const body = { action: 'save-rankings', season: 2026, week: 8, format: 'ppr', position: 'RB', playerIds: ['123'] };
