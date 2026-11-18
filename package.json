@@ -15,6 +15,7 @@
     "configure:push-cron": "node scripts/configure-push-cron.mjs"
   },
   "dependencies": {
+    "fflate": "^0.8.2",
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.0.0",
     "@capacitor/core": "^8.5.3",

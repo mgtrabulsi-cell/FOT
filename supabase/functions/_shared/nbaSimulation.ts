@@ -4,17 +4,18 @@ import type { LearningAdjustment } from './gamewireLearning.ts';
 export const nbaSimulationVersion = 'nba-joint-bootstrap-v1';
 export const nbaSimulationRuns = 1000;
 export const nbaSimulationLockLead = 30 * 60000;
-export type NBAStatLine = { points: number; rebounds: number; assists: number; minutes: number };
+export type NBAStatLine = { points: number; rebounds: number; assists: number; minutes: number; threePointers?: number };
 export type NBASimulationTeam = { id: string; name: string; abbr: string };
 export type NBASimulationGame = { id: string; date: string; season: number; seasonType: 2 | 3;
   home: NBASimulationTeam; away: NBASimulationTeam };
 export type NBAReference = { id: string; date: string; teamId: string; opponentId: string };
 export type NBAObservation = { id: string; date: string; season: number; home: boolean; teamId: string; opponentId: string;
   points: number; allowed: number; possessions: number; allowedRebounds: number; allowedAssists: number;
-  players: Record<string, NBAStatLine>; completePlayers?: boolean };
+  players: Record<string, NBAStatLine>; completePlayers?: boolean; allowedThreePointers?: number };
 export type NBASimulationPlayer = { id: string; name: string; teamId: string; position: string; status: string; excluded: boolean };
 export type NBARange = { mean: number; p10: number; p90: number };
-export type NBAPlayerProjection = NBASimulationPlayer & { games: number; limited: boolean; stats: Record<keyof NBAStatLine | 'pra', NBARange>;
+export type NBAPlayerProjection = NBASimulationPlayer & { games: number; limited: boolean;
+  stats: Record<'points' | 'rebounds' | 'assists' | 'minutes' | 'pra', NBARange> & { threePointers?: NBARange };
   matchup: string };
 export type NBATeamProjection = NBASimulationTeam & { score: NBARange; winProbability: number; players: NBAPlayerProjection[];
   pace: number; offensiveRating: number; opponentDefensiveRating: number };
@@ -97,7 +98,17 @@ function statLine(names: unknown, values: unknown): NBAStatLine | null {
   const minutes = time && Number(time[2]) < 60 ? Number(time[1]) + Number(time[2]) / 60 : read('MIN');
   const points = read('PTS'), rebounds = read('REB'), assists = read('AST');
   if (![points, rebounds, assists, minutes].every(n => n !== undefined && Number.isFinite(n) && n >= 0)) return null;
-  return { points: points!, rebounds: rebounds!, assists: assists!, minutes: minutes! };
+  const threeIndex = labels.findIndex(label => ['3PT', '3PM', '3FG'].includes(label.toUpperCase()));
+  let threePointers: number | undefined;
+  if (threeIndex >= 0) {
+    const raw = String(stats[threeIndex] ?? ''), pair = raw.match(/^(\d+)-(\d+)$/);
+    threePointers = pair ? Number(pair[1]) : numeric(raw);
+    if (threePointers === undefined || !Number.isInteger(threePointers) || threePointers < 0
+      || threePointers * 3 > points! || pair && threePointers > Number(pair[2]))
+      throw new Error('NBA final player three-point statistics are invalid.');
+  }
+  return { points: points!, rebounds: rebounds!, assists: assists!, minutes: minutes!,
+    ...(threePointers === undefined ? {} : { threePointers }) };
 }
 export function nbaSimulationBox(raw: unknown, eventId: string, cutoff: number): NBAObservation[] {
   const game = readNBASimulationGame(raw, eventId), data = object(raw);
@@ -146,6 +157,8 @@ export function nbaSimulationBox(raw: unknown, eventId: string, cutoff: number):
     opponentId: game[key === 'home' ? 'away' : 'home'].id, points: own.score, allowed: opponent.score,
     possessions: (own.possessions + opponent.possessions) / 2, allowedRebounds: opponent.rebounds,
     allowedAssists: opponent.assists, players: own.players, completePlayers: own.completePlayers,
+    ...(opponent.completePlayers && Object.values(opponent.players).every(line => line.threePointers !== undefined)
+      ? { allowedThreePointers: Object.values(opponent.players).reduce((sum, line) => sum + line.threePointers!, 0) } : {}),
   }));
 }
 function seeded(seed: string) {
@@ -201,18 +214,20 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
     return rows;
   };
   const homePool = availabilityHistory(home, game.home), awayPool = availabilityHistory(away, game.away);
-  const pickHome = weighted(homePool), pickAway = weighted(awayPool), combined = [...homePool, ...awayPool];
+  const pickHome = weighted(homePool), pickAway = weighted(awayPool), combined = [...home, ...away];
   const sampledRating = mean(combined.map(row => row.points / row.possessions * 100));
   const sampledRebounds = mean(combined.map(row => row.allowedRebounds / row.possessions));
   const sampledAssists = mean(combined.map(row => row.allowedAssists / row.possessions));
   const teamRuns = { home: [] as number[], away: [] as number[] };
-  const playerRuns = new Map<string, Record<keyof NBAStatLine | 'pra', number[]>>();
+  const playerRuns = new Map<string, Record<'points' | 'rebounds' | 'assists' | 'minutes' | 'pra' | 'threePointers', number[]>>();
   const preparePlayers = (rows: NBAObservation[], opponent: NBAObservation[], team: NBASimulationTeam) => {
     const opponentId = team.id === game.home.id ? game.away.id : game.home.id;
     const candidates = roster.filter(player => player.teamId === team.id && !player.excluded).flatMap(player => {
       const samples = rows.filter(row => row.players[player.id]?.minutes > 0);
       if (samples.length < 3) { warnings.push(`${player.name}: fewer than three verified appearances; no personal projection.`); return []; }
-      const recent = samples.slice(0, 10), minutes = mean(recent.map(row => row.players[player.id].minutes));
+      const recent = samples.slice(0, 5);
+      const recentWeight = recent.reduce((sum, _, i) => sum + recent.length - i, 0);
+      const minutes = recent.reduce((sum, row, i) => sum + row.players[player.id].minutes * (recent.length - i), 0) / recentWeight;
       if (minutes < 3) return [];
       const total = samples.reduce((sum, row) => sum + row.players[player.id].minutes, 0);
       const rate = (stat: 'points' | 'rebounds' | 'assists') => samples.reduce((sum, row) => sum + row.players[player.id][stat], 0) / total;
@@ -229,7 +244,18 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
         // Shrink opponent-specific per-minute/pace evidence toward the player's broader history.
         return clamp(1 + (exposureRate(headToHead, stat) / baseline - 1) * headToHead.length / (headToHead.length + 8), .8, 1.2);
       };
+      const formFactor = (stat: 'points' | 'rebounds' | 'assists') => {
+        const recentMinutes = recent.reduce((sum, row) => sum + row.players[player.id].minutes, 0);
+        const baseline = exposureRate(samples, stat);
+        if (recent.length < 3 || baseline <= 0) return 1;
+        return clamp(1 + (exposureRate(recent, stat) / baseline - 1) * recentMinutes / (recentMinutes + 240), .85, 1.2);
+      };
+      const threes = samples.filter(row => row.players[player.id].threePointers !== undefined);
+      const threeMinutes = threes.reduce((sum, row) => sum + row.players[player.id].minutes, 0);
       return [{ player, samples, minutes: clamp(minutes, 0, 48), draw: weighted(samples),
+        formFactors: { points: formFactor('points'), rebounds: formFactor('rebounds'), assists: formFactor('assists') },
+        threes, drawThrees: threes.length >= 3 ? weighted(threes) : null,
+        threeRate: threeMinutes ? threes.reduce((sum, row) => sum + row.players[player.id].threePointers!, 0) / threeMinutes : 0,
         headToHead, opponentFactors: { points: opponentFactor('points'), rebounds: opponentFactor('rebounds'), assists: opponentFactor('assists') },
         foundation: { points: rate('points'), rebounds: rate('rebounds'), assists: rate('assists') } }];
     });
@@ -239,7 +265,14 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
     const pointsFactor = clamp(mean(opponent.slice(0, 20).map(row => row.allowed / row.possessions * 100)) / sampledRating, .85, 1.15);
     const reboundsFactor = clamp(mean(opponent.slice(0, 20).map(row => row.allowedRebounds / row.possessions)) / sampledRebounds, .85, 1.15);
     const assistsFactor = clamp(mean(opponent.slice(0, 20).map(row => row.allowedAssists / row.possessions)) / sampledAssists, .85, 1.15);
-    return { candidates, pointsFactor, reboundsFactor, assistsFactor };
+    const opponentThrees = opponent.slice(0, 20).filter(row => row.allowedThreePointers !== undefined);
+    const baselineThrees = combined.filter(row => row.allowedThreePointers !== undefined);
+    const baselineThreeRate = baselineThrees.length ? mean(baselineThrees.map(row => row.allowedThreePointers! / row.possessions)) : 0;
+    const threesFactor = opponentThrees.length >= 8 && baselineThrees.length >= 8 && baselineThreeRate > 0
+      ? clamp(mean(opponentThrees.map(row => row.allowedThreePointers! / row.possessions)) / baselineThreeRate, .85, 1.15) : 1;
+    const injuryContext = opponent.length < (team.id === game.home.id ? away.length : home.length)
+      ? ` Opponent defense uses ${opponent.length} verified complete games matching reported rotation absences.` : '';
+    return { candidates, pointsFactor, reboundsFactor, assistsFactor, threesFactor, injuryContext };
   };
   const hp = preparePlayers(homePool, awayPool, game.home), ap = preparePlayers(awayPool, homePool, game.away);
   let homeWins = 0;
@@ -255,11 +288,17 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
         const exposure = candidate.minutes * pace / sample.possessions;
         // A 12-minute personal-rate prior prevents a one-minute cameo becoming a full-game outlier.
         const rate = (stat: 'points' | 'rebounds' | 'assists') => (line[stat] + candidate.foundation[stat] * 12) / (line.minutes + 12);
-        const points = rate('points') * exposure * clamp(prepared.pointsFactor * candidate.opponentFactors.points, .75, 1.3);
-        const rebounds = rate('rebounds') * exposure * clamp(prepared.reboundsFactor * candidate.opponentFactors.rebounds, .75, 1.3);
-        const assists = rate('assists') * exposure * clamp(prepared.assistsFactor * candidate.opponentFactors.assists, .75, 1.3);
+        const points = rate('points') * exposure * clamp(prepared.pointsFactor * candidate.opponentFactors.points * candidate.formFactors.points, .7, 1.4);
+        const rebounds = rate('rebounds') * exposure * clamp(prepared.reboundsFactor * candidate.opponentFactors.rebounds * candidate.formFactors.rebounds, .7, 1.4);
+        const assists = rate('assists') * exposure * clamp(prepared.assistsFactor * candidate.opponentFactors.assists * candidate.formFactors.assists, .7, 1.4);
         const id = `${candidate.player.teamId}:${candidate.player.id}`;
-        const stats = playerRuns.get(id) ?? { points: [], rebounds: [], assists: [], minutes: [], pra: [] };
+        const stats = playerRuns.get(id) ?? { points: [], rebounds: [], assists: [], minutes: [], pra: [], threePointers: [] };
+        if (candidate.drawThrees) {
+          const threeSample = line.threePointers === undefined ? candidate.drawThrees() : sample;
+          const threeLine = threeSample.players[candidate.player.id];
+          const threeRate = (threeLine.threePointers! + candidate.threeRate * 12) / (threeLine.minutes + 12);
+          stats.threePointers.push(Math.min(points / 3, threeRate * candidate.minutes * pace / threeSample.possessions * prepared.threesFactor));
+        }
         stats.points.push(points); stats.rebounds.push(rebounds); stats.assists.push(assists);
         stats.minutes.push(candidate.minutes); stats.pra.push(points + rebounds + assists); playerRuns.set(id, stats);
       }
@@ -271,12 +310,15 @@ export function simulateNBAGame(game: NBASimulationGame, observations: NBAObserv
     ...team, score: range(teamRuns[key].map(n => n * (learning?.score.adjustment ?? 1))), winProbability: key === 'home' ? homeWins / nbaSimulationRuns : 1 - homeWins / nbaSimulationRuns,
     pace: round(mean([...rows, ...opponent].map(row => row.possessions))), offensiveRating: round(mean(rows.map(row => row.points / row.possessions * 100))),
     opponentDefensiveRating: round(mean(opponent.map(row => row.allowed / row.possessions * 100))),
-    players: prepared.candidates.map(({ player, samples, headToHead, opponentFactors }) => {
+    players: prepared.candidates.map(({ player, samples, headToHead, opponentFactors, formFactors, threes }) => {
       const stats = playerRuns.get(`${player.teamId}:${player.id}`)!;
       const adjusted = (key: 'points' | 'rebounds' | 'assists' | 'pra') => range(stats[key].map(n => n * (learning?.pra.adjustment ?? 1)));
       return { ...player, games: samples.length, limited: samples.length < 8, stats: {
-        points: adjusted('points'), rebounds: adjusted('rebounds'), assists: adjusted('assists'), minutes: range(stats.minutes), pra: adjusted('pra') },
+        points: adjusted('points'), rebounds: adjusted('rebounds'), assists: adjusted('assists'), minutes: range(stats.minutes), pra: adjusted('pra'),
+        ...(stats.threePointers.length ? { threePointers: range(stats.threePointers.map(n => n * (learning?.pra.adjustment ?? 1))) } : {}) },
         matchup: `${prepared.pointsFactor >= 1.02 ? 'Scoring runway' : prepared.pointsFactor <= .98 ? 'Tough scoring test' : 'Balanced scoring matchup'} · ${samples.length} sampled appearances; recent-minute role, not a confirmed starter. `
+          + `Recent-form adjustments PTS ${Math.round((formFactors.points - 1) * 100)}%, REB ${Math.round((formFactors.rebounds - 1) * 100)}%, AST ${Math.round((formFactors.assists - 1) * 100)}%, shrunk by observed minutes.${prepared.injuryContext} `
+          + (threes.length >= 3 ? `3PM uses ${threes.length} verified personal appearances. ` : '3PM unavailable: fewer than three verified personal appearances. ')
           + (headToHead.length >= 3
             ? `${headToHead.length} opponent appearances (${headToHead.filter(row => row.season === game.season).length} current season / ${headToHead.filter(row => row.season === game.season - 1).length} prior season); opponent-history adjustments PTS ${Math.round((opponentFactors.points - 1) * 100)}%, REB ${Math.round((opponentFactors.rebounds - 1) * 100)}%, AST ${Math.round((opponentFactors.assists - 1) * 100)}%, shrunk for sample size.`
             : `${headToHead.length}/3 required current/prior-season opponent appearances; no personal head-to-head adjustment.`),
@@ -302,7 +344,9 @@ export function readNBAGameSimulation(value: unknown, eventId: string, kickoff: 
     const p = object(value);
     return validId(p.id) && typeof p.name === 'string' && !!p.name && p.teamId === teamId && typeof p.position === 'string'
       && typeof p.status === 'string' && p.excluded === false && count(p.games) && Number(p.games) >= 3 && typeof p.limited === 'boolean'
-      && typeof p.matchup === 'string' && [...statKeys, 'pra'].every(stat => validRange(object(p.stats)[stat]));
+      && typeof p.matchup === 'string' && [...statKeys, 'pra'].every(stat => validRange(object(p.stats)[stat]))
+      && (object(p.stats).threePointers === undefined || validRange(object(p.stats).threePointers)
+        && Number(object(object(p.stats).threePointers).mean) * 3 <= Number(object(object(p.stats).points).mean) + .03);
   };
   const validTeam = (value: unknown, id: string) => {
     const t = object(value);

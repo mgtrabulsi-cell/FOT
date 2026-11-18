@@ -117,25 +117,112 @@ test('NBA player tables display whole-number projections without rounding the st
   player.stats.rebounds.mean = 8.3;
   player.stats.assists.mean = 6.8;
   player.stats.pra.mean = 43.8;
+  player.stats.threePointers = { mean: 3.7, p10: 1.2, p90: 5.6 };
+  const slots = [];
+  let cursor = 0;
   const jsx = (type, props) => ({ type, props });
   const context = vm.createContext({ exports: {}, require(name) {
-    if (name === 'react') return { useState: initial => [initial, () => {}] };
+    if (name === 'react') return { useState: initial => {
+      const index = cursor++;
+      if (!(index in slots)) slots[index] = initial;
+      return [slots[index], value => slots[index] = value];
+    } };
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     return {};
   } });
   vm.runInContext(compile('../src/NBAGameSimulation.tsx'), context);
-  const tree = context.exports.default({ game: { ...game, eventId: game.id }, forecast });
+  const render = (eventId = game.id) => {
+    cursor = 0;
+    return context.exports.default({ game: { ...game, eventId }, forecast });
+  };
+  let tree = render();
   const nodes = [];
   const visit = value => {
     if (Array.isArray(value)) value.forEach(visit);
     else if (value && typeof value === 'object') { nodes.push(value); visit(value.props?.children); }
   };
   visit(tree);
+  assert.equal(nodes.filter(node => node.props?.role === 'region').length, 1);
+  assert.equal(nodes.find(node => node.props?.role === 'region').props['aria-label'], 'Away Team projected player statistics');
+  const homeButton = nodes.find(node => node.type === 'button' && node.props.children === 'HOM');
+  homeButton.props.onClick();
+  tree = render(); nodes.length = 0; visit(tree);
+  assert.equal(nodes.find(node => node.props?.role === 'region').props['aria-label'], 'Home Team projected player statistics');
+  assert.equal(nodes.find(node => node.type === 'button' && node.props.children === 'HOM').props['aria-pressed'], true);
   const row = nodes.find(node => node.type === 'tr' && node.props.children[0]?.props.children[0] === player.name);
   const values = row.props.children.filter(node => node.type === 'td').map(node => node.props.children);
   assert.equal(values[1], '29'); assert.equal(values[2], '8'); assert.equal(values[3], '7');
-  assert.equal(values[4].props.children, '44');
+  assert.equal(values[4], '4');
+  assert.equal(values[5].props.children, '44');
   assert.equal(player.stats.points.mean, 28.7, 'Display formatting must not mutate evidence or learning baselines');
+  tree = render('901'); nodes.length = 0; visit(tree);
+  assert.equal(nodes.find(node => node.props?.role === 'region').props['aria-label'], 'Away Team projected player statistics', 'A different game resets the team selection');
+});
+test('NBA three-pointers retain real zeroes, reject invalid made/attempted pairs and preserve older archives without invented stats', () => {
+  const raw = summary('800', new Date(now - 86400000).toISOString());
+  const category = raw.boxscore.players[0].statistics[0];
+  category.labels.push('3PT');
+  category.athletes.forEach((row, i) => row.stats.push(i ? '0-3' : '3-7'));
+  const parsed = nbaSimulationBox(raw, '800', now);
+  assert.equal(parsed[0].players['110'].threePointers, 3);
+  assert.equal(parsed[0].players['111'].threePointers, 0);
+  assert.equal(parsed[1].players['210'].threePointers, undefined);
+  category.athletes[0].stats[4] = '4-3';
+  assert.throws(() => nbaSimulationBox(raw, '800', now), /three-point statistics/);
+  const rows = observations();
+  rows.forEach(row => Object.values(row.players).forEach((line, i) => line.threePointers = i ? 0 : 3));
+  const forecast = simulateNBAGame(game, rows, roster, now);
+  assert.equal(parse(forecast), forecast);
+  assert.ok(forecast.home.players.find(p => p.id === '110').stats.threePointers.mean > 0);
+  assert.equal(forecast.home.players.find(p => p.id === '111').stats.threePointers.mean, 0);
+  for (const team of [forecast.home, forecast.away]) for (const p of team.players) {
+    assert.ok(p.stats.threePointers.mean * 3 <= p.stats.points.mean + .03);
+    assert.ok(Math.abs(p.stats.pra.mean - p.stats.points.mean - p.stats.rebounds.mean - p.stats.assists.mean) < .02);
+  }
+  const old = simulateNBAGame(game, observations(), roster, now);
+  assert.equal(parse(old), old);
+  assert.equal(old.home.players[0].stats.threePointers, undefined);
+  const invalid = structuredClone(forecast);
+  invalid.home.players[0].stats.threePointers.mean = 999;
+  assert.throws(() => parse(invalid), /invalid forecast/);
+  const thin = observations();
+  thin.filter(row => row.teamId === '1').slice(0, 2).forEach(row => row.players['110'].threePointers = 3);
+  assert.equal(simulateNBAGame(game, thin, roster, now).home.players.find(p => p.id === '110').stats.threePointers, undefined);
+});
+test('NBA supported recent form and role increase main forecasts while a neutral history has no forced star boost', () => {
+  const rows = observations();
+  const player = input => simulateNBAGame(game, input, roster, now).home.players.find(p => p.id === '110');
+  rows.filter(row => row.teamId === '1').forEach(row => {
+    row.players['110'] = { points: 25, rebounds: 8, assists: 6, minutes: 32 };
+  });
+  const baseline = player(rows);
+  assert.match(baseline.matchup, /Recent-form adjustments PTS 0%, REB 0%, AST 0%/);
+  const strong = structuredClone(rows);
+  strong.filter(row => row.teamId === '1').slice(0, 5).forEach(row => {
+    row.players['110'] = { points: 40, rebounds: 12, assists: 10, minutes: 38 };
+  });
+  const raised = player(strong);
+  assert.ok(raised.stats.pra.mean > baseline.stats.pra.mean * 1.2);
+  assert.ok(raised.stats.minutes.mean > baseline.stats.minutes.mean);
+  assert.match(raised.matchup, /Recent-form adjustments PTS [1-9]/);
+});
+test('NBA opposing rotation absences change personal PRA only with enough verified complete without-player games', () => {
+  const rows = observations(), players = structuredClone(roster);
+  rows.filter(row => row.teamId === '2').forEach((row, i) => {
+    row.completePlayers = true;
+    row.allowed = i < 8 ? 115 : 70;
+    if (i < 8) delete row.players['210'];
+  });
+  const ownPlayer = (input, roster) => simulateNBAGame(game, input, roster, now).home.players.find(p => p.id === '110');
+  const healthy = ownPlayer(rows, players);
+  players.find(p => p.id === '210').excluded = true;
+  players.find(p => p.id === '210').status = 'Out';
+  const injured = ownPlayer(rows, players);
+  assert.ok(injured.stats.points.mean > healthy.stats.points.mean * 1.05);
+  assert.match(injured.matchup, /Opponent defense uses 8 verified complete games/);
+  const incomplete = structuredClone(rows);
+  incomplete.filter(row => row.teamId === '2').forEach(row => row.completePlayers = false);
+  assert.doesNotMatch(ownPlayer(incomplete, players).matchup, /Opponent defense uses/);
 });
 test('NBA learning retains explicit neutral baselines and no correction activates without validated settled evidence', () => {
   const baseline = simulateNBAGame(game, observations(), roster, now, neutral());

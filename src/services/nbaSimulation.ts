@@ -73,7 +73,9 @@ function validActuals(value: unknown, forecast: NBAGameSimulation): value is NBA
       if (!/^\d{1,12}$/.test(id) || !line || typeof line !== 'object' || Array.isArray(line)) return false;
       const row = line as Record<string, unknown>;
       return ['points', 'rebounds', 'assists', 'minutes'].every(stat =>
-        typeof row[stat] === 'number' && Number.isFinite(row[stat]) && row[stat] >= 0);
+        typeof row[stat] === 'number' && Number.isFinite(row[stat]) && row[stat] >= 0)
+        && (row.threePointers === undefined || typeof row.threePointers === 'number'
+          && Number.isInteger(row.threePointers) && row.threePointers >= 0 && row.threePointers * 3 <= Number(row.points));
     });
   };
   return 'home' in value && 'away' in value && validSide(value.home, forecast.homeTeamId) && validSide(value.away, forecast.awayTeamId);

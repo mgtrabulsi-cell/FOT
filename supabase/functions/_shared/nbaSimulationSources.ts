@@ -30,7 +30,7 @@ export async function nbaSimulationRosters(game: NBASimulationGame, get: Get) {
 }
 export async function advanceNBASimulation(game: NBASimulationGame, job: NBASimulationJob, get: Get, cache: SimulationCache,
   roster: Awaited<ReturnType<typeof nbaSimulationRosters>>, now: number, learning: NBASimulationLearning) {
-  const key = (id: string) => `nba:simulation:box:v1:${id}`;
+  const key = (id: string) => `nba:simulation:box:v2:${id}`;
   const ids = [...new Set(job.references.map(row => row.id))];
   const boxes = await cache.readMany<NBAObservation[]>(ids.map(key));
   // Alternate teams so a first usable forecast does not wait for one team's entire backfill.

@@ -6,6 +6,34 @@ import ts from 'typescript';
 import * as accuracy from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 import * as simulation from '../supabase/functions/_shared/nflSimulation.ts';
 import { readNFLClosingSpread } from '../src/services/nflClosingSpread.ts';
+import { zipSync, unzipSync } from 'fflate';
+
+function slidesHarness(navigator = {}) {
+  const context = vm.createContext({ exports: {}, Blob, File, navigator, Error, Uint8Array,
+    require: () => ({ zipSync }) });
+  vm.runInContext(ts.transpileModule(readFileSync(new URL('../src/services/graphicSlides.ts', import.meta.url), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context);
+  return context.exports;
+}
+test('Mobile slide archive contains every PNG in order and native sharing receives all original files', async () => {
+  let shared;
+  const api = slidesHarness({ canShare: ({ files }) => files.length === 21, share: async payload => { shared = payload; } });
+  const blobs = Array.from({ length: 21 }, (_, i) => new Blob([`image-${i}`], { type: 'image/png' }));
+  const archive = await api.graphicSlidesArchive(blobs, 'TD.png');
+  assert.equal(archive.type, 'application/zip');
+  const files = unzipSync(new Uint8Array(await archive.arrayBuffer()));
+  assert.deepEqual(Object.keys(files), blobs.map((_, i) => `TD-${i + 1}-of-21.png`));
+  assert.equal(new TextDecoder().decode(files['TD-21-of-21.png']), 'image-20');
+  await api.shareGraphicSlides(blobs, 'TD.png');
+  assert.equal(shared.files.length, 21);
+  assert.equal(shared.files[20].name, 'TD-21-of-21.png');
+  assert.equal(await shared.files[20].text(), 'image-20');
+  await assert.rejects(slidesHarness().shareGraphicSlides(blobs, 'TD.png'), /ZIP/);
+  const cancelled = new Error('Share cancelled'); cancelled.name = 'AbortError';
+  await assert.rejects(slidesHarness({ canShare: () => true, share: async () => { throw cancelled; } })
+    .shareGraphicSlides(blobs, 'TD.png'), error => error.name === 'AbortError');
+  await assert.rejects(api.graphicSlidesArchive([], 'TD.png'), /No graphic/);
+});
 
 const now = Date.parse('2026-11-08T23:00:00Z');
 const scopes = [{ date: '2026-11-05T23:00:00Z' }, { date: '2026-11-09T23:00:00Z' }];
@@ -120,6 +148,7 @@ test('Multi-slide download exposes every numbered save link and cleans up old pr
         useEffect(fn) { cleanup = fn(); },
       };
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+      if (name.includes('graphicSlides')) return slidesHarness();
       return {};
     } });
   vm.runInContext(ts.transpileModule(readFileSync(new URL('../src/GamewaireResultsDownload.tsx', import.meta.url), 'utf8'),
@@ -134,14 +163,20 @@ test('Multi-slide download exposes every numbered save link and cleans up old pr
   assert.equal(details.props.open, true);
   assert.equal(details.props.children[1].length, 2);
   assert.equal(details.props.children[1][1].props.children[1].props.download, 'Scorers-2-of-2.png');
-  assert.deepEqual(downloads.map(row => row.filename), ['Scorers-1-of-2.png', 'Scorers-2-of-2.png']);
+  assert.deepEqual(downloads.map(row => row.filename), ['Scorers.zip'], 'Only one download is requested, avoiding mobile multi-download blocking');
+  assert.ok(tree.props.children.some(row => row?.props?.className === 'gai-slide-actions'));
+  tree.props.children.find(row => row?.props?.className === 'gai-slide-actions').props.children[1].props.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  tree = render();
+  assert.match(tree.props.children.find(row => row?.props?.role === 'alert').props.children, /ZIP/);
+  assert.equal(tree.props.children.find(row => row?.type === 'details').props.children[1].length, 2, 'Every individual slide remains available if native sharing is unsupported');
   generated = new Blob(['single']);
   tree.props.children[0].props.onClick(); await new Promise(resolve => setImmediate(resolve));
   render();
-  assert.deepEqual(revoked, ['blob:1', 'blob:2']);
-  assert.equal(downloads[2].filename, 'Scorers.png');
-  cleanup();
   assert.deepEqual(revoked, ['blob:1', 'blob:2', 'blob:3']);
+  assert.equal(downloads[1].filename, 'Scorers.png');
+  cleanup();
+  assert.deepEqual(revoked, ['blob:1', 'blob:2', 'blob:3', 'blob:4']);
 });
 test('Touchdown exports follow every displayed allocated call and do not require an unreported zero in the other TD category', () => {
   const { simulationTouchdownSnapshot } = graphicHarness(), data = report();

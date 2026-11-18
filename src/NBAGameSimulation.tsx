@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, CSSProperties } from 'react';
 import TeamAbbrMark from './TeamAbbrMark';
 import DraggableTabs from './DraggableTabs';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
@@ -13,6 +13,7 @@ import type { Game } from './services/sportsData';
 const value = (n: number) => Math.round(n).toString();
 const stamp = (time: string) => new Date(time).toLocaleString();
 const line = (player: NBAPlayerProjection) => `${value(player.stats.points.mean)} PTS / ${value(player.stats.rebounds.mean)} REB / ${value(player.stats.assists.mean)} AST`;
+const gameLine = (player: NBAPlayerProjection) => `${line(player)} / ${player.stats.threePointers ? value(player.stats.threePointers.mean) : 'Unavailable'} 3PM`;
 function NBAGraphicDownload({ generate, ...props }: Omit<ComponentProps<typeof ResultsGraphicDownload>, 'generate'> & {
   generate: (signal: AbortSignal) => Promise<Blob>;
 }) {
@@ -64,7 +65,9 @@ export function NBADailyPerformers({ forecasts, games, date }: { forecasts: NBAG
   </section>;
 }
 export default function NBAGameSimulation({ game, forecast, error }: { game: Game; forecast?: NBAGameSimulation; error?: string }) {
-  const [stat, setStat] = useState<'pra' | 'points' | 'rebounds' | 'assists'>('pra');
+  const [stat, setStat] = useState<'pra' | 'points' | 'rebounds' | 'assists' | 'threePointers'>('pra');
+  const [selection, setSelection] = useState({ eventId: game.eventId, side: 'away' as 'home' | 'away' });
+  const selectedSide = selection.eventId === game.eventId ? selection.side : 'away';
   const ready = forecast?.status === 'ready' && forecast.home && forecast.away;
   const generate = async (signal: AbortSignal) => {
     const refreshed = await loadNBASimulation(game, signal);
@@ -75,7 +78,7 @@ export default function NBAGameSimulation({ game, forecast, error }: { game: Gam
           line: `${value(team.pace)} sampled possessions | ${team.players.length} supported players`,
           note: `${refreshed.history[team.id === refreshed.homeTeamId ? 'home' : 'away']}/100 historical games | ${refreshed.lockedAt ? 'Locked' : 'Refreshing pregame'}` },
         ...team.players.map(player => ({ title: player.name, detail: `${player.position} | ${player.status} | ${player.games} sampled appearances`,
-          line: `${line(player)} | ${value(player.stats.pra.mean)} PRA`, note: `${value(player.stats.minutes.mean)} MIN | ${player.limited ? 'Limited sample' : 'Personal game evidence'} | Not a confirmed starter` })),
+          line: `${gameLine(player)} | ${value(player.stats.pra.mean)} PRA`, note: `${value(player.stats.minutes.mean)} MIN | ${player.limited ? 'Limited sample' : 'Personal game evidence'} | Not a confirmed starter` })),
       ]));
   };
   return <section className="nba-simulation-panel" aria-label="NBA GamewAIre simulation">
@@ -90,15 +93,21 @@ export default function NBAGameSimulation({ game, forecast, error }: { game: Gam
       <p className="nba-note">{forecast.runs.toLocaleString()} joint resamples · {forecast.history.away}/{forecast.history.home} historical team games
         · Saved {stamp(forecast.forecastAt!)} · {forecast.lockedAt ? 'Pregame locked; only verified availability changes may revise before tipoff' : 'Automatic pregame refresh every 10 minutes'}
         {forecast.refreshing ? ' · Backfill / refresh continues' : ''}</p>
+      <div className="nba-segments nba-team-toggle" role="group" aria-label="Projected team">
+        {(['away', 'home'] as const).map(side => <button key={side} type="button" aria-pressed={selectedSide === side}
+          style={{ '--team-bar-color': game[side].color } as CSSProperties}
+          onClick={() => setSelection({ eventId: game.eventId, side })}>{game[side].abbr}</button>)}
+      </div>
       <DraggableTabs className="nfl-player-stat-tabs" ariaLabel="NBA projected player statistics" selected={stat} onSelect={setStat}
-        options={[{ key: 'pra', label: 'PRA' }, { key: 'points', label: 'Points' }, { key: 'rebounds', label: 'Rebounds' }, { key: 'assists', label: 'Assists' }]} />
-      {[forecast.away!, forecast.home!].map(team => <section key={team.id}><h4>{team.name} · Usage-based rotation</h4>
+        options={[{ key: 'pra', label: 'PRA' }, { key: 'points', label: 'Points' }, { key: 'rebounds', label: 'Rebounds' }, { key: 'assists', label: 'Assists' }, { key: 'threePointers', label: '3PM' }]} />
+      {[forecast[selectedSide]!].map(team => <section key={team.id}><h4>{team.name} · Usage-based rotation</h4>
         <div className="nba-table-scroll" role="region" aria-label={`${team.name} projected player statistics`} tabIndex={0}>
-          <table className="nba-table"><thead><tr><th>Player</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>PRA</th><th>{stat.toUpperCase()} P10–P90</th></tr></thead>
-            <tbody>{[...team.players].sort((a, b) => b.stats[stat].mean - a.stats[stat].mean || a.id.localeCompare(b.id)).map(player =>
+          <table className="nba-table"><thead><tr><th>Player</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>3PM</th><th>PRA</th><th>{stat === 'threePointers' ? '3PM' : stat.toUpperCase()} P10–P90</th></tr></thead>
+            <tbody>{[...team.players].sort((a, b) => (b.stats[stat]?.mean ?? -1) - (a.stats[stat]?.mean ?? -1) || a.id.localeCompare(b.id)).map(player =>
               <tr key={player.id}><th scope="row">{player.name}<small>{player.position} · {player.status}{player.limited ? ' · Limited sample' : ''}</small></th>
                 <td>{value(player.stats.minutes.mean)}</td><td>{value(player.stats.points.mean)}</td><td>{value(player.stats.rebounds.mean)}</td><td>{value(player.stats.assists.mean)}</td>
-                <td><b>{value(player.stats.pra.mean)}</b></td><td>{value(player.stats[stat].p10)}–{value(player.stats[stat].p90)}</td></tr>)}</tbody></table>
+                <td>{player.stats.threePointers ? value(player.stats.threePointers.mean) : 'Unavailable'}</td>
+                <td><b>{value(player.stats.pra.mean)}</b></td><td>{player.stats[stat] ? `${value(player.stats[stat]!.p10)}–${value(player.stats[stat]!.p90)}` : 'Unavailable'}</td></tr>)}</tbody></table>
         </div>{!team.players.length && <p>No players have sufficient verified personal evidence.</p>}
         <details><summary>Player matchup adjustments</summary>{team.players.map(player => <p key={player.id}><b>{player.name}:</b> {player.matchup}</p>)}</details>
       </section>)}
@@ -144,8 +153,8 @@ export function NBASimulationResults({ games }: { games: Game[] }) {
           note: 'Verified final scores; expected simulated scores are not an exact-score call.' },
         ...[forecast.away!, forecast.home!].flatMap(team => team.players.flatMap(player => {
           const actual = [actuals.away, actuals.home].find(side => side.id === team.id)?.players[player.id];
-          return actual ? [{ title: `${player.name} | ${team.abbr}`, detail: `SIM ${line(player)}`,
-            line: `ACTUAL ${actual.points} PTS / ${actual.rebounds} REB / ${actual.assists} AST`,
+          return actual ? [{ title: `${player.name} | ${team.abbr}`, detail: `SIM ${gameLine(player)}`,
+            line: `ACTUAL ${actual.points} PTS / ${actual.rebounds} REB / ${actual.assists} AST / ${actual.threePointers ?? 'Unavailable'} 3PM`,
             note: `PRA: ${value(player.stats.pra.mean)} projected / ${actual.points + actual.rebounds + actual.assists} actual` }] : [];
         }))];
       }));
@@ -161,12 +170,13 @@ export function NBASimulationResults({ games }: { games: Game[] }) {
         {row.actuals ? ` · Final ${row.actuals.away.score}–${row.actuals.home.score}` : ' · Awaiting verified final'}</summary>
         <p>Pregame expected score: {value(row.forecast.away!.score.mean)}–{value(row.forecast.home!.score.mean)} · Saved {stamp(row.forecast.forecastAt!)}</p>
         {[row.forecast.away!, row.forecast.home!].map(team => <div key={team.id} className="nba-table-scroll" role="region" aria-label={`${team.name} PRA results`} tabIndex={0}>
-          <table className="nba-table"><thead><tr><th>{team.abbr} player</th><th>Sim PRA</th><th>Actual PRA</th><th>Difference</th></tr></thead>
+          <table className="nba-table"><thead><tr><th>{team.abbr} player</th><th>Sim PRA</th><th>Actual PRA</th><th>Difference</th><th>Sim 3PM</th><th>Actual 3PM</th></tr></thead>
             <tbody>{team.players.map(player => {
               const actual = row.actuals && [row.actuals.away, row.actuals.home].find(side => side.id === team.id)?.players[player.id];
               const pra = actual ? actual.points + actual.rebounds + actual.assists : null;
               return <tr key={player.id}><th scope="row">{player.name}</th><td>{value(player.stats.pra.mean)}</td>
-                <td>{pra === null ? row.actuals ? 'Not verified / DNP' : 'Pending' : pra}</td><td>{pra === null ? '—' : value(Math.abs(pra - player.stats.pra.mean))}</td></tr>;
+                <td>{pra === null ? row.actuals ? 'Not verified / DNP' : 'Pending' : pra}</td><td>{pra === null ? '—' : value(Math.abs(pra - player.stats.pra.mean))}</td>
+                <td>{player.stats.threePointers ? value(player.stats.threePointers.mean) : 'Unavailable'}</td><td>{actual ? actual.threePointers ?? 'Unavailable' : row.actuals ? 'Not verified / DNP' : 'Pending'}</td></tr>;
             })}</tbody></table>
         </div>)}
       </details>)}
