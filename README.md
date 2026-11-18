@@ -146,6 +146,8 @@ Validate locally with `node --test scripts/gamewaire-soccer.test.mjs scripts/gam
 
 ### NFL game simulations
 
+In **The Wire → Simulation Results**, use **Results week** to reopen a past regular-season week and leave **All games** selected to access its Instagram results graphics, including touchdown slides. This selector stays synchronized with the main NFL week selector. Loading/error states hide the previous slate's download controls so a week change cannot export stale games; retry is available without leaving results. Exports read saved pregame forecasts and verified actuals only. Weeks/games without a saved forecast remain explicitly unavailable, never regenerated after kickoff.
+
 Simulation results graphics share a consistent 14px italic **GamewAIre Sim** caption, red AI lettering and one measured font-native space before “Sim.” Caption/value baselines and actual-value boxes have reserved padding across game results, player props, full performances, category leaders and full-slate graphics. The four-category player graphic displays whole-number simulated yards, catches and total TDs; combined TD means are added before rounding. Ranking, qualifying minimums and accuracy labels continue using original unrounded means, and the footer explains that distinction.
 
 ### NBA GamewAIre simulations

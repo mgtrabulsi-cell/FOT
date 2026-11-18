@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import TeamAbbrMark from './TeamAbbrMark';
 import NFLGameSimulationPanel from './NFLGameSimulation';
 import { NFLSimulationResults } from './NFLSimulationAccuracy';
+import type { SimulationResultsWeek } from './NFLSimulationAccuracy';
 import { useNFLBoardSimulations } from './useNFLBoardSimulations';
 import { projectedSimulationScore, selectedSimulationScenario } from '../supabase/functions/_shared/nflSimulation';
 import { useSwipeBack } from './useSwipeBack';
@@ -42,6 +43,7 @@ import type { TeamComparisonRank, TeamComparisonRanks } from './services/teamCom
 
 import type { WireTeamPicks } from './services/wireTeamPicks';
 type TheWireProps = {
+  resultsWeek?: SimulationResultsWeek;
   teamPicks?: WireTeamPicks;
   games: Game[];
   /** Shown only while no games are available: loading placeholders or a retryable error instead of an empty board. */
@@ -330,7 +332,7 @@ function LatestPlay({ play, game }: { play: NFLLastPlay; game: Game }) {
   );
 }
 
-export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenTeamLog, onBackToGames, onDetailOpenChange, backLabel = 'All games', gameListLabel = 'NFL GAMES · THIS WEEK', onOpenPlayer, now }: TheWireProps) {
+export default function TheWire({ games, resultsWeek, teamPicks = {}, scoreboardStatus = 'ready', onRetryScoreboard, query, favorites, featuredFavoriteTeamId, onToggleFavorite, initialGameId, openGameId, onSelectGame, onOpenStatHub, onOpenTeamLog, onBackToGames, onDetailOpenChange, backLabel = 'All games', gameListLabel = 'NFL GAMES · THIS WEEK', onOpenPlayer, now }: TheWireProps) {
   const nflGames = useMemo(() => games.filter((g) => g.sport === 'Football').sort(compareKickoff), [games]);
   const userSelectedRef = useRef(false);
   const openRequest = openGameId && nflGames.some((g) => g.id === openGameId) ? openGameId : null;
@@ -934,7 +936,8 @@ export default function TheWire({ games, teamPicks = {}, scoreboardStatus = 'rea
 
   if (resultsOpen) return <div className="the-wire-container">
     {pregameToggle}
-    <NFLSimulationResults key={nflGames.map(game => `${game.eventId}:${game.date}`).sort().join(',')} games={nflGames} />
+    <NFLSimulationResults key={`${resultsWeek?.selected ?? 'current'}:${nflGames.map(game => `${game.eventId}:${game.date}`).sort().join(',')}`}
+      games={nflGames} weekSelection={resultsWeek} />
   </div>;
   if (!detailOpen) {
     const liveCount = nflGames.filter((g) => g.status === 'LIVE').length;

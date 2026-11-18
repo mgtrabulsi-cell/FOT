@@ -1406,6 +1406,9 @@ function App() {
           {notificationEventId && !notificationGame && !notificationGameError && <p role="status">Loading your notification matchup...</p>}
           {(!notificationEventId || notificationGame?.eventId === notificationEventId) && <TheWire
             key={wireBoardKey}
+            resultsWeek={{ selected: selectedNFLWeek, current: currentNFLWeek, onChange: setSelectedNFLWeek,
+              loading: scoreboardStatus === 'loading' || !lockerRoomReady, error: scoreboardStatus === 'error',
+              onRetry: () => { setScoreboardStatus('loading'); setScoreboardRetry(value => value + 1); } }}
             teamPicks={wireTeams.badges}
             games={notificationGame && !games.some((game) => game.id === notificationGame.id) ? [notificationGame, ...games] : games}
             scoreboardStatus={scoreboardStatus}

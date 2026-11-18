@@ -387,6 +387,13 @@ test('Wire toggle shows simulated scores, opens the simulation directly, and res
   toggle('Simulation Results').props.onClick(); tree = render();
   assert.equal(toggle('Simulation Results').props['aria-pressed'], true);
   assert.ok(tree.some(node => node.type === 'ResultsArea'));
+  props.resultsWeek = { selected: 10, current: 11, onChange() {}, loading: true, error: false, onRetry() {} };
+  tree = render();
+  assert.equal(tree.find(node => node.type === 'ResultsArea').props.weekSelection, props.resultsWeek);
+  props.resultsWeek = { ...props.resultsWeek, selected: 9 };
+  tree = render();
+  assert.equal(toggle('Simulation Results').props['aria-pressed'], true, 'Changing weeks keeps the results area open');
+  assert.equal(tree.find(node => node.type === 'ResultsArea').props.weekSelection.selected, 9);
   assert.ok(!tree.some(node => node.props.className === 'wire-board-score' || node.type === 'SimulationPanel'));
   toggle('Matchups').props.onClick(); tree = render();
   assert.equal(toggle('Simulation Results').props['aria-pressed'], false);
@@ -689,6 +696,49 @@ test('Dedicated results area selects individual games and explains games that ha
   assert.equal(area().props.weekly, false);
   tree.find(node => node.type === 'select').props.onChange({ target: { value: '456' } }); tree = render();
   assert.ok(tree.some(node => node.props.role === 'status' && /after a game finishes/.test(node.props.children)));
+});
+test('Past-week results selection loads archived slates and hides graphics while the selected week is loading or failed', () => {
+  const h = hooks(), changes = [], jsx = (type, props) => ({ type, props });
+  let retries = 0;
+  const context = vm.createContext({ exports: {}, require(name) {
+    if (name === 'react') return h.react;
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    return {};
+  } });
+  vm.runInContext(compile('../src/NFLSimulationAccuracy.tsx'), context);
+  const props = { games: [{ ...game, status: 'FINAL' }], weekSelection: {
+    selected: null, current: 11, onChange: week => changes.push(week),
+    loading: false, error: false, onRetry: () => retries++,
+  } };
+  const render = () => { h.reset(); return elements(context.exports.NFLSimulationResults(props)); };
+  let tree = render();
+  const selector = tree.find(node => node.props['aria-label'] === 'Simulation results week');
+  assert.equal(selector.props.value, 'current');
+  assert.equal(elements(selector).filter(node => node.type === 'option').length, 19);
+  for (const value of ['10', '1', 'current', '0', '19', '10x']) selector.props.onChange({ target: { value } });
+  assert.deepEqual(changes, [10, 1, null]);
+  props.weekSelection.selected = 10;
+  props.weekSelection.loading = true;
+  tree = render();
+  assert.equal(tree.find(node => node.props['aria-label'] === 'Simulation results week').props.value, 10);
+  assert.ok(tree.some(node => node.props.role === 'status' && /Loading selected week/.test(node.props.children)));
+  assert.equal(tree.some(node => node.type?.name === 'NFLSimulationAccuracy'), false, 'The previous slate cannot be downloaded under the new week');
+  props.weekSelection.loading = false; props.weekSelection.error = true;
+  tree = render();
+  assert.ok(tree.some(node => node.props.role === 'alert'));
+  assert.equal(tree.some(node => node.type?.name === 'NFLSimulationAccuracy'), false);
+  tree.find(node => node.type === 'button' && node.props.children === 'Retry week').props.onClick();
+  assert.equal(retries, 1);
+  props.weekSelection.error = false;
+  const past = { ...game, eventId: 'old-event', date: '2026-11-08T18:00:00Z', status: 'FINAL' };
+  props.games = [past];
+  tree = render();
+  const accuracy = tree.find(node => node.type?.name === 'NFLSimulationAccuracy');
+  assert.deepEqual(accuracy.props.games, [past]);
+  assert.equal(accuracy.props.weekly, true, 'All weekly graphics receive the selected archived slate');
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /resultsWeek=\{\{ selected: selectedNFLWeek, current: currentNFLWeek, onChange: setSelectedNFLWeek/);
+  assert.match(app, /loading: scoreboardStatus === 'loading' \|\| !lockerRoomReady/);
 });
 test('Results controls have explicit dark surfaces, readable contrast and mobile-stacked cards', () => {
   const css = readFileSync(new URL('../src/sports-theme.css', import.meta.url), 'utf8');

@@ -8,12 +8,28 @@ import NFLSimulationResultsDownloads from './NFLSimulationResultsDownloads';
 import NFLSimulationRecapDownloads from './NFLSimulationRecapDownloads';
 
 const number = (value: number) => value.toFixed(1);
-export function NFLSimulationResults({ games }: { games: Game[] }) {
+export type SimulationResultsWeek = {
+  selected: number | null; current: number | null; onChange: (week: number | null) => void;
+  loading: boolean; error: boolean; onRetry: () => void;
+};
+export function NFLSimulationResults({ games, weekSelection }: { games: Game[]; weekSelection?: SimulationResultsWeek }) {
   const [selectedEvent, setSelectedEvent] = useState('all');
   const selectedGame = games.find(game => game.eventId === selectedEvent);
   const selectedGames = selectedEvent === 'all' ? games : selectedGame ? [selectedGame] : [];
   return <section className="wire-simulation-results" aria-label="Simulation Results">
     <h2>Simulation Results</h2>
+    {weekSelection && <label>Results week <select aria-label="Simulation results week" value={weekSelection.selected ?? 'current'}
+      onChange={event => {
+        const value = event.target.value;
+        if (value === 'current') weekSelection.onChange(null);
+        else if (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 18) weekSelection.onChange(Number(value));
+      }}>
+      <option value="current">{weekSelection.current ? `Current · Week ${weekSelection.current}` : 'Current NFL week'}</option>
+      {Array.from({ length: 18 }, (_, i) => <option key={i + 1} value={i + 1}>Week {i + 1}</option>)}
+    </select></label>}
+    <p>Past-week graphics use saved pregame simulations only. Games without a saved forecast are reported as unavailable; they are never simulated after kickoff.</p>
+    {weekSelection?.error ? <p role="alert">Could not load this week’s games. <button type="button" onClick={weekSelection.onRetry}>Retry week</button></p>
+      : weekSelection?.loading ? <p role="status">Loading selected week’s games and saved results…</p> : <>
     <p>Choose a game to compare its saved pregame scores and player projections with verified actual results, or view this slate’s closest predictions.</p>
     <label>Game <select value={selectedEvent} onChange={event => setSelectedEvent(event.target.value)}>
       <option value="all">All games · weekly accuracy rankings</option>
@@ -23,6 +39,7 @@ export function NFLSimulationResults({ games }: { games: Game[] }) {
       ? 'Results will be available after a game finishes and final statistics are verified.'
       : 'No games are available in this selection.'}</p>}
     <NFLSimulationAccuracy key={selectedEvent} games={selectedGames} weekly={selectedEvent === 'all'} />
+    </>}
   </section>;
 }
 
