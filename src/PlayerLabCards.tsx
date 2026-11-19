@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { ArrowLeftRight, Bot, ChevronDown, RefreshCw, Search, X } from 'lucide-react';
 import { loadBotDirectory, loadBotReport, readDirectorySnapshot } from './services/gamewireBot';
 import type { BotFormat, BotReport } from './services/gamewireBot';
-import { loadNBAPlayerLabDirectory, loadNBAPlayerLabReport, readNBAPlayerLabDirectory } from './services/nbaPlayerLab';
+import { loadNBAPlayerLabDirectory, loadNBAPlayerLabReport, nbaPlayerBreakdown, readNBAPlayerLabDirectory } from './services/nbaPlayerLab';
 import type { NBAPlayerLabReport } from './services/nbaPlayerLab';
 import { findLabPlayers, labPlayerKey } from './services/playerLabChat';
 import type { LabPlayer } from './services/playerLabChat';
@@ -28,39 +28,53 @@ const number = (value: number | undefined) => value !== undefined && Number.isFi
 
 export function NBAPlayerCard({ report, onClear }: { report: NBAPlayerLabReport; onClear: () => void }) {
   const { player, projection, game } = report;
-  return <article className="gwb-answer">
+  const breakdown = nbaPlayerBreakdown(report);
+  const recorded = (value: number | undefined) => value === undefined ? '\u2014' : Number.isInteger(value) ? String(value) : value.toFixed(1);
+  const gameTable = (games: typeof breakdown.games, label: string) => <div className="gwb-player-log" role="region" aria-label={label} tabIndex={0}>
+    <table><caption>{label}</caption><thead><tr><th scope="col">Date</th><th scope="col">Opp</th>{metrics.map(metric => <th scope="col" key={metric.label}>{metric.label}</th>)}</tr></thead>
+      <tbody>{games.map(row => <tr key={row.id}><th scope="row">{new Date(row.date).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', timeZone: /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? 'UTC' : 'America/New_York',
+      })}</th><td>{row.atVs} {row.opponent || '\u2014'}</td>
+        {metrics.map(metric => <td className={metric.label === 'PRA' ? 'is-pra' : undefined} key={metric.label}>{recorded(nbaStatValue(row.stats, metric.recorded))}</td>)}
+      </tr>)}</tbody></table>
+  </div>;
+  return <article className="gwb-answer gwb-nba-card">
     <header className="gwb-player-card-heading">
-      {player.headshot && <img className="gwb-player-headshot" src={player.headshot} alt="" />}
+      <span className="gwb-player-initials" aria-hidden="true">{player.name.split(/\s+/).filter(Boolean).map(part => part[0]).filter((_, index, names) => index === 0 || index === names.length - 1).join('')}</span>
       <div><span className="gwb-hero-kicker">NBA · {player.team.abbr} · {player.position}</span>
         <h4>{player.name}</h4><p>{player.team.name}</p></div>
       <button type="button" className="gwb-clear-player" aria-label={`Clear ${player.name}`} onClick={onClear}><X size={18} /></button>
     </header>
-    <h5>Saved matchup projections</h5>
+    <h5>Matchup projections</h5>
     <p>{game ? `${game.away.abbr} @ ${game.home.abbr} · ${new Date(game.date).toLocaleString()}`
-      : 'No verified matchup on today’s scoreboard. No matchup projection available.'}</p>
+      : 'The next matchup has not been verified. No matchup projection available.'}</p>
     <div className="gwb-player-projections" aria-label="NBA saved matchup projections">
       {metrics.map(metric => <div key={metric.label}><span>{metric.label}</span>
         <strong>{number(projection?.stats[metric.projected]?.mean)}</strong>
-        <small>{projection?.stats[metric.projected] ? `10th–90th: ${number(projection.stats[metric.projected]?.p10)}–${number(projection.stats[metric.projected]?.p90)}` : 'No saved estimate'}</small>
+        {!projection?.stats[metric.projected] && <small>No saved estimate</small>}
       </div>)}
     </div>
     <p className="gwb-muted">Saved forecast: {report.forecastAt ? new Date(report.forecastAt).toLocaleString() : 'Unavailable'}.
-      {' '}Experimental matchup estimates, not recorded results or recommendations.</p>
+      {' '}Projections are conditional on playing.</p>
     {!projection && <p className="gwb-warning">No supported saved projection for this player. Missing values are not estimated.</p>}
-    <p>Availability: {projection?.status || 'Unverified; check the official game-day injury report.'}</p>
-    {projection && <><p>{projection.matchup}</p><p className="gwb-muted">{projection.games} model reference games.
-      {projection.excluded ? ' Player excluded by the saved availability snapshot.' : ''}
-      {projection.limited ? ' Limited model coverage.' : ''}</p></>}
-    {report.issues.map((issue, index) => <p className="gwb-warning" key={index}>{issue}</p>)}
-    <h5>Recorded season averages · {report.season}</h5>
-    <div className="gwb-player-projections">{metrics.map(metric => <div key={metric.label}><span>{metric.label}</span>
-      <strong>{number(report.profile ? nbaStatValue(report.profile.averages, metric.recorded) : undefined)}</strong></div>)}</div>
-    <h5>Recorded recent games</h5>
-    <div className="gwb-player-log"><table><thead><tr><th>Date / opponent</th>{metrics.map(metric => <th key={metric.label}>{metric.label}</th>)}</tr></thead>
-      <tbody>{report.profile?.games.slice(0, 15).map(game => <tr key={game.id}><th>{new Date(game.date).toLocaleDateString()} / {game.opponent}</th>
-        {metrics.map(metric => <td key={metric.label}>{number(nbaStatValue(game.stats, metric.recorded))}</td>)}</tr>)}</tbody></table></div>
-    {!report.profile?.games.length && <p>No verified game log is available.</p>}
-    <p className="gwb-muted">Sources: ESPN roster, scoreboard and recorded stats; saved GamewAIre matchup model. Availability and forecasts are snapshots, not a live injury feed.</p>
+    <p className="gwb-player-availability">Availability: {projection?.status || 'Not verified'}</p>
+    <section className="gwb-player-breakdown" aria-label="Recent form and opponent breakdown">
+      <h5>Last five games</h5><p>{breakdown.recentText}</p>
+      <h5>{game?.status === 'LIVE' ? 'Current opponent' : 'Upcoming opponent'}</h5>
+      {breakdown.opponentText.map((text, index) => <p key={index}>{text}</p>)}
+    </section>
+    {breakdown.recent.length > 0 ? gameTable(breakdown.recent, 'Last five recorded appearances') : <p>No verified game log is available.</p>}
+    {breakdown.games.length > 5 && <details className="gwb-player-more"><summary>More recent games</summary>{gameTable(breakdown.games.slice(5, 15), 'Earlier recorded appearances')}</details>}
+    <details className="gwb-player-more"><summary>Recorded season averages</summary>
+      <p>{report.season - 1}-{String(report.season).slice(-2)} season</p>
+      <div className="gwb-player-projections">{metrics.map(metric => <div key={metric.label}><span>{metric.label}</span>
+        <strong>{number(report.profile ? nbaStatValue(report.profile.averages, metric.recorded) : undefined)}</strong></div>)}</div>
+    </details>
+    {!!report.sourceIssues?.length && <p className="gwb-warning" role="status">Some data could not refresh. Available verified data is shown; see data status below.</p>}
+    <details className="gwb-player-more"><summary>Data status and sources{report.issues.length ? ` (${report.issues.length})` : ''}</summary>
+      {report.issues.map((issue, index) => <p className="gwb-warning" key={index}>{issue}</p>)}
+      <p className="gwb-muted">Recorded ESPN stats and the saved GamewAIre model. Missing values are unavailable. Forecasts and availability are snapshots, not a live injury feed.</p>
+    </details>
   </article>;
 }
 

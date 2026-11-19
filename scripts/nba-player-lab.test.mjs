@@ -17,10 +17,10 @@ const forecast = { eventId: '900', status: 'ready', kickoff: '2026-10-24T23:00:0
   stage: 'Ready', warnings: [], away: { ...away, score: range(115), winProbability: .6,
     players: [12, 45, 28, 62, 18, 38, 51].map((pra, index) => athlete(String(index + 10), away.id, pra)) },
   home: { ...home, score: range(109), winProbability: .4, players: [athlete('20', home.id, 22)] } };
-function moduleFor(path, imports) {
+function moduleFor(path, imports, globals = {}) {
   const context = vm.createContext({ exports: {}, AbortController, console, Date, Error, setTimeout, clearTimeout,
-    require(name) { if (name in imports) return imports[name]; throw new Error(`Unexpected dependency ${name}`); } });
-  const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'),
+    require(name) { if (name in imports) return imports[name]; throw new Error(`Unexpected dependency ${name}`); }, ...globals });
+  const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8').replaceAll('import.meta.env.BASE_URL', "'/'"),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInContext(code, context);
   return context.exports;
@@ -34,13 +34,14 @@ function service(overrides = {}) {
     { id: 'older', date: '2026-10-22T23:00:00Z', stats: { points: 30, rebounds: 10, assists: 10 } },
     { id: 'after', date: '2026-10-25T23:00:00Z', stats: { points: 99, rebounds: 0, assists: 0 } },
   ] };
-  const game = { eventId: '900', date: forecast.kickoff, home, away };
+  const game = { eventId: '900', date: forecast.kickoff, home, away, status: 'UPCOMING' };
   const requests = [];
   const api = moduleFor('../src/services/nbaPlayerLab.ts', {
     './nbaStats.ts': { nbaStatValue },
     './nbaData.ts': { fetchNBALeague: async () => league, fetchNBARoster: async id => [{ ...player, teamId: id }],
-      fetchNBAPlayerProfile: async () => profile, ...overrides.data },
-    './sportsData.ts': { nbaCalendarDate: () => '2026-10-24', fetchNBAScoreboard: async () => [game], ...overrides.sports },
+      fetchNBAPlayerProfile: async () => profile, fetchNBATeamSeason: async () => [], ...overrides.data },
+    './sportsData.ts': { nbaCalendarDate: () => '2026-10-24', fetchNBAScoreboard: async () => [game],
+      shiftNBACalendarDate: (day, offset) => new Date(Date.parse(`${day}T12:00:00Z`) + offset * 86400000).toISOString().slice(0, 10), ...overrides.sports },
     './renderSnapshots.ts': { readLastNBAStatHub: () => null, readRenderSnapshot: (kind, key) => cached.get(`${kind}:${key}`) ?? null,
       saveRenderSnapshot: (kind, key, value) => cached.set(`${kind}:${key}`, value) },
     './nbaSimulation.ts': { readSavedNBASimulation: async () => forecast, loadNBASimulation: async (game, signal) => {
@@ -94,6 +95,32 @@ test('NBA model refresh errors preserve the saved forecast with an explicit warn
   assert.equal(report.projection.id, player.id);
   assert.match(report.issues.join(' '), /Stats offline.*Model offline/);
 });
+test('NBA Player Lab moves past a finished game to the next verified opponent and loads its season stats', async () => {
+  const future = { eventId: '901', date: '2026-10-25T23:00:00Z', home, away, status: 'UPCOMING' };
+  const { api, requests } = service({ sports: { fetchNBAScoreboard: async day => day === '2026-10-24'
+    ? [{ ...future, eventId: '900', status: 'FINAL' }] : day === '2026-10-25' ? [future] : [] },
+    data: { fetchNBATeamSeason: async id => { assert.equal(id, home.id); return [{ name: 'avgPoints', display: '114.2' }]; } } });
+  const report = await api.loadNBAPlayerLabReport(player, 2027, new AbortController().signal);
+  assert.equal(report.game.eventId, '901');
+  assert.equal(requests[0].game.eventId, '901');
+  assert.equal(report.opponent.team.id, home.id);
+  assert.match(api.nbaPlayerBreakdown(report).opponentText.join(' '), /Home Team.*114.2 points/);
+});
+test('NBA written breakdown uses five sorted unique pre-matchup games and labels incomplete statistic samples', () => {
+  const { api } = service();
+  const rows = Array.from({ length: 7 }, (_, index) => ({ id: String(index), date: `2026-10-${String(17 + index).padStart(2, '0')}T23:00:00Z`,
+    stats: { points: index, rebounds: 2, assists: 3, ...(index === 6 ? {} : { threePointersMade: 0 }) } }));
+  const report = { player, game: { home, away, date: forecast.kickoff, status: 'UPCOMING' },
+    profile: { games: [rows[6], ...rows, { id: 'later', date: '2026-10-25', stats: { points: 999 } }] },
+    opponent: { team: home, seasonStats: [{ name: 'avgPoints', display: '112.5' }], defensiveRating: 109.2, pace: 99.7 } };
+  const result = api.nbaPlayerBreakdown(report, Date.parse('2026-10-24T20:00:00Z'));
+  assert.equal(result.recent.length, 5);
+  assert.deepEqual(Array.from(result.recent, row => row.id), ['6', '5', '4', '3', '2']);
+  assert.equal(result.averages.find(row => row.key === 'points').value, 4);
+  assert.match(result.recentText, /4.0 points.*0.0 made threes \(4 reported games\)/);
+  assert.match(result.opponentText.join(' '), /112.5 points.*109.2 points per 100 possessions.*100 possessions/);
+  assert.doesNotMatch(result.recentText, /999|adjustment|percentile/);
+});
 test('NBA stat questions exclude post-matchup appearances, preserve missing threes and never invent probabilities', () => {
   const { api, profile, game } = service();
   const report = { player, profile, game, projection: player };
@@ -123,6 +150,33 @@ test('NBA matchup graphics select exactly five per team by archived projected PR
   assert.deepEqual(forecast.away.players.map(row => row.id), sourceOrder);
   assert.throws(() => graphics().nbaMatchupGraphicData({ ...forecast, status: 'collecting' }), /ready, saved/);
   assert.throws(() => graphics().nbaMatchupGraphicData(forecast, { ...actuals, home: { ...actuals.home, id: away.id } }), /do not match/);
+});
+test('Arena graphics render true scores, ten ranked names and bounded readable text; previews are not labeled final results', async () => {
+  const text = [], assets = [], canvas = { width: 0, height: 0 };
+  const ctx = new Proxy({ font: '', measureText(value) { return { width: value.length * Number(this.font.match(/(\d+)px/)?.[1] ?? 22) * .5 }; },
+    fillText(value, x, y) { text.push({ value, x, y, font: this.font, width: this.measureText(value).width }); },
+    createLinearGradient() { return { addColorStop() {} }; }, createRadialGradient() { return { addColorStop() {} }; },
+  }, { get(target, key) { return key in target ? target[key] : () => {}; } });
+  canvas.getContext = () => ctx; canvas.toBlob = callback => callback(new Blob(['png']));
+  const api = moduleFor('../src/services/nbaMatchupGraphic.ts', { './gamewaireResultsGraphic': { loadGamewireGraphicAssets: async () => ({}) },
+    '../TeamAbbrMark': { teamMarkAbbr: value => value } }, { document: { createElement: () => canvas },
+    Image: class { set src(value) { assets.push(value); queueMicrotask(() => this.onload()); } } });
+  const model = { ...forecast, home: { ...forecast.home, players: forecast.away.players.map(row => ({ ...row, id: `${row.id}0`, teamId: home.id })) } };
+  await api.renderNBAMatchupGraphic(model);
+  assert.equal(canvas.width, 1080); assert.equal(canvas.height, 1350);
+  assert.ok(assets.includes('/simulation-recap-stadium.png'));
+  assert.ok(text.some(row => row.value === 'PROJECTED FINAL'));
+  assert.ok(!text.some(row => row.value === 'FINAL'));
+  assert.ok(text.some(row => row.value === '115') && text.some(row => row.value === '109'));
+  assert.equal(text.filter(row => row.value.startsWith('Player ')).length, 10);
+  assert.ok(text.every(row => row.x >= 0 && row.x + row.width <= 1080 && row.y <= 1350), 'Every text run fits the Instagram canvas');
+  assert.ok(text.every(row => Number(row.font.match(/(\d+)px/)[1]) >= 20));
+  text.length = 0;
+  await api.renderNBAMatchupGraphic(model, { away: { id: away.id, score: 124, players: {} }, home: { id: home.id, score: 118, players: {} } });
+  assert.ok(text.some(row => row.value === 'VERIFIED FINAL'));
+  assert.ok(text.some(row => row.value === '124'));
+  assert.ok(text.some(row => row.value === 'SIM 115'));
+  assert.ok(text.some(row => row.value.includes('Player line unavailable')));
 });
 test('Wire live indicators remain red without live-only red card borders, retaining keyboard focus', () => {
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
@@ -241,7 +295,7 @@ test('Primary Player Lab restores direct cards with one NFL/NBA search, scoring 
       'lucide-react': {},
       './services/gamewireBot': { readDirectorySnapshot: () => ({ players: [nfl] }),
         async loadBotReport(id, format) { calls.push(['NFL', id, format]); return { player: nfl, format }; } },
-      './services/nbaPlayerLab': { readNBAPlayerLabDirectory: () => ({ season: 2027, players: [nba] }),
+      './services/nbaPlayerLab': { nbaPlayerBreakdown: service().api.nbaPlayerBreakdown, readNBAPlayerLabDirectory: () => ({ season: 2027, players: [nba] }),
         async loadNBAPlayerLabReport(row, season) { calls.push(['NBA', row.id, season]); return report; } },
       './services/playerLabChat': chat(), './services/nbaStats': { nbaStatValue },
       './services/renderSnapshots': {}, './services/foregroundRefresh': {},
@@ -270,13 +324,15 @@ test('Primary Player Lab restores direct cards with one NFL/NBA search, scoring 
     assert.equal(nodes.filter(node => node.type === 'input').length, 1);
     assert.ok(!nodes.some(node => ['textarea', 'details'].includes(node.type) || node.props?.role === 'tab'));
     const emptyCard = JSON.stringify(api.NBAPlayerCard({ report, onClear() {} }));
-    assert.match(emptyCard, /Saved matchup projections/);
+    assert.match(emptyCard, /Matchup projections/);
     assert.match(emptyCard, /No supported saved projection/);
     assert.match(emptyCard, /Source offline/);
-    assert.match(emptyCard, /Recorded recent games/);
+    assert.match(emptyCard, /Last five games/);
     for (const label of ['PTS', 'REB', 'AST', 'PRA', '3PM']) assert.ok(emptyCard.includes(label));
     const populated = JSON.stringify(api.NBAPlayerCard({ report: { ...report, projection: athlete('1', '1', 40) }, onClear() {} }));
     assert.match(populated, /40.0/);
     assert.match(populated, /No saved estimate/, 'Absent threes stay unavailable');
+    assert.doesNotMatch(populated, /10th|90th|model reference games|Verified opponent adjustment/);
+    assert.doesNotMatch(populated, /"type":"img"/, 'Player cards do not load provider face photos');
     assert.match(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'), /return <PlayerLabCards/);
 });
