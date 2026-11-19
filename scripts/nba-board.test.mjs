@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { nbaPreviousGame } from '../src/services/nbaBackToBack.ts';
 import { gameClockLabel, nbaCalendarDate } from '../src/services/sportsData.ts';
 import { nbaLiveScore } from '../src/services/nbaLiveScore.ts';
+import { nbaStatValue } from '../src/services/nbaStats.ts';
 import { saveNBASummary } from '../src/services/nbaPreload.ts';
 
 const code = ts.transpileModule(readFileSync(new URL('../src/NBAExperience.tsx', import.meta.url), 'utf8'), {
@@ -152,6 +153,7 @@ function setup(mode = 'wire', snapshots = new Map(), component, dataOverrides = 
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name === './services/nbaData') return data;
+      if (name === './services/nbaStats') return { nbaStatValue };
       if (name === './services/nbaBackToBack') return { nbaPreviousGame };
       if (name === './services/nbaLiveScore') return { nbaLiveScore };
       if (name === './useNFLBoardSimulations') return { useBoardSimulations: () => ({ simulations: dataOverrides.simulationForecasts ?? {}, errors: {} }) };
@@ -673,7 +675,7 @@ test('NBA box-score table and all column headers remain visible before any playe
   const tree = app.components.PlayerBox({ team: away, favorites: [], toggle() {}, open() {} });
   const nodes = descendants(tree);
   assert.equal(nodes.filter((node) => node.type === 'table' && node.props.className === 'nba-table nba-box').length, 1);
-  assert.equal(nodes.filter((node) => node.type === 'th' && node.props.scope === 'col').length, 13);
+  assert.equal(nodes.filter((node) => node.type === 'th' && node.props.scope === 'col').length, 14);
   assert.match(JSON.stringify(tree), /Waiting for reported player statistics/);
   assert.equal(nodes.some((node) => node.type === 'td' && node.props.children === 0), false);
   app.unmount();
@@ -728,10 +730,10 @@ test('NBA player box stably places all reported starters ahead of bench, retaini
   assert.equal(nodes.filter((node) => node.props?.className === 'nba-dnp').length, 1);
   assert.deepEqual(nodes.filter((node) => node.type === 'tbody').map((node) => node.props['aria-label']), ['Starting five', 'Bench']);
   const firstStats = descendants(rows[0]).filter((node) => node.props?.['data-label']).slice(0, 6).map((node) => node.props['data-label']);
-  assert.deepEqual(firstStats, ['MIN', 'PTS', 'REB', 'AST', 'FG', 'FT']);
+  assert.deepEqual(firstStats, ['MIN', 'PTS', 'REB', 'AST', 'PRA', 'FG']);
   const headers = nodes.filter((node) => node.props?.className === 'nba-box-group');
-  assert.ok(headers.every((header) => descendants(header).filter((node) => node.type === 'th').length === 13), 'Both sections repeat aligned stat headers');
-  assert.ok(rows.every((row) => descendants(row).filter((node) => node.type === 'td').length === (row === rows.at(-1) ? 1 : 12)), 'Each player has a single table row, with one spanning DNP cell when needed');
+  assert.ok(headers.every((header) => descendants(header).filter((node) => node.type === 'th').length === 14), 'Both sections repeat aligned stat headers including PRA');
+  assert.ok(rows.every((row) => descendants(row).filter((node) => node.type === 'td').length === (row === rows.at(-1) ? 1 : 13)), 'Each player has a single table row, with one spanning DNP cell when needed');
   const identity = descendants(rows[0]).find((node) => node.props?.className === 'nba-box-identity');
   assert.ok(identity.props.children.some((node) => node.type?.name === 'FavoriteButton'));
   assert.equal(descendants(identity).some((node) => node.type?.name === 'OfflineImage'), false);
@@ -947,9 +949,9 @@ test('Full NBA game log includes every season game and every box-score column in
   const log = () => app.nodes().find((node) => node.props?.className === 'nba-table nba-game-log');
   const rows = () => descendants(log()).filter((node) => node.type === 'tr');
   assert.equal(rows().length, 26, 'All 25 game rows, not only the 15 chart games');
-  assert.equal(descendants(rows()[0]).filter((node) => node.type === 'th').length, 14);
+  assert.equal(descendants(rows()[0]).filter((node) => node.type === 'th').length, 15);
   const values = descendants(rows()[1]).filter((node) => node.type === 'td').map((node) => node.props.children);
-  assert.deepEqual(values.slice(1, 8), ['30:30', '0', '5', '6', '0-5', '0-0', '0-2']);
+  assert.deepEqual(values.slice(1, 9), ['30:30', '0', '5', '6', '11', '0-5', '0-0', '0-2']);
   assert.equal(values.at(-1), '—');
   app.nodes().find((node) => node.props?.className === 'nfl-player-stat-tabs').props.onSelect('rebounds'); app.render();
   assert.deepEqual(descendants(rows()[1]).filter((node) => node.type === 'td').map((node) => node.props.children), values);

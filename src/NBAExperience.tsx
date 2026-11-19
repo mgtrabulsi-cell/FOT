@@ -19,6 +19,7 @@ import {
   nbaPlayerFavorite, nbaStatOptions, nbaTeamFavorite,
 } from './services/nbaData';
 import type { NBABoxTeam, NBAPlay, NBAPlayer, NBAPlayerStatKey, NBAStats, NBATeamStat } from './services/nbaData';
+import { nbaStatValue } from './services/nbaStats';
 import './nba.css';
 
 import type { WireTeamPicks } from './services/wireTeamPicks';
@@ -176,6 +177,7 @@ function Comparison({ away, home, awayStats, homeStats }: { away: Team; home: Te
 const boxColumns: Array<{ label: string; key: NBAPlayerStatKey; display?: string }> = [
   { label: 'MIN', key: 'minutes', display: 'MIN' }, { label: 'PTS', key: 'points' },
   { label: 'REB', key: 'rebounds' }, { label: 'AST', key: 'assists' },
+  { label: 'PRA', key: 'pra' },
   { label: 'FG', key: 'fieldGoalsMade', display: 'FG' }, { label: 'FT', key: 'freeThrowsMade', display: 'FT' },
   { label: '3PT', key: 'threePointersMade', display: '3PT' }, { label: 'STL', key: 'steals' }, { label: 'BLK', key: 'blocks' },
   { label: 'TO', key: 'turnovers' }, { label: 'PF', key: 'fouls' }, { label: '+/−', key: 'plusMinus', display: '+/-' },
@@ -193,7 +195,7 @@ function PlayerBox({ team, box, favorites, toggle, open, live = false }: { team:
       const label = live ? 'Players by points' : starter ? group.length === 5 ? 'Starting five' : 'Reported starters' : 'Bench';
       return <tbody key={String(starter)} aria-label={label}><tr className="nba-box-group"><th scope="col">{label}</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr>{group.map((player) => <tr key={player.id}>
       <th scope="row"><div className="nba-box-identity"><button type="button" className="nba-player-link" aria-label={`${player.name}, ${player.position}, player details`} onClick={() => open(player, team)}><span><span className="nba-box-full-name">{player.name}</span><small>{player.position}{player.starter ? ' · Starter' : ' · Bench'}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /></div></th>
-      {player.didNotPlay ? <td className="nba-dnp" colSpan={boxColumns.length}>DNP{player.reason ? ` · ${player.reason}` : ''}</td> : boxColumns.map((column) => <td data-label={column.label} key={column.key}>{column.display ? player.display[column.display] ?? '—' : format(player.stats[column.key])}</td>)}
+      {player.didNotPlay ? <td className="nba-dnp" colSpan={boxColumns.length}>DNP{player.reason ? ` · ${player.reason}` : ''}</td> : boxColumns.map((column) => <td data-label={column.label} key={column.key}>{column.display ? player.display[column.display] ?? format(nbaStatValue(player.stats, column.key)) : format(nbaStatValue(player.stats, column.key))}</td>)}
     </tr>)}</tbody>;
     })}</table></TableScroll>
   </section>;
@@ -245,11 +247,11 @@ function PregameComparison({ game }: { game: Game }) {
   return <><p className="nba-note">{game.seasonYear - 1}–{String(game.seasonYear).slice(-2)} regular-season team averages · not game projections.</p><ResourceMessage {...resource} />{resource.data && <Comparison away={game.away} home={game.home} awayStats={resource.data.away} homeStats={resource.data.home} />}</>;
 }
 function profileOptions(position: string) {
-  const priority: NBAPlayerStatKey[] = /^(C|PF|F-C|C-F)$/.test(position) ? ['points', 'rebounds', 'blocks', 'offensiveRebounds', 'assists'] : /^(PG|SG|G|G-F)$/.test(position) ? ['points', 'assists', 'threePointersMade', 'steals', 'rebounds'] : ['points', 'rebounds', 'assists', 'threePointersMade', 'steals'];
+  const priority: NBAPlayerStatKey[] = /^(C|PF|F-C|C-F)$/.test(position) ? ['points', 'pra', 'rebounds', 'blocks', 'offensiveRebounds', 'assists', 'threePointersMade'] : /^(PG|SG|G|G-F)$/.test(position) ? ['points', 'pra', 'assists', 'threePointersMade', 'steals', 'rebounds'] : ['points', 'pra', 'rebounds', 'assists', 'threePointersMade', 'steals'];
   return [...nbaStatOptions].sort((a, b) => (priority.includes(a.key) ? priority.indexOf(a.key) : 99) - (priority.includes(b.key) ? priority.indexOf(b.key) : 99));
 }
 function StatsGrid({ stats, label }: { stats: NBAStats; label: string }) {
-  return <dl className="nba-season-grid" aria-label={label}>{nbaStatOptions.filter((option) => option.key !== 'plusMinus').map((option) => <div key={option.key}><dt>{option.label}</dt><dd>{format(stats[option.key])}</dd></div>)}</dl>;
+  return <dl className="nba-season-grid" aria-label={label}>{nbaStatOptions.filter((option) => option.key !== 'plusMinus').map((option) => <div key={option.key}><dt>{option.label}</dt><dd>{format(nbaStatValue(stats, option.key))}</dd></div>)}</dl>;
 }
 function NBADirectory({ teams, season, query, favorites, toggle, open, live, savedListOnly = false }: { teams: Team[]; season: number; query: string; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team, season?: number) => void; live: boolean; savedListOnly?: boolean }) {
   const [sort, setSort] = useState('name');
@@ -348,7 +350,7 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
   }, []);
   const allGames = (resource.data?.games ?? []).filter((game) => gameType === 'All' || game.seasonType === gameType);
   const games = allGames.slice(0, 15);
-  const maximum = Math.max(1, ...games.map((game) => Math.abs(game.stats[stat] ?? 0)));
+  const maximum = Math.max(1, ...games.map((game) => Math.abs(nbaStatValue(game.stats, stat) ?? 0)));
   const label = nbaStatOptions.find((option) => option.key === stat)?.label ?? stat;
   return <dialog ref={dialog} className="nfl-player-dialog nba-stat-dialog" aria-labelledby="nba-profile-title" onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === event.currentTarget) { const bounds = event.currentTarget.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) close(); } }}>
     <header className="nfl-player-dialog-heading"><div><span className="eyebrow">{team.abbr} · RECENT PERFORMANCE</span><h3 id="nba-profile-title">{player.name}</h3><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}</small></div><FavoriteButton target={nbaPlayerFavorite(player, team)} favorites={favorites} toggle={toggle} /><button type="button" className="icon-button" aria-label="Close player profile" onClick={close}><X size={16} aria-hidden="true" /></button></header>
@@ -357,13 +359,13 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
       <div className="nfl-player-stat-picker"><span className="nfl-player-stat-label">GAME STAT</span><DraggableTabs ariaLabel={`${player.position} game statistics`} className="nfl-player-stat-tabs" options={profileOptions(player.position)} selected={stat} onSelect={setStat} /></div>
       <div className="nfl-game-chart-heading"><b>{label} · EACH GAME</b><span>LAST {games.length} GAMES</span></div>
       {!games.length ? <p className="nfl-player-games-message">No game logs are available for this season.</p> : <ScrollRow className="nfl-player-game-chart" label={`${label} per game`}>{[...games].reverse().map((game) => {
-        const value = game.stats[stat];
+        const value = nbaStatValue(game.stats, stat);
         return <div className="nfl-game-bar" key={game.id} aria-label={`${gameDate(game.date)}, ${game.opponent}, ${label}: ${format(value)}`}><strong className="nfl-game-bar-value">{format(value)}</strong><div className="nfl-game-bar-track">{value !== undefined && <i style={{ height: `${Math.max(5, Math.abs(value) / maximum * 100)}%` }} />}</div><b title={game.opponent}>{game.opponent || '—'}</b><small>{gameDate(game.date)}</small><span className={`nfl-game-result${game.result === 'W' ? ' is-win' : game.result === 'L' ? ' is-loss' : ''}`}>{game.result || '—'}</span></div>;
       })}</ScrollRow>}
       <section className="nba-full-game-log" aria-label="Full player game log"><h4>Full game log</h4>
       <label className="nba-filter">Competition <select value={gameType} onChange={(event) => setGameType(event.target.value)}><option>All</option>{[...new Set(resource.data.games.map((game) => game.seasonType))].map((type) => <option key={type}>{type}</option>)}</select></label>
       <p className="nfl-data-note">{allGames.length} available games · newest first · swipe or drag for all stats.</p>
-      {!allGames.length ? <p className="nfl-player-games-message">No game logs are available for this competition.</p> : <TableScroll label="Full player game log"><table className="nba-table nba-game-log"><thead><tr><th scope="col">Matchup</th><th scope="col">Result</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{allGames.map((game) => <tr key={game.id}><th scope="row"><b>{game.atVs ? `${game.atVs} ` : ''}{game.opponent || '—'}</b><small>{gameDate(game.date)}</small></th><td>{game.result || '—'} {game.score}</td>{boxColumns.map((column) => <td key={column.key}>{column.display ? game.display?.[column.display] || '—' : format(game.stats[column.key])}</td>)}</tr>)}</tbody></table></TableScroll>}
+      {!allGames.length ? <p className="nfl-player-games-message">No game logs are available for this competition.</p> : <TableScroll label="Full player game log"><table className="nba-table nba-game-log"><thead><tr><th scope="col">Matchup</th><th scope="col">Result</th>{boxColumns.map((column) => <th scope="col" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{allGames.map((game) => <tr key={game.id}><th scope="row"><b>{game.atVs ? `${game.atVs} ` : ''}{game.opponent || '—'}</b><small>{gameDate(game.date)}</small></th><td>{game.result || '—'} {game.score}</td>{boxColumns.map((column) => <td key={column.key}>{column.display ? game.display?.[column.display] ?? format(nbaStatValue(game.stats, column.key)) : format(nbaStatValue(game.stats, column.key))}</td>)}</tr>)}</tbody></table></TableScroll>}
       </section>
       <details className="nba-season-details"><summary>Season averages and totals</summary><h4>{season - 1}–{String(season).slice(-2)} regular season · {resource.data.gamesPlayed ?? '—'} games</h4><div className="nba-segments" role="group" aria-label="Season statistic display">{(['averages', 'totals'] as const).map((mode) => <button type="button" key={mode} aria-pressed={seasonMode === mode} onClick={() => setSeasonMode(mode)}>{mode === 'averages' ? 'Per-game averages' : 'Season totals'}</button>)}</div><StatsGrid stats={resource.data[seasonMode]} label={seasonMode} /></details>
     </>}

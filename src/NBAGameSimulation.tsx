@@ -8,14 +8,14 @@ import { nbaDailyPerformers } from '../supabase/functions/_shared/nbaSimulation'
 import type { NBAAccuracyReport, NBAGameSimulation, NBAPlayerProjection } from '../supabase/functions/_shared/nbaSimulation';
 import { loadNBAAccuracy, loadNBASimulation } from './services/nbaSimulation';
 import { renderNBASimulationGraphic } from './services/nbaSimulationGraphic';
+import { renderNBAMatchupGraphic } from './services/nbaMatchupGraphic';
 import type { Game } from './services/sportsData';
 
 const value = (n: number) => Math.round(n).toString();
 const stamp = (time: string) => new Date(time).toLocaleString();
 const line = (player: NBAPlayerProjection) => `${value(player.stats.points.mean)} PTS / ${value(player.stats.rebounds.mean)} REB / ${value(player.stats.assists.mean)} AST`;
-const gameLine = (player: NBAPlayerProjection) => `${line(player)} / ${player.stats.threePointers ? value(player.stats.threePointers.mean) : 'Unavailable'} 3PM`;
 function NBAGraphicDownload({ generate, ...props }: Omit<ComponentProps<typeof ResultsGraphicDownload>, 'generate'> & {
-  generate: (signal: AbortSignal) => Promise<Blob>;
+  generate: (signal: AbortSignal) => Promise<Blob | Blob[]>;
 }) {
   const access = useSimulationGraphicAccess(), requests = useRef(new Set<AbortController>());
   useEffect(() => () => { for (const controller of requests.current) controller.abort(); }, [access.allowed]);
@@ -77,14 +77,7 @@ export default function NBAGameSimulation({ game, forecast, error }: { game: Gam
   const generate = async (signal: AbortSignal) => {
     const refreshed = await loadNBASimulation(game, signal);
     if (refreshed.status !== 'ready') throw new Error('NBA game simulation is not ready to export.');
-    return renderNBASimulationGraphic(`${game.away.abbr} at ${game.home.abbr}`, `Pregame forecast | Saved ${stamp(refreshed.forecastAt!)}`,
-      [refreshed.away!, refreshed.home!].flatMap(team => [
-        { title: `${team.name} | ${value(team.score.mean)} projected points`, detail: `${(team.winProbability * 100).toFixed(1)}% simulated win share`,
-          line: `${value(team.pace)} sampled possessions | ${team.players.length} supported players`,
-          note: `${refreshed.history[team.id === refreshed.homeTeamId ? 'home' : 'away']}/100 historical games | ${refreshed.lockedAt ? 'Locked' : 'Refreshing pregame'}` },
-        ...team.players.map(player => ({ title: player.name, detail: `${player.position} | ${player.status} | ${player.games} sampled appearances`,
-          line: `${gameLine(player)} | ${value(player.stats.pra.mean)} PRA`, note: `${value(player.stats.minutes.mean)} MIN | ${player.limited ? 'Limited sample' : 'Personal game evidence'} | Not a confirmed starter` })),
-      ]));
+    return renderNBAMatchupGraphic(refreshed, undefined, { [game.away.id]: game.away.color, [game.home.id]: game.home.color });
   };
   return <section className="nba-simulation-panel" aria-label="NBA GamewAIre simulation">
     <header><span className="eyebrow">GAMEWAIRE / NBA SIMULATION</span><h3>{game.away.abbr} at {game.home.abbr}</h3></header>
@@ -117,7 +110,7 @@ export default function NBAGameSimulation({ game, forecast, error }: { game: Gam
         <details><summary>Player matchup adjustments</summary>{team.players.map(player => <p key={player.id}><b>{player.name}:</b> {player.matchup}</p>)}</details>
       </section>)}
       <NBAGraphicDownload generate={generate} disabled={false} filename={`GameWire-NBA-Simulation-${game.eventId}.png`}
-        label="Download NBA simulation" description="Projected team scores and all supported player lines" alt="NBA game simulation with projected player points rebounds assists and PRA" />
+        label="Download NBA simulation" description="Projected final scores and each team's top five by projected PRA" alt="NBA simulation with opposing team panels and five projected PRA leaders per team" />
       <details><summary>Model, availability &amp; data notes</summary>{forecast.warnings.map((warning, i) => <p key={i}>{warning}</p>)}
         <p>Learning corrections activate only after 30 training games and 10 held-out games improve absolute error by at least 5%; otherwise they stay neutral.
           Team scores and player projections are separate estimates. Missing players and statistics are not invented.</p>
@@ -149,20 +142,15 @@ export function NBASimulationResults({ games }: { games: Game[] }) {
   }, { wins: 0, losses: 0, noWinner: 0 });
   const generate = async (signal: AbortSignal) => {
     const fresh = await loadNBAAccuracy(games, signal);
-    return renderNBASimulationGraphic('NBA Simulation Results', 'Verified finals vs archived pregame forecasts',
-      fresh.games.filter(row => row.actuals).flatMap(row => {
-        const forecast = row.forecast, actuals = row.actuals!;
-        return [{ title: `${forecast.away!.abbr} at ${forecast.home!.abbr}`,
-          detail: `Saved ${stamp(forecast.forecastAt!)}`,
-          line: `SIM ${value(forecast.away!.score.mean)}-${value(forecast.home!.score.mean)} | FINAL ${actuals.away.score}-${actuals.home.score}`,
-          note: 'Verified final scores; expected simulated scores are not an exact-score call.' },
-        ...[forecast.away!, forecast.home!].flatMap(team => team.players.flatMap(player => {
-          const actual = [actuals.away, actuals.home].find(side => side.id === team.id)?.players[player.id];
-          return actual ? [{ title: `${player.name} | ${team.abbr}`, detail: `SIM ${gameLine(player)}`,
-            line: `ACTUAL ${actual.points} PTS / ${actual.rebounds} REB / ${actual.assists} AST / ${actual.threePointers ?? 'Unavailable'} 3PM`,
-            note: `PRA: ${value(player.stats.pra.mean)} projected / ${actual.points + actual.rebounds + actual.assists} actual` }] : [];
-        }))];
-      }));
+    const completed = fresh.games.filter(row => row.actuals);
+    if (!completed.length) throw new Error('No verified NBA finals are available to export.');
+    const slides: Blob[] = [];
+    for (const row of completed) {
+      signal.throwIfAborted();
+      const game = games.find(game => game.eventId === row.eventId);
+      slides.push(await renderNBAMatchupGraphic(row.forecast, row.actuals!, game ? { [game.away.id]: game.away.color, [game.home.id]: game.home.color } : {}));
+    }
+    return slides;
   };
   return <section className="nba-simulation-panel" aria-label="NBA simulation results"><h3>NBA simulation results</h3>
     <button type="button" onClick={() => setRevision(n => n + 1)}>Refresh results</button>
@@ -187,6 +175,6 @@ export function NBASimulationResults({ games }: { games: Game[] }) {
       </details>)}
     </>}
     <NBAGraphicDownload generate={generate} disabled={!settled.length} filename="GameWire-NBA-Simulation-Results.png"
-      label="Download NBA results" description="Refreshed verified finals and archived player projections" alt="NBA simulation results with actual team scores and player PRA" />
+      label="Download NBA results" description="One Instagram slide per game with verified finals and each team's five projected PRA leaders" alt="NBA matchup results comparing final scores and player stats with saved pregame projections" />
   </section>;
 }

@@ -253,7 +253,7 @@ function MobileComparison({ reports, players, onClear, busy }: { reports: [BotRe
     </div>
   </div>;
 }
-export default function GamewireBot() {
+export function NFLPlayerLab() {
   const [open, setOpen] = useState(false), [directory, setDirectory] = useState<BotDirectory | null>(() => readDirectorySnapshot());
   const [search, setSearch] = useState(''), [format, setFormat] = useState<BotFormat>('ppr'), [selected, setSelected] = useState<BotPlayer | null>(null);
   const [report, setReport] = useState<BotReport | null>(null);
@@ -487,3 +487,7 @@ export default function GamewireBot() {
   </section>;
 }
 import GamewaireBreakdown from './GamewaireBreakdown';
+import PlayerLabChat from './PlayerLabChat';
+export default function GamewireBot() {
+  return <PlayerLabChat renderNFL={(report, remove) => <Breakdown report={report} onClear={remove} busy={false} />} />;
+}

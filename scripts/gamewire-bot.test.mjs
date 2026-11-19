@@ -439,7 +439,7 @@ function botWelcomeHarness({ directoryError = false, players = [player], snapsho
   vm.runInContext(code, context);
   const render = () => {
     stateIndex = 0; refIndex = 0;
-    const tree = context.exports.default();
+    const tree = context.exports.NFLPlayerLab();
     const panel = find(tree, (node) => node.props?.id === 'gamewire-bot-panel');
     if (panel) panel.ref.current = { style: {}, parentElement: null, scrollIntoView: (options) => scrolls.push(options) };
     effects.splice(0).forEach((effect) => effect());

@@ -39,7 +39,6 @@
   background: linear-gradient(115deg, #1a3b5c, #0b1c30 80%);
   box-shadow: inset 0 1px #ffffff22, 0 0 15px #008dff26;
 }
-.sports-theme .wire-board-card.is-live { border-left-color: #ff4058; border-top-color: #ac4560; box-shadow: inset 0 1px #ffffff12, 0 0 14px #ff20401a; }
 .sports-theme .wire-board-footer { border-top-color: #2e5679; }
 .sports-theme .wire-board-open { color: #5bceff; }
 .sports-theme .wire-board-card .team-mark, .sports-theme .wire-hero-banner .team-mark, .sports-theme .nba-matchup .team-mark, .sports-theme .team-game-logs .team-mark {

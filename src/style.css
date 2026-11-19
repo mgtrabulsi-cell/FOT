@@ -1273,9 +1273,8 @@ td:first-child { color: #828c84; }
 .wire-wheel-card { flex: 0 0 auto; min-width: 132px; min-height: 44px; padding: 3px 8px; border: 1px solid #28374d; border-radius: 6px; background: #131d2c; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, transform .12s, box-shadow .15s; color: inherit; display: grid; gap: 2px; }
 .wire-wheel-card:hover { border-color: #445b7c; background: #182537; transform: translateY(-1px); }
 .wire-wheel-card.selected { border-color: #cc2633; background: #18263c; box-shadow: 0 0 0 1px #cc2633, 0 4px 16px #cc263330; }
-.wire-wheel-card.is-live { border-color: #cc263388; }
 .wire-wheel-status { display: flex; align-items: center; justify-content: space-between; font: 600 9px var(--mono); color: #8fa4c2; }
-.wire-wheel-status .live-pill { display: inline-flex; align-items: center; gap: 4px; color: #fff; background: #a51c28; border-radius: 3px; padding: 2px 4px; }
+.wire-wheel-status .live-pill { display: inline-flex; align-items: center; gap: 4px; color: #ff4d5a; background: transparent; padding: 2px 0; }
 .wire-wheel-status .live-pill i { width: 5px; height: 5px; border-radius: 50%; background: #cc2633; box-shadow: 0 0 6px #cc2633; display: inline-block; }
 .wire-wheel-clock { font: 500 8px var(--mono); color: #788fae; }
 .wire-wheel-teams { display: grid; gap: 2px; }
@@ -1325,12 +1324,11 @@ td:first-child { color: #828c84; }
 .wire-board-card { display: grid; grid-template-columns: 92px minmax(0, 1fr); grid-template-areas: "status teams" "footer footer"; gap: 8px 14px; width: 100%; min-height: 44px; padding: 12px 14px; border: 1px solid #28374d; border-radius: 8px; background: #131d2c; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, transform .12s, box-shadow .15s; }
 .wire-board-card:hover { border-color: #445b7c; background: #182537; transform: translateY(-1px); }
 .wire-board-card:focus-visible { outline: 2px solid #cc2633; outline-offset: 2px; }
-.wire-board-card.is-live { border-color: #cc263388; box-shadow: 0 0 14px #cc263325; }
 .wire-board-status { grid-area: status; display: flex; flex-direction: column; justify-content: center; gap: 4px; font: 600 12px var(--mono); color: #c7d3e4; }
 .wire-board-spread { display: grid; gap: 2px; }
 .wire-board-spread b { color: #edf2f8; }
 .wire-board-status small { font: 500 11px var(--mono); color: #9bb1cf; }
-.wire-board-status .live-pill { display: inline-flex; align-items: center; gap: 4px; width: fit-content; padding: 2px 6px; border-radius: 3px; background: #a51c28; color: #fff; font-size: 11px; }
+.wire-board-status .live-pill { display: inline-flex; align-items: center; gap: 4px; width: fit-content; padding: 2px 0; background: transparent; color: #ff4d5a; font-size: 11px; }
 .wire-board-status .live-pill i { width: 6px; height: 6px; border-radius: 50%; background: #ff4d5a; box-shadow: 0 0 6px #cc2633; display: inline-block; }
 .wire-board-final { color: #8fa4c2; }
 .wire-board-teams { grid-area: teams; display: grid; gap: 6px; min-width: 0; }
@@ -1427,7 +1425,7 @@ td:first-child { color: #828c84; }
 /* Matchup Center (Game state, clock, venue, link) */
 .wire-matchup-center { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; min-width: 170px; }
 .wire-status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 14px; font: 700 11px var(--mono); letter-spacing: .6px; background: #1d2a3d; color: #9bb1cf; border: 1px solid #2d3e58; }
-.wire-status-pill.is-live { background: #a51c28; color: #fff; border-color: #cc2633; box-shadow: 0 0 12px #cc263330; }
+.wire-status-pill.is-live { background: transparent; color: #ff4d5a; border-color: transparent; box-shadow: none; }
 .wire-status-pill.is-live i { width: 6px; height: 6px; border-radius: 50%; background: #cc2633; box-shadow: 0 0 6px #cc2633; }
 .wire-live-notice { display: inline-flex; align-items: center; gap: 5px; font: 500 9px var(--mono); color: #fff; border-left: 3px solid #cc2633; padding-left: 6px; }
 .wire-spread-badge { display: flex; align-items: center; gap: 6px; font: 500 11px var(--mono); color: #8ba2c2; background: #162234; padding: 3px 8px; border-radius: 4px; }
@@ -1638,7 +1636,6 @@ td:first-child { color: #828c84; }
 .livewire-themes input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .wire-wheel-card.is-primetime:not(.selected):not(.is-live) { border-color: #314560; }
-.wire-wheel-card.is-primetime.is-live { border-color: #cc2633; box-shadow: 0 0 16px #cc263345; }
 
 .wire-primetime-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font: 700 10px var(--mono); letter-spacing: .6px; text-transform: uppercase; }
 .wire-primetime-pill.pill-tnf { background: #0c274c; color: #93c5fd; border: 1px solid #3b82f680; }

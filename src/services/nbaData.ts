@@ -2,7 +2,7 @@ import type { FavoriteTarget, Game, NFLFavoritePlay, Team } from './sportsData.t
 import { gameSnapshotKey, readRenderSnapshot, saveRenderSnapshot } from './renderSnapshots.ts';
 import { fetchStaticSports, sportsResourceKey } from './sportsDatabase.ts';
 
-export type NBAPlayerStatKey = 'points' | 'rebounds' | 'assists' | 'steals' | 'blocks' | 'turnovers' | 'minutes' | 'offensiveRebounds' | 'defensiveRebounds' | 'fouls' | 'threePointersMade' | 'fieldGoalsMade' | 'fieldGoalsAttempted' | 'threePointersAttempted' | 'freeThrowsMade' | 'freeThrowsAttempted' | 'fieldGoalPct' | 'threePointPct' | 'freeThrowPct' | 'plusMinus';
+export type NBAPlayerStatKey = 'points' | 'rebounds' | 'assists' | 'pra' | 'steals' | 'blocks' | 'turnovers' | 'minutes' | 'offensiveRebounds' | 'defensiveRebounds' | 'fouls' | 'threePointersMade' | 'fieldGoalsMade' | 'fieldGoalsAttempted' | 'threePointersAttempted' | 'freeThrowsMade' | 'freeThrowsAttempted' | 'fieldGoalPct' | 'threePointPct' | 'freeThrowPct' | 'plusMinus';
 export type NBAStats = Partial<Record<NBAPlayerStatKey, number>>;
 export type NBAPlayer = { id: string; name: string; position: string; jersey: string; headshot?: string; teamId: string };
 export type NBABoxPlayer = NBAPlayer & { stats: NBAStats; display: Record<string, string>; didNotPlay: boolean; reason: string; starter: boolean };
@@ -14,8 +14,9 @@ export type NBAPlayerGame = { id: string; date: string; opponent: string; atVs?:
 export type NBAPlayerProfile = { season: number; gamesPlayed?: number; totals: NBAStats; averages: NBAStats; games: NBAPlayerGame[] };
 export const nbaStatOptions: Array<{ key: NBAPlayerStatKey; label: string }> = [
   { key: 'points', label: 'Points' }, { key: 'rebounds', label: 'Rebounds' }, { key: 'assists', label: 'Assists' },
+  { key: 'pra', label: 'PRA' },
   { key: 'steals', label: 'Steals' }, { key: 'blocks', label: 'Blocks' }, { key: 'turnovers', label: 'Turnovers' },
-  { key: 'minutes', label: 'Minutes' }, { key: 'threePointersMade', label: '3PT made' },
+  { key: 'minutes', label: 'Minutes' }, { key: 'threePointersMade', label: 'Threes made (3PM)' },
   { key: 'offensiveRebounds', label: 'Offensive rebounds' }, { key: 'defensiveRebounds', label: 'Defensive rebounds' },
   { key: 'fouls', label: 'Fouls' }, { key: 'fieldGoalPct', label: 'FG%' }, { key: 'threePointPct', label: '3PT%' }, { key: 'freeThrowPct', label: 'FT%' },
 ];
@@ -49,7 +50,8 @@ const statNames: Record<string, NBAPlayerStatKey> = {
   fieldGoalPct: 'fieldGoalPct', 'FG%': 'fieldGoalPct', threePointPct: 'threePointPct', threePointFieldGoalPct: 'threePointPct', '3P%': 'threePointPct', '3PT%': 'threePointPct',
   freeThrowPct: 'freeThrowPct', 'FT%': 'freeThrowPct',
   fieldGoalsMade: 'fieldGoalsMade', fieldGoalsAttempted: 'fieldGoalsAttempted',
-  threePointFieldGoalsMade: 'threePointersMade', threePointFieldGoalsAttempted: 'threePointersAttempted',
+  threePointFieldGoalsMade: 'threePointersMade', avgThreePointFieldGoalsMade: 'threePointersMade', '3PM': 'threePointersMade',
+  threePointFieldGoalsAttempted: 'threePointersAttempted', avgThreePointFieldGoalsAttempted: 'threePointersAttempted',
   freeThrowsMade: 'freeThrowsMade', freeThrowsAttempted: 'freeThrowsAttempted',
 };
 const pairs: Record<string, [NBAPlayerStatKey, NBAPlayerStatKey]> = {

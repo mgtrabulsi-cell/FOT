@@ -1,4 +1,37 @@
 .gwb { margin: 12px 0; border: 1px solid #087bc4; border-radius: 20px; overflow: hidden; background: #030f1d; color: #edf2f7; }
+.gwb-chat-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px; background: linear-gradient(120deg, #123753, #030f1d); }
+.gwb-chat-heading h3 { margin: 8px 0; font-size: 23px; }
+.gwb-chat-heading p, .gwb-chat-panel p { font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.gwb-chat-heading button, .gwb-chat-panel button, .gwb-chat-panel select, .gwb-chat-composer textarea { min-height: 44px; padding: 9px 12px; border: 1px solid #365674; border-radius: 8px; background: #10253b; color: #edf2f7; }
+.gwb-chat-panel { padding: 16px; min-width: 0; }
+.gwb-chat-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.gwb-chat-tools label { display: grid; gap: 5px; font-size: 12px; }
+.gwb-chat-thread { max-height: min(620px, 65dvh); overflow-y: auto; overscroll-behavior: contain; margin: 14px 0; }
+.gwb-chat-message { padding: 14px; border: 1px solid #264663; border-radius: 12px; margin: 10px 0; min-width: 0; }
+.gwb-chat-message.is-user { margin-left: 24px; background: #123952; }
+.gwb-chat-message.is-assistant { margin-right: 12px; background: #071b2c; }
+.gwb-chat-message > strong { color: #71ceff; font-size: 13px; }
+.gwb-chat-panel details { margin: 12px 0; }
+.gwb-chat-panel summary { cursor: pointer; min-height: 44px; padding: 8px 0; box-sizing: border-box; }
+.gwb-chat-table { overflow-x: auto; }
+.gwb-chat-table table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 12px; }
+.gwb-chat-table th, .gwb-chat-table td { padding: 9px; text-align: left; border-bottom: 1px solid #264663; }
+.gwb-chat-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.gwb-chat-choices button { display: grid; gap: 4px; text-align: left; }
+.gwb-chat-choices small { color: #a8bdd5; }
+.gwb-chat-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.gwb-chat-composer label { grid-column: 1 / -1; font-size: 13px; }
+.gwb-chat-composer textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+.gwb-chat-composer textarea:focus-visible { outline: 2px solid #39bcff; outline-offset: 2px; }
+.gwb-chat-context { color: #a8bdd5; }
+@media (max-width: 480px) {
+  .gwb-chat-heading { padding: 14px; }
+  .gwb-chat-heading h3 { font-size: 19px; }
+  .gwb-chat-panel { padding: 12px; }
+  .gwb-chat-message { padding: 11px; }
+  .gwb-chat-message.is-user { margin-left: 12px; }
+  .gwb-chat-message.is-assistant { margin-right: 0; }
+}
 .gwb.gwb button, .gwb.gwb input, .gwb.gwb select { font: inherit; }
 .gwb .gwb-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .gwb button { cursor: pointer; }
