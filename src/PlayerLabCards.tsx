@@ -156,14 +156,14 @@ export default function PlayerLabCards({ renderNFL }: { renderNFL: (report: BotR
       }}>
         <Search size={22} aria-hidden="true" /><label className="gwb-sr-only" htmlFor="gwb-player-search">Find an NFL or NBA player</label>
         <input id="gwb-player-search" ref={searchInput} value={search} disabled={busy} maxLength={80}
-          placeholder="Search NFL and NBA players..." aria-controls={open ? 'gwb-player-results' : undefined}
+          placeholder="Search by first or last name..." aria-controls={open ? 'gwb-player-results' : undefined}
           onFocus={() => setOpen(true)} onChange={event => { setSearch(event.target.value); setOpen(true); }} />
         <button type="submit" disabled={busy} aria-label="Search NFL and NBA players"><Search size={20} /></button>
       </form>
       {open && search.trim().length >= 2 && <div id="gwb-player-results" className="gwb-search-results" aria-label="Matching NFL and NBA players">
         {matches.map(entry => <button type="button" key={labPlayerKey(entry)} disabled={busy} onClick={() => void load([{ player: entry, slot }])}>
           <span>{entry.player.name}</span><small>{entry.sport} · {entry.sport === 'NFL' ? entry.player.teamAbbr : entry.player.team.abbr} · {entry.player.position}</small></button>)}
-        {!matches.length && <p>{loadingDirectory ? 'Refreshing verified players… Saved rosters remain searchable.' : 'No matching player. Try a surname or refresh players.'}</p>}
+        {!matches.length && <p>{loadingDirectory ? 'Refreshing verified players… Saved rosters remain searchable.' : 'No matching player. Try a first or last name, or refresh players.'}</p>}
       </div>}
     </div></header>
     {open && <div id="gamewire-bot-panel" className="gwb-panel">

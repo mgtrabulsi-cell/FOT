@@ -155,6 +155,22 @@ test('One chat matches both sports, disambiguates surnames, supports partial sea
   assert.equal(labFollowup('Over 30.5 PRA?'), true);
   assert.equal(labFollowup('Tell me about Unknown Person'), false);
 });
+
+test('Shared player search includes first names even when another player has that surname', () => {
+  const { findLabPlayers } = chat();
+  const players = [
+    { sport: 'NBA', player: { id: '1', teamId: '1', name: 'LeBron James' }, season: 2027 },
+    { sport: 'NFL', player: { id: '2', teamId: '2', name: 'James Cook' } },
+    { sport: 'NBA', player: { id: '3', teamId: '3', name: 'James Harden' }, season: 2027 },
+    { sport: 'NFL', player: { id: '4', teamId: '4', name: 'Josh Allen' } },
+  ];
+  assert.deepEqual(Array.from(findLabPlayers('James', players), entry => entry.player.name),
+    ['LeBron James', 'James Cook', 'James Harden']);
+  assert.equal(findLabPlayers('jAm', players).length, 3);
+  assert.equal(findLabPlayers('NFL James', players)[0].player.name, 'James Cook');
+  assert.equal(findLabPlayers('Josh', players)[0].player.name, 'Josh Allen');
+  assert.equal(findLabPlayers('LeBron', players)[0].player.name, 'LeBron James');
+});
 test('Conversational NBA stat lines ignore the 3 in 3-pointers and retain saved model versus observed distinctions', () => {
   const { chatStatLine, nbaChatAnswer } = chat(), { profile, game } = service();
   assert.equal(chatStatLine('Will he get 3.5 3-pointers?'), 3.5);

@@ -15,14 +15,18 @@ export function findLabPlayers(question: string, players: LabPlayer[]): LabPlaye
   const pool = players.filter(entry => !league || entry.sport === league);
   const complete = pool.filter(entry => query.includes(` ${normalized(entry.player.name)} `));
   if (complete.length) return complete;
+  const short = normalized(question).replace(/\b(nfl|nba)\b/g, '').trim();
+  if (short.length >= 2 && short.split(' ').length <= 2) {
+    const matches = pool.filter(entry => normalized(entry.player.name).includes(short));
+    if (matches.length) return matches;
+  }
   const surnames = pool.filter(entry => {
     const names = normalized(entry.player.name).split(' ').filter(token => !['jr', 'sr', 'ii', 'iii', 'iv'].includes(token));
     const surname = names.at(-1);
     return !!surname && surname.length >= 3 && query.includes(` ${surname} `);
   });
   if (surnames.length) return surnames;
-  const short = normalized(question).replace(/\b(nfl|nba)\b/g, '').trim();
-  return short.length >= 2 && short.split(' ').length <= 2 ? pool.filter(entry => normalized(entry.player.name).includes(short)) : [];
+  return [];
 }
 export function labFollowup(question: string) {
   return /\b(his|him|their|them|he|they)\b/i.test(question)
