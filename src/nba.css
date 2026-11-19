@@ -188,8 +188,15 @@
 .nba-simulation-panel, .nba-simulation-leaders { display: grid; gap: 14px; padding: 18px; border: 1px solid #2b435e; border-radius: 12px; background: #081626; min-width: 0; }
 .nba-simulation-panel h3, .nba-simulation-panel h4, .nba-simulation-leaders h3, .nba-simulation-leaders h4 { margin: 0; }
 .nba-simulation-leader-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
-.nba-simulation-leaders { gap: 10px; width: 100%; max-width: 920px; margin: 0 auto 16px; font-size: 12px; }
-.nba-simulation-leaders header h3 { font-size: 17px; }
+.nba-simulation-leaders { display: block; width: 100%; max-width: 920px; margin: 0 auto 16px; padding: 10px 14px; font-size: 12px; }
+.nba-simulation-leaders-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; cursor: pointer; list-style: none; }
+.nba-simulation-leaders-toggle::-webkit-details-marker { display: none; }
+.nba-simulation-leaders-toggle > span { display: grid; gap: 3px; min-width: 0; }
+.nba-simulation-leaders-toggle strong { font-size: 16px; }
+.nba-simulation-leaders-toggle:focus-visible { outline: 2px solid #55d8a1; outline-offset: 4px; border-radius: 4px; }
+.nba-simulation-leaders-chevron { width: 9px; height: 9px; margin-right: 4px; flex: 0 0 9px; border-right: 2px solid #bfd0e3; border-bottom: 2px solid #bfd0e3; transform: rotate(45deg); }
+.nba-simulation-leaders[open] > summary .nba-simulation-leaders-chevron { transform: rotate(225deg); }
+.nba-simulation-leaders-content { display: grid; gap: 10px; padding-top: 10px; }
 .nba-simulation-leaders .nba-note { margin: 0; font-size: 11px; line-height: 1.5; }
 .nba-simulation-leader-grid article { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 12px; border: 1px solid #31516b; border-radius: 10px; background: linear-gradient(140deg,#142c43,#07111e); overflow-wrap: anywhere; }
 .nba-simulation-leader-grid h4 { font-size: 15px; }
@@ -209,4 +216,20 @@
   .nba-simulation-leader-grid { grid-template-columns: 1fr; }
   .nba-simulation-panel, .nba-simulation-leaders { padding: 12px; }
   .nba-simulation-score > div { padding: 12px; }
+}
+@media (max-width:480px) {
+  .nba-simulation-leaders { padding: 7px 10px; margin-bottom: 10px; font-size: 11px; }
+  .nba-simulation-leaders-toggle .eyebrow { font-size: 9px; letter-spacing: 1px; }
+  .nba-simulation-leaders-toggle strong { font-size: 13px; }
+  .nba-simulation-leaders-content { gap: 7px; padding-top: 7px; }
+  .nba-simulation-leaders .nba-note { font-size: 10px; line-height: 1.4; }
+  .nba-simulation-leaders .nba-simulation-leader-grid { gap: 6px; }
+  .nba-simulation-leader-grid article { grid-template-columns: minmax(0,1fr) auto; gap: 3px 8px; padding: 7px 9px; border-radius: 7px; }
+  .nba-simulation-leader-grid article > .eyebrow { grid-column: 1; font-size: 9px; letter-spacing: .5px; }
+  .nba-simulation-leader-grid h4 { grid-column: 1; font-size: 13px; line-height: 1.2; }
+  .nba-simulation-leader-grid article > strong { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-size: 22px; }
+  .nba-simulation-leader-grid article > strong small { display: block; font-size: 9px; }
+  .nba-simulation-leader-grid article > p, .nba-simulation-leader-grid article > details { grid-column: 1 / -1; }
+  .nba-simulation-leader-grid article > p { font-size: 11px; line-height: 1.3; }
+  .nba-simulation-leader-grid summary { min-height: 28px; font-size: 10px; }
 }

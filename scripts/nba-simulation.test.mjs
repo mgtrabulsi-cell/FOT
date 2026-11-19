@@ -110,6 +110,39 @@ test('NBA daily performers rank three distinct players by matchup-adjusted PRA o
   second.status = 'collecting';
   assert.ok(nbaDailyPerformers([first, second], '2026-11-17').every(p => p.eventId === first.eventId));
 });
+test('Daily PRA leaders start collapsed and retain all three players, matchup details and the clean graphic export', async () => {
+  const forecast = simulateNBAGame(game, observations(), roster, now);
+  let exported;
+  const jsx = (type, props) => ({ type, props });
+  const context = vm.createContext({ exports: {}, require(name) {
+    if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name.includes('_shared/nbaSimulation')) return nbaModel;
+    if (name === './services/nbaSimulation') return { loadNBASimulation: async () => forecast };
+    if (name === './services/nbaSimulationGraphic') return { renderNBASimulationGraphic: async (_title, _subtitle, rows) => { exported = rows; return new Blob(['png']); } };
+    return {};
+  } });
+  vm.runInContext(compile('../src/NBAGameSimulation.tsx'), context);
+  const tree = context.exports.NBADailyPerformers({ forecasts: [forecast], games: [{ ...game, eventId: game.id }], date: '2026-11-17' });
+  assert.equal(tree.type, 'details');
+  assert.equal(tree.props.open, undefined, 'The leaders panel is closed by default');
+  assert.equal(tree.props.children[0].type, 'summary', 'Native disclosure supplies touch and keyboard behavior');
+  const nodes = [];
+  const visit = value => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') { nodes.push(value); visit(value.props?.children); }
+  };
+  visit(tree);
+  assert.equal(nodes.filter(node => node.type === 'article').length, 3);
+  assert.equal(nodes.filter(node => node.type === 'summary').length, 4);
+  const download = nodes.find(node => node.type?.name === 'NBAGraphicDownload');
+  await download.props.generate(new AbortController().signal);
+  assert.equal(exported.length, 3);
+  assert.ok(exported.every(row => row.title && row.detail === '' && row.note === '' && /\d+ PTS \/ \d+ REB \/ \d+ AST \| \d+ PRA/.test(row.line)));
+  const css = readFileSync(new URL('../src/nba.css', import.meta.url), 'utf8');
+  assert.match(css, /@media \(max-width:480px\)/);
+  assert.match(css, /\.nba-simulation-leaders-toggle strong \{ font-size: 13px;/);
+  assert.match(css, /\.nba-simulation-leaders-toggle:focus-visible/);
+});
 test('NBA player tables display whole-number projections without rounding the stored model', () => {
   const forecast = simulateNBAGame(game, observations(), roster, now);
   const player = forecast.home.players[0];

@@ -46,15 +46,19 @@ export function NBADailyPerformers({ forecasts, games, date }: { forecasts: NBAG
       leaders.map(player => ({ title: player.name, detail: '',
         line: `${line(player)} | ${value(player.stats.pra.mean)} PRA`, note: '' })));
   };
-  return <section className="nba-simulation-leaders" aria-label="Daily top three projected PRA performers">
-    <header><span className="eyebrow">THE DAILY TRIPLE</span><h3>Daily projected PRA leaders</h3></header>
+  return <details className="nba-simulation-leaders" aria-label="Daily top three projected PRA performers">
+    <summary className="nba-simulation-leaders-toggle">
+      <span><span className="eyebrow">THE DAILY TRIPLE</span><strong>Daily projected PRA leaders</strong></span>
+      <i className="nba-simulation-leaders-chevron" aria-hidden="true" />
+    </summary>
+    <div className="nba-simulation-leaders-content">
     <p className="nba-note">{date} · Points + rebounds + assists · {covered}/{games.length} games ready.
       {covered < games.length ? ' Provisional leaders; preparing games may change this list.' : ' Ranked across the complete selected slate.'}</p>
     <div className="nba-simulation-leader-grid">{players.map((player, index) => <article key={player.id}>
       <span className="eyebrow">#{index + 1} · {player.team} vs {player.opponent}</span><h4>{player.name}</h4>
       <strong>{value(player.stats.pra.mean)} <small>projected PRA</small></strong><p>{line(player)}</p>
-      <small>{value(player.stats.minutes.mean)} MIN · {player.status}{player.limited ? ' · Limited sample' : ''}</small>
-      <details><summary>Matchup &amp; range</summary><p>{player.matchup}</p>
+      <details><summary>Matchup &amp; range</summary>
+        <small>{value(player.stats.minutes.mean)} MIN · {player.status}{player.limited ? ' · Limited sample' : ''}</small><p>{player.matchup}</p>
         <small>P10–P90: {value(player.stats.pra.p10)}–{value(player.stats.pra.p90)} PRA</small></details>
     </article>)}</div>
     {!players.length && <p role="status">No supported player projections yet. The background preparation refreshes automatically.</p>}
@@ -62,7 +66,8 @@ export function NBADailyPerformers({ forecasts, games, date }: { forecasts: NBAG
     <NBAGraphicDownload generate={generate} disabled={!players.length} filename={`GameWire-NBA-Daily-Triple-${date}.png`}
       label="Download · Daily Triple" description="Refreshes the full selected slate before ranking the top three"
       alt="NBA top three players by projected points plus rebounds plus assists" />
-  </section>;
+    </div>
+  </details>;
 }
 export default function NBAGameSimulation({ game, forecast, error }: { game: Game; forecast?: NBAGameSimulation; error?: string }) {
   const [stat, setStat] = useState<'pra' | 'points' | 'rebounds' | 'assists' | 'threePointers'>('pra');
