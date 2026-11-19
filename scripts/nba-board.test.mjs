@@ -375,7 +375,7 @@ test('Stat Hub opens its last player list without any schedule or league respons
   assert.equal(directory.props.savedListOnly, true);
   const list = setup('stats', snapshots, { name: 'NBADirectory', props: directory.props });
   assert.ok(list.nodes().some(node => node.props?.['aria-label'] === 'View Last viewed player stats'));
-  assert.equal(list.nodes().filter(node => node.props?.className === 'nfl-directory-player-main')[0].props['aria-label'], 'View Z first saved player stats', 'Last displayed ordering survives before scoring data loads');
+  assert.equal(list.nodes().filter(node => node.props?.className === 'nfl-directory-player-main')[0].props['aria-label'], 'View Last viewed player stats', 'Saved players use the new alphabetical default without waiting for scoring');
   assert.equal(list.nodes().find(node => node.type?.name === 'ResourceMessage').props.loading, false);
   app.unmount(); list.unmount();
 });
@@ -859,19 +859,49 @@ test('NBA selected-player window leads with NFL stat tabs and per-game chart, ke
   app.unmount();
 });
 
-test('NBA directory orders each team top-to-bottom by season PPG, with zeros before missing and stable name ties', async () => {
+test('NBA directory orders each team by PPG only when selected, with zeros before missing and stable name ties', async () => {
   const props = { teams: [away, home], season: 2027, query: '', favorites: [], toggle() {}, open() {}, live: false };
   const app = setup('stats', new Map(), { name: 'NBADirectory', props });
   app.data.fetchNBARoster = async (teamId) => ['missing', 'zero', 'second', 'first', 'tie'].map((id) => ({ id: `${teamId}-${id}`, name: id, position: 'G', jersey: '' }));
   app.data.fetchNBAPointsPerGame = async () => ({ averages: Object.fromEntries([away, home].flatMap((team) => [
     [`${team.id}-zero`, 0], [`${team.id}-second`, 12], [`${team.id}-first`, 24], [`${team.id}-tie`, 12],
   ])), failed: [] });
+  app.nodes().find(node => node.type === 'select' && node.props.value === 'name').props.onChange({ target: { value: 'ppg' } });
   app.nodes().find((node) => node.type?.name === 'ResourceMessage').props.retry(); app.render(); await app.settle();
   const panels = app.nodes().filter((node) => node.props?.className === 'nfl-directory-team');
   for (const panel of panels) {
     const names = descendants(panel).filter((node) => node.props?.className === 'nfl-directory-player-main').map((node) => node.props.children.props.children[0].props.children);
     assert.deepEqual(names, ['first', 'second', 'tie', 'zero', 'missing']);
   }
+  app.unmount();
+});
+test('Stat Hub defaults to names without a scoring-request burst and combines team, favorite and position filters', async () => {
+  let scoringCalls = 0;
+  const opened = [];
+  const first = { id: 'p1', name: 'Alpha Player', teamId: away.id, position: 'G', jersey: '1' };
+  const second = { id: 'p2', name: 'Beta Player', teamId: home.id, position: 'C', jersey: '2' };
+  const props = { teams: [away, home], season: 2027, query: '', favorites: [{ key: 'player:basketball/nba:p2' }],
+    toggle() {}, open: (...args) => opened.push(args), live: false };
+  const app = setup('stats', new Map([
+    ['nbaRoster:roster:1:2027', [first]], ['nbaRoster:roster:2:2027', [second]],
+  ]), { name: 'NBADirectory', props }, {
+    fetchNBARoster: async id => id === away.id ? [first] : [second],
+    fetchNBAPointsPerGame: async () => { scoringCalls++; return { averages: {}, failed: [] }; },
+  });
+  await app.settle();
+  assert.equal(scoringCalls, 0);
+  const players = () => app.nodes().filter(node => node.props?.className === 'nfl-directory-player-main');
+  assert.equal(players().length, 2);
+  app.nodes().find(node => node.type === 'button' && node.props.children === 'Favorites').props.onClick();
+  app.render();
+  assert.equal(players().length, 1);
+  assert.equal(players()[0].props['aria-label'], 'View Beta Player stats');
+  players()[0].props.onClick();
+  assert.equal(opened[0][0].id, 'p2');
+  assert.equal(opened[0][2], 2027);
+  app.nodes().find(node => node.type === 'select' && node.props.value === 'All').props.onChange({ target: { value: away.id } });
+  app.render();
+  assert.equal(players().length, 0);
   app.unmount();
 });
 

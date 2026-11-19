@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 import { nativeApp, NativeOffline } from './nativeOffline';
 import { stopWebOffline } from './webOffline';
-import { stopRenderSnapshots } from './renderSnapshots';
+import { clearStatSnapshots, stopRenderSnapshots } from './renderSnapshots';
 import { deleteLivewireDraft } from './livewireDrafts';
 import { deleteAngleDrafts } from './angleDrafts';
 
@@ -24,6 +24,7 @@ export async function deleteAccount(password: string, confirmation: string): Pro
   const tasks: Array<{ name: string; run: () => Promise<void> }> = [
     { name: 'unpublished LIVEWIRE draft', run: async () => { await deleteLivewireDraft(userId); } },
     { name: 'unpublished storyline drafts', run: async () => { await deleteAngleDrafts(userId); } },
+    { name: 'saved player statistics', run: async () => { await clearStatSnapshots(); } },
     { name: 'saved browsing', run: async () => {
       stopRenderSnapshots();
       if (nativeApp) await NativeOffline.clear();

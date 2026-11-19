@@ -9,6 +9,7 @@ import type { Team } from './sportsData.ts';
 import type { TeamLogDirectory, TeamLogEntry } from './teamGameLogs.ts';
 import { readAngles } from './theAngle.ts';
 import type { Angle } from './theAngle.ts';
+import { createDraftStorage } from './draftStorage.ts';
 
 type Snapshots = {
   scoreboard: { games: Game[]; failedLeagues: string[]; nflWeek: number | null };
@@ -42,10 +43,81 @@ const prefix = `gamewire-render-v1:${import.meta.env?.BASE_URL ?? '/'}:`;
 let stopped = false;
 type SnapshotChange = { kind: keyof Snapshots; key: string };
 const listeners = new Set<(change: SnapshotChange) => void>();
+const statKinds = new Set<keyof Snapshots>(['details', 'players', 'nbaRoster', 'nbaTeamSeason', 'nbaProfile',
+  'nbaPlayerSeason', 'nbaLeague', 'nbaDirectory', 'nbaStatHub', 'nbaScoring', 'teamDirectory', 'teamGameLog']);
+type StatEntry = SnapshotChange & { version: 1; savedAt: number; data: unknown };
+const statMemory = new Map<string, StatEntry>();
+const statStorage = createDraftStorage('gamewire-player-stats');
+const statStorageListeners = new Set<() => void>();
+let statStorageState = { restoring: false, saving: 0, savedAt: 0, error: '' };
+let statRestore: Promise<void> | undefined;
+export const readStatStorageStatus = () => statStorageState;
+export function subscribeStatStorage(listener: () => void) {
+  statStorageListeners.add(listener);
+  return () => { statStorageListeners.delete(listener); };
+}
+function statStorageUpdate(update: Partial<typeof statStorageState>) {
+  statStorageState = { ...statStorageState, ...update };
+  statStorageListeners.forEach(listener => listener());
+}
+function persistStat(entry: StatEntry) {
+  statMemory.set(`${entry.kind}:${entry.key}`, entry);
+  statStorageUpdate({ saving: statStorageState.saving + 1 });
+  void statStorage.save(`${entry.kind}:${entry.key}`, entry).then(() => {
+    statStorageUpdate({ savedAt: Math.max(statStorageState.savedAt, entry.savedAt) });
+  }, (cause: unknown) => {
+    console.error('Could not save player statistics on this device', cause);
+    statStorageUpdate({ error: 'Device storage could not save all stats. Keep this page open or free browser storage and reload to retry.' });
+  }).finally(() => statStorageUpdate({ saving: statStorageState.saving - 1 }));
+}
+export function restoreStatSnapshots(): Promise<void> {
+  if (statRestore) return statRestore;
+  statStorageUpdate({ restoring: true });
+  statRestore = (async () => {
+    try {
+      if (typeof indexedDB === 'undefined') throw new Error('IndexedDB is unavailable');
+      const entries = await statStorage.loadAll();
+      if (stopped) return;
+      for (const entry of entries) {
+        if (!object(entry) || entry.version !== 1 || typeof entry.kind !== 'string' || typeof entry.key !== 'string'
+          || typeof entry.savedAt !== 'number' || !Number.isFinite(entry.savedAt)
+          || !statKinds.has(entry.kind as keyof Snapshots) || !valid(entry.kind as keyof Snapshots, entry.data)) {
+          console.error('Invalid saved player statistics entry');
+          statStorageUpdate({ error: 'Some saved stats are damaged and could not be restored. Other saved stats remain available; refresh online to replace missing data.' });
+          continue;
+        }
+        const restored = entry as StatEntry;
+        const name = `${restored.kind}:${restored.key}`;
+        if ((statMemory.get(name)?.savedAt ?? 0) >= restored.savedAt) continue;
+        const raw = storage()?.getItem(`${prefix}${name}`);
+        const recent: unknown = raw ? JSON.parse(raw) : null;
+        if (object(recent) && typeof recent.savedAt === 'number' && recent.savedAt > restored.savedAt) continue;
+        statMemory.set(name, restored);
+        statStorageUpdate({ savedAt: Math.max(statStorageState.savedAt, restored.savedAt) });
+        listeners.forEach(listener => listener({ kind: restored.kind, key: restored.key }));
+      }
+      const target = storage();
+      for (let index = 0; target && index < target.length; index++) {
+        const name = target.key(index);
+        if (!name?.startsWith(prefix)) continue;
+        const part = name.slice(prefix.length), separator = part.indexOf(':');
+        const kind = part.slice(0, separator) as keyof Snapshots, key = part.slice(separator + 1);
+        if (!statKinds.has(kind) || statMemory.has(`${kind}:${key}`)) continue;
+        const entry: unknown = JSON.parse(target.getItem(name) ?? 'null');
+        if (object(entry) && entry.version === 1 && typeof entry.savedAt === 'number' && valid(kind, entry.data))
+          persistStat({ kind, key, version: 1, savedAt: entry.savedAt, data: entry.data });
+      }
+    } catch (cause) {
+      console.error('Could not restore saved player statistics', cause);
+      statStorageUpdate({ error: 'Some saved stats could not be restored. Online browsing is still available; reload to retry device storage.' });
+    } finally { statStorageUpdate({ restoring: false }); }
+  })();
+  return statRestore;
+}
 
-export function subscribeRenderSnapshots(listener: () => void, filter?: SnapshotChange) {
+export function subscribeRenderSnapshots(listener: () => void, filter?: Partial<SnapshotChange>) {
   const notify = (change: SnapshotChange) => {
-    if (!filter || (filter.kind === change.kind && filter.key === change.key)) listener();
+    if (!filter || ((!filter.kind || filter.kind === change.kind) && (filter.key === undefined || filter.key === change.key))) listener();
   };
   listeners.add(notify);
   return () => { listeners.delete(notify); };
@@ -163,6 +235,8 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
 export function readRenderSnapshot<K extends keyof Snapshots>(kind: K, key: string, maxAge = Infinity): Snapshots[K] | null {
   if (stopped) return null;
   try {
+    const saved = statMemory.get(`${kind}:${key}`);
+    if (saved && (maxAge === Infinity || Date.now() - saved.savedAt < maxAge)) return saved.data as Snapshots[K];
     const raw = storage()?.getItem(`${prefix}${kind}:${key}`);
     if (!raw) return null;
     const entry: unknown = JSON.parse(raw);
@@ -177,6 +251,11 @@ export function readRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
 
 export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: string, data: Snapshots[K]): void {
   if (stopped) return;
+  if (statKinds.has(kind) && typeof indexedDB !== 'undefined') {
+    if (!valid(kind, data)) throw new Error('Invalid player statistics cannot be saved');
+    persistStat({ kind, key, version: 1, savedAt: Date.now(), data });
+    listeners.forEach(listener => listener({ kind, key }));
+  }
   try {
     const target = storage();
     if (!target) return;
@@ -215,6 +294,12 @@ export function saveRenderSnapshot<K extends keyof Snapshots>(kind: K, key: stri
 
 export function stopRenderSnapshots() {
   stopped = true;
+  statMemory.clear();
+}
+export async function clearStatSnapshots() {
+  stopRenderSnapshots();
+  await statStorage.clear();
+  statStorageUpdate({ saving: 0, savedAt: 0, restoring: false, error: '' });
 }
 
 export function nbaResourceSnapshots<K extends 'nbaRoster' | 'nbaTeamSeason' | 'nbaProfile' | 'nbaLeague' | 'nbaDirectory' | 'nbaComparison' | 'nbaScoring'>(kind: K) {

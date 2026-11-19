@@ -20,6 +20,7 @@ function setup() {
   let effects = [];
   let dirty = false;
   let revision = 0;
+  let foreground;
   const requests = [];
   const player = { id: 'player', name: 'Test Player', position: 'QB', recentGames: [] };
   const team = { id: 'away', name: 'Away', abbr: 'AWY' };
@@ -32,6 +33,9 @@ function setup() {
     playerInitials,
     AbortController,
     console,
+    navigator: { onLine: true },
+    subscribeRenderSnapshots: () => () => {},
+    subscribeForegroundRefresh: listener => { foreground = listener; return () => {}; },
     usePublicDataRevision: () => revision,
     useState(initial) {
       const index = cursor++;
@@ -62,6 +66,8 @@ function setup() {
     fetchNFLGameDetails: (...args) => new Promise((resolve) => requests.push({ resolve, signal: args[4] })),
     getNFLGamePlayerPools: () => [{ team, players: [player] }],
     NFLGameWheel: 'game-wheel',
+    StatHubHeader: 'stat-hub-header',
+    ChevronRight: 'chevron-right',
     NFLPlayerMiniWindow: 'player-dialog',
     TeamMark: 'team-mark',
     TeamFavoriteButton: 'team-favorite',
@@ -89,6 +95,7 @@ function setup() {
     open() { find((node) => node.props.className === 'nfl-directory-player-main', tree)[0].props.onClick(); render(); },
     dialog() { return find((node) => node.type === 'player-dialog', tree)[0]; },
     refresh() { revision++; render(); },
+    foregroundRefresh() { foreground(); render(); },
     switchGame() { find((node) => node.type === 'game-wheel', tree)[0].props.onSelect(secondGame.id); render(); },
   };
 }
@@ -101,6 +108,10 @@ test('Player dialog survives repeated refreshes before game details finish, and 
     app.refresh();
     assert.ok(app.dialog(), 'A background refresh must not dismiss the selected player');
   }
+  assert.equal(app.requests.length, 1, 'Unrelated public data changes do not restart the heavy player request');
+  assert.equal(app.requests[0].signal.aborted, false);
+  app.foregroundRefresh();
+  assert.ok(app.dialog(), 'An explicit foreground refresh also preserves the player');
   assert.equal(app.requests[0].signal.aborted, true);
   app.requests.at(-1).resolve({ teamForms: [] });
   await Promise.resolve();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Star, X } from 'lucide-react';
 import TeamAbbrMark from './TeamAbbrMark';
+import StatHubHeader from './StatHubHeader';
 import DraggableTabs from './DraggableTabs';
 import type { FavoriteTarget, Game, Team } from './services/sportsData';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
@@ -63,7 +64,7 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
   const [revision, setRevision] = useState(0);
   const retry = useCallback(() => setRevision((value) => value + 1), []);
   useEffect(() => {
-    if (!load) return;
+    if (!load && !snapshots) return;
     let disposed = false;
     let request: AbortController | undefined;
     const onSnapshot = () => {
@@ -75,6 +76,12 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
     };
     const unsubscribeSnapshots = snapshots?.subscribe ? snapshots.subscribe(key, onSnapshot) : subscribeRenderSnapshots(onSnapshot);
     const refresh = () => {
+      if (!load) return;
+      if (!navigator.onLine) {
+        setState(previous => ({ key, data: previous.key === key ? previous.data ?? saved : saved, loading: false,
+          error: previous.key === key && previous.data || saved ? '' : 'Reconnect to download these stats for the first time.' }));
+        return;
+      }
       request?.abort();
       const controller = new AbortController();
       request = controller;
@@ -98,7 +105,7 @@ function useNBAResource<T>(key: string, load: ((signal: AbortSignal) => Promise<
       });
     };
     refresh();
-    const timer = poll ? window.setInterval(() => { if (document.visibilityState !== 'hidden' && navigator.onLine) refresh(); }, poll) : undefined;
+    const timer = load && poll ? window.setInterval(() => { if (document.visibilityState !== 'hidden' && navigator.onLine) refresh(); }, poll) : undefined;
     const unsubscribe = subscribeForegroundRefresh(refresh);
     return () => { disposed = true; request?.abort(); if (timer !== undefined) window.clearInterval(timer); unsubscribe(); unsubscribeSnapshots(); };
   }, [key, load, poll, revision, saved, snapshots]);
@@ -245,6 +252,9 @@ function StatsGrid({ stats, label }: { stats: NBAStats; label: string }) {
   return <dl className="nba-season-grid" aria-label={label}>{nbaStatOptions.filter((option) => option.key !== 'plusMinus').map((option) => <div key={option.key}><dt>{option.label}</dt><dd>{format(stats[option.key])}</dd></div>)}</dl>;
 }
 function NBADirectory({ teams, season, query, favorites, toggle, open, live, savedListOnly = false }: { teams: Team[]; season: number; query: string; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; open: (player: NBAPlayer, team: Team, season?: number) => void; live: boolean; savedListOnly?: boolean }) {
+  const [sort, setSort] = useState('name');
+  const [teamFilter, setTeamFilter] = useState('All');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [lastList] = useState(readLastNBAStatHub);
   const teamKey = teams.map((team) => team.id).join(',');
   const snapshots = useMemo(() => ({
@@ -292,7 +302,7 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live, sav
     });
     return { ...result, averages: { ...saved?.averages, ...result.averages } };
   }, [scoringPlayers, teamKey, season]);
-  const scoring = useNBAResource(`scoring:${teamKey}:${season}`, resource.data && !savedListOnly ? loadScoring : null, 0, scoringSnapshots);
+  const scoring = useNBAResource(`scoring:${teamKey}:${season}`, resource.data && !savedListOnly && sort === 'ppg' ? loadScoring : null, 0, scoringSnapshots);
   useEffect(() => {
     if (!savedListOnly && resource.data?.some((group) => group.players.length)) {
       saveLastNBAStatHub({ season, groups: displayed.map((group) => ({
@@ -304,14 +314,22 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live, sav
   const [position, setPosition] = useState('All');
   const positions = [...new Set(displayed?.flatMap((group) => group.players.map((player) => player.position)).filter(Boolean))].sort();
   useEffect(() => setPosition('All'), [teamKey, season]);
-  const groups = displayed?.map((group) => ({ ...group, players: group.players.filter((player) =>
-    (position === 'All' || player.position === position) && `${player.name} ${group.team.name} ${group.team.abbr} ${player.position}`.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a, b) => usingLastList ? 0 : (scoring.data?.averages[b.id] ?? -1) - (scoring.data?.averages[a.id] ?? -1) || a.name.localeCompare(b.name)) })) ?? [];
-  return <><div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter NBA players by position">{['All', ...positions].map((item) => <button type="button" key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div><span>{live && !usingLastList ? 'LIVE' : `${groups.reduce((total, group) => total + group.players.length, 0)} players`}</span></div>
+  const groups = displayed?.filter(group => teamFilter === 'All' || group.team.id === teamFilter).map((group) => ({ ...group, players: group.players.filter((player) =>
+    (position === 'All' || player.position === position)
+    && (!favoritesOnly || favorites.some(favorite => favorite.key === nbaPlayerFavorite(player, group.team).key))
+    && `${player.name} ${group.team.name} ${group.team.abbr} ${player.position}`.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name)
+      : (scoring.data?.averages[b.id] ?? -1) - (scoring.data?.averages[a.id] ?? -1) || a.name.localeCompare(b.name)) })) ?? [];
+  return <><div className="stat-hub-filters">
+    <label>Team<select value={teamFilter} onChange={event => setTeamFilter(event.target.value)}><option value="All">{displayed.length === 2 ? 'Both teams' : 'All teams'}</option>{displayed.map(group => <option key={group.team.id} value={group.team.id}>{group.team.name}</option>)}</select></label>
+    <label>Sort<select value={sort} onChange={event => setSort(event.target.value)}><option value="name">Name A-Z</option><option value="ppg">Season PPG</option></select></label>
+    <button type="button" className={favoritesOnly ? 'active' : ''} aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(value => !value)}>Favorites</button>
+    <button type="button" disabled={resource.loading || !navigator.onLine || savedListOnly} onClick={() => { resource.retry(); scoring.retry(); }}>Refresh stats</button>
+    </div><div className="nfl-directory-position-bar"><div className="sport-filter" role="tablist" aria-label="Filter NBA players by position">{['All', ...positions].map((item) => <button type="button" key={item} role="tab" aria-selected={position === item} className={position === item ? 'active' : ''} onClick={() => setPosition(item)}>{item}</button>)}</div><span>{groups.reduce((total, group) => total + group.players.length, 0)} players{live && !usingLastList ? ' / LIVE' : ''}</span></div>
     {usingLastList && <p className="nfl-data-note" role="status">Showing your last saved player list. Current matchups and rosters update in the background.</p>}
     <ResourceMessage {...resource} data={displayed} /><ResourceMessage {...scoring} loading={false} />
     {scoring.loading && !scoring.data && resource.data && <p className="nfl-data-note" role="status">Updating scoring averages… Players are ready to open.</p>}
-    {scoring.data && <p className="nfl-data-note">Season PPG · highest to lowest · unavailable averages last.{scoring.data.failed.length > 0 && <> Some scoring averages could not be refreshed. <button type="button" onClick={scoring.retry}>Retry averages</button></>}</p>}
+    {sort === 'ppg' && scoring.data && <p className="nfl-data-note">Season PPG · highest to lowest · unavailable averages last.{scoring.data.failed.length > 0 && <> Some scoring averages could not be refreshed. <button type="button" onClick={scoring.retry}>Retry averages</button></>}</p>}
     <div className="nfl-directory-grid">{groups.map((group, index) => <section className="nfl-directory-team" key={group.team.id}><header><TeamAbbrMark abbr={group.team.abbr} color={group.team.color} name={group.team.name} /><span><b>{group.team.name}</b><small>{teams.length === 2 ? index === 0 ? 'AWAY TEAM' : 'HOME TEAM' : 'NBA TEAM'}{group.team.record ? ` · ${group.team.record}` : ''}</small></span><FavoriteButton target={nbaTeamFavorite(group.team)} favorites={favorites} toggle={toggle} /></header>
       <div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button type="button" className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => open(player, group.team, displayedSeason)}><span><b>{player.name}</b><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}{!usingLastList && scoring.data && ` · ${format(scoring.data.averages[player.id])} PPG`}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, group.team)} favorites={favorites} toggle={toggle} />      </div>)}</div>{!group.players.length && <p className="nfl-empty-note" role="status">{query.trim() || position !== 'All' ? 'No players match these filters.' : resource.loading ? 'Updating this team’s player list…' : resource.error ? 'This team’s player list could not be refreshed. Retry above.' : 'No roster players are available for this team yet.'}</p>}
     </section>)}</div></>;
@@ -354,7 +372,8 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
 }
 
 export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, onOpenTeamLog, initialGameId, openGameId, onSelectGame, onBackToGames, onDetailOpenChange, backLabel = 'All games', heading = 'The Wire' }: Props) {
-  const [lastStatHub] = useState(readLastNBAStatHub);
+  const [lastStatHub, setLastStatHub] = useState(readLastNBAStatHub);
+  useEffect(() => subscribeRenderSnapshots(() => setLastStatHub(readLastNBAStatHub()), { kind: 'nbaStatHub', key: 'last' }), []);
   useEffect(() => { if (mode === 'stats' && lastStatHub) saveLastNBAStatHub(lastStatHub); }, [mode, lastStatHub]);
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
   const [selectedId, setSelectedId] = useState(initialGameId ?? '');
@@ -428,7 +447,8 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
   const homeLost = finalScore && awayScore !== undefined && homeScore !== undefined && homeScore < awayScore;
   const boxTeam = game && (game.home.id === boxTeamId ? game.home : game.away);
   const selectGame = (item: Game) => { setSelectedId(item.id); setOpenedGameId(item.id); setTab(boardView === 'simulation' && item.status !== 'LIVE' ? 'simulation' : 'players'); setTeamId(''); setBoxTeamId(''); setProfile(null); onSelectGame?.(item.id); };
-  if (mode === 'stats') return <div className="nfl-players-directory nba-stat-hub" aria-label="NBA Stat Hub">
+  if (mode === 'stats') return <div className="nfl-players-directory nba-stat-hub stat-hub-workspace" aria-label="NBA Stat Hub">
+    <StatHubHeader sport="NBA" />
     <div className="nfl-directory-controls">{game ? <section className="nfl-game-wheel" data-swipe-back-ignore><span className="eyebrow">SELECT GAME</span><DraggableTabs className="nfl-game-wheel-tabs" ariaLabel="NBA games" options={nbaGames.map((item) => ({ key: item.id, label: `${item.away.abbr} @ ${item.home.abbr}`, secondary: item.status === 'LIVE' ? `LIVE · ${item.period} ${item.clock}` : item.status === 'FINAL' ? 'FINAL' : gameDate(item.date, true) }))} selected={game.id} onSelect={(id) => { const item = nbaGames.find((entry) => entry.id === id); if (item) selectGame(item); }} /></section> : status === 'loading' ? <p className="nfl-empty-note" role="status">Loading NBA games…</p> : status === 'error' ? <p className="nfl-empty-note" role="status">Cannot refresh NBA scores. Retry or browse teams below.</p> : <div className="nba-empty-day" role="status"><b>No NBA games on this date.</b><span>There are no scheduled matchups for this Eastern day. Browse teams below or pick another date.</span></div>}</div>
     {status === 'error' && <div className="feed-warning" role="status">Could not refresh NBA games. <button type="button" onClick={onRetry}>Retry</button></div>}
     {!game && <><ResourceMessage {...league} data={league.data ?? lastStatHub} />{!!allTeams.length && <label className="nba-filter">NBA team <select value={team?.id ?? ''} onChange={(event) => { setTeamId(event.target.value); setProfile(null); }}>{allTeams.map((side) => <option value={side.id} key={side.id}>{side.name}</option>)}</select></label>}</>}

@@ -51,6 +51,8 @@ export function createDraftStorage(database: string) {
 
   return {
     load: (key: string): Promise<unknown> => ordered(() => transact('readonly', (store) => store.get(key))),
+    loadAll: (): Promise<unknown[]> => ordered(() => transact('readonly', (store) => store.getAll())),
+    clear: (): Promise<unknown> => ordered(() => transact('readwrite', (store) => store.clear())),
     save: (key: string, value: unknown): Promise<unknown> => ordered(() => {
       if (stopped.has(key)) throw new Error('Draft saving stopped after account deletion.');
       if (value === undefined) return transact('readwrite', (store) => store.delete(key));
