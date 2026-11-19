@@ -6,8 +6,13 @@ import type { Game } from './sportsData.ts';
 
 export type WireTeamPick = ScoreboardPick;
 export type WireTeamPicks = Record<string, WireTeamPick>;
-export type WireAnalysisCoverage = { analyzedGames: number; upcomingAnalyzedGames: number; pendingGames: number; failedGames: number; dailyTarget?: number; selectionCount?: number };
+export type WireAnalysisCoverage = { analyzedGames: number; upcomingAnalyzedGames: number; pendingGames: number; failedGames: number; failedRefreshGames?: number; dailyTarget?: number; selectionCount?: number };
 export function wireAnalysisNotice(coverage: WireAnalysisCoverage, games: Game[]) {
+  const refreshNotice = coverage.failedRefreshGames
+    ? `${coverage.failedRefreshGames} pregame refreshes failed; earlier saved pregame analyses are shown for those started games. No paid retries or post-tipoff forecasts were made. ` : '';
+  return refreshNotice + analysisProgressNotice(coverage, games);
+}
+function analysisProgressNotice(coverage: WireAnalysisCoverage, games: Game[]) {
   if (coverage.pendingGames > 0) return `GamewAIre is analyzing ${coverage.pendingGames} queued matchups. Picks appear as analyses finish; selections are never forced.`;
   if (coverage.dailyTarget !== undefined && coverage.selectionCount !== undefined && coverage.selectionCount < coverage.dailyTarget)
     return `${coverage.selectionCount} of ${coverage.dailyTarget} daily NBA selections have verified pregame evidence. Missing winner data is not substituted.`;

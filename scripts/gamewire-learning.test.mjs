@@ -163,6 +163,27 @@ test('Game-pick adapter uses original pre-correction probabilities, ignores mode
   assert.ok(calls.some(call => call[0] === 'eq' && call[1] === 'withdrawn' && call[2] === false));
   assert.ok(calls.some(call => call[0] === 'in' && call[1] === 'result'));
 });
+test('Learning-history reads retry transient failures once with bounded signals and never default to empty learning on failure', async () => {
+  for (const [errors, expectedCalls, succeeds] of [
+    [[{ code: '57014', message: 'statement timeout' }, null], 2, true],
+    [[{ code: 'PGRST002', message: 'Database connection unavailable' }, { code: 'PGRST002', message: 'Database connection unavailable' }], 2, false],
+    [[{ code: '', message: 'TypeError: fetch failed' }, null], 2, true],
+    [[{ code: '42703', message: 'column does not exist' }], 1, false],
+  ]) {
+    let calls = 0;
+    const signals = [];
+    const builder = new Proxy({}, { get: (_, method) => method === 'then'
+      ? resolve => { calls++; return resolve({ data: [], error: errors.shift() ?? null }); }
+      : (...args) => { if (method === 'abortSignal') signals.push(args[0]); return builder; } });
+    const load = () => loadPickLearning({ from: () => builder }, 'NBA', probabilityModelVersion, cutoff);
+    if (succeeds) assert.equal((await load()).size, 0);
+    else await assert.rejects(load(), /Could not verify settled game-pick learning history/);
+    assert.equal(calls, expectedCalls);
+    assert.equal(signals.length, expectedCalls);
+    assert.ok(signals.every(signal => signal instanceof AbortSignal));
+    if (signals.length > 1) assert.notEqual(signals[0], signals[1]);
+  }
+});
 test('Weekly tracker shows estimates beside real zero stats and switches to saved past-week estimates without a dropdown', () => {
   const history = { issues: [], weeks: [
     { ...row, week: 8, event_id: 'current', actuals: { player_rush_yds: 0 }, settled_at: '2026-10-29T22:00:00Z', opponent: 'Current opponent' },

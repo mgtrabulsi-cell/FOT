@@ -126,6 +126,8 @@ Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `su
 
 ## GamewAIre setup
 
+NFL/NBA analysis verifies settled-pick learning history before reserving paid odds credits. Each read is limited to eight seconds and may retry once only for a transient database/connection failure; unavailable history still fails explicitly, never substitutes an unlearned report, and never automatically retries a paid request. Once a game has started, a failed refresh no longer hides its earlier successful current-model pregame analysis. The scoreboard identifies these as failed refreshes using saved evidence, preserves missing-analysis errors for games without a usable archive, and never generates forecasts or records new automatic picks after kickoff. Upcoming games retain the stricter latest-attempt rule rather than reviving stale picks.
+
 ### On-demand soccer (experimental)
 
 GamewAIre admin review also supports Premier League (`EPL`), Serie A, La Liga and Bundesliga. All four soccer leagues now receive **daily private game leans from 1 AM Eastern**, like NBA, with **reviewed publication only**. Scoreboard badges and NFL week filters remain NFL/NBA-only. Existing saved records and NFL/NBA v9 learning compatibility are unchanged; soccer has its own `soccer-evidence-v1` model and does not consume cross-sport learning adjustments.

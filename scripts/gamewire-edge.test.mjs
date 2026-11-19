@@ -95,6 +95,10 @@ test('Missing upgraded analyses are pending information, not a misleading zero-o
   assert.equal(wireAnalysisNotice({ analyzedGames: 3, upcomingAnalyzedGames: 3, pendingGames: 0, failedGames: 0 }, mixed), '', 'Past games without v9 results do not leave a completed pregame refresh waiting forever');
   assert.match(wireAnalysisNotice({ analyzedGames: 3, upcomingAnalyzedGames: 2, pendingGames: 0, failedGames: 0 }, mixed), /waiting/);
   assert.equal(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 1 }, games), '');
+  const recovered = wireAnalysisNotice({ analyzedGames: 4, pendingGames: 0, failedGames: 0, failedRefreshGames: 4 }, games);
+  assert.match(recovered, /4 pregame refreshes failed/);
+  assert.match(recovered, /earlier saved pregame analyses/);
+  assert.match(recovered, /No paid retries or post-tipoff forecasts/);
   assert.match(wireAnalysisNotice({ analyzedGames: 0, pendingGames: 0, failedGames: 0 }, games.map(game => ({ ...game, status: 'FINAL' }))), /not created retroactively/);
 });
 test('Scoreboards rank at most three distinct supported games by probability without value gating', () => {

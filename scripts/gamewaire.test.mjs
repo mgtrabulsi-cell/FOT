@@ -1119,7 +1119,7 @@ for (const sport of engine.soccerSports) test(`${sport} on-demand backend uses v
 });
 function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owner', configured = false, failClaim = false, creditBudget = true, publicationVersion = engine.modelVersion, publicationPicks = [], eventCache = null, scheduledJob = null, cachedRun = null, lockBusy = false,
   publicationSport = 'NBA', publicationAlignment = null, savedSimulation,
-  scoreboardRows = [], scoreboardError = null, scoreboardJobs = [], scoreboardJobsError = null,
+  scoreboardRows = [], scoreboardError = null, scoreboardJobs = [], scoreboardJobsError = null, learningErrors = [],
   settlementPick = { event_start: new Date(now - 86400000).toISOString(), american: -110, line: 20.5 }, settlementConflict = false } = {}) {
   const rpc = [], tables = [], fetches = [], writes = [], env = { get: (name) => ({
     SUPABASE_URL: 'https://test.supabase.co', SUPABASE_ANON_KEY: 'public-fixture', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service',
@@ -1132,7 +1132,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
       tables.push(table);
       const builder = {
         select: (columns) => { builder.columns = columns; return builder; }, eq: () => builder, order: () => builder, limit: () => builder, lt: () => builder,
-        gt: () => builder, gte: () => builder, in: () => builder, or: () => builder, is: () => builder, lte: () => builder,
+        gt: () => builder, gte: () => builder, in: () => builder, or: () => builder, is: () => builder, lte: () => builder, abortSignal: () => builder,
         range: (first, last) => { builder.first = first; builder.last = last; return builder; }, returns: () => builder,
         update: (value) => { writes.push({ table, value }); return builder; }, insert: (value) => { builder.value = value; return builder; },
         upsert: () => builder,
@@ -1146,7 +1146,8 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
         single: async () => ({ data: table === 'gamewaire_picks' ? settlementPick : { ...builder.value, id: 'run-fixture' }, error: null }),
         then: (resolve) => Promise.resolve({ data: table === 'gamewaire_runs' && builder.columns?.includes('event_start,payload,status')
           ? scoreboardRows.slice(builder.first, builder.last + 1) : table === 'gamewaire_runs' ? [] : table === 'gamewaire_schedule_jobs' ? scoreboardJobs : table === 'gamewaire_picks' ? [] : null,
-          error: table === 'gamewaire_runs' ? scoreboardError : table === 'gamewaire_schedule_jobs' ? scoreboardJobsError : null }).then(resolve),
+          error: table === 'gamewaire_runs' ? scoreboardError : table === 'gamewaire_schedule_jobs' ? scoreboardJobsError
+            : table === 'gamewaire_picks' ? learningErrors.shift() ?? null : null }).then(resolve),
       };
       return builder;
     },
@@ -1326,6 +1327,50 @@ test('Member scoreboard shortlist ranks every saved matchup, records only select
   const refreshed = endpoint({ role: 'member', scoreboardRows: [failed, ...rows] });
   const fewer = await refreshed.run({ action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-28', lastDate: '2026-10-28' });
   assert.ok(!(await fewer.json()).picks.some(pick => pick.eventId === 'espn-3'), 'A failed latest attempt cannot resurrect an older qualifying report');
+});
+test('Learning-history failures stop analysis before reserving credits or fetching paid odds', async () => {
+  const error = { code: '57014', message: 'statement timeout' };
+  const api = endpoint({ configured: true, learningErrors: [error, error] });
+  const response = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
+  assert.equal(response.status, 502);
+  assert.match((await response.json()).error, /learning history/);
+  assert.deepEqual(api.fetches, []);
+  assert.ok(!api.rpc.some(call => call.name === 'gamewaire_reserve_credits'));
+  assert.equal(api.tables.filter(table => table === 'gamewaire_picks').length, 2);
+  const recovered = endpoint({ configured: true, learningErrors: [error, null] });
+  assert.equal((await recovered.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 200);
+  assert.equal(recovered.fetches.length, 1, 'Only the database read is retried, never the paid odds request');
+});
+test('Started games retain earlier successful pregame analyses after a failed refresh, without hiding failures or writing new forecasts', async () => {
+  const started = new Date(now - 60_000).toISOString();
+  const base = evaluate([{ ...quote, market: 'h2h', line: null, subject: quote.home, side: quote.home }]).picks[0];
+  const pick = { ...base, start: started, updatedAt: new Date(now - 180_000).toISOString(), dataAt: new Date(now - 120_000).toISOString(),
+    identifiers: { espnEventId: 'saved-game' } };
+  const saved = { id: 'saved-run', event_id: 'provider', event_start: started, status: 'completed',
+    payload: { modelVersion: engine.modelVersion, teamLean: { qualifies: true, pick } } };
+  const failed = { ...saved, status: 'provider_error', payload: { error: 'Learning-history database timed out' } };
+  const body = { action: 'scoreboardPicks', sport: 'NBA', firstDate: '2026-10-27', lastDate: '2026-10-27' };
+  const jobs = [{ event_id: 'provider', event_start: started, status: 'failed' }];
+  const api = endpoint({ role: 'member', scoreboardRows: [failed, saved], scoreboardJobs: jobs });
+  const result = await (await api.run(body)).json();
+  assert.equal(result.analyzedGames, 1);
+  assert.equal(result.failedGames, 0);
+  assert.equal(result.failedRefreshGames, 1);
+  assert.equal(result.picks[0].eventId, 'saved-game');
+  assert.equal(result.picks[0].evidenceAt, pick.dataAt);
+  assert.deepEqual(api.fetches, []);
+  assert.deepEqual(api.writes, []);
+  assert.deepEqual(api.rpc, [], 'Started-game recovery does not record new automatic picks');
+  for (const payload of [{ modelVersion: 'older-model' }, { modelVersion: engine.modelVersion }]) {
+    const changed = endpoint({ role: 'member', scoreboardRows: [failed, { ...saved, payload }], scoreboardJobs: jobs });
+    const response = await (await changed.run(body)).json();
+    assert.deepEqual(response.picks, [], 'No unsupported winner is invented');
+    assert.equal(response.failedRefreshGames, payload.modelVersion === engine.modelVersion ? 1 : 0);
+  }
+  const missing = endpoint({ role: 'member', scoreboardRows: [failed], scoreboardJobs: jobs });
+  const missingResult = await (await missing.run(body)).json();
+  assert.equal(missingResult.failedGames, 1);
+  assert.equal(missingResult.failedRefreshGames, 0);
 });
 test('Scoreboard summaries paginate saved reports, reject invalid slate scopes and report storage failures', async () => {
   const rows = Array.from({ length: 501 }, (_, index) => ({ event_id: String(index), event_start: quote.start,

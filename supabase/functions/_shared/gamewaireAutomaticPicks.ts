@@ -27,6 +27,7 @@ export async function loadWireSelections(admin: SupabaseClient, sport: WireSport
     if (saved.error) throw new Error('Could not load matchup scores for the scoreboard.');
     for (const row of saved.data) {
       if (!inSlate(row.event_start) || row.status === 'in_progress' || latest.has(row.event_id)) continue;
+      if (row.status === 'provider_error' && Date.parse(row.event_start) <= now) continue;
       latest.set(row.event_id, row);
     }
     if (saved.data.length < 500) break;
@@ -42,6 +43,9 @@ export async function loadWireSelections(admin: SupabaseClient, sport: WireSport
     .returns<Array<{ event_id: string; event_start: string; status: string }>>();
   if (jobs.error) throw new Error('Could not load scoreboard analysis progress.');
   const countJobs = (statuses: string[]) => new Set(jobs.data.filter(job => inSlate(job.event_start) && statuses.includes(job.status)).map(job => job.event_id)).size;
+  const failedEvents = new Set(jobs.data.filter(job => inSlate(job.event_start) && job.status === 'failed').map(job => job.event_id));
+  const failedRefreshGames = [...failedEvents].filter(id => Date.parse(latest.get(id)?.event_start ?? '') <= now
+    && latest.get(id)?.payload?.modelVersion === modelVersion).length;
   const slateGames = new Set([...latest.keys(), ...jobs.data.filter(job => inSlate(job.event_start)).map(job => job.event_id)]).size;
   const winners = [...latest.values()].flatMap(row => {
     const winner = row.payload?.winnerLean ?? (row.payload?.teamLean?.pick.market === 'h2h' ? row.payload.teamLean : undefined);
@@ -65,7 +69,7 @@ export async function loadWireSelections(admin: SupabaseClient, sport: WireSport
     ...(sport === 'NBA' ? { dailyTarget: slateGames === 0 ? 0 : slateGames < 3 ? 1 : 3, selectionCount: picks.length } : {}),
     analyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion).length,
     upcomingAnalyzedGames: [...latest.values()].filter(row => row.payload?.modelVersion === modelVersion && Date.parse(row.event_start) > now).length,
-    pendingGames: countJobs(['pending', 'running']), failedGames: countJobs(['failed']),
+    pendingGames: countJobs(['pending', 'running']), failedGames: failedEvents.size - failedRefreshGames, failedRefreshGames,
     note: sport === 'NBA' ? 'Three distinct games per Eastern day, or one selection total on a 1–2-game slate. Supported picks compete only on estimated win probability, never EV or odds value. Missing evidence is not invented. No paid odds refresh or post publication is triggered.'
       : 'Ranked across saved matchup analyses only by estimated win probability, never EV or odds value. NFL moneyline picks must also match the saved default simulation winner; missing or tied simulations receive no moneyline label. No paid odds refresh or post publication is triggered.',
   } };

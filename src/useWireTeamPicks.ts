@@ -29,6 +29,8 @@ export function useWireTeamPicks(games: Game[], sport: Sport, userId?: string, e
       }, controller.signal);
       if (!Array.isArray(result.picks) || [result.analyzedGames, result.upcomingAnalyzedGames, result.pendingGames, result.failedGames].some(count => !Number.isInteger(count) || count < 0))
         throw new Error('Invalid matchup-score response');
+      if (result.failedRefreshGames !== undefined && (!Number.isInteger(result.failedRefreshGames) || result.failedRefreshGames < 0))
+        throw new Error('Invalid matchup-refresh response');
       if (!controller.signal.aborted) {
         setCandidates({ scope, picks: result.picks, coverage: result });
         setError(result.failedGames > 0

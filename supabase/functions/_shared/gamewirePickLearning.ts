@@ -5,12 +5,19 @@ import type { LearningAdjustment, LearningSample } from './gamewireLearning.ts';
 export async function loadPickLearning(admin: SupabaseClient, sport: string, baseModel: string, cutoff: number) {
   const groups = new Map<string, LearningSample[]>();
   for (let offset = 0; ; offset += 500) {
-    const saved = await admin.from('gamewaire_picks').select('id,event_id,event_start,created_at,settled_at,probability,push_probability,result,market,side,data')
+    const readPage = () => admin.from('gamewaire_picks').select('id,event_id,event_start,created_at,settled_at,probability,push_probability,result,market,side,data')
       .eq('sport', sport).eq('withdrawn', false).or('is_top_pick.eq.true,is_game_lean.eq.true,is_automatic.eq.true')
       .in('result', ['win', 'loss']).lt('settled_at', new Date(cutoff).toISOString())
       .gt('event_start', new Date(cutoff - 365 * 86400000).toISOString())
-      .order('event_start', { ascending: false }).order('id').range(offset, offset + 499);
-    if (saved.error) throw new Error('Could not verify settled game-pick learning history.');
+      .order('event_start', { ascending: false }).order('id').range(offset, offset + 499)
+      .abortSignal(AbortSignal.timeout(8_000));
+    let saved = await readPage();
+    if (saved.error && (/^(08|53|57)/.test(saved.error.code) || /^PGRST00[0-3]$/.test(saved.error.code)
+      || /fetch failed|failed to fetch|timeout|timed out|context deadline exceeded/i.test(saved.error.message))) {
+      console.warn('Retrying read-only game-pick learning history', saved.error.code || 'connection_error');
+      saved = await readPage();
+    }
+    if (saved.error) throw new Error('Could not verify settled game-pick learning history.', { cause: saved.error });
     for (const row of saved.data) {
       const data = object(row.data), learning = object(data.learning);
       if ((text(learning.baseModelVersion) || text(data.modelVersion)) !== baseModel) continue;

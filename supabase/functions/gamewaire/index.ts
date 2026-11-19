@@ -317,6 +317,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       return json({ error: 'Hourly analysis limit reached (6 per admin / 20 site-wide). Saved reports, published picks and game lists are still available.',
         retryAt: retryAt.toISOString() }, 429);
     }
+    const learning = isSoccer(sport) ? new Map() : await loadPickLearning(admin, sport, probabilityModelVersion, Date.now());
     const requestedMarkets = [...new Set([...settings.markets, 'h2h', ...(isSoccer(sport) ? [] : ['spreads'])])];
     const budget = await admin.rpc('gamewaire_reserve_credits', { max_cost: requestedMarkets.length });
     if (budget.error) throw new Error('Could not verify the shared Odds API credit budget.');
@@ -342,7 +343,6 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       const anchor: Quote = quotes[0];
       const matchup = await (isSoccer(sport) ? resolveSoccerMatchup(anchor, fetcher) : resolveMatchup(anchor, fetcher));
       const data = await (isSoccer(sport) ? collectSoccerEvidence(allQuotes, matchup, Date.now(), fetcher) : collectEvidence(allQuotes, matchup, Date.now(), fetcher));
-      const learning = isSoccer(sport) ? new Map() : await loadPickLearning(admin, sport, probabilityModelVersion, Date.now());
       forecast = sport === 'NFL' ? await savedNFLGameSimulation(admin, matchup.eventId, start) : undefined;
       const alignedQuotes = sport === 'NFL' ? quotes.filter(quote => simulationAllowsMoneyline(quote, forecast)) : quotes;
       const alignedEvidence = sport === 'NFL' ? alignSimulationEvidence(alignedQuotes, data.evidence, forecast) : data.evidence;
