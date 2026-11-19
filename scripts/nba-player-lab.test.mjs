@@ -186,6 +186,7 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
     } },
     './services/nbaStats': { nbaStatValue }, './services/renderSnapshots': {}, './services/foregroundRefresh': {},
   });
+
   const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];
   const render = () => { stateIndex = 0; refIndex = 0; return walk(api.default({ renderNFL: () => null })); };
   let nodes = render();
@@ -205,4 +206,61 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
   assert.equal(nodes.filter(node => node.props?.className === 'gwb-chat-message is-user').length, 3);
   assert.equal(nodes.filter(node => node.props?.className === 'gwb-chat-message is-assistant').length, 3);
   assert.ok(!nodes.some(node => node.props?.['aria-label'] === 'Player Lab league'), 'No separate sport tabs');
+});
+
+test('Primary Player Lab restores direct cards with one NFL/NBA search, scoring and comparison', async () => {
+    const states = [], refs = [], calls = [];
+    let stateIndex = 0, refIndex = 0;
+    const jsx = (type, props) => ({ type, props });
+    const nfl = { id: '1', name: 'Josh Allen', teamAbbr: 'BUF', position: 'QB' };
+    const nba = { ...player, id: '1', name: 'LeBron James' };
+    const report = { player: nba, season: 2027, profile: null, game: null, projection: null, forecastAt: null, issues: ['Source offline'] };
+    const api = moduleFor('../src/PlayerLabCards.tsx', {
+      react: {
+        useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial;
+          return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; },
+        useRef(initial) { return refs[refIndex++] ??= { current: initial }; }, useEffect() {},
+      },
+      'react/jsx-runtime': { jsx, jsxs: jsx },
+      'lucide-react': {},
+      './services/gamewireBot': { readDirectorySnapshot: () => ({ players: [nfl] }),
+        async loadBotReport(id, format) { calls.push(['NFL', id, format]); return { player: nfl, format }; } },
+      './services/nbaPlayerLab': { readNBAPlayerLabDirectory: () => ({ season: 2027, players: [nba] }),
+        async loadNBAPlayerLabReport(row, season) { calls.push(['NBA', row.id, season]); return report; } },
+      './services/playerLabChat': chat(), './services/nbaStats': { nbaStatValue },
+      './services/renderSnapshots': {}, './services/foregroundRefresh': {},
+    });
+    const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];
+    const render = () => { stateIndex = 0; refIndex = 0; return walk(api.default({ renderNFL: report => jsx('full-nfl-breakdown', { report }) })); };
+    let nodes = render();
+    nodes.find(node => node.props?.['aria-controls'] === 'gamewire-bot-panel').props.onClick();
+    async function choose(name) {
+      nodes = render();
+      nodes.find(node => node.type === 'input').props.onChange({ target: { value: name } });
+      nodes = render();
+      nodes.find(node => node.props?.className === 'gwb-search-results').props.children[0][0].props.onClick();
+      await new Promise(setImmediate); nodes = render();
+    }
+    await choose('Josh Allen');
+    assert.ok(nodes.some(node => node.type === 'full-nfl-breakdown'), 'NFL breakdown renders directly, not inside disclosure');
+    nodes.find(node => node.type === 'select').props.onChange({ target: { value: 'half' } });
+    await new Promise(setImmediate); nodes = render();
+    assert.equal(calls.at(-1)[2], 'half');
+    nodes.find(node => node.props?.['aria-pressed'] === false).props.onClick();
+    await choose('LeBron James');
+    assert.deepEqual(calls.map(call => call[0]), ['NFL', 'NFL', 'NBA']);
+    assert.ok(nodes.some(node => node.type === 'full-nfl-breakdown'));
+    assert.ok(nodes.some(node => node.type === api.NBAPlayerCard));
+    assert.equal(nodes.filter(node => node.type === 'input').length, 1);
+    assert.ok(!nodes.some(node => ['textarea', 'details'].includes(node.type) || node.props?.role === 'tab'));
+    const emptyCard = JSON.stringify(api.NBAPlayerCard({ report, onClear() {} }));
+    assert.match(emptyCard, /Saved matchup projections/);
+    assert.match(emptyCard, /No supported saved projection/);
+    assert.match(emptyCard, /Source offline/);
+    assert.match(emptyCard, /Recorded recent games/);
+    for (const label of ['PTS', 'REB', 'AST', 'PRA', '3PM']) assert.ok(emptyCard.includes(label));
+    const populated = JSON.stringify(api.NBAPlayerCard({ report: { ...report, projection: athlete('1', '1', 40) }, onClear() {} }));
+    assert.match(populated, /40.0/);
+    assert.match(populated, /No saved estimate/, 'Absent threes stay unavailable');
+    assert.match(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'), /return <PlayerLabCards/);
 });

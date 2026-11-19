@@ -326,3 +326,12 @@
   .gwb-week-table table { font-size: 12px; }
   .gwb .gwb-week-table th, .gwb .gwb-week-table td { padding: 10px 5px; }
 }
+.gwb-player-card-heading { position: relative; display: flex; align-items: center; gap: 1rem; padding-right: 2rem; }
+.gwb-player-headshot { width: 76px; height: 76px; object-fit: contain; }
+.gwb-player-projections { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: .6rem; margin: 1rem 0; }
+.gwb-player-projections > div { display: flex; flex-direction: column; gap: .4rem; border: 1px solid #31516b; border-radius: 12px; padding: .8rem; min-width: 0; }
+.gwb-player-projections strong { font-size: 1.3rem; overflow-wrap: anywhere; }
+.gwb-player-projections small { font-size: .75rem; }
+.gwb-player-log { overflow-x: auto; }
+.gwb-player-log table { border-collapse: collapse; width: 100%; min-width: 420px; }
+.gwb-player-log th, .gwb-player-log td { padding: .65rem; text-align: left; border-bottom: 1px solid #31516b; }
