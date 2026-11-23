@@ -8,6 +8,10 @@ Player-prop details show exact-line last-five/last-ten hit counts and current hi
 
 NFL/NBA pregame matchup details include a refreshed, team-grouped injury report. Only an explicit provider `Out` designation is labeled **OUT**; questionable/doubtful players are not treated as ruled out. Missing, mismatched and conflicting reports remain explicit, with checked time and visible refresh failures. This is a reported availability snapshot, not an official final inactive list.
 
+## Sign-in recovery
+
+During a slow sign-in session restore, the loading screen offers **Continue as guest** after 12 seconds instead of trapping users behind the logo. This does not erase credentials or saved account data. Session restoration failures are logged and shown on the sign-in screen; account-only tools remain protected.
+
 ## My Game Plan
 
 My Game Plan has been removed from all screens, including the research guide, Locker Room workspace and NFL/NBA player/simulation save controls. Existing device-only saved research is not erased by this UI removal; account deletion still clears that account's legacy research. Storage helpers and tests remain for data compatibility. The earlier [App Store review packet](APP-STORE-REVIEW.md) is historical and must not be submitted with its removed-feature claims.

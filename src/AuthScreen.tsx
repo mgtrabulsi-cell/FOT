@@ -42,7 +42,7 @@ export function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
   </main>;
 }
 
-export default function AuthScreen({ onContinueGuest }: { onContinueGuest?: () => void } = {}) {
+export default function AuthScreen({ onContinueGuest, connectionError }: { onContinueGuest?: () => void; connectionError?: string } = {}) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -120,7 +120,7 @@ export default function AuthScreen({ onContinueGuest }: { onContinueGuest?: () =
             </span>
           </label>
           <label className="auth-remember"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span>Remember this device</span></label>
-          {error && <p className="auth-error" role="alert">{error}</p>}
+          {(error || connectionError) && <p className="auth-error" role="alert">{error || connectionError}</p>}
           {notice && <p className="auth-notice" role="status">{notice}</p>}
           <button className="auth-submit" type="submit" disabled={busy}>{mode === 'signup' ? <UserPlus size={16} /> : <LogIn size={16} />}{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}</button>
           {mode === 'login' && <button className="auth-mode-toggle" type="button" disabled={busy} onClick={forgotPassword}>Forgot my password</button>}

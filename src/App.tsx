@@ -507,6 +507,7 @@ function App() {
   const [sessionUser, setAuthUser] = useState<User | null>(null);
   const authUser = online ? sessionUser : null;
   const [authLoading, setAuthLoading] = useState(true);
+  const [authRestoreError, setAuthRestoreError] = useState('');
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [savedGuestMode, setGuestMode] = useState(() => localStorage.getItem('gamewire-guest-mode') === 'true');
   const guestMode = savedGuestMode || !online;
@@ -851,13 +852,22 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       if (event === 'PASSWORD_RECOVERY') setRecoveringPassword(true);
+      if (session) setAuthRestoreError('');
       setAuthUser(session?.user ?? null);
       setAuthLoading(false);
     });
     void supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
-      if (error) setFavoriteSyncError('Could not restore your session. Please sign in again.');
+      if (error) {
+        console.error('Sign-in session restoration failed', error);
+        setAuthRestoreError('Could not restore your session. Please try signing in again or continue as guest.');
+      }
       setAuthUser(data.session?.user ?? null);
+      setAuthLoading(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      console.error('Sign-in session restoration failed', error);
+      setAuthRestoreError('Could not connect to the sign-in service. Please try again or continue as guest.');
       setAuthLoading(false);
     });
     return () => {
@@ -1269,8 +1279,8 @@ function App() {
 
   if (deletedAccount) return <main className="page-wrap"><section className="account-profile" role="status"><h2>Account deleted</h2><p>Your account and associated personal data have been deleted.</p>{deletedAccount.length > 0 && <p className="auth-error">Some data on this device could not be cleared: {deletedAccount.join(', ')}. Clear this site's browsing data in your browser settings.</p>}<button onClick={() => window.location.replace(import.meta.env.BASE_URL)}>Back to GameWire</button></section></main>;
   if (recoveringPassword && authUser) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
-  if (online && supabase && authLoading && !guestMode) return <SplashScreen />;
-  if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
+  if (online && supabase && authLoading && !guestMode) return <SplashScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
+  if (supabase && !authUser && !guestMode) return <AuthScreen connectionError={authRestoreError} onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
 
   return (
     <div className="app-shell sports-theme">

@@ -105,6 +105,11 @@ button { color: inherit; }
 .auth-loading { min-height: 100vh; display: grid; place-items: center; color: #bdc9db; font-size: 12px; }
 .splash-screen { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #040a15; animation: splash-fade-in .5s ease-out both; }
 .splash-logo { position: relative; width: min(94vw, 640px); aspect-ratio: 3 / 2; }
+.splash-recovery { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); width: min(90vw, 480px); padding: 16px; border: 1px solid #445776; border-radius: 14px; background: #101c30; color: #f0f4fb; text-align: center; }
+.splash-recovery h1 { margin: 0 0 10px; font-size: 18px; }
+.splash-recovery p { font-size: 14px; line-height: 1.5; color: #c8d4e5; }
+.splash-recovery button { min-height: 44px; padding: 10px 18px; border: 1px solid #88b5e8; border-radius: 9px; background: #1b426a; color: white; font: inherit; cursor: pointer; }
+.splash-recovery button:focus-visible { outline: 3px solid #a6d9ff; outline-offset: 3px; }
 .splash-base { display: block; width: 100%; height: 100%; object-fit: contain; -webkit-mask-image: radial-gradient(ellipse at center, #000 52%, transparent 78%); mask-image: radial-gradient(ellipse at center, #000 52%, transparent 78%); }
 .splash-pulse { position: absolute; left: 28.6458%; top: 37.1094%; width: 42.9688%; height: 45.8984%; pointer-events: none; user-select: none; }
 .splash-pulse-glow { mix-blend-mode: screen; filter: blur(7px) saturate(1.5) brightness(1.3); opacity: .15; animation: splash-beat 1s ease-in-out infinite; }
