@@ -43,6 +43,7 @@ const compiled = ts.transpileModule(statsPregameSource, {
   .replace(/from ['"].\/services\/playerInitials['"]/g, `from '${new URL('../src/services/playerInitials.ts', import.meta.url)}'`)
   .replace(/import OfflineImage from ['"].\/OfflineImage['"];/, 'const OfflineImage = () => null;')
   .replace(/import NotificationBell from ['"].\/NotificationBell['"];/, 'const NotificationBell = () => null;')
+  .replace(/import PregameInjuries from ['"].\/PregameInjuries['"];/, 'const PregameInjuries = () => null;')
   .replace(/import TeamAbbrMark from ['"].\/TeamAbbrMark['"];/, 'const TeamAbbrMark = () => null;')
   .replace(/import NFLGameSimulationPanel from ['"].\/NFLGameSimulation['"];/, 'const NFLGameSimulationPanel = () => null;')
   .replace(/import \{ NFLSimulationResults \} from ['"].\/NFLSimulationAccuracy['"];/, 'const NFLSimulationResults = () => null;')
