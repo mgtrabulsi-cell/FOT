@@ -14,7 +14,7 @@ During a slow sign-in session restore, the loading screen offers **Continue as g
 
 ## My Game Plan
 
-My Game Plan has been removed from all screens, including the research guide, Locker Room workspace and NFL/NBA player/simulation save controls. Existing device-only saved research is not erased by this UI removal; account deletion still clears that account's legacy research. Storage helpers and tests remain for data compatibility. The earlier [App Store review packet](APP-STORE-REVIEW.md) is historical and must not be submitted with its removed-feature claims.
+My Game Plan has been removed from all screens, including the research guide, Locker Room workspace and NFL/NBA player/simulation save controls. Existing device-only saved research is not erased by this UI removal; account deletion still clears that account's legacy research. Storage helpers and tests remain for data compatibility. The [current App Store review packet](APP-STORE-REVIEW.md) describes the app without those removed features; verify the selected binary before submission.
 
 NFL live/final player box scores use matte, high-contrast colors on both desktop and mobile. Only on mobile screens up to 760px, The Wire's NFL game list uses compact two-team rows with a separate status column while retaining GameWire's gradients, team colors, live accents and themed controls. Mobile player box scores use compact 13px names/stats, tighter rows, pinned player identities and keyboard-focusable horizontal scrolling so more statistics fit onscreen. Empty alignment columns are hidden on mobile; favorites and all reported statistics remain available. Desktop sizing and spacing, NBA tables and pregame season-stat tables remain unchanged.
 

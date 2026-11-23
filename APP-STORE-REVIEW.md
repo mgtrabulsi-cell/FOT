@@ -1,148 +1,151 @@
-# GameWire: App Store review response and metadata
+# GameWire: current App Review response
 
-> Historical draft: My Game Plan, its save controls and its research guide have been removed from all screens. The feature descriptions, metadata and demo steps below are no longer accurate for the current app. Do not submit this packet without rewriting and verifying it against the current build.
+## Current review status
 
-This is a draft for the app owner. Verify every statement against the submitted Median build before sending. Website changes alone do not guarantee approval under 4.2, 4.2.6 or 4.3. Apple asked for a reply first; do not blindly resubmit the same binary.
+The nine-question reply below was sent through App Store Connect on November 23, 2026. Apple replied the same day and maintained the rejection: the app still provides the same feature set as other submitted apps, and should be revised to provide a unique experience. No new build was resubmitted.
 
-## Before sending
+The metadata below remains preparation material, not proof that App Store listing changes were saved. Another submission needs substantive product differentiation or a supported appeal, not merely this revised wording.
 
-- Confirm the reviewed Median build actually loads the updated GameWire experience. Record the app version/build and iOS version tested. Rebuild through Median if native configuration, bundled resources or the submitted binary need updating.
-- Confirm whether beta testing used TestFlight, web access, Median builds or a combination; add dates and duration. The owner confirmed 30+ testers, not the distribution method.
-- Check the beta examples below against actual feedback records. Do not invent quotes, dates, tester identities or outcomes.
-- Confirm that no client, partner or purchased content/template was involved beyond the disclosed Median service. Ownership and direct submission were affirmed, but these additional details need explicit confirmation.
-- Verify commercial content permissions and attribution requirements for ESPN, API-Sports and every other provider used in the submitted app. Public availability is not proof of licensing. Do not describe third-party sports data as exclusively owned by GameWire.
-- Provide working reviewer credentials through App Store Connect's private review fields if sign-in is needed. Do not put credentials in this document. Keep the account available and ensure review access does not depend on administrator privileges.
-- Capture an iPhone screen recording: find player, save forecast and note, reopen it from Locker Room, edit note, and compare a finished game's checked final with the original snapshot. Include screenshots and real feedback examples where available.
+Prepared for the current app after removal of My Game Plan. Do not advertise that removed feature or its notes/save workflow. Apple requested a reply to its questions before another submission; this packet is not a guarantee of approval or authorization to bypass that instruction.
 
-## Draft reply to App Review
+## Reply to App Review
 
-Thank you for the detailed feedback. We understand that cosmetic changes or a website wrapper alone are not sufficient. The following explains GameWire's purpose, ownership, technology and testing. We have also added a connected personal-research workflow rather than another scores-only screen. We would appreciate your assessment of this information before any further submission.
+Thank you for the feedback under Guidelines 4.3 and 4.2.6. We understand that using a wrapper or changing appearance alone does not establish sufficient differentiation. Below are our answers about the actual GameWire product, its ownership, testing and third-party technology. Please review this information before we make another submission.
 
-### 1. What the app does and the problem it solves
+### 1. What the app does and the primary problem it solves
 
-GameWire is an NFL and NBA research companion for following a question from before a game through its recorded outcome. Users can inspect player statistics, recent appearances, matchup context and GamewAIre model estimates, then save the displayed player or matchup research with their own notes in My Game Plan.
+GameWire combines NFL and NBA player research, matchup forecasts, live game context and recorded results. A user can find a player by first name, surname or partial name, inspect recorded statistics and recent appearances, and view supported matchup estimates through GamewAIre. NBA statistics include points, rebounds, assists, PRA and made three-pointers when available.
 
-The saved research is a fixed snapshot. Subsequent model updates do not overwrite what the user originally saw. After the game, the user can check verified final box scores and retain those separately beside the original research, update personal notes, and search their research history. Saved research and previously checked results remain readable on the same device without downloading the data again once the app shell is available.
+The Wire presents games, player box scores and separate matchup simulation views. Available pregame forecasts are retained for later comparison with recorded results rather than regenerated after the outcome. NFL touchdown-result graphics compare projected scorers with verified scorers; NBA matchup views and graphics present team score estimates and player production. Unsupported or missing information is labeled unavailable, not invented.
 
-The primary problem is maintaining continuity in sports research: what the user expected, why they expected it, and what actually happened. Live scores, searchable player records and favorites support that workflow rather than being its only purpose. Forecasts are labeled estimates, not guaranteed outcomes or betting recommendations.
+The primary problem is the fragmentation of player, matchup and game-result research across separate screens and sources. GameWire connects that research across NFL and NBA within one product. These are estimates and information tools, not guaranteed results. My Game Plan and its personal-note/save controls are not part of the current app.
 
 ### 2. Intended users
 
-The intended audience is NFL and NBA fans who actively study players and matchups rather than only checking scores. This includes fantasy-sports participants researching player usage and recent form, and fans who want to keep a personal record of their reasoning and revisit it after games. The app does not require placing a wager to use its research features.
+The intended users are NFL and NBA fans who study player production, recent form and upcoming opponents, including fantasy-sports participants researching player usage and matchup context. They also want to follow live games and review forecast results afterward. The research workflow does not require placing a wager.
 
 ### 3. Need or gap addressed
 
-GameWire combines player discovery, recent statistical context, modeled matchup research, a user-written research notebook, and postgame comparison in one connected workflow across NFL and NBA.
+GameWire brings a shared NFL/NBA player search, sport-specific modeled player lines, matchup simulations, retained pregame forecasts, verified postgame comparisons and downloadable game/result graphics into a connected experience. Locally retained player statistics support faster repeat access, while current data and new analysis require internet access.
 
-The distinction we ask reviewers to evaluate is the ability to preserve the original displayed forecast with its available timestamp/model identity and personal reasoning, then review verified outcomes without silently replacing the original with a newer prediction. This makes the product a personal research workspace, not simply another live-score list or a marketing website.
+We are not claiming that other sports apps lack statistics or predictions, or that GameWire exclusively owns league data. The differentiation we ask App Review to assess is the original integration of these player-to-matchup-to-result interactions and the GameWire analysis and result presentation built around them. We understand that App Review must determine whether that differentiation satisfies Guideline 4.3.
 
-We are not claiming that no other sports app offers notes, predictions or offline content. Our differentiation is this particular integrated before-and-after research experience and the original GameWire presentation and analysis built around it.
+### 4. Beta testing and applied feedback
 
-### 4. Beta testing and feedback applied
+More than 30 people participated through website/browser access, not TestFlight. Testing sessions took place on November 7, November 14 and November 21, for approximately one hour per session.
 
-More than 30 people participated in beta testing. Their feedback informed changes to player search, game simulations, notification options and box-score presentation.
+The developer's reported feedback areas were player search, game simulations, notification choices and box-score presentation. Applied changes include first-name/surname/partial-name player search, combined NFL/NBA player research, clearer matchup forecasts, differentiated notification controls and more compact, horizontally scrollable mobile statistical tables.
 
-Examples to substantiate with the owner's feedback records before sending:
+We are not presenting those browser sessions as TestFlight testing or as a native iOS beta program. The developer separately confirmed checking the current experience inside the Median app. A recent authentication-service incident was recovered, and the current web app now offers guest recovery after a twelve-second slow session check. That latest recovery change is not represented as having been tested in the earlier beta sessions.
 
-- Player search: make players easier to find; the current shared NFL/NBA search supports first names, surnames and partial names.
-- Game simulations: make matchup estimates and player projections easier to inspect; GameWire presents matchup forecasts and player-level estimates with unavailable data explicitly labeled.
-- Notifications: provide different notification choices instead of a single undifferentiated experience; verify the exact options present in the submitted build.
-- Box scores: make player statistics easier to read; mobile layouts use compact, scrollable statistical tables while retaining reported values.
+### 5. Standalone product or suite
 
-Testing distribution method: **[owner: TestFlight / web / Median builds / combination]**.
-Testing dates and duration: **[owner: enter actual dates and duration]**.
-Attach representative feedback and describe the actual corresponding production changes. Do not present the new My Game Plan feature as beta-tested until it has itself been tested.
+GameWire is a standalone product. There are no other apps on our developer account. NFL and NBA experiences are combined in this one app rather than distributed as near-identical sport, team or branding variants.
 
-### 5. Standalone app or suite
+### 6. Consolidation into another app
 
-GameWire is intended as a standalone product. There are no other apps on our developer account, so it is not one of multiple near-identical sport, team or branding variants.
+There is no other app on our developer account into which GameWire could be consolidated. Its supported NFL and NBA experiences are already consolidated in one product.
 
-### 6. Why not consolidate into another existing app
+### 7. Significant code, frameworks or assets shared with other apps on the account
 
-There is no other app on our developer account into which this functionality could be consolidated. NFL and NBA experiences are already combined within this single GameWire app.
-
-### 7. Code, frameworks or assets shared with other apps on the account
-
-There are no other apps on our developer account with which GameWire shares application code or assets. GameWire uses standard third-party technologies and a Median iPhone wrapper, disclosed below. We are not claiming the entire binary is written from scratch or entirely native.
+There are no other apps on our developer account with which GameWire shares application code or assets. Standard third-party technologies and the Median wrapper are disclosed below; we do not claim that the entire binary is original native code.
 
 ### 8. Third-party codebase, SDK or content library
 
-The submitted iPhone app uses Median to deliver the GameWire experience. Median is a third-party app-wrapper service, not the owner or submitter of GameWire's content. The web application is built using standard React, TypeScript and Vite technologies and Supabase services. The repository also contains Capacitor integration; include Capacitor in the submitted-binary disclosure only if it is actually shipped in the reviewed Median binary.
+The iPhone app uses Median to package and deliver the GameWire web application. The application is built with React, TypeScript and Vite, with Supabase services. The developer reported no additional purchased templates, nonstandard shared code or undisclosed third-party involvement beyond the disclosed technologies and providers.
 
-Sports information is obtained through third-party providers, including ESPN and API-Sports where used. These are shared sports-data sources, not exclusive GameWire-owned league data.
+Sports information comes from third-party providers including ESPN, API-Sports and The Odds API where used. Optional OpenAI integration, where configured, selects supported explanation facts; it does not set the numerical probabilities or sportsbook prices. Provider data is not represented as exclusive GameWire-owned content. The repository also contains Capacitor integration, but this is not a claim that Capacitor is included in the submitted Median binary.
 
-The original functionality layered on these technologies includes the GameWire application screens and interactions, NFL/NBA research integration, GamewAIre model presentation, saved forecast snapshots, account-separated device research notes, and the original-research-versus-recorded-results workflow.
+The original application functionality includes the GameWire screens and interactions, combined NFL/NBA player discovery, sport-specific GamewAIre analysis, retained matchup forecasts, comparison against recorded game outcomes, local statistical persistence and game/result graphic exports. Median supplies the wrapper technology rather than these application workflows.
 
-**[Owner: confirm the actual SDK/plugin inventory of the submitted Median binary and disclose any additional nonstandard shared component. Do not claim knowledge of Median's internal reuse across its customers.]**
+### 9. Client, partner, branding and submission ownership
 
-### 9. Client/partner involvement and submission ownership
+GameWire is submitted directly by the owner/content provider of the GameWire concept, branding and original application analysis under that owner's developer account. It was not created for a client or partner who supplied the concept or branding. Median is the technology provider; it is not the content owner or the party submitting GameWire on someone else's behalf.
 
-GameWire is submitted directly by the owner/content provider of the GameWire concept, branding and original analysis, under that owner's developer account. Median supplies the wrapping technology; it is not submitting the app on the owner's behalf.
+## Reply field version
 
-**[Owner: explicitly confirm whether any client, partner or other party supplied the concept, branding or app content, and whether any commercial template beyond Median was used. If yes, identify the party/component and explain the ownership and submission relationship. Do not omit this question.]**
+Thank you for the feedback under Guidelines 4.3 and 4.2.6. We understand that a wrapper or cosmetic changes alone do not establish differentiation. These answers describe the current GameWire product. Please assess this information before another submission.
 
-## App Store metadata drafts
+1. PURPOSE AND PROBLEM
+GameWire connects NFL/NBA player research, matchup simulations, live box scores and recorded results. Users find players by first name, surname or partial name; inspect recent statistics and supported projections; and compare retained pregame forecasts with verified outcomes. NBA statistics include PTS, REB, AST, PRA and made threes when available. The problem is fragmented player-to-matchup-to-result research. Missing data is labeled unavailable. My Game Plan and its note/save controls have been removed.
 
-### App name
+2. INTENDED USERS
+NFL/NBA fans who study player production and opponents, including fantasy-sports participants researching usage and recent form. Users can follow games and examine forecast results without placing a wager.
 
-GameWire
+3. GAP AND DIFFERENTIATION
+The original experience combines shared NFL/NBA player discovery, sport-specific modeled lines, matchup forecasts retained before games, verified postgame comparison and game/result graphic exports. Examples include NFL projected-touchdown-scorer versus actual-scorer results and NBA team/player production graphics. Local statistical retention supports repeat access. We do not claim exclusive league data or that other apps lack predictions. We ask App Review to assess this integrated workflow rather than a scores-only or reskinned template app.
 
-### Subtitle (27 characters)
+4. BETA TESTING
+More than 30 testers used website/browser access, not TestFlight, on November 7, 14 and 21, for approximately one hour per session. Reported feedback concerned search, simulations, notifications and box scores. Applied changes include partial/first-name search, combined NFL/NBA player research, clearer matchup forecasts, differentiated notification controls and compact scrollable mobile statistics. The developer separately confirmed checking the current experience in the Median app; we do not represent the browser sessions as a native iOS beta program. The latest login-recovery change was not part of those earlier sessions.
+
+5. STANDALONE OR SUITE
+GameWire is standalone. There are no other apps on our developer account, and NFL/NBA experiences are combined in this one product.
+
+6. CONSOLIDATION
+There is no other app on our account into which this functionality could be consolidated.
+
+7. SHARING WITH OUR OTHER APPS
+There are no other apps on our account with which GameWire shares application code or assets. We do use the standard technologies and wrapper disclosed below; the entire binary is not claimed to be original native code.
+
+8. THIRD-PARTY TECHNOLOGY AND CONTENT
+The iPhone app uses Median to deliver our React/TypeScript/Vite application, with Supabase services. Sports inputs include ESPN, API-Sports and The Odds API where used; Wikidata supplies supported birth-date information. Optional OpenAI integration, where configured, selects supported explanation facts rather than setting numerical probabilities or prices. No additional purchased template or nonstandard shared application code was reported. Median supplies packaging, not the original GameWire screens, research integration, forecast/result workflow, local statistics or graphics. Provider data is not exclusive GameWire-owned content.
+
+9. CONTENT OWNER AND SUBMISSION
+GameWire is submitted directly by the owner/provider of its concept, branding and original analysis under that owner's developer account. It was not created for a client or partner supplying the concept or branding. Median is the technology provider, not the content owner or a party submitting on someone else's behalf.
+
+## Current metadata
+
+### Subtitle
 
 Your NFL & NBA Research Hub
 
+### Promotional text
+
+Explore NFL and NBA players, matchup estimates, live box scores and forecast results in one connected sports research hub.
+
 ### Description
 
-Research the matchup. Save your reasoning. Revisit the result.
+Research players. Explore matchups. Follow the result.
 
-GameWire brings NFL and NBA player research, matchup simulations and your own game-day notebook into one place.
-
-MY GAME PLAN
-Save player or matchup research exactly as displayed, add personal notes, and find it again by player, matchup or keyword. After the game, save verified finals alongside the original research to see what happened without losing what you originally studied.
+GameWire combines NFL and NBA player statistics, matchup simulations and live game context in one sports research hub.
 
 PLAYER RESEARCH
-Find NFL and NBA players by first name, surname or partial name. Explore recorded statistics and supported matchup projections. NBA research includes recent-game context, points, rebounds, assists, PRA and three-pointers when available.
+Find players by first name, surname or partial name. Inspect recorded statistics, recent appearances and supported matchup estimates. NBA research includes points, rebounds, assists, PRA and made three-pointers when available.
 
-MATCHUPS AND THE WIRE
-Follow scores and game status, inspect player box scores and explore GamewAIre matchup simulations. Keep your favorite teams and players together in Locker Room.
+THE WIRE
+Follow NFL and NBA scores and game status, inspect player box scores, and switch between matchup and GamewAIre simulation views. Pregame injury reports distinguish explicitly reported OUT players from uncertain designations.
 
-SAVED RESEARCH ON YOUR DEVICE
-Reopen saved research, personal notes and previously checked finals without downloading them again once the app is available. Research is device-only and separated by account; it does not sync across devices and can be lost if device storage is cleared. New statistics, forecasts and final-result checks require an internet connection.
+FORECASTS AND RESULTS
+Explore supported team and player estimates and review available saved pregame forecasts against recorded results. Create game and result graphics from supported data. Forecasts are not regenerated after kickoff to manufacture a successful prediction.
 
-Estimates are experimental and may be incomplete. Missing statistics are not invented. GameWire is a research tool, not a guarantee of results or a betting recommendation. Sports-data availability may vary.
+YOUR FAVORITES
+Keep favorite teams and players together in Locker Room. Locally retained public statistics support faster repeat browsing; current feeds, new analysis and new result checks need an internet connection.
 
-### Suggested What's New
+GameWire estimates are experimental and can be incomplete. Missing statistics are not invented. Estimates and displayed odds are not guarantees of outcomes or betting recommendations. Sports-data and market availability vary. Some account features require sign-in.
 
-- My Game Plan: save NFL/NBA player and matchup research with personal notes.
-- Revisit original forecasts beside separately verified final results.
-- Search saved research and filter by sport.
-- Reopen previously saved research on your device offline.
-- New skippable guide for the explore, save and revisit workflow.
+GameWire is independent and is not affiliated with or endorsed by any sports league, team or data provider. GameWire does not accept or place wagers.
 
-## Private review instructions / demo walkthrough
+### Review notes / walkthrough
 
-Version/build: **[enter reviewed Median version and build]**
-Device/iOS tested: **[enter actual device and iOS version]**
-Review login: **[supply privately in App Store Connect, not here]**
+Use the review account supplied in App Store Connect's private Sign-In Information fields. Do not include passwords in this document.
 
-1. Launch the submitted iPhone app and sign in with the supplied review account. Guest browsing exists, but authenticated GamewAIre features require sign-in.
-2. Read or skip the research guide. It is an inline guide and can be reopened using How it works.
-3. Open GamewAIre and its shared player search. Search for a currently active NFL or NBA player by first or last name. Select a player with a supported saved projection.
-4. On the player card choose Save to My Game Plan. Add a note and save on this device.
-5. Choose Open My Game Plan, or open Locker Room. My Game Plan is above the existing favorites activity.
-6. Open the saved item, inspect the original research timestamp/identity and values, edit the note, and press Save note.
-7. With the app already loaded, disconnect the network and reopen Locker Room. The saved research and saved notes remain available. Checking new finals requires reconnecting; a clear message explains this.
-8. Reconnect. Open a completed NFL/NBA game's GamewAIre simulation with an available saved forecast, save it, and open that item in My Game Plan.
-9. Choose Check final result. Verified recorded results appear in a separate After the game section; the original snapshot is not regenerated or overwritten.
-10. Use the sport selector and research search to filter saved items. Removal requires confirmation. Research is stored only on this device and does not appear when switching to another account or guest mode.
+1. Open the app. Sign in using the supplied review account, or choose Continue as guest for public browsing. A slow initial session check now exposes guest recovery after twelve seconds.
+2. Open The Wire and choose NFL or NBA. Open an available matchup, inspect its game status/player statistics and switch to the GamewAIre simulation view where a supported forecast exists.
+3. Open Stat Hub to search NFL/NBA player statistics and inspect available game records. Use a player's first name, surname or partial name.
+4. While signed in, open GamewAIre's player search and inspect a supported player card with projected statistics and recent/opponent context.
+5. Open Simulation Results for a completed game with a retained pregame forecast. Compare that original forecast against verified results and inspect the available result graphics.
+6. Add a team/player favorite and open Locker Room to view the associated activity.
 
-Owner preparation: choose actual player names and completed matchup examples shortly before review and include them in the private notes. Do not manufacture a finished result or fabricate an available forecast to complete this demo.
+My Game Plan, its research guide and its save/note controls have been removed and must not be part of the walkthrough.
 
-## Submission strategy
+## Before any new submission
 
-Reply to the nine questions with verified facts, an actual walkthrough recording and documented beta examples. Ask App Review to reassess the specific workflow and ownership arrangement. Only submit an updated build when the review conversation and actual Median packaging require it, and ensure the screenshots and metadata describe what that build really does.
+- Follow Apple's request to reply first. Do not describe this reply as an accepted appeal or approved resubmission.
+- App Store Connect currently lists iOS version 1.0 and build 1.0.0 (9). Confirm that this is the build actually tested, and record its tested device/iOS version; the owner confirmed testing but did not supply those details.
+- Verify the existing private reviewer account works in the selected build. Do not replace credentials with an untested account.
+- Confirm screenshots match the current app and contain no removed My Game Plan controls.
+- Check the actual Median plugin inventory and native settings against the binary; do not infer shipped SDKs from repository dependencies.
+- Confirm relevant sports-data display/redistribution permissions. Public API availability is not proof of commercial rights.
+- Attach genuine beta feedback or recordings if available. Do not invent TestFlight participation, screenshots, tester quotes or native-device evidence.
 
-Official references:
-
-- [App Review Guidelines, including 4.2, 4.2.6 and 4.3](https://developer.apple.com/app-store/review/guidelines/)
-- [TestFlight](https://developer.apple.com/testflight/)
+References: [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/), [TestFlight](https://developer.apple.com/testflight/).
