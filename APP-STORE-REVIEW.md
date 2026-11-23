@@ -1,5 +1,7 @@
 # GameWire: App Store review response and metadata
 
+> Historical draft: My Game Plan, its save controls and its research guide have been removed from all screens. The feature descriptions, metadata and demo steps below are no longer accurate for the current app. Do not submit this packet without rewriting and verifying it against the current build.
+
 This is a draft for the app owner. Verify every statement against the submitted Median build before sending. Website changes alone do not guarantee approval under 4.2, 4.2.6 or 4.3. Apple asked for a reply first; do not blindly resubmit the same binary.
 
 ## Before sending

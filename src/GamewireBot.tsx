@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { SaveResearchButton } from './MyGamePlan';
-import { captureNFLPlayer } from './services/researchCaptures';
 import { Activity, ArrowLeftRight, ArrowUp, BarChart3, Bot, BrainCircuit, ChevronDown, RefreshCw, Search, Send, ShieldCheck, Sparkles, Target, X } from 'lucide-react';
 import { loadBotDirectory, loadBotHistory, loadBotReport, readDirectorySnapshot } from './services/gamewireBot';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
@@ -124,7 +122,6 @@ function Breakdown({ report, onClear, busy }: { report: BotReport; onClear: () =
       <div className="gwb-tags"><span>PLAYER ANALYSIS</span><span>FANTASY</span></div></div></div>
     <Guidance report={report} />
     <Snapshot report={report} />
-    <SaveResearchButton capture={() => captureNFLPlayer(report)} />
     <WeeklyTracker key={`${report.player.id}:${report.season}:${report.week}:${report.format}`} report={report} />
     <>
       <div className="gwb-stat-grid">{[...report.workload, ...report.production].map((stat) => <div key={stat.label}><strong>{stat.average.toFixed(1)}</strong><span>{stat.label}/game</span><small>Last {stat.games} recorded appearances</small></div>)}</div>

@@ -1273,7 +1273,6 @@ function App() {
   if (supabase && !authUser && !guestMode) return <AuthScreen onContinueGuest={() => { localStorage.setItem('gamewire-guest-mode', 'true'); setGuestMode(true); }} />;
 
   return (
-    <ResearchProvider key={authUser?.id ?? 'guest'} scope={authUser?.id ?? 'guest'} onOpen={() => { setView('Den'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
     <div className="app-shell sports-theme">
       {authUser && !authLoading && online && <NotificationOnboarding key={authUser.id} user={authUser} />}
       <header className="topbar">
@@ -1313,7 +1312,6 @@ function App() {
       </header>
       <main className={view === 'Players' || view === 'Analyst' ? `page-wrap players-zoom${view === 'Analyst' ? ' analyst-page' : ''}` : view === 'Wire' ? 'page-wrap wire-page' : view === 'Den' ? 'page-wrap locker-room-zoom' : view === 'Gamewaire' ? 'page-wrap gamewaire-page' : 'page-wrap'}>
         <PullToRefresh />
-        {view !== 'Profile' && <ResearchGuide onFind={() => { setView('Gamewaire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />}
         {analystUnread.error && <p className="feed-warning" role="status">{analystUnread.error}</p>}
         <div className="page-heading">
           <div>
@@ -1454,7 +1452,6 @@ function App() {
           </WireWithPicks>
         ) : view === 'Den' ? (
           <>
-          <MyGamePlan onFind={() => { setView('Gamewaire'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
           <TheDen league={sportLeague} activityDate={selectedNBADate} favorites={favorites.filter((favorite) => favorite.feedPath === (sportLeague === 'NBA' ? 'basketball/nba' : 'football/nfl'))} games={sportLeague === 'NBA' ? nbaGames : lockerRoomReady ? games : []} items={denHistory.items.sort((first, second) => Date.parse(second.kind === 'news' ? second.published : second.timestamp) - Date.parse(first.kind === 'news' ? first.published : first.timestamp))} plays={denHistory.plays.sort((first, second) => Date.parse(second.timestamp) - Date.parse(first.timestamp))} playerHistory={denHistory.players} week={lockerRoomWeek} season={lockerRoomSeason} historyLoading={denHistory.loading} historyError={denHistory.error} signedIn={!!authUser} onRetryHistory={denHistory.retry} livePlayerGames={sportLeague === 'NBA' ? nbaGames.filter((game) => game.status === 'LIVE').length : livePlayerGames.length} loadingNews={loadingNews} onToggleFavorite={toggleFavorite} onMoveTeamFavorite={moveTeamFavorite} />
           </>
         ) : view === 'Players' ? (
@@ -1474,10 +1471,8 @@ function App() {
         <footer className="page-footer"><span>GAMEWIRE <i>·</i> NFL + NBA</span><span>NFL and NBA scores, player stats, and matchups.</span></footer>
       </main>
     </div>
-    </ResearchProvider>
   );
 }
 
 export default App;
 import NotificationBell from './NotificationBell';
-import MyGamePlan, { ResearchGuide, ResearchProvider } from './MyGamePlan';

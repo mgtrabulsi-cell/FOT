@@ -199,15 +199,13 @@ test('Capture adapters retain scenario/version, all NBA projected stats and real
   assert.equal(nflPlayer.game.homeId, '2');
   assert.equal(nflPlayer.identity, 'nfl-v1 / qb-a');
 });
-test('All four entry points, scoped provider, guide and account deletion are connected; store subtitle meets Apple limit', () => {
+test('Game Plan is absent from every screen while legacy account data cleanup is retained', () => {
   for (const file of ['PlayerLabCards', 'GamewireBot', 'NFLGameSimulation', 'NBAGameSimulation']) {
     const source = readFileSync(new URL(`../src/${file}.tsx`, import.meta.url), 'utf8');
-    assert.match(source, /<SaveResearchButton capture=/);
+    assert.doesNotMatch(source, /SaveResearchButton|MyGamePlan|researchCaptures/);
   }
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /<ResearchProvider key=\{authUser\?\.id \?\? 'guest'\} scope=\{authUser\?\.id \?\? 'guest'\}/);
-  assert.match(app, /<ResearchGuide/);
-  assert.match(app, /<MyGamePlan/);
+  assert.doesNotMatch(app, /ResearchProvider|ResearchGuide|MyGamePlan/);
   assert.match(readFileSync(new URL('../src/services/deleteAccount.ts', import.meta.url), 'utf8'), /await deleteResearch\(userId\)/);
   assert.ok('Your NFL & NBA Research Hub'.length <= 30);
 });

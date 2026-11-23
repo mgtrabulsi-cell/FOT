@@ -10,8 +10,6 @@ import type { LabPlayer } from './services/playerLabChat';
 import { nbaStatValue } from './services/nbaStats';
 import { subscribeRenderSnapshots } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
-import { SaveResearchButton } from './MyGamePlan';
-import { captureNBAPlayer } from './services/researchCaptures';
 
 type Outlook = { player: LabPlayer; nfl?: BotReport; nba?: NBAPlayerLabReport; error?: string };
 const initialPlayers = (): LabPlayer[] => {
@@ -60,7 +58,6 @@ export function NBAPlayerCard({ report, onClear }: { report: NBAPlayerLabReport;
       {' '}Projections are conditional on playing.</p>
     {!projection && <p className="gwb-warning">No supported saved projection for this player. Missing values are not estimated.</p>}
     <p className="gwb-player-availability">Availability: {projection?.status || 'Not verified'}</p>
-    <SaveResearchButton capture={() => captureNBAPlayer(report)} />
     <section className="gwb-player-breakdown" aria-label="Recent form and opponent breakdown">
       <h5>Last five games</h5><p>{breakdown.recentText}</p>
       <h5>{game?.status === 'LIVE' ? 'Current opponent' : 'Upcoming opponent'}</h5>
