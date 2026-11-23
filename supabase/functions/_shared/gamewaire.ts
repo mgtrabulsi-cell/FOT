@@ -1,12 +1,14 @@
 import { adjustedPickProbability, learnAdjustment, pickLearningKey } from './gamewireLearning.ts';
 import type { LearningAdjustment } from './gamewireLearning.ts';
-export const soccerSports = ['EPL', 'Serie A', 'La Liga', 'Bundesliga'] as const;
+import { propSequence } from './propSequence.ts';
+import type { PropSequence } from './propSequence.ts';
+export const soccerSports = ['EPL', 'Serie A', 'La Liga', 'Bundesliga', 'Champions League'] as const;
 export type SoccerSport = typeof soccerSports[number];
 export type Sport = 'NFL' | 'NBA' | SoccerSport;
 export const isSoccer = (sport: string): sport is SoccerSport => (soccerSports as readonly string[]).includes(sport);
-export const soccerModelVersion = 'soccer-probability-v2';
-export const modelVersion = 'probability-only-v13';
-export const probabilityModelVersion = 'probability-evidence-v13';
+export const soccerModelVersion = 'soccer-probability-v3';
+export const modelVersion = 'probability-only-v14';
+export const probabilityModelVersion = 'probability-evidence-v14';
 export const markets = {
   NBA: ['h2h', 'spreads', 'totals', 'player_points', 'player_rebounds', 'player_assists', 'player_threes'],
   NFL: ['h2h', 'spreads', 'totals', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds', 'player_receptions'],
@@ -14,6 +16,7 @@ export const markets = {
   'Serie A': ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
   'La Liga': ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
   Bundesliga: ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
+  'Champions League': ['h2h', 'totals', 'player_shots', 'player_shots_on_target', 'player_assists'],
 } as const;
 export type Settings = {
   markets: string[]; direction: 'both' | 'over' | 'under'; player: string;
@@ -27,6 +30,12 @@ export function fullAnalysisSettings(settings: Settings, sport: Sport): Settings
 }
 export function isAllowedPickSide(pick: { market: string; side: string }) {
   return pick.market !== 'totals' && !pick.market.startsWith('player_') || pick.side === 'Over';
+}
+export function isAllowedPropPrice(pick: { market: string; american: number }) {
+  return !pick.market.startsWith('player_') || Number.isFinite(pick.american) && Math.abs(pick.american) >= 100 && pick.american >= -200;
+}
+export function bestPlusMoneyProp<T extends Candidate>(picks: T[]): T | undefined {
+  return rankTopPicks(picks.filter(pick => pick.market.startsWith('player_') && pick.american >= 100 && isAllowedPropPrice(pick)))[0];
 }
 export function upcomingAnalysisEvents<T extends { start: string }>(events: T[], sport: Sport, date: string, now: number): T[] {
   const easternDate = (start: string) => new Intl.DateTimeFormat('en-CA', {
@@ -72,6 +81,7 @@ export type Evidence = {
   identifiers?: { espnEventId: string; playerId?: string; teamId?: string };
 };
 export type Candidate = Quote & {
+  sequence?: PropSequence;
   valueClass?: 'ELITE VALUE' | 'A VALUE' | 'B VALUE' | 'WATCH' | 'NO PLAY';
   fairAmerican?: number | null;
   noVigEdge?: number | null;
@@ -107,7 +117,7 @@ export function empiricalQuantile(values: number[], fraction: number) {
   return sorted[lower] + (sorted[Math.ceil(position)] - sorted[lower]) * (position - lower);
 }
 export type TeamLean = { pick: Candidate; qualifies: boolean; reason: string };
-export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; winnerLean?: TeamLean; stretchKeys?: string[] };
+export type Evaluation = { status: 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds'; picks: Candidate[]; rejected: Array<{ key: string; reason: string }>; teamLean?: TeamLean; winnerLean?: TeamLean; stretchKeys?: string[]; plusMoneyProp?: Candidate };
 export function gamewaireGrade(pick: Pick<Candidate, 'edge' | 'ev' | 'conservativeEV' | 'quality'>) {
   const scale = (value: number, target: number) => Math.max(0, Math.min(1, value / target));
   const score = Math.round(40 * scale(pick.conservativeEV, 0.15) + 25 * scale(pick.edge, 0.15)
@@ -410,6 +420,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     }
     if ((!settings.markets.includes(quote.market) && !['h2h', 'spreads'].includes(quote.market)) || (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player)))) continue;
     if (!isAllowedPickSide(quote)) { rejected.push({ key: quote.key, reason: 'GamewAIre totals and player props are Over-only; Under selections are excluded.' }); continue; }
+    if (!isAllowedPropPrice(quote)) { rejected.push({ key: quote.key, reason: 'Player props require -200 or longer odds; there is no positive-odds ceiling.' }); continue; }
     if (settings.direction !== 'both' && ['Over', 'Under'].includes(quote.side) && quote.side.toLowerCase() !== settings.direction) continue;
     if (Date.parse(quote.start) <= now) { rejected.push({ key: quote.key, reason: 'Game has started; pregame analysis only.' }); continue; }
     if (now - Date.parse(quote.updatedAt) > 10 * 60_000 || Date.parse(quote.updatedAt) > now + 60_000) {
@@ -465,7 +476,9 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     const effectiveSample = 1 / weights.reduce((sum, value) => sum + value * value, 0);
     const conditionalWin = 1 - push > 0 ? Math.min(1, wins / (1 - push)) : 0;
     const decisiveSample = effectiveSample * (1 - push);
-    const baseConditional = (conditionalWin * decisiveSample + .5 * 4) / (decisiveSample + 4);
+    const sequence = quote.market.startsWith('player_') ? propSequence(samples, threshold, quote.side === 'Under') : undefined;
+    const empiricalConditional = (conditionalWin * decisiveSample + .5 * 4) / (decisiveSample + 4);
+    const baseConditional = Math.max(.01, Math.min(.99, empiricalConditional + (sequence?.adjustment ?? 0)));
     const adjustment = learning.get(pickLearningKey(quote.market, quote.side)) ?? learnAdjustment([], 'probability', now);
     const conditional = adjustment?.active ? adjustedPickProbability(baseConditional, quote.market, quote.side, adjustment.adjustment) : baseConditional;
     const probability = conditional * (1 - push);
@@ -484,9 +497,15 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
       `Estimated EV ${(ev * 100).toFixed(1)}% of one unit, including pushes. This baseline is not calibrated or independently validated.`,
     ];
     if (data.simulationProjection !== undefined) facts.push('The production distribution is aligned to the saved game-specific GamewAIre simulation projection; this is a heuristic, not a calibrated probability.');
+    if (sequence) facts.push(`Against this exact line, excluding pushes: last five ${sequence.last5.hits}/${sequence.last5.games}, last ten ${sequence.last10.hits}/${sequence.last10.games}. ${
+      sequence.streak ? `Current run: ${sequence.streak.games} ${sequence.streak.outcome === 'hit' ? 'hits' : 'misses'}. ` : ''
+    }After the same previous two outcomes (${sequence.pattern}): ${sequence.matchingHits}/${sequence.matchingGames} recorded hits. ${
+      sequence.active ? `A ${(sequence.adjustment * 100).toFixed(1)} percentage-point sequence adjustment improved chronological held-out Brier error and did not worsen log loss across ${sequence.validationGames} appearances at this fixed line. This is not a backtest of historical sportsbook prices.`
+        : 'No sequence adjustment passed the minimum-history and chronological validation checks.'
+    } A cold streak alone never makes a player due.`);
     facts.push('Ranking uses estimated win probability with projection agreement, never EV, odds value or payout. A neutral four-observation prior is used; sportsbook prices do not enter the probability estimate. A higher hit probability does not establish a profitable price.');
     if (adjustment?.active) facts.push(`A bounded ${((conditional - baseConditional) * 100).toFixed(1)} percentage-point settled-result correction passed chronological validation on ${adjustment.validationGames} later games. This does not establish universal calibration or guarantee future improvement.`);
-    const candidate: Candidate = { ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection,
+    const candidate: Candidate = { ...quote, modelVersion, probability, pushProbability: push, implied, edge, ev, conservativeEV, projection, ...(sequence ? { sequence } : {}),
       valueClass: valueClassification({ edge, ev, conservativeEV, quality: data.quality }),
       fairAmerican: fairAmericanOdds(conditional), noVigEdge: conditional - quote.noVig,
       median: empiricalQuantile(values, .5), lowerQuartile: empiricalQuantile(values, .25), upperQuartile: empiricalQuantile(values, .75),
@@ -505,9 +524,12 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     }
     candidates.push(candidate);
   }
-  const picks: Candidate[] = [], subjects = new Set<string>();
+  const plusMoneyProp = bestPlusMoneyProp(candidates);
+  const picks: Candidate[] = plusMoneyProp ? [plusMoneyProp] : [], subjects = new Set<string>(plusMoneyProp ? [normalize(plusMoneyProp.subject)] : []);
   let teamMarket = false;
   for (const candidate of rankTopPicks(candidates)) {
+    if (picks.length >= limit) break;
+    if (candidate.key === plusMoneyProp?.key) continue;
     const player = candidate.market.startsWith('player_');
     const identity = normalize(candidate.subject);
     if (player && fourPlayerAnalysis && picks.filter(pick => pick.market.startsWith('player_')).length >= 4) continue;
@@ -526,7 +548,8 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     reason: `Highest supported model win probability for this game (${(selectedLean.pick.probability * 100).toFixed(1)}%). ${
       selectedLean.pick.probability < .6 ? 'Low-confidence lean; retained for game coverage, not a high-confidence selection. ' : ''
     }${selectedLean.reason}` } : undefined;
-  if (teamLean?.qualifies && !teamMarket && !picks.some((pick) => pick.key === teamLean.pick.key)) {
+  if (teamLean?.qualifies && !teamMarket && !picks.some((pick) => pick.key === teamLean.pick.key)
+    && (picks.length < limit || picks.some(pick => pick.key !== plusMoneyProp?.key))) {
     const existing = picks.findIndex((pick) => !pick.market.startsWith('player_'));
     const displaced = existing >= 0 ? picks.splice(existing, 1)[0] : picks.length >= limit ? picks.pop() : undefined;
     if (displaced) rejected.push({ key: displaced.key, reason: 'Excluded to reserve one qualifying moneyline/spread slot for this game.' });
@@ -538,7 +561,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
   const winnerLean = winnerOptions.find(row => row.qualifies) ?? winnerOptions[0];
   return { status: picks.length ? 'completed' : !best.size && rejected.some((row) => row.reason.startsWith('Stale')) ? 'stale_odds'
     : !candidates.length && rejected.some((row) => /unavailable|Needs|Insufficient/.test(row.reason)) ? 'insufficient_data' : 'no_qualifying', picks: rankTopPicks(picks), rejected, teamLean,
-    ...(winnerLean ? { winnerLean } : {}), ...(minimumPlayerPicks ? { stretchKeys: [] } : {}) };
+    ...(winnerLean ? { winnerLean } : {}), ...(plusMoneyProp ? { plusMoneyProp } : {}), ...(minimumPlayerPicks ? { stretchKeys: [] } : {}) };
 }
 export type Settled = { probability: number; pushProbability: number; american: number; result: 'pending' | 'win' | 'loss' | 'push' | 'void'; closingAmerican?: number | null; withdrawn?: boolean };
 export function performance(rows: Settled[]) {

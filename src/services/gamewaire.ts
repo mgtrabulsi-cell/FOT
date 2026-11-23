@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 import type { PickOrder } from './gamewaireOrder';
 import type { Candidate, Settings, Sport } from '../../supabase/functions/_shared/gamewaire';
-export { defaultSettings, fullAnalysisSettings, isAllowedPickSide, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb, isSoccer, soccerSports, soccerModelVersion } from '../../supabase/functions/_shared/gamewaire';
+export { defaultSettings, fullAnalysisSettings, isAllowedPickSide, isAllowedPropPrice, bestPlusMoneyProp, markets, modelVersion, performance, performanceGroups, gamewaireGrade, probabilityGrade, rankTopPicks, pickBlurb, isSoccer, soccerSports, soccerModelVersion } from '../../supabase/functions/_shared/gamewaire';
 export type { Candidate, Settings, Sport, TeamLean } from '../../supabase/functions/_shared/gamewaire';
 export type AnalysisStatus = 'in_progress' | 'completed' | 'no_qualifying' | 'insufficient_data' | 'stale_odds' | 'provider_error' | 'setup_required';
 export type AnalysisRun = {
@@ -9,7 +9,7 @@ export type AnalysisRun = {
   created_at: string; finished_at: string | null;
   payload: { picks?: Candidate[]; stretchKeys?: string[]; playerPropMinimum?: number; teamLean?: import('../../supabase/functions/_shared/gamewaire').TeamLean; rejected?: Array<{ key: string; reason: string }>; warnings?: string[]; error?: string; explanationMode?: string;
     providerUsage?: { requestCost: number | null; creditsUsed: number | null; creditsRemaining: number | null; checkedAt: string };
-    scheduled?: { jobId: string; selectionNote: string } };
+    scheduled?: { jobId: string; selectionNote: string }; plusMoneyProp?: Candidate };
 };
 export type StoredPick = {
   id: string; run_id: string; sport: Sport; event_id: string; event_start: string; market: string; subject: string; side: string; line: number | null;

@@ -1,7 +1,7 @@
 import { array, isNFLPrimetime, isSoccer, markets, normalize, numeric, object, text } from './gamewaire.ts';
 import type { Evidence, FormRecord, NBARotation, Observation, OpponentContext, Quote, Sport, TeamForm } from './gamewaire.ts';
 
-const paths: Record<Sport, string> = { NBA: 'basketball/nba', NFL: 'football/nfl', EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1' };
+const paths: Record<Sport, string> = { NBA: 'basketball/nba', NFL: 'football/nfl', EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1', 'Champions League': 'soccer/uefa.champions' };
 const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 export const teamNameKey = (name: string) => normalize(name).replace(/^losangeles/, 'la');
 export function defensiveStandings(value: unknown, sport: Sport, season: number, fetchedAt: string): Map<string, OpponentContext> {
@@ -368,4 +368,4 @@ export async function collectEvidence(quotes: Quote[], matchup: Matchup, now: nu
   return { evidence, warnings: [...new Set(warnings)], coverage: { supportedMarkets: markets[sport], playerLimit: 24, playerCount: players.length, season: matchup.season } };
 }
 export const oddsSport: Record<Sport, string> = { NFL: 'americanfootball_nfl', NBA: 'basketball_nba',
-  EPL: 'soccer_epl', 'Serie A': 'soccer_italy_serie_a', 'La Liga': 'soccer_spain_la_liga', Bundesliga: 'soccer_germany_bundesliga' };
+  EPL: 'soccer_epl', 'Serie A': 'soccer_italy_serie_a', 'La Liga': 'soccer_spain_la_liga', Bundesliga: 'soccer_germany_bundesliga', 'Champions League': 'soccer_uefa_champs_league' };

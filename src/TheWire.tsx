@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import PregameInjuries from './PregameInjuries';
 import TeamAbbrMark from './TeamAbbrMark';
 import NFLGameSimulationPanel from './NFLGameSimulation';
 import { NFLSimulationResults } from './NFLSimulationAccuracy';
@@ -1254,6 +1255,7 @@ export default function TheWire({ games, resultsWeek, teamPicks = {}, scoreboard
               {selectedGame.status === 'UPCOMING' && selectedGame.nflMarket?.spread != null && <div className="wire-spread-badge"><span>Spread</span><b>{selectedGame.home.abbr} {selectedGame.nflMarket.spread > 0 ? `+${selectedGame.nflMarket.spread}` : selectedGame.nflMarket.spread}</b></div>}
               {onOpenStatHub && <button className="wire-stathub-link" onClick={() => onOpenStatHub(selectedGame)} title="Open in Stat Hub">Open in Stat Hub <ChevronRight size={14} /></button>}
             </div>
+            {selectedGame.status === 'UPCOMING' && <PregameInjuries key={`${selectedGame.eventId}:${selectedGame.date}`} game={selectedGame} />}
             {isLive && selectedGame.situation?.lastPlay && (
               <LatestPlay play={selectedGame.situation.lastPlay} game={selectedGame} />
             )}

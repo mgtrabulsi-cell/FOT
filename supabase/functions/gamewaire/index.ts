@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isAllowedPickSide, upcomingAnalysisEvents, markets, modelVersion, probabilityModelVersion, normalize, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
+import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isAllowedPickSide, isAllowedPropPrice, upcomingAnalysisEvents, markets, modelVersion, probabilityModelVersion, normalize, numeric, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport, TeamLean } from '../_shared/gamewaire.ts';
 import { collectEvidence, oddsSport, resolveMatchup } from '../_shared/gamewaireSources.ts';
 import { planScheduledAnalyses, scheduledMarkets } from '../_shared/gamewaireSchedule.ts';
@@ -216,6 +216,10 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         return json({ error: 'The saved simulation changed. Refresh this analysis before publishing so its picks stay aligned.' }, 409);
       if (array(object(source.data.payload).picks).some(value => {
         const pick = object(value);
+        return selectedKeys.includes(pick.key) && !isAllowedPropPrice({ market: text(pick.market), american: numeric(pick.american) ?? NaN });
+      })) return json({ error: 'New player-prop publications require -200 or longer odds. Refresh this analysis.' }, 400);
+      if (array(object(source.data.payload).picks).some(value => {
+        const pick = object(value);
         return selectedKeys.includes(pick.key) && !isAllowedPickSide({ market: text(pick.market), side: text(pick.side) });
       })) return json({ error: 'Under selections cannot be newly published. Refresh this analysis for supported Overs.' }, 400);
       const saved = await admin.rpc('gamewaire_publish', { target_run: body.runId, selected_keys: body.keys });
@@ -259,7 +263,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       return json({ saved: true });
     }
     const sport: Sport | null = body.sport === 'NFL' || body.sport === 'NBA' || isSoccer(text(body.sport)) ? body.sport as Sport : null;
-    if (!sport) return json({ error: 'Choose NFL, NBA, Premier League, Serie A, La Liga or Bundesliga.' }, 400);
+    if (!sport) return json({ error: 'Choose NFL, NBA, Premier League, Serie A, La Liga, Bundesliga or Champions League.' }, 400);
     if (!oddsKey) return json({ status: 'setup_required', error: 'A server-side ODDS_API_KEY and the required player-prop subscription must be configured before sportsbook markets can be evaluated.' }, 503);
     if (body.action === 'events') {
       const date = body.date;

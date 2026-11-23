@@ -1,9 +1,9 @@
-import { array, decimalOdds, expectedValue, fairAmericanOdds, impliedProbability, isAllowedPickSide, isSoccer, normalize, numeric, object, rankTopPicks, soccerModelVersion, text, valueClassification } from './gamewaire.ts';
+import { array, bestPlusMoneyProp, decimalOdds, expectedValue, fairAmericanOdds, impliedProbability, isAllowedPickSide, isAllowedPropPrice, isSoccer, normalize, numeric, object, rankTopPicks, soccerModelVersion, text, valueClassification } from './gamewaire.ts';
 import type { Candidate, Evaluation, Evidence, Observation, Quote, Settings, SoccerSport, TeamLean } from './gamewaire.ts';
 import { publicJSON } from './gamewaireSources.ts';
 import type { Matchup } from './gamewaireSources.ts';
 
-export const soccerPaths: Record<SoccerSport, string> = { EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1' };
+export const soccerPaths: Record<SoccerSport, string> = { EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1', 'Champions League': 'soccer/uefa.champions' };
 const aliases: Record<string, string> = {
   manchesterunited: 'manchesterunited', manunited: 'manchesterunited', manchestercity: 'manchestercity', mancity: 'manchestercity',
   wolverhamptonwanderers: 'wolves', wolves: 'wolves', tottenhamhotspur: 'tottenham', tottenham: 'tottenham',
@@ -78,7 +78,7 @@ export async function collectSoccerEvidence(quotes: Quote[], matchup: Matchup, n
   const teams = await Promise.all([matchup.home, matchup.away].map(async team => ({
     team, games: soccerTeamSamples(await publicJSON(`https://site.api.espn.com/apis/site/v2/sports/${path}/teams/${team.id}/schedule?season=${matchup.season}`, fetcher), team.id, sport, matchup.season, cutoff),
   })));
-  const warnings: string[] = ['Experimental soccer analysis; probabilities are not calibrated guarantees. Regulation time (90 minutes plus stoppage time) only; cups, extra time and shootouts excluded.'];
+  const warnings: string[] = ['Experimental soccer analysis; probabilities are not calibrated guarantees. Only the selected competition is used. Regulation time (90 minutes plus stoppage time) only; extra time and shootouts excluded.'];
   const summaries = new Map<string, unknown>();
   const offered = [...new Set(quotes.filter(row => row.market.startsWith('player_')).map(row => row.subject))];
   if (quotes.some(row => row.priceCoverage === 'single-sided')) warnings.push('Some player markets provide only one side. These use actual offered prices and verified appearance statistics; opposite odds and no-vig comparisons remain unavailable.');
@@ -133,6 +133,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     if (!settings.markets.includes(quote.market) && quote.market !== 'h2h') continue;
     if (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player))) continue;
     if (!isAllowedPickSide(quote)) { rejected.push({ key: quote.key, reason: 'GamewAIre totals and player props are Over-only; Under selections are excluded.' }); continue; }
+    if (!isAllowedPropPrice(quote)) { rejected.push({ key: quote.key, reason: 'Player props require -200 or longer odds; there is no positive-odds ceiling.' }); continue; }
     if (settings.direction !== 'both' && quote.market !== 'h2h' && quote.side.toLowerCase() !== settings.direction) continue;
     const reject = (reason: string) => rejected.push({ key: quote.key, reason });
     if (!Number.isFinite(Date.parse(quote.start)) || Date.parse(quote.start) <= now) { reject('Only upcoming regulation-time fixtures are eligible.'); continue; }
@@ -202,9 +203,11 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
   const ordered = rankTopPicks(supported);
   const leans = ordered.filter(pick => pick.market === 'h2h');
   const teamLean: TeamLean | undefined = leans[0] ? { pick: leans[0], qualifies: true, reason: 'Highest supported regulation-time outcome probability, including draw. EV and odds value do not determine selection; not a recommendation or guarantee.' } : undefined;
-  const picks: Candidate[] = [], subjects = new Set<string>();
+  const plusMoneyProp = bestPlusMoneyProp(ordered.filter(pick => settings.markets.includes(pick.market) && qualified(pick)));
+  const picks: Candidate[] = plusMoneyProp ? [plusMoneyProp] : [], subjects = new Set<string>(plusMoneyProp ? [normalize(plusMoneyProp.subject)] : []);
   let gameMarket = false;
   for (const pick of ordered.filter(pick => settings.markets.includes(pick.market) && qualified(pick))) {
+    if (pick.key === plusMoneyProp?.key) continue;
     const player = pick.market.startsWith('player_'), identity = normalize(pick.subject);
     if (player ? subjects.has(identity) : gameMarket) continue;
     picks.push(pick);
@@ -212,5 +215,5 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     if (picks.length === 8) break;
   }
   for (const pick of supported.filter(pick => !qualified(pick))) rejected.push({ key: pick.key, reason: 'The model projection does not support the selected Over.' });
-  return { status: picks.length ? 'completed' : supported.length ? 'no_qualifying' : 'insufficient_data', picks, rejected, teamLean, winnerLean: teamLean };
+  return { status: picks.length ? 'completed' : supported.length ? 'no_qualifying' : 'insufficient_data', picks: rankTopPicks(picks), rejected, teamLean, winnerLean: teamLean, ...(plusMoneyProp ? { plusMoneyProp } : {}) };
 }

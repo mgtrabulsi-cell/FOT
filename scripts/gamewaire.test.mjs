@@ -191,7 +191,8 @@ test('Qualifying estimates retain a complete output shape and a moved line is re
   assert.equal(pick.sampleSize, 30);
   assert.ok(pick.ev > 0 && pick.conservativeEV > 0);
   assert.equal(evaluate([{ ...quote, line: 35.5 }]).picks.length, 0);
-  assert.equal(evaluate([{ ...quote, american: -1000 }]).picks.length, 1);
+  assert.equal(evaluate([{ ...quote, american: -1000 }]).picks.length, 0);
+  assert.equal(evaluate([{ ...quote, american: -200 }]).picks.length, 1);
 });
 
 test('The engine abstains for missing, stale, future, incomplete, unverified and early-season data', () => {

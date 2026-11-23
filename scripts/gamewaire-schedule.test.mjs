@@ -54,20 +54,20 @@ test('NBA plans daily and NFL plans weekly, once per model without standings req
   await planScheduledAnalyses(fixture.db, list, fetcher, now);
   assert.deepEqual(listed, scheduledSports);
   assert.equal(fetches.length, 0, 'No standings dependency can omit a daily NBA game');
-  assert.equal(fixture.calls.length, 6);
+  assert.equal(fixture.calls.length, scheduledSports.length);
   assert.equal(fixture.calls[0].args.games.length, 15, 'All NBA games, not a three-game shortlist');
   assert.equal(fixture.calls[1].args.games.length, 1);
   assert.ok(fixture.calls.every(({ args }) => args.problem === null));
   assert.ok(fixture.calls.every(({ args }) => /Saved leans stay private/.test(args.plan_note)));
   assert.ok(fixture.calls.every(({ args }) => args.target_model === (isSoccer(args.target_sport) ? soccerModelVersion : modelVersion)));
   await planScheduledAnalyses(fixture.db, list, fetcher, now + 60_000);
-  assert.equal(listed.length, 6);
-  assert.equal(fixture.calls.length, 6, 'Repeated/DST double-hour ticks cannot create another batch');
+  assert.equal(listed.length, scheduledSports.length);
+  assert.equal(fixture.calls.length, scheduledSports.length, 'Repeated/DST double-hour ticks cannot create another batch');
   await planScheduledAnalyses(fixture.db, list, fetcher, Date.parse('2026-10-30T05:00:00Z'));
-  assert.equal(listed.at(-1), 'Bundesliga');
-  assert.equal(listed.length, 11, 'Daily soccer and NBA advance; the same NFL week is not planned twice');
+  assert.equal(listed.at(-1), 'Champions League');
+  assert.equal(listed.length, scheduledSports.length * 2 - 1, 'Daily soccer and NBA advance; the same NFL week is not planned twice');
   await planScheduledAnalyses(fixture.db, list, fetcher, Date.parse('2026-10-30T06:00:00Z'));
-  assert.equal(listed.length, 11, 'Catch-up ticks do not duplicate current-model batches');
+  assert.equal(listed.length, scheduledSports.length * 2 - 1, 'Catch-up ticks do not duplicate current-model batches');
 });
 test('NFL plans the visible next week on Tuesday noon, including Wednesday evenings and DST changes', () => {
   for (const [time, date] of [
@@ -88,7 +88,7 @@ test('An upgrade catches up both sports after hours without revisiting started g
   assert.deepEqual(fixture.calls.filter(call => !isSoccer(call.args.target_sport)).map(call => [call.args.target_sport, call.args.target_date, call.args.games.map(game => game.event_id)]),
     [['NBA', '2026-11-04', ['nba']], ['NFL', '2026-11-05', ['nfl']]]);
   await planScheduledAnalyses(fixture.db, async () => { throw new Error('Already planned'); }, fetch, time + 60000);
-  assert.equal(fixture.calls.length, 6);
+  assert.equal(fixture.calls.length, scheduledSports.length);
 });
 test('Planning failures are saved explicitly with no arbitrary fallback; empty days cost no odds analysis', async () => {
   const fixture = planner();
@@ -108,7 +108,7 @@ test('A legacy daily Thursday batch extends once without hiding the rest of the 
   await planScheduledAnalyses(fixture.db, async (sport) => sport === 'NFL' ? events : [], fetch, now);
   assert.equal(fixture.calls.find((call) => call.args.target_sport === 'NFL').args.games.length, 2);
   await planScheduledAnalyses(fixture.db, async () => { throw new Error('Already planned'); }, fetch, now + 60000);
-  assert.equal(fixture.calls.length, 6);
+  assert.equal(fixture.calls.length, scheduledSports.length);
   assert.deepEqual(scheduleWindow('NFL', '2026-12-31'), { first: '2026-12-31', last: '2027-01-06' });
 });
 test('All four soccer leagues use daily Eastern windows, two team markets and no paid planning fetches', async () => {

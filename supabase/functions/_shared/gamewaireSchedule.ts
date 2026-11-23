@@ -6,7 +6,7 @@ export type ScheduleEvent = { id: string; sport: Sport; home: string; away: stri
 export type ScheduledJob = {
   id: string; sport: Sport; event_id: string; event_start: string; matchup: string; selection_note: string;
 };
-export const scheduledSports: Sport[] = ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga'];
+export const scheduledSports: Sport[] = ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga', 'Champions League'];
 export const scheduledMarkets = (sport: Sport) => isSoccer(sport) ? ['h2h', 'totals'] : [...markets[sport]];
 export function easternClock(now: number) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit',

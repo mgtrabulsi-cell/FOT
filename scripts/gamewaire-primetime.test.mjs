@@ -38,7 +38,7 @@ test('Defensive yardage parser reads opponent statistics only and rejects wrong 
   assert.throws(() => nflOpponentYardage(body, '1', 2026, 7), /game count/);
   assert.throws(() => nflOpponentYardage({ ...body, results: {} }, '1', 2026), /unavailable/);
 });
-test('NBA and NFL supported prop prices have no -200 cap or value threshold', () => {
+test('NBA and NFL supported prop prices enforce -200 or longer without applying a value threshold', () => {
   for (const sport of ['NBA', 'NFL']) for (const minEdge of [0, 1]) {
     const prices = [-400, -210, -201, -200, -199, -110, 100, 210];
     const pool = prices.map((american, i) => ({ ...quotes[0], sport, american, key: `price-${i}`, subject: `Player ${i}` }));
@@ -47,8 +47,8 @@ test('NBA and NFL supported prop prices have no -200 cap or value threshold', ()
       samples: Array.from({ length: 12 }, (_, i) => ({ value: 80, date: new Date(now - (1 + i) * 86400000).toISOString() })) }]));
     const result = evaluate([...pool, team], data, { ...defaultSettings, markets: ['player_reception_yds'], minEdge, minEV: 0 }, now, 9, 8);
     const props = result.picks.filter((q) => q.market.startsWith('player_'));
-    assert.deepEqual(props.map((q) => q.american).sort((a, b) => a - b), prices);
-    assert.equal(result.rejected.filter((q) => /-200 or better/.test(q.reason)).length, 0);
+    assert.deepEqual(props.map((q) => q.american).sort((a, b) => a - b), prices.filter(price => price >= -200));
+    assert.equal(result.rejected.filter((q) => /-200 or longer/.test(q.reason)).length, 3);
     assert.equal(result.teamLean.pick.american, -400);
     assert.deepEqual(result.stretchKeys, []);
     const duplicate = evaluate([...pool, { ...pool[3], american: -250, book: 'Worse book' }], data,

@@ -19,13 +19,15 @@ test('NBA/NFL probabilities and selected keys are invariant to valid sportsbook 
     const quotes = [quote(sport, 'likely'), quote(sport, 'valuable')];
     const data = new Map([[quotes[0].key, evidence(26)], [quotes[1].key, evidence(20)]]);
     const baseline = evaluate(quotes, data, settings, now, 8, minimum);
-    for (const american of [-10000, -201, -100, 100, 5000]) for (const noVig of [.1, .9]) {
+    for (const american of [-200, -100, 100, 5000]) for (const noVig of [.1, .9]) {
       const report = evaluate(quotes.map(q => ({ ...q, american, noVig })), data, settings, now, 8, minimum);
       assert.deepEqual(report.picks.map(p => [p.key, p.probability, p.projection]), baseline.picks.map(p => [p.key, p.probability, p.projection]));
       assert.ok(Math.abs(report.picks[0].probability - 28 / 34) < 1e-12, 'Neutral prior, not bookmaker belief');
       assert.equal(report.picks[0].learning.baseModelVersion, probabilityModelVersion);
     }
-    const expensive = evaluate([{ ...quotes[0], american: -10000 }, { ...quotes[1], american: 500 }], data, settings, now, 8, minimum);
+    for (const american of [-10000, -201]) assert.equal(evaluate(quotes.map(q => ({ ...q, american })), data, settings, now, 8, minimum).picks.length, 0);
+    const expensive = evaluate([{ ...quotes[0], american: -200 }, { ...quotes[1], american: 500 }],
+      new Map([['likely', evidence(20)], ['valuable', evidence(16)]]), settings, now, 8, minimum);
     assert.deepEqual(expensive.picks.map(p => p.key), ['likely', 'valuable']);
     assert.ok(expensive.picks[0].ev < 0 && expensive.picks[1].ev > 0);
     assert.ok(expensive.picks[0].conservativeEV < 0 && expensive.picks[0].edge < 0);
@@ -77,9 +79,10 @@ test('Soccer player estimates ignore price/value and retain projection, single-s
   data.samples = data.samples.map(row => ({ ...row, value: row.value ? 3 : 0, season: 2026 }));
   const run = (american, patch = {}) => evaluateSoccer([{ ...q, american, ...patch }], new Map([[q.key, data]]),
     { ...settings, markets: [q.market] }, now);
-  const cheap = run(500).picks[0], expensive = run(-10000).picks[0];
+  const cheap = run(500).picks[0], expensive = run(-200).picks[0];
   assert.equal(expensive.probability, cheap.probability);
-  assert.ok(expensive.ev < 0 && cheap.ev > 0);
+  assert.ok(expensive.ev < cheap.ev && cheap.ev > 0);
+  assert.equal(run(-201).picks.length, 0);
   assert.equal(run(-10000, { line: 3.5 }).picks.length, 0);
   assert.equal(run(-10000, { side: 'Under' }).picks.length, 0);
 });

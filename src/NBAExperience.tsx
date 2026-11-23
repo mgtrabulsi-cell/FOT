@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import PregameInjuries from './PregameInjuries';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Star, X } from 'lucide-react';
 import TeamAbbrMark from './TeamAbbrMark';
@@ -520,6 +521,7 @@ export default function NBAExperience({ mode, games, teamPicks = {}, previousGam
         <FavoriteButton target={nbaTeamFavorite(game.home)} favorites={favorites} toggle={onToggleFavorite} />
       </div>
     </div>
+      {upcoming && <PregameInjuries key={`${game.eventId}:${game.date}`} game={game} />}
       {upcoming && game.nbaMarket?.spread != null && <div className="wire-spread-badge" aria-label="Pregame spread"><span>Spread</span><b>{game.home.abbr} {game.nbaMarket.spread > 0 ? `+${game.nbaMarket.spread}` : game.nbaMarket.spread}</b></div>}
       {game.venue && <p className="nba-note">{game.venue}</p>}
     </>}

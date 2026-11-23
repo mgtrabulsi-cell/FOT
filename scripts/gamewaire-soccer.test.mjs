@@ -100,7 +100,7 @@ test('single-sided soccer props retain actual odds and verified estimates withou
   assert.ok(malformed.every(row => row.priceCoverage === undefined));
   assert.equal(evaluate(malformed, data).picks.length, 0, 'Duplicate or ambiguous prices do not become single-sided support');
 });
-test('all four league settings support verified prop markets, not unverified handicaps', () => {
+test('all supported soccer league settings include verified prop markets, not unverified handicaps', () => {
   for (const sport of soccerSports) {
     assert.equal(readSettings({ ...settings, markets: [...markets[sport]] }, sport).markets.length, 5);
     assert.throws(() => readSettings({ ...settings, markets: ['spreads'] }, sport), /supported/);
@@ -116,8 +116,8 @@ test('soccer matchup requires exact league identity and tight kickoff alignment'
   event.date = new Date(Date.parse(start) + 6 * 60000).toISOString();
   await assert.rejects(resolveSoccerMatchup(quote, fetcher), /five minutes/);
 });
-test('scheduler includes all four soccer leagues without mixing NBA fixtures', () => {
+test('scheduler includes Champions League and domestic soccer without mixing NBA fixtures', () => {
   const source = readFileSync(new URL('../supabase/functions/_shared/gamewaireSchedule.ts', import.meta.url), 'utf8');
-  assert.match(source, /scheduledSports: Sport\[\] = \['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga'\]/);
+  assert.match(source, /scheduledSports: Sport\[\] = \['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga', 'Champions League'\]/);
   assert.equal(scheduleEvents([{ id: 'soccer', sport: 'EPL', start }], 'NBA', '2026-11-08', now).length, 0);
 });

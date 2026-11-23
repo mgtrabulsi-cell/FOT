@@ -5,7 +5,7 @@ export type SavedGame = { sport: Sport; event_id: string; event_start: string; m
   payload?: { picks?: Candidate[]; teamLean?: TeamLean } };
 export const savedGameKey = (game: Pick<SavedGame, 'sport' | 'event_id'>) => `${game.sport}:${game.event_id}`;
 const teamKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^losangeles/, 'la');
-const soccerPaths = { EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1' };
+const soccerPaths = { EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1', 'Champions League': 'soccer/uefa.champions' };
 const sportPath = (sport: Sport) => isSoccer(sport) ? soccerPaths[sport] : sport === 'NBA' ? 'basketball/nba' : 'football/nfl';
 const espnId = (game: SavedGame) => game.payload?.teamLean?.pick.identifiers?.espnEventId
   ?? game.payload?.picks?.find((pick) => pick.identifiers?.espnEventId)?.identifiers?.espnEventId;

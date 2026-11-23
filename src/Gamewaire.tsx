@@ -70,7 +70,14 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
       <div><dt>Edge</dt><dd>{pick.edge >= 0 ? '+' : ''}{(pick.edge * 100).toFixed(1)} pp</dd></div>
       <div><dt>Est. EV</dt><dd>{pick.ev >= 0 ? '+' : ''}{percent(pick.ev)}</dd></div>
     </dl>}
-    <p className="gai-note gai-estimate-note">Unvalidated estimate · Not a guarantee of profit.</p>
+    <p className="gai-note gai-estimate-note">Model hit chance {percent(pick.probability)} · Sportsbook implied {percent(pick.implied)}. Unvalidated estimate, not a guarantee of profit.</p>
+    {pick.sequence && <p className="gai-note">Exact-line form, pushes excluded: last 5 {pick.sequence.last5.hits}/{pick.sequence.last5.games}, last 10 {pick.sequence.last10.hits}/{pick.sequence.last10.games}.
+      {' '}{pick.sequence.streak ? `${pick.sequence.streak.games} consecutive ${pick.sequence.streak.outcome === 'hit' ? 'hits' : 'misses'}. ` : ''}
+      {pick.sequence.active ? `Sequence adjustment ${(pick.sequence.adjustment * 100).toFixed(1)} pp passed chronological validation (${pick.sequence.validationGames} appearances).` : 'No validated sequence adjustment.'}
+      {' '}A player is not automatically due after a cold streak.</p>}
+    {pick.learning && <p className="gai-note">Settled-result learning: {pick.learning.active
+      ? `validated correction active (${pick.learning.trainingGames} training / ${pick.learning.validationGames} validation games).`
+      : `no correction activated (${pick.learning.trainingGames} training / ${pick.learning.validationGames} validation games). At least 30 training and 10 later validation games, with improved held-out error, are required.`}</p>}
     {record && record.result !== 'pending' && <p className="gai-note">Saved analysis, not a new live selection.</p>}
     {Date.now() - Date.parse(pick.updatedAt) > 600_000 && <p className="gai-note">Saved price · refresh analysis before using a changed line.</p>}
     </div>
@@ -586,12 +593,18 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           {report.status === 'no_qualifying' && <p>No qualifying value bets found for this matchup.</p>}
           {!!report.payload.playerPropMinimum && <p className="gai-note">
             {report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0} player props · {report.payload.stretchKeys?.length ?? 0} Stretch (private label).
-            {' '}{report.payload.playerPropMinimum === 4 ? 'Probability-first selections need not pass positive-EV screens; our projection must support the side and estimated win probability must exceed 50%.' : 'Legacy Stretch options did not pass every normal value screen.'}
+            {' '}{report.payload.playerPropMinimum === 4 ? 'Probability-first selections require projection agreement, not positive EV. One supported plus-money prop is reserved when available; the other slots remain probability-ranked.' : 'Legacy Stretch options did not pass every normal value screen.'}
             {' '}New player-prop analyses require odds of -200 or better, including Stretch options.
             {' '}Target: {report.payload.playerPropMinimum} distinct players{report.payload.playerPropMinimum === 8 ? ' for this primetime NFL game' : ''}.
             {(report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0) < report.payload.playerPropMinimum && ' Fewer eligible players had sufficient verified data and fresh markets; no missing props were invented.'}
           </p>}
           {report.payload.error && <p role="alert" className="feed-warning">{report.payload.error}</p>}
+          {report.status !== 'in_progress' && <section aria-label="Best plus-money prop for this game">
+            <h4>Top plus-money prop · model hit probability</h4>
+            {report.payload.plusMoneyProp ? <><p className="gai-note">Highest estimated hit chance among supported +100-or-longer player props. Included in the review candidates below, not an additional combined pick. Private until published.</p>
+              <PickCard pick={report.payload.plusMoneyProp} rank={1} technical /></>
+              : <p className="gai-note">No supported plus-money prop was saved for this game. Missing markets or evidence are not replaced with an invented pick; older reports need a fresh analysis.</p>}
+          </section>}
           {report.sport === 'NFL' && !report.settings.markets.some((market) => market.startsWith('player_')) && <p className="gai-note">This saved report checked team markets only; no player props were requested. Run the full NFL analysis below to request player candidates.</p>}
           {report.payload.playerPropMinimum && !(report.payload.picks ?? []).some((pick) => pick.market.startsWith('player_')) ? <p role="status" className="feed-warning">No eligible player props were returned. Markets may not be posted yet, or prices/data failed the checks. See Data notes &amp; excluded markets for the exact reasons; refreshing cannot create unavailable lines.</p> : null}
           <ReviewGameLean key={`lean:${report.id}`} report={report} refresh={refreshHistory} onFreshReport={openReport} />
