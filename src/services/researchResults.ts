@@ -6,6 +6,8 @@ import type { ResearchSnapshot, ResearchResult, ResearchSection } from './resear
 export async function checkResearchResult(snapshot: ResearchSnapshot, signal: AbortSignal): Promise<ResearchResult> {
   const { game, player } = snapshot;
   if (!game) throw new Error('No verified matchup was saved with this research.');
+  if (player && ![game.homeId, game.awayId].includes(player.teamId))
+    throw new Error('The saved player team does not match this matchup. Save fresh research from the correct player card.');
   if (!navigator.onLine) throw new Error('Reconnect to check final results. Your saved research and notes still work offline.');
   let sections: ResearchSection[];
   if (snapshot.league === 'NBA') {

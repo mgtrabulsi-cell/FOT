@@ -154,6 +154,7 @@ test('Player absent from the returned final is unavailable, never a made-up zero
   for (const league of ['NBA', 'NFL']) {
     const { api } = resultsHarness();
     await assert.rejects(api.checkResearchResult({ ...snapshot(), league, player: { id: 'missing', teamId: '1' } }, new AbortController().signal), /no verified final/);
+    await assert.rejects(api.checkResearchResult({ ...snapshot(), league, player: { id: '11', teamId: 'unrelated' } }, new AbortController().signal), /team does not match/);
   }
 });
 test('Capture adapters retain scenario/version, all NBA projected stats and real zeroes; reject wrong matchup identities', () => {
