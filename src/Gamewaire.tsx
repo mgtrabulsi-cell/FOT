@@ -594,7 +594,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
           {!!report.payload.playerPropMinimum && <p className="gai-note">
             {report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0} player props · {report.payload.stretchKeys?.length ?? 0} Stretch (private label).
             {' '}{report.payload.playerPropMinimum === 4 ? 'Probability-first selections require projection agreement, not positive EV. One supported plus-money prop is reserved when available; the other slots remain probability-ranked.' : 'Legacy Stretch options did not pass every normal value screen.'}
-            {' '}New player-prop analyses require odds of -200 or better, including Stretch options.
+            {' '}Supported consistent performers remain eligible at any valid price; EV and proximity to -200 do not determine eligibility.
             {' '}Target: {report.payload.playerPropMinimum} distinct players{report.payload.playerPropMinimum === 8 ? ' for this primetime NFL game' : ''}.
             {(report.payload.picks?.filter((pick) => pick.market.startsWith('player_')).length ?? 0) < report.payload.playerPropMinimum && ' Fewer eligible players had sufficient verified data and fresh markets; no missing props were invented.'}
           </p>}
@@ -659,7 +659,7 @@ export default function Gamewaire({ onCreatePost }: { onCreatePost?: (picks: Ret
       <ul><li>Actual sportsbook lines and prices</li><li>Estimated hit probability drives ranking</li><li>Moneylines favored on close ties</li><li>High-usage rotation players prioritized</li><li>Value and data checks before selection</li></ul>
       <div className="gai-callout"><b>Smarter data.<br />Clearer decisions.</b><p>No guaranteed outcomes. A higher hit estimate does not necessarily mean better value at the offered odds.</p></div>
       <details><summary>Ranking explained</summary><p>Probabilities are grouped into one-percentage-point bands. Within a band, moneylines come first, then higher recorded offensive involvement and minutes. Popularity itself is not a measured model input. Lower-probability bands never jump ahead because of player fame or market type.</p>
-        <p>Moneylines must pass the same edge, EV, uncertainty and freshness checks as props. No market is forced into the list. NBA rotation rankings are not confirmed starters.</p></details>
+        <p>Moneylines and props must pass verified evidence, projection and freshness checks, not an EV threshold. No market is forced into the list. NBA rotation rankings are not confirmed starters.</p></details>
     </aside>
     </div>
     <details id="gai-results" className="gai-history"><summary>Results &amp; pick history</summary>

@@ -217,7 +217,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       if (array(object(source.data.payload).picks).some(value => {
         const pick = object(value);
         return selectedKeys.includes(pick.key) && !isAllowedPropPrice({ market: text(pick.market), american: numeric(pick.american) ?? NaN });
-      })) return json({ error: 'New player-prop publications require -200 or longer odds. Refresh this analysis.' }, 400);
+      })) return json({ error: 'New player-prop publications require valid American odds. Refresh this analysis.' }, 400);
       if (array(object(source.data.payload).picks).some(value => {
         const pick = object(value);
         return selectedKeys.includes(pick.key) && !isAllowedPickSide({ market: text(pick.market), side: text(pick.side) });

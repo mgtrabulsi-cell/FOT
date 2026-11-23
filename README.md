@@ -148,6 +148,10 @@ Backend setup: set `API_SPORTS_KEY` in Supabase Edge Function secrets, apply `su
 
 ## GamewAIre setup
 
+NFL and NBA ready pregame simulations include an owner/admin **Create 3-leg sim parlay** button. It reuses a fresh matching report or runs the existing analysis (up to seven odds credits), then selects the three highest-probability supported props for distinct players that agree with the displayed simulation. Missing/fewer than three supported legs produce an explicit error. The editable draft uses the existing Parlay Graphic Builder and downloadable branded PNG; player photos are not auto-filled. Individual-leg estimates are not a joint parlay probability, and combined sportsbook odds are never invented.
+
+The current price policy supersedes the earlier v14 -200 floor: consistently supported player props at **any valid American price** remain eligible, even with negative EV. Probability, verified history, matchup and projection agreement determine selection; price, payout and EV do not rank candidates. Apply `supabase/gamewaire-unrestricted-prop-prices.sql` after `supabase/gamewaire-prop-upgrade.sql`, and deploy both `gamewaire` and `gamewire-bot`. Historical prices/results are unchanged. Soccer uses explicit verified provider-name aliases while retaining exact league, home/away and five-minute kickoff checks; no unmatched fixture is substituted.
+
 NFL/NBA analysis verifies settled-pick learning history before reserving paid odds credits. Each read is limited to eight seconds and may retry once only for a transient database/connection failure; unavailable history still fails explicitly, never substitutes an unlearned report, and never automatically retries a paid request. Once a game has started, a failed refresh no longer hides its earlier successful current-model pregame analysis. The scoreboard identifies these as failed refreshes using saved evidence, preserves missing-analysis errors for games without a usable archive, and never generates forecasts or records new automatic picks after kickoff. Upcoming games retain the stricter latest-attempt rule rather than reviving stale picks.
 
 ### On-demand soccer (experimental)

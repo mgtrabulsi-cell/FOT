@@ -32,7 +32,7 @@ export function isAllowedPickSide(pick: { market: string; side: string }) {
   return pick.market !== 'totals' && !pick.market.startsWith('player_') || pick.side === 'Over';
 }
 export function isAllowedPropPrice(pick: { market: string; american: number }) {
-  return !pick.market.startsWith('player_') || Number.isFinite(pick.american) && Math.abs(pick.american) >= 100 && pick.american >= -200;
+  return !pick.market.startsWith('player_') || Number.isFinite(pick.american) && Math.abs(pick.american) >= 100;
 }
 export function bestPlusMoneyProp<T extends Candidate>(picks: T[]): T | undefined {
   return rankTopPicks(picks.filter(pick => pick.market.startsWith('player_') && pick.american >= 100 && isAllowedPropPrice(pick)))[0];
@@ -420,7 +420,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     }
     if ((!settings.markets.includes(quote.market) && !['h2h', 'spreads'].includes(quote.market)) || (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player)))) continue;
     if (!isAllowedPickSide(quote)) { rejected.push({ key: quote.key, reason: 'GamewAIre totals and player props are Over-only; Under selections are excluded.' }); continue; }
-    if (!isAllowedPropPrice(quote)) { rejected.push({ key: quote.key, reason: 'Player props require -200 or longer odds; there is no positive-odds ceiling.' }); continue; }
+    if (!isAllowedPropPrice(quote)) { rejected.push({ key: quote.key, reason: 'Player props require valid finite American odds with absolute value at least 100.' }); continue; }
     if (settings.direction !== 'both' && ['Over', 'Under'].includes(quote.side) && quote.side.toLowerCase() !== settings.direction) continue;
     if (Date.parse(quote.start) <= now) { rejected.push({ key: quote.key, reason: 'Game has started; pregame analysis only.' }); continue; }
     if (now - Date.parse(quote.updatedAt) > 10 * 60_000 || Date.parse(quote.updatedAt) > now + 60_000) {

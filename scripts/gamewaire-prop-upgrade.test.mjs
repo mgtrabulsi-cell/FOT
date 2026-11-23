@@ -38,12 +38,12 @@ test('Form excludes pushes, invalid observations and duplicate event IDs; exact-
   assert.deepEqual(result.last5, { hits: 2, games: 4 });
   assert.equal(propSequence(rows.slice(0, 4), 35.5).last5.hits, 0);
 });
-test('Prop price floor includes -200, even money and +5000, but not shorter or malformed odds', () => {
-  for (const american of [-200, -199, -100, 100, 500, 5000])
+test('Prop eligibility includes consistent favorites at any valid price, but not malformed odds', () => {
+  for (const american of [-400, -201, -200, -199, -100, 100, 500, 5000])
     assert.equal(isAllowedPropPrice({ market: 'player_points', american }), true);
-  for (const american of [-201, -400, NaN, Infinity, 0, 99])
+  for (const american of [NaN, Infinity, 0, 99, -99])
     assert.equal(isAllowedPropPrice({ market: 'player_points', american }), false);
-  assert.equal(isAllowedPropPrice({ market: 'h2h', american: -400 }), true, 'User floor applies to player props, not game lines');
+  assert.equal(isAllowedPropPrice({ market: 'h2h', american: -400 }), true);
 });
 test('Each analysis reserves the highest-probability supported plus-money prop without duplicating a player', () => {
   const q = (key, american, wins) => ({ key, american, wins, eventId: 'game', sport: 'NBA', start: new Date(now + 3600000).toISOString(),
@@ -56,7 +56,7 @@ test('Each analysis reserves the highest-probability supported plus-money prop w
   assert.equal(run.plusMoneyProp.key, 'best-positive');
   assert.equal(run.picks.length, 4);
   assert.ok(run.picks.some(row => row.key === 'best-positive'));
-  assert.ok(!run.picks.some(row => row.key === 'too-short'));
+  assert.ok(run.picks.some(row => row.key === 'too-short'), 'A consistent favorite below -200 is no longer excluded');
   assert.equal(new Set(run.picks.map(row => row.subject)).size, run.picks.length);
   const single = evaluate(quotes, evidence, { ...defaultSettings, markets: ['player_points'] }, now, 1, 0);
   assert.equal(single.picks.length, 1);

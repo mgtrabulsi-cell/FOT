@@ -8,6 +8,7 @@ export type AnalysisRun = {
   id: string; sport: Sport; event_id: string; event_start: string; matchup: string; settings: Settings; status: AnalysisStatus;
   created_at: string; finished_at: string | null;
   payload: { picks?: Candidate[]; stretchKeys?: string[]; playerPropMinimum?: number; teamLean?: import('../../supabase/functions/_shared/gamewaire').TeamLean; rejected?: Array<{ key: string; reason: string }>; warnings?: string[]; error?: string; explanationMode?: string;
+    simulationAlignment?: { eventId: string; version: string; forecastAt: string | null; scenarioId: string } | null;
     providerUsage?: { requestCost: number | null; creditsUsed: number | null; creditsRemaining: number | null; checkedAt: string };
     scheduled?: { jobId: string; selectionNote: string }; plusMoneyProp?: Candidate };
 };

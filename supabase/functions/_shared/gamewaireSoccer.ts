@@ -14,6 +14,13 @@ const aliases: Record<string, string> = {
   athleticclub: 'athleticbilbao', athleticbilbao: 'athleticbilbao', deportivoalaves: 'alaves', alaves: 'alaves',
   '1fcunionberlin': 'unionberlin', unionberlin: 'unionberlin', '1fckoln': 'cologne', fccologne: 'cologne', cologne: 'cologne',
   mainz05: 'mainz', '1fsvmainz05': 'mainz', mainz: 'mainz', eintrachtfrankfurt: 'frankfurt', frankfurt: 'frankfurt',
+  brightonhovealbion: 'brighton', elchecf: 'elche', elche: 'elche',
+  atalantabc: 'atalanta', atalanta: 'atalanta', caosasuna: 'osasuna', osasuna: 'osasuna',
+  realracingclubdesantander: 'racingsantander', racingsantander: 'racingsantander',
+  fsvmainz05: 'mainz', hamburgersv: 'hamburgsv', hamburgsv: 'hamburgsv',
+  augsburg: 'augsburg', fcaugsburg: 'augsburg', fcschalke04: 'schalke04', schalke04: 'schalke04',
+  scpaderborn: 'paderborn', scpaderborn07: 'paderborn', elversberg: 'elversberg', svelversberg: 'elversberg',
+  deportivolacoruna: 'deportivo', deportivo: 'deportivo',
 };
 export const soccerName = (name: string) => aliases[normalize(name)] ?? normalize(name);
 export async function resolveSoccerMatchup(quote: Quote, fetcher: typeof fetch = fetch): Promise<Matchup> {
@@ -133,7 +140,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     if (!settings.markets.includes(quote.market) && quote.market !== 'h2h') continue;
     if (settings.player && quote.market.startsWith('player_') && !normalize(quote.subject).includes(normalize(settings.player))) continue;
     if (!isAllowedPickSide(quote)) { rejected.push({ key: quote.key, reason: 'GamewAIre totals and player props are Over-only; Under selections are excluded.' }); continue; }
-    if (!isAllowedPropPrice(quote)) { rejected.push({ key: quote.key, reason: 'Player props require -200 or longer odds; there is no positive-odds ceiling.' }); continue; }
+    if (!isAllowedPropPrice(quote)) { rejected.push({ key: quote.key, reason: 'Player props require valid finite American odds with absolute value at least 100.' }); continue; }
     if (settings.direction !== 'both' && quote.market !== 'h2h' && quote.side.toLowerCase() !== settings.direction) continue;
     const reject = (reason: string) => rejected.push({ key: quote.key, reason });
     if (!Number.isFinite(Date.parse(quote.start)) || Date.parse(quote.start) <= now) { reject('Only upcoming regulation-time fixtures are eligible.'); continue; }

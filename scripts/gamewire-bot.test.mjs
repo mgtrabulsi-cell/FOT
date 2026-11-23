@@ -269,14 +269,14 @@ test('Blocked ESPN logs are an explicit partial response, not invented workload 
   assert.ok([...api.cache.entries()].filter(([key]) => key.includes('breakdown')).every(([, value]) => Date.parse(value.expires_at) - now === 30000));
   assert.equal(bot.applyBotEditorial(report({ roster: null }), [{ ...graphic, published_content: { ...graphic.published_content, kind: 'start' } }], []).indication, 'Monitor');
 });
-test('Published props require exact current ESPN identities and enforce the -200 floor without exposing candidates', async () => {
+test('Published props require exact current ESPN identities and allow shorter favorites without exposing candidates', async () => {
   const base = { sport: 'NFL', market: 'player_rush_yds', subject: player.name, side: 'Over', line: 60.5, american: -114,
     book: 'Saved Book', updatedAt: new Date(now - 3600000).toISOString(), samples: [{ date: '2026-10-19', value: 75, season: 2026 }],
     seasonAverage: 75, home: player.team, away: 'Cleveland Browns', identifiers: { playerId: player.id, espnEventId: '401234567' } };
   const pubs = [{ picks: [base, { ...base, line: 61.5, american: -201 }, { ...base, identifiers: { playerId: '999', espnEventId: '401234567' } },
     { ...base, identifiers: { playerId: player.id, espnEventId: 'old-game' } }, { ...base, subject: 'Another Runner' }] }];
   const response = await endpoint({ pubs }).run(), data = await response.json();
-  assert.equal(response.status, 200); assert.equal(data.report.props.length, 1);
+  assert.equal(response.status, 200); assert.equal(data.report.props.length, 2);
   assert.equal(data.report.props[0].selection, 'Test Runner Over 60.5 rushing yards');
   assert.equal(data.report.props[0].american, -114);
   assert.match(data.report.propNote, /not current sportsbook prices/);

@@ -305,7 +305,7 @@ export async function handleGamewireBot(request: Request, env: Environment, fetc
         const pick = object(raw);
         const price = numeric(pick.american);
         if (!propLabels[text(pick.market)] || object(pick.identifiers).playerId !== player.id || object(pick.identifiers).espnEventId !== matchup.eventId
-          || normalize(text(pick.subject)) !== normalize(player.name) || price === undefined || !Number.isInteger(price) || price < -200 || Math.abs(price) < 100) continue;
+          || normalize(text(pick.subject)) !== normalize(player.name) || price === undefined || !Number.isInteger(price) || Math.abs(price) < 100) continue;
         if (!['Over', 'Under'].includes(text(pick.side)) || numeric(pick.line) === undefined || !Array.isArray(pick.samples)
           || !text(pick.book) || !Number.isFinite(Date.parse(text(pick.updatedAt)))) throw new Error('Published player prop data is incomplete.');
         const projection = report.projections.find((projection) => projection.market === text(pick.market));

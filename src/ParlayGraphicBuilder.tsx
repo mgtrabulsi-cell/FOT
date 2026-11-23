@@ -7,7 +7,7 @@ import { renderParlayGraphic } from './services/parlayGraphicImage';
 import './parlayGraphic.css';
 
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'The parlay builder could not complete this request. Retry.';
-export default function ParlayGraphicBuilder({ value, onChange }: { value: ParlayGraphic | null; onChange: (value: ParlayGraphic | null) => void }) {
+export default function ParlayGraphicBuilder({ value, onChange, standalone = false }: { value: ParlayGraphic | null; onChange: (value: ParlayGraphic | null) => void; standalone?: boolean }) {
   const sportListId = useId();
   const [preview, setPreview] = useState(''), [rendering, setRendering] = useState(false);
   const [previewError, setPreviewError] = useState('');
@@ -96,6 +96,7 @@ export default function ParlayGraphicBuilder({ value, onChange }: { value: Parla
       <button type="button" disabled={rendering} onClick={() => { if (window.confirm('Remove this parlay add-on from the draft? Other picks and attachments stay.')) onChange(null); }}>Remove parlay add-on</button></div>
     {previewError && <p role="alert" className="feed-warning">{previewError}</p>}
     {preview && <div className="parlay-preview"><img src={preview} alt={`Parlay graphic preview: ${value.legs.map((leg) => `${leg.subject.name} ${parlayLegLabel(leg)}`).join('; ')}`} /><a href={preview} download="GameWire-Parlay.png">Download PNG</a></div>}
-    <p className="parlay-save-note">Your working template saves with this Angle on this device. Saving or publishing the Angle generates the current graphic as one photo and adds one parlay to its picks. Incomplete templates can stay in your local draft; complete them before saving to the server.</p>
+    <p className="parlay-save-note">{standalone ? 'Preview the graphic, then download its PNG. This simulation draft does not publish an Angle post or place a wager.'
+      : 'Your working template saves with this Angle on this device. Saving or publishing the Angle generates the current graphic as one photo and adds one parlay to its picks. Incomplete templates can stay in your local draft; complete them before saving to the server.'}</p>
   </section>;
 }

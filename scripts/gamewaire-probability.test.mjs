@@ -25,7 +25,7 @@ test('NBA/NFL probabilities and selected keys are invariant to valid sportsbook 
       assert.ok(Math.abs(report.picks[0].probability - 28 / 34) < 1e-12, 'Neutral prior, not bookmaker belief');
       assert.equal(report.picks[0].learning.baseModelVersion, probabilityModelVersion);
     }
-    for (const american of [-10000, -201]) assert.equal(evaluate(quotes.map(q => ({ ...q, american })), data, settings, now, 8, minimum).picks.length, 0);
+    for (const american of [-10000, -201]) assert.equal(evaluate(quotes.map(q => ({ ...q, american })), data, settings, now, 8, minimum).picks.length, baseline.picks.length);
     const expensive = evaluate([{ ...quotes[0], american: -200 }, { ...quotes[1], american: 500 }],
       new Map([['likely', evidence(20)], ['valuable', evidence(16)]]), settings, now, 8, minimum);
     assert.deepEqual(expensive.picks.map(p => p.key), ['likely', 'valuable']);
@@ -82,7 +82,7 @@ test('Soccer player estimates ignore price/value and retain projection, single-s
   const cheap = run(500).picks[0], expensive = run(-200).picks[0];
   assert.equal(expensive.probability, cheap.probability);
   assert.ok(expensive.ev < cheap.ev && cheap.ev > 0);
-  assert.equal(run(-201).picks.length, 0);
+  assert.equal(run(-201).picks.length, 1);
   assert.equal(run(-10000, { line: 3.5 }).picks.length, 0);
   assert.equal(run(-10000, { side: 'Under' }).picks.length, 0);
 });

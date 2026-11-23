@@ -3,6 +3,7 @@ import type { ComponentProps, CSSProperties } from 'react';
 import TeamAbbrMark from './TeamAbbrMark';
 import DraggableTabs from './DraggableTabs';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
+import SimulationParlayBuilder from './SimulationParlayBuilder';
 import { useSimulationGraphicAccess } from './useSimulationGraphicAccess';
 import { nbaDailyPerformers } from '../supabase/functions/_shared/nbaSimulation';
 import type { NBAAccuracyReport, NBAGameSimulation, NBAPlayerProjection } from '../supabase/functions/_shared/nbaSimulation';
@@ -111,6 +112,7 @@ export default function NBAGameSimulation({ game, forecast, error }: { game: Gam
       </section>)}
       <NBAGraphicDownload generate={generate} disabled={false} filename={`GameWire-NBA-Simulation-${game.eventId}.png`}
         label="Download NBA simulation" description="Projected final scores and each team's top five by projected PRA" alt="NBA simulation with opposing team panels and five projected PRA leaders per team" />
+      <SimulationParlayBuilder key={`parlay-${game.eventId}-${forecast.forecastAt}`} game={game} sport="NBA" forecast={forecast} />
       <details><summary>Model, availability &amp; data notes</summary>{forecast.warnings.map((warning, i) => <p key={i}>{warning}</p>)}
         <p>Learning corrections activate only after 30 training games and 10 held-out games improve absolute error by at least 5%; otherwise they stay neutral.
           Team scores and player projections are separate estimates. Missing players and statistics are not invented.</p>

@@ -3,6 +3,7 @@ import type { Game } from './services/sportsData';
 import { loadGameSimulation, readSavedGameSimulation } from './services/gamewireBot';
 import { supabase } from './services/supabaseClient';
 import { ResultsGraphicDownload } from './GamewaireResultsDownload';
+import SimulationParlayBuilder from './SimulationParlayBuilder';
 import NFLSimulationAccuracy from './NFLSimulationAccuracy';
 import NFLSimulationPlayerLog from './NFLSimulationPlayerLog';
 import { useSimulationGraphicAccess } from './useSimulationGraphicAccess';
@@ -245,6 +246,8 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
                 snapshotNote="Snapshot from your last download. Download again after the simulation updates."
                 alt={`${scenario.away.name} vs ${scenario.home.name} Instagram simulation graphic`} />
               </div>}
+              <SimulationParlayBuilder key={`parlay-${game.eventId}-${displayed.forecastAt}-${scenario.id}`}
+                game={game} sport="NFL" forecast={displayed} />
               <details className="nfl-simulation-score-details"><summary>Score expectations & ranges</summary>
                 {[scenario.away, scenario.home].map(team => <p key={team.id}>{team.abbr}: expected {team.score.mean.toFixed(2)} points · 10th–90th: {team.score.p10}–{team.score.p90} · Outscored opponent in {(team.winProbability * 100).toFixed(1)}% of draws</p>)}
                 <p>{((scenario.tieProbability ?? 0) * 100).toFixed(1)}% {scenario.overtime ? 'final ties after empirical possession overtime' : 'tied-score draws; overtime was not separately simulated in this archived model'}.
