@@ -4,6 +4,8 @@
 
 The nine-question reply below was sent through App Store Connect on November 23, 2026. Apple replied the same day and maintained the rejection: the app still provides the same feature set as other submitted apps, and should be revised to provide a unique experience. No new build was resubmitted.
 
+A follow-up explaining GameWire's custom statistical algorithm, stat-backed research and player-to-matchup-to-result workflow was subsequently sent and verified in the conversation. That clarification is awaiting Apple's response; it is not an accepted appeal or approval.
+
 The metadata below remains preparation material, not proof that App Store listing changes were saved. Another submission needs substantive product differentiation or a supported appeal, not merely this revised wording.
 
 Prepared for the current app after removal of My Game Plan. Do not advertise that removed feature or its notes/save workflow. Apple requested a reply to its questions before another submission; this packet is not a guarantee of approval or authorization to bypass that instruction.
@@ -11,6 +13,32 @@ Prepared for the current app after removal of My Game Plan. Do not advertise tha
 ## Reply to App Review
 
 Thank you for the feedback under Guidelines 4.3 and 4.2.6. We understand that using a wrapper or changing appearance alone does not establish sufficient differentiation. Below are our answers about the actual GameWire product, its ownership, testing and third-party technology. Please review this information before we make another submission.
+
+## Custom algorithm clarification
+
+Thank you for reviewing our response. We would like to clarify that GameWire's primary product is its custom player-and-matchup research engine; live scores supply context for that research rather than being the entire experience.
+
+GamewAIre uses statistical analysis implemented specifically in the GameWire application and backend. It is not a prebuilt sports-tip template, a provider's prediction feed, or a generic AI prompt presented as our numerical model. Median supplies the iPhone container, not this analysis engine.
+
+The original research pipeline includes:
+
+1. Player and matchup estimates derived from recorded production, recent form, supported role/workload information and upcoming-opponent context. NFL simulations include position-specific passing, rushing, receiving and touchdown estimates and supported quarterback scenarios. NBA simulations model points, rebounds, assists, PRA and made threes when sufficient evidence exists, including recent-minute roles and verified availability context.
+
+2. Model probabilities computed from supported historical evidence with recent-game weighting and a neutral prior. Where selections are shown, model hit probability is distinct from sportsbook implied probability. Prices do not create the numerical hit estimate or rank a selection by payout.
+
+3. Evidence safeguards: missing personal samples are not fabricated; limited estimates are labeled; and learning adjustments activate only when their minimum-history and chronological-validation checks pass. We do not claim guaranteed accuracy, betting profit or that a player is automatically due after a cold streak.
+
+4. A before-and-after analysis workflow: available forecasts are saved before games and retained for comparison with recorded outcomes, rather than regenerated after the result. The result presentation includes NFL projected-scorer versus verified-scorer comparisons and NBA team/player production graphics.
+
+5. Stat-backed player/matchup research and contributor analysis alongside the live game context. Users can inspect recorded statistics, supported model estimates and opinion-based analysis rather than receiving only a score or an unexplained pick.
+
+ESPN, API-Sports and other disclosed providers supply underlying measurements and market information, not ownership of the GameWire model. Optional OpenAI integration, where configured, selects supported explanation facts; it does not set the numerical probabilities or prices.
+
+For review, please inspect The Wire's NFL/NBA matchup simulation views, Stat Hub's recorded player statistics, GamewAIre's player cards with supported projections and opponent context, and Simulation Results for a completed game with a retained pregame forecast. Use the existing private review account where sign-in is required. Some forecasts remain unavailable when evidence is insufficient.
+
+We understand that original code alone does not automatically satisfy Guideline 4.3, and we are not claiming access to competitors' private algorithms. Our distinction is the original GameWire research engine and its connected player-to-matchup-to-result experience, not merely the scoreboard's appearance. We request reconsideration of that experience and would appreciate specific guidance on what additional evidence or user-facing differentiation you require.
+
+## Detailed nine-question answers
 
 ### 1. What the app does and the primary problem it solves
 
@@ -54,7 +82,7 @@ There are no other apps on our developer account with which GameWire shares appl
 
 The iPhone app uses Median to package and deliver the GameWire web application. The application is built with React, TypeScript and Vite, with Supabase services. The developer reported no additional purchased templates, nonstandard shared code or undisclosed third-party involvement beyond the disclosed technologies and providers.
 
-Sports information comes from third-party providers including ESPN, API-Sports and The Odds API where used. Optional OpenAI integration, where configured, selects supported explanation facts; it does not set the numerical probabilities or sportsbook prices. Provider data is not represented as exclusive GameWire-owned content. The repository also contains Capacitor integration, but this is not a claim that Capacitor is included in the submitted Median binary.
+Sports information comes from third-party providers including ESPN, API-Sports and The Odds API where used; Wikidata supplies supported birth-date information. Optional OpenAI integration, where configured, selects supported explanation facts; it does not set the numerical probabilities or sportsbook prices. Provider data is not represented as exclusive GameWire-owned content. The repository also contains Capacitor integration, but this is not a claim that Capacitor is included in the submitted Median binary.
 
 The original application functionality includes the GameWire screens and interactions, combined NFL/NBA player discovery, sport-specific GamewAIre analysis, retained matchup forecasts, comparison against recorded game outcomes, local statistical persistence and game/result graphic exports. Median supplies the wrapper technology rather than these application workflows.
 
