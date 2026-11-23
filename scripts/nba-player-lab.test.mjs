@@ -299,6 +299,7 @@ test('Primary Player Lab restores direct cards with one NFL/NBA search, scoring 
         async loadNBAPlayerLabReport(row, season) { calls.push(['NBA', row.id, season]); return report; } },
       './services/playerLabChat': chat(), './services/nbaStats': { nbaStatValue },
       './services/renderSnapshots': {}, './services/foregroundRefresh': {},
+      './MyGamePlan': { SaveResearchButton: () => null }, './services/researchCaptures': {},
     });
     const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];
     const render = () => { stateIndex = 0; refIndex = 0; return walk(api.default({ renderNFL: report => jsx('full-nfl-breakdown', { report }) })); };

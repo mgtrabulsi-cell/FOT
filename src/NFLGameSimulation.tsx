@@ -9,6 +9,8 @@ import { useSimulationGraphicAccess } from './useSimulationGraphicAccess';
 import { renderSimulationGraphic } from './services/nflSimulationGraphic';
 import { legacyNFLSimulationVersion, projectedSimulationScore, roundedSimulationBox, selectedSimulationScenario } from '../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation, SimulationStat, SimulationTeamResult } from '../supabase/functions/_shared/nflSimulation';
+import { SaveResearchButton } from './MyGamePlan';
+import { captureNFLMatchup } from './services/researchCaptures';
 
 const statLabels: Record<keyof SimulationStat, string> = {
   passingAttempts: 'ATT', completions: 'CMP', passingYards: 'PASS YDS', passingTouchdowns: 'PASS TD',
@@ -193,6 +195,7 @@ export default function NFLGameSimulationPanel({ game, initialSimulation, onFore
   return (
     <section className="nfl-simulation" aria-labelledby="nfl-simulation-heading">
       {game.status === 'FINAL' && <NFLSimulationAccuracy key={`${game.eventId}:${game.date}`} games={[game]} />}
+      {displayed?.status === 'ready' && scenario && <SaveResearchButton capture={() => captureNFLMatchup(game, displayed, scenario)} />}
       {scenario?.home && scenario.away && <div className="nfl-simulation-scores" aria-label="Projected final score">
         {[scenario.away, scenario.home].map(team => <div key={team.id}><b>{team.abbr}</b><strong>{projectedScore ? team.id === scenario.home!.id ? projectedScore.home : projectedScore.away : '—'}</strong><span>{team.name}</span></div>)}
       </div>}

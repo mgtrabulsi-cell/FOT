@@ -10,7 +10,7 @@ import { nbaStatValue } from './nbaStats.ts';
 export type NBAPlayerLabPlayer = NBAPlayer & { team: Team };
 export type NBAPlayerLabDirectory = { season: number; players: NBAPlayerLabPlayer[]; issues: string[] };
 export type NBAPlayerLabReport = { player: NBAPlayerLabPlayer; season: number; profile: NBAPlayerProfile | null;
-  game: Game | null; projection: NBAPlayerProjection | null; forecastAt: string | null; issues: string[]; sourceIssues?: string[];
+  game: Game | null; projection: NBAPlayerProjection | null; forecastAt: string | null; forecastVersion?: string; issues: string[]; sourceIssues?: string[];
   opponent?: { team: Team; seasonStats: NBATeamStat[]; pace?: number; defensiveRating?: number; offensiveRating?: number } };
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Data source unavailable.';
 export function readNBAPlayerLabDirectory(): NBAPlayerLabDirectory | null {
@@ -103,7 +103,7 @@ export async function loadNBAPlayerLabReport(player: NBAPlayerLabPlayer, season:
   if (forecast) issues.push(...forecast.warnings);
   const ownTeam = [forecast?.home, forecast?.away].find(team => team?.id === player.teamId);
   const opponent = [forecast?.home, forecast?.away].find(team => team?.id === opponentTeam?.id);
-  return { player, season, profile, game, projection, forecastAt: forecast?.forecastAt ?? null, issues, sourceIssues,
+  return { player, season, profile, game, projection, forecastAt: forecast?.forecastAt ?? null, forecastVersion: forecast?.version, issues, sourceIssues,
     ...(opponentTeam ? { opponent: { team: opponentTeam, seasonStats, pace: ownTeam?.pace,
       defensiveRating: ownTeam?.opponentDefensiveRating, offensiveRating: opponent?.offensiveRating } } : {}) };
 }

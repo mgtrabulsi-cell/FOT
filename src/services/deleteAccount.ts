@@ -4,6 +4,7 @@ import { stopWebOffline } from './webOffline';
 import { clearStatSnapshots, stopRenderSnapshots } from './renderSnapshots';
 import { deleteLivewireDraft } from './livewireDrafts';
 import { deleteAngleDrafts } from './angleDrafts';
+import { deleteResearch } from './research';
 
 export async function deleteAccount(password: string, confirmation: string): Promise<string[]> {
   if (!supabase) throw new Error('Account services are not configured.');
@@ -22,6 +23,7 @@ export async function deleteAccount(password: string, confirmation: string): Pro
   }
   if (data?.deleted !== true) throw new Error('The server did not confirm account deletion. Please retry.');
   const tasks: Array<{ name: string; run: () => Promise<void> }> = [
+    { name: 'personal research and notes', run: async () => { await deleteResearch(userId); } },
     { name: 'unpublished LIVEWIRE draft', run: async () => { await deleteLivewireDraft(userId); } },
     { name: 'unpublished storyline drafts', run: async () => { await deleteAngleDrafts(userId); } },
     { name: 'saved player statistics', run: async () => { await clearStatSnapshots(); } },

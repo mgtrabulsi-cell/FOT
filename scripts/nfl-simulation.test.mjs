@@ -1533,6 +1533,7 @@ function simulationMarkup(data, error = '', scenarioId = '', admin = false, team
     if (name === 'react/jsx-runtime') return jsxRuntime;
     if (name === './useSimulationGraphicAccess') return { useSimulationGraphicAccess: () => ({ allowed: admin, error: '' }) };
     if (name === './GamewaireResultsDownload') return { ResultsGraphicDownload: props => jsxRuntime.jsx('button', { children: props.label }) };
+    if (name === './MyGamePlan') return { SaveResearchButton: () => jsxRuntime.jsx('button', { children: 'Save to My Game Plan' }) };
     if (name.includes('nflSimulation')) return { selectedSimulationScenario, projectedSimulationScore, roundedSimulationBox, legacyNFLSimulationVersion };
     return {};
   } });

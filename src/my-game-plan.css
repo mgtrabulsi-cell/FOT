@@ -1,0 +1,46 @@
+.my-game-plan, .research-guide, .research-save { font-size: 14px; line-height: 1.5; }
+.my-game-plan { margin: 20px 0 32px; padding: 22px; border: 1px solid #354357; border-radius: 18px; background: #101927; color: #eef4fc; }
+.my-game-plan h2, .research-guide h2 { margin: 5px 0 8px; font-size: 24px; }
+.my-game-plan p { color: #bbc9dc; }
+.research-kicker { color: #9dc5ff; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+.research-storage-note, .research-identity { font-size: 12px; }
+.research-guide { margin: 8px 0 20px; padding: 18px; border: 1px solid #395777; border-radius: 14px; background: #15253b; color: #edf4ff; }
+.research-guide ol { padding-left: 20px; margin: 12px 0; }
+.research-guide li { padding: 4px 0; }
+.research-guide-collapsed, .research-actions, .research-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.research-guide-collapsed { padding: 10px 14px; }
+.research-guide-collapsed > span { flex: 1; }
+.research-tools { align-items: end; margin: 18px 0; }
+.research-tools label { display: grid; gap: 5px; flex: 1 1 130px; min-width: 0; }
+.my-game-plan input, .my-game-plan select, .my-game-plan textarea, .research-save textarea { width: 100%; max-width: 100%; box-sizing: border-box; padding: 11px; border: 1px solid #617088; border-radius: 9px; background: #0c1522; color: #f3f6fc; font: inherit; }
+.my-game-plan textarea, .research-save textarea { display: block; min-height: 100px; resize: vertical; margin: 8px 0 12px; }
+.research-save { margin: 16px 0; }
+.research-save form { margin-top: 12px; padding: 14px; border: 1px solid #526076; border-radius: 12px; }
+.research-save form p { font-size: 12px; }
+.research-save button, .research-guide button, .my-game-plan button { min-height: 44px; padding: 8px 13px; border: 1px solid #7890ae; border-radius: 9px; background: #203b5e; color: #f5f8ff; font: inherit; font-weight: 650; cursor: pointer; }
+.research-save button:disabled, .my-game-plan button:disabled { opacity: .55; cursor: default; }
+.my-game-plan :focus-visible, .research-guide :focus-visible, .research-save :focus-visible { outline: 3px solid #9ed5ff; outline-offset: 3px; }
+.research-card { margin: 12px 0; border: 1px solid #42536a; border-radius: 12px; background: #152030; overflow-wrap: anywhere; }
+.research-card > summary { display: grid; gap: 4px; padding: 16px; cursor: pointer; }
+.research-card > summary::before { content: '+ Open research'; color: #a7cdfd; font-size: 12px; }
+.research-card[open] > summary::before { content: '- Close research'; }
+.research-card > summary strong { font-size: 19px; }
+.research-card > summary small { color: #b7c8dc; }
+.research-card-body { padding: 0 16px 18px; }
+.research-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-bottom: 20px; }
+.research-comparison h3 { font-size: 17px; }
+.research-section h4 { margin: 18px 0 7px; color: #c9ddf9; }
+.research-section p { white-space: pre-line; }
+.research-section dl { margin: 0; }
+.research-section dl > div { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 1.4fr); gap: 12px; border-bottom: 1px solid #354257; padding: 8px 0; }
+.research-section dd { margin: 0; font-variant-numeric: tabular-nums; color: #e5efff; }
+.research-empty { padding: 18px; border: 1px dashed #64768e; border-radius: 12px; }
+.research-save [role=alert], .my-game-plan [role=alert], .research-guide [role=alert] { color: #ffbcb5; }
+@media (max-width: 600px) {
+  .my-game-plan { padding: 14px; }
+  .research-comparison { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .research-card-body { padding: 0 12px 14px; }
+  .research-guide, .my-game-plan { font-size: 13px; }
+  .research-guide h2, .my-game-plan h2 { font-size: 21px; }
+  .my-game-plan input, .my-game-plan select, .my-game-plan textarea, .research-save textarea { font-size: 16px; }
+}

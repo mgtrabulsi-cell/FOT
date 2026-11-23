@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { SaveResearchButton } from './MyGamePlan';
+import { captureNBAMatchup } from './services/researchCaptures';
 import type { ComponentProps, CSSProperties } from 'react';
 import TeamAbbrMark from './TeamAbbrMark';
 import DraggableTabs from './DraggableTabs';
@@ -83,6 +85,7 @@ export default function NBAGameSimulation({ game, forecast, error }: { game: Gam
     <header><span className="eyebrow">GAMEWAIRE / NBA SIMULATION</span><h3>{game.away.abbr} at {game.home.abbr}</h3></header>
     <ForecastStatus forecast={forecast} error={error} />
     {ready && <>
+      <SaveResearchButton capture={() => captureNBAMatchup(game, forecast)} />
       <div className="nba-simulation-score">{[forecast.away!, forecast.home!].map(team => <div key={team.id}>
         <TeamAbbrMark abbr={team.abbr} name={team.name} color={team.id === game.home.id ? game.home.color : game.away.color} />
         <b>{team.abbr}</b><strong>{value(team.score.mean)}</strong><small>{(team.winProbability * 100).toFixed(1)}% simulated win share</small>
