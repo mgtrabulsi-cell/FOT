@@ -1,5 +1,7 @@
 # GameWire
 
+Search results use the shared sports theme: DM Sans typography, navy glass cards, blue accents and matching stat tables. Verified hit-rate percentages above 50% remain green; styling does not change the underlying research or projections.
+
 Champions League now accepts **four verified games per team/player** when longer history is unavailable, as an explicitly labeled **limited-evidence** estimate. Fewer than eight games is never presented as high confidence. Other soccer leagues retain the eight-game minimum; real prices, completed appearances, freshness, league/season identity and Over-projection agreement remain mandatory. Soccer model v5 invalidates older cached exclusions; apply the current weekly migration to update the publication guard. Historical published results are not rewritten.
 
 Full GamewAIre analyses across every sport request all supported markets and target **one game lean plus four distinct-player props**. Game totals cannot displace the lean or a player slot. A supported plus-money prop remains reserved when available; remaining props rank by model hit probability with projection agreement, not EV. Full-game mode clears single-player filters. Missing markets or insufficient evidence produce explicit shortfalls, never fabricated odds or contrary-to-model fills; partial reports can be refreshed before kickoff. New report-layout stamps invalidate older cached layouts without changing forecast/learning versions.

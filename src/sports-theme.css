@@ -171,6 +171,36 @@
 .sports-theme .gai-section-tabs { border-color: #345d80; background: #0a192a; }
 .sports-theme .gai-hero { border-color: #328dd1; box-shadow: inset 0 1px #bdeaff35, inset 3px 0 #f43c5b, inset -3px 0 #14b8ff, 0 0 18px #007bdb26; }
 .sports-theme .gwb-hero-footer, .sports-theme .gai-table th { background: linear-gradient(180deg, #154f7b, #0a263f); border-color: #3386b6; }
+.sports-theme .gwb-chat-panel,
+.sports-theme .gwb-result,
+.sports-theme .gwb-compare {
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  color: #dce6f2;
+  line-height: 1.5;
+}
+.sports-theme .gwb-chat-message {
+  border-color: var(--sports-border);
+  border-radius: 12px 4px;
+  background: var(--sports-glass);
+  box-shadow: inset 0 1px #bdeaff26, 0 4px 18px #00000030;
+}
+.sports-theme .gwb-chat-message.is-assistant { border-color: #345d80; background: var(--sports-glass); box-shadow: inset 3px 0 #19baff, inset 0 1px #bdeaff26; }
+.sports-theme .gwb-chat-message.is-user { background: linear-gradient(175deg, #166da7, #103456); border-color: #43779d; }
+.sports-theme .gwb-chat-message > strong { color: #8ce2ff; font-weight: 600; }
+.sports-theme .gwb-chat-message p { color: #c8d6e7; font-size: 14px; line-height: 1.6; }
+.sports-theme :is(.gwb-chat-message, .gwb-result, .gwb-compare) :is(h3, h4, h5) { font-family: inherit; color: #dce6f2; font-weight: 600; letter-spacing: 0; text-shadow: none; }
+.sports-theme .gwb-chat-table { border-color: #345d80; border-radius: 12px 4px; background: var(--sports-glass); }
+.sports-theme .gwb-chat-table table { font-family: inherit; font-size: 13px; }
+.sports-theme .gwb-chat-table :is(th, td) { padding: 11px 12px; border-bottom-color: #294861; }
+.sports-theme .gwb-chat-table caption { color: #dce6f2; font-weight: 600; background: linear-gradient(180deg, #154f7b, #0a263f); }
+.sports-theme .gwb-chat-table thead { background: #10233a; color: #b6c8dd; }
+.sports-theme .gwb-chat-table tbody tr:nth-child(even),
+.sports-theme .gwb-chat-table tbody tr:hover { background: #10233a; }
+.sports-theme .gwb-chat-choices button { border-color: #43779d; border-radius: 7px 3px; background: var(--sports-glass); color: #c6dbef; font-weight: 500; }
+.sports-theme .gwb-chat-context,
+.sports-theme .gwb-chat-choices small { color: #b6c8dd; }
+.sports-theme .gwb-percentage { color: #dce6f2; font-weight: 600; }
+.sports-theme .gwb .gwb-percentage.is-above-half { color: #65e6a0; }
 .sports-theme .gai-table td { border-bottom-color: #294861; }
 .sports-theme .gai-table tbody tr:nth-child(even) { background: #10233a; }
 .sports-theme .angle-counterpoint, .sports-theme .den-player-live { border-color: #345d80; background: #10233a; }
