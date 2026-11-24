@@ -76,14 +76,17 @@ test('Search preserves partial successes, reports all-roster failures, and rejec
 test('Gateway roster parsing preserves existing active skill-player and injury rules', () => {
   const athlete = (id, position, type, injuries = []) => ({ id, displayName: `Player ${id}`, position: { abbreviation: position },
     status: { type }, headshot: { href: `https://a.espncdn.com/${id}.png` }, injuries });
-  const parsed = readNFLActiveSkillRoster({ athletes: [{ items: [
+  const roster = { athletes: [{ items: [
     athlete('1','QB','active'), athlete('2','RB','day-to-day'), athlete('3','G','active'),
     athlete('4','WR','practice-squad'), athlete('5','TE','injured-reserve'),
     athlete('6','WR','active',[{ status:'Out' }]),
-  ] }] });
+  ] }] };
+  const parsed = readNFLActiveSkillRoster(roster);
   assert.deepEqual(parsed.map((player) => player.id), ['1','2']);
   assert.equal(parsed[0].headshot, 'https://a.espncdn.com/1.png');
   assert.throws(() => readNFLActiveSkillRoster({}), /invalid team roster/);
+  assert.deepEqual(readNFLActiveSkillRoster(roster, true).map(player => player.id), ['1', '2', '4', '5', '6']);
+  assert.throws(() => readNFLActiveSkillRoster({}, true), /invalid team roster/);
 });
 
 test('Four-slot drafts are independent and support both headings and all positions', () => {

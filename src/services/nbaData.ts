@@ -361,10 +361,10 @@ export async function fetchNBAPointsPerGame(players: NBAPlayer[], season: number
   }
   return { averages, failed, updatedAt: Date.now() };
 }
-export async function fetchNBAPlayerProfile(playerId: string, season: number, signal?: AbortSignal): Promise<NBAPlayerProfile> {
+export async function fetchNBAPlayerProfile(playerId: string, season: number, signal?: AbortSignal, cacheAge = 60_000): Promise<NBAPlayerProfile> {
   signal?.throwIfAborted();
   const key = `profile:${playerId}:${season}`;
-  const saved = readRenderSnapshot('nbaProfile', key, 60_000);
+  const saved = readRenderSnapshot('nbaProfile', key, cacheAge);
   if (saved) return saved;
   const path = `${athleteBase}/${encodeURIComponent(playerId)}`;
   const [stats, games] = await Promise.all([fetchNBAPlayerSeason(playerId, season, signal), get(`${path}/gamelog?season=${season}`, signal)]);

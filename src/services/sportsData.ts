@@ -1225,7 +1225,7 @@ function getPrimaryPlayerYards(summary: unknown, defendingTeamId: string, catego
   return yards.length ? Math.max(...yards) : undefined;
 }
 
-function readNFLPlayerGameStats(summary: unknown, teamId: string, playerId: string): Partial<Record<NFLPlayerStatKey, number>> {
+export function readNFLPlayerGameStats(summary: unknown, teamId: string, playerId: string): Partial<Record<NFLPlayerStatKey, number>> {
   const playerGroups = asArray(asObject(asObject(summary).boxscore).players).map(asObject);
   const teamGroup = playerGroups.find((group) => text(asObject(group.team).id) === teamId);
   const categories = asArray(teamGroup?.statistics).map(asObject);
@@ -1290,13 +1290,13 @@ const nflPositionOrder = ['QB', 'RB', 'WR', 'TE'];
 const nflHistoricalSummaries = new Map<string, Promise<unknown>>();
 const nflRosters = new Map<string, { timestamp: number; promise: Promise<NFLRosterSkillPlayer[]> }>();
 
-function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
-  const cacheKey = `${feedPath}:${teamId}:${season}`;
+function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number, includeInactive = false): Promise<NFLRosterSkillPlayer[]> {
+  const cacheKey = `${feedPath}:${teamId}:${season}${includeInactive ? ':full' : ''}`;
   const cached = nflRosters.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < 300_000) return cached.promise;
   const request = (async () => {
-    // The server-synced API-Sports roster bridge is the primary roster source.
-    if (feedPath === 'football/nfl') {
+    // Matchups use the active roster bridge; Stat Hub also includes injured/reserve players.
+    if (feedPath === 'football/nfl' && !includeInactive) {
       try {
         const feed = await fetchNFLRosterFeed(season, teamId);
         if (feed) return feed;
@@ -1304,33 +1304,34 @@ function fetchNFLActiveRoster(feedPath: string, teamId: string, season: number):
         console.warn('The roster bridge is unavailable; using the data feed', error);
       }
     }
-    const response = await fetchStaticSports(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`);
+    const response = await fetchStaticSports(`${apiBase}/${feedPath}/teams/${teamId}/roster?season=${season}`, AbortSignal.timeout(15_000));
     if (!response.ok) throw new Error(`Team roster returned HTTP ${response.status}`);
-    return readNFLActiveRoster(await response.json());
+    const payload: unknown = await response.json();
+    return includeInactive ? readNFLActiveSkillRoster(payload, true) : readNFLActiveRoster(payload);
   })();
   nflRosters.set(cacheKey, { timestamp: Date.now(), promise: request });
   void request.catch(() => nflRosters.delete(cacheKey));
   return request;
 }
 
-function readNFLActiveRoster(value: unknown): NFLRosterSkillPlayer[] {
+function readNFLActiveRoster(value: unknown, includeInactive = false): NFLRosterSkillPlayer[] {
   const payload = asObject(value);
   return asArray(payload.athletes).map(asObject).flatMap((group) => asArray(group.items)).map(asObject).flatMap((player) => {
     const position = text(asObject(player.position).abbreviation).toUpperCase();
     const statusObj = asObject(player.status);
     const statusType = text(statusObj.type).toLowerCase();
     const statusName = text(statusObj.name).toLowerCase();
-    if (
+    if (!includeInactive && (
       statusType === 'practice-squad'
       || statusType === 'injured-reserve'
       || statusType === 'ir'
       || statusType === 'suspended'
       || statusName.includes('reserve')
       || statusName.includes('practice')
-    ) {
+    )) {
       return [];
     }
-    if (statusType && statusType !== 'active' && statusType !== 'day-to-day') return [];
+    if (!includeInactive && statusType && statusType !== 'active' && statusType !== 'day-to-day') return [];
 
     const injuries = asArray(player.injuries).map(asObject);
     const isOut = injuries.some((inj) => {
@@ -1342,7 +1343,7 @@ function readNFLActiveRoster(value: unknown): NFLRosterSkillPlayer[] {
         text(typeObj.abbreviation),
       );
     });
-    if (isOut) return [];
+    if (!includeInactive && isOut) return [];
 
     const headshot = asObject(player.headshot);
     return [{
@@ -1355,14 +1356,18 @@ function readNFLActiveRoster(value: unknown): NFLRosterSkillPlayer[] {
   });
 }
 
-export function readNFLActiveSkillRoster(value: unknown): NFLRosterSkillPlayer[] {
+export function readNFLActiveSkillRoster(value: unknown, includeInactive = false): NFLRosterSkillPlayer[] {
   const payload = asObject(value);
   if (!Array.isArray(payload.athletes)) throw new Error('The data feed returned an invalid team roster.');
-  return readNFLActiveRoster(value).filter((player) => nflSkillPositions.has(player.position));
+  return readNFLActiveRoster(value, includeInactive).filter((player) => nflSkillPositions.has(player.position));
 }
 
 export async function fetchNFLActiveSkillRoster(feedPath: string, teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
   return (await fetchNFLActiveRoster(feedPath, teamId, season)).filter((player) => nflSkillPositions.has(player.position));
+}
+
+export async function fetchNFLStatHubRoster(teamId: string, season: number): Promise<NFLRosterSkillPlayer[]> {
+  return (await fetchNFLActiveRoster('football/nfl', teamId, season, true)).filter(player => nflSkillPositions.has(player.position));
 }
 
 export async function findNFLTeamsForPlayerSearch(games: Game[], searchQuery: string): Promise<string[]> {
@@ -1388,12 +1393,12 @@ export async function findNFLTeamsForPlayerSearch(games: Game[], searchQuery: st
   return [...matches];
 }
 
-function fetchNFLHistoricalSummary(feedPath: string, eventId: string): Promise<unknown> {
+export function fetchNFLHistoricalSummary(feedPath: string, eventId: string): Promise<unknown> {
   const cacheKey = `${feedPath}:${eventId}`;
   const cached = nflHistoricalSummaries.get(cacheKey);
   if (cached) return cached;
 
-  const request = fetch(`${apiBase}/${feedPath}/summary?event=${encodeURIComponent(eventId)}`)
+  const request = fetch(`${apiBase}/${feedPath}/summary?event=${encodeURIComponent(eventId)}`, { signal: AbortSignal.timeout(15_000) })
     .then(async (response) => {
       if (!response.ok) throw new Error(`Historical game returned HTTP ${response.status}`);
       return await response.json() as unknown;

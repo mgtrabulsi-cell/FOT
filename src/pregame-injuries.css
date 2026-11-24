@@ -1,4 +1,9 @@
 .pregame-injuries { margin: 16px 0; padding: 16px; border: 1px solid #49546a; border-radius: 12px; background: #172031; color: #eef3fb; font-size: 13px; }
+.pregame-injuries > summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; gap: 12px; cursor: pointer; list-style: none; font-weight: 750; }
+.pregame-injuries > summary::-webkit-details-marker { display: none; }
+.pregame-injury-toggle { font-size: 22px; transition: transform .15s ease; }
+.pregame-injuries[open] .pregame-injury-toggle { transform: rotate(45deg); }
+.pregame-injury-content { padding-top: 12px; border-top: 1px solid #3c4659; }
 .pregame-injuries header, .pregame-injuries li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .pregame-injuries h3, .pregame-injuries h4 { margin: 0 0 8px; }
 .pregame-injuries p, .pregame-injuries small, .pregame-injuries header > span { color: #bdc9dc; line-height: 1.5; }

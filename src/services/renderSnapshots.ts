@@ -26,6 +26,7 @@ type Snapshots = {
   teamGameLog: { entries: TeamLogEntry[] };
   nbaDirectory: Array<{ team: Team; players: NBAPlayer[] }>;
   nbaStatHub: { season: number; groups: Array<{ team: Team; players: NBAPlayer[] }> };
+  nflStatHubTeam: { season: number; team: Team; players: NFLSkillPlayer[]; complete: boolean };
   nbaComparison: { away: NBATeamStat[]; home: NBATeamStat[] };
   nbaScoring: { averages: Record<string, number>; failed: string[]; updatedAt?: number };
   team: NFLTeamSeasonAverages;
@@ -44,7 +45,7 @@ let stopped = false;
 type SnapshotChange = { kind: keyof Snapshots; key: string };
 const listeners = new Set<(change: SnapshotChange) => void>();
 const statKinds = new Set<keyof Snapshots>(['details', 'players', 'nbaRoster', 'nbaTeamSeason', 'nbaProfile',
-  'nbaPlayerSeason', 'nbaLeague', 'nbaDirectory', 'nbaStatHub', 'nbaScoring', 'teamDirectory', 'teamGameLog']);
+  'nbaPlayerSeason', 'nbaLeague', 'nbaDirectory', 'nbaStatHub', 'nflStatHubTeam', 'nbaScoring', 'teamDirectory', 'teamGameLog']);
 type StatEntry = SnapshotChange & { version: 1; savedAt: number; data: unknown };
 const statMemory = new Map<string, StatEntry>();
 const statStorage = createDraftStorage('gamewire-player-stats');
@@ -146,6 +147,12 @@ function valid<K extends keyof Snapshots>(kind: K, data: unknown): data is Snaps
     object(group) && team(group.team) && players(group.players));
   if (!object(data)) return false;
   switch (kind) {
+    case 'nflStatHubTeam':
+      return Number.isInteger(data.season) && team(data.team) && typeof data.complete === 'boolean'
+        && Array.isArray(data.players) && data.players.every((player: unknown) => object(player)
+          && typeof player.id === 'string' && typeof player.name === 'string' && typeof player.position === 'string'
+          && Array.isArray(player.recentGames) && player.recentGames.every((game: unknown) => object(game)
+            && typeof game.gameId === 'string' && typeof game.date === 'string' && numbers(game.stats)));
     case 'teamDirectory':
     case 'nbaLeague':
       return Number.isInteger(data.season) && Array.isArray(data.teams) && data.teams.every(team);

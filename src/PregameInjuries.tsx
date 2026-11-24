@@ -28,8 +28,10 @@ export default function PregameInjuries({ game }: { game: Game }) {
     window.addEventListener('online', reconnect); document.addEventListener('visibilitychange', reconnect);
     return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener('online', reconnect); document.removeEventListener('visibilitychange', reconnect); };
   }, [game.league, game.eventId, game.date, game.home.id, game.away.id, retry]);
-  return <section className="pregame-injuries" aria-label="Pregame injury report">
-    <header><h3>Injury report</h3><span>{report ? `Checked ${new Date(report.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Pregame availability'}</span></header>
+  return <details className="pregame-injuries" aria-label="Pregame injury report">
+    <summary><span><span aria-hidden="true">🏥 +</span> Injury report</span><span className="pregame-injury-toggle" aria-hidden="true">+</span></summary>
+    <div className="pregame-injury-content">
+    <header><span>{report ? `Checked ${new Date(report.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Pregame availability'}</span></header>
     <p>OUT means the provider explicitly reports the player out. Questionable or doubtful is not a confirmed absence. Designations can change before the game.</p>
     {!report && !error && <p role="status">Loading reported injuries...</p>}
     {error && <p role="alert">{report ? 'Could not refresh; the report below is from the checked time. ' : ''}{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Retry injury report</button></p>}
@@ -40,5 +42,6 @@ export default function PregameInjuries({ game }: { game: Game }) {
         : <p>No player injury designations were supplied for this team.</p>}</section>;
     })}</div>}
     <small>Source: ESPN matchup injury report. An empty list is not confirmation that every player is available.</small>
-  </section>;
+    </div>
+  </details>;
 }

@@ -66,6 +66,20 @@ test('Legacy local stats migrate to IndexedDB while unrelated preferences remain
   assert.equal(next.records.get('nbaRoster:roster:DEN:2027').data[0].name, 'Saved Player');
   assert.equal(next.local.get('favorite-preference'), 'keep');
 });
+test('Weekly NFL rosters and full game logs restore on a cold offline page after local-cache eviction', async () => {
+  const app = setup();
+  const team = { id: '1', name: 'Test Team', abbr: 'TST', color: '#123456', score: 0, record: '' };
+  app.saveRenderSnapshot('nflStatHubTeam', '1:2026', { team, season: 2026, complete: true,
+    players: [{ id: 'p', name: 'Player', position: 'QB', recentGames: [{ gameId: 'g', date: '2026-11-20', stats: { passingYards: 250, interceptions: 0 } }] }] });
+  await flush(); app.local.clear();
+  const reopened = setup({ records: app.records });
+  await reopened.restoreStatSnapshots();
+  const saved = reopened.readRenderSnapshot('nflStatHubTeam', '1:2026');
+  assert.equal(saved.players[0].recentGames[0].stats.passingYards, 250);
+  assert.equal(saved.players[0].recentGames[0].stats.interceptions, 0);
+  assert.equal(saved.complete, true);
+  assert.equal(reopened.readRenderSnapshot('nflStatHubTeam', '1:2027'), null);
+});
 test('A delayed restore cannot overwrite fresher downloaded stats', async () => {
   let finish;
   const app = setup({ load: () => new Promise(resolve => { finish = resolve; }) });

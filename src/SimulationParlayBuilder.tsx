@@ -39,14 +39,12 @@ export default function SimulationParlayBuilder({ game, sport, forecast }: {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'The simulation parlay could not be created. Retry.');
     } finally { if (!controller.signal.aborted) setBusy(false); }
   };
-  return <section aria-label="GamewAIre three-leg simulation parlay">
-    <button type="button" disabled={busy || forecast.status !== 'ready' || Date.parse(game.date) <= Date.now()}
+  return <section className="simulation-parlay" aria-label="GamewAIre three-leg simulation parlay">
+    <button className="simulation-parlay-create" type="button" disabled={busy || forecast.status !== 'ready' || Date.parse(game.date) <= Date.now()}
       onClick={() => void create()}>{busy ? 'Analyzing player props...' : 'Create 3-leg sim parlay'}</button>
-    <small>Three distinct players, highest model hit probability among supported simulation-aligned props. Fresh analysis uses up to 7 odds credits; a fresh matching report is reused. Pregame only.</small>
     {error && <p role="alert" className="feed-warning">{error}</p>}
     {graphic && <>
       <ol>{picks.map(pick => <li key={pick.key}>{pick.subject} · {(pick.probability * 100).toFixed(1)}% model hit chance</li>)}</ol>
-      <p className="gai-note">Experimental individual-leg estimates, not a combined parlay probability or a guarantee. Same-game legs can be correlated. Combined odds stay blank unless you enter a verified price. Edits are your own selections.</p>
       <ParlayGraphicBuilder value={graphic} onChange={setGraphic} standalone />
     </>}
   </section>;

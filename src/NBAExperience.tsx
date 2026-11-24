@@ -337,9 +337,9 @@ function NBADirectory({ teams, season, query, favorites, toggle, open, live, sav
       <div className="nfl-directory-player-list">{group.players.map((player) => <div className="nfl-directory-player" key={player.id}><button type="button" className="nfl-directory-player-main" aria-label={`View ${player.name} stats`} onClick={() => open(player, group.team, displayedSeason)}><span><b>{player.name}</b><small>{player.position}{player.jersey ? ` · #${player.jersey}` : ''}{!usingLastList && scoring.data && ` · ${format(scoring.data.averages[player.id])} PPG`}</small></span></button><FavoriteButton target={nbaPlayerFavorite(player, group.team)} favorites={favorites} toggle={toggle} />      </div>)}</div>{!group.players.length && <p className="nfl-empty-note" role="status">{query.trim() || position !== 'All' ? 'No players match these filters.' : resource.loading ? 'Updating this team’s player list…' : resource.error ? 'This team’s player list could not be refreshed. Retry above.' : 'No roster players are available for this team yet.'}</p>}
     </section>)}</div></>;
 }
-function PlayerProfile({ player, team, season, favorites, toggle, close }: { player: NBAPlayer; team: Team; season: number; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; close: () => void }) {
+export function PlayerProfile({ player, team, season, favorites, toggle, close, cacheAge = 60_000 }: { player: NBAPlayer; team: Team; season: number; favorites: FavoriteTarget[]; toggle: Props['onToggleFavorite']; close: () => void; cacheAge?: number }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const load = useCallback((signal: AbortSignal) => fetchNBAPlayerProfile(player.id, season, signal), [player.id, season]);
+  const load = useCallback((signal: AbortSignal) => fetchNBAPlayerProfile(player.id, season, signal, cacheAge), [player.id, season, cacheAge]);
   const resource = useNBAResource(`profile:${player.id}:${season}`, load, 0, profileSnapshots);
   const [stat, setStat] = useState<NBAPlayerStatKey>('points');
   const [seasonMode, setSeasonMode] = useState<'averages' | 'totals'>('averages');
@@ -377,7 +377,6 @@ function PlayerProfile({ player, team, season, favorites, toggle, close }: { pla
 export default function NBAExperience({ mode, games, teamPicks = {}, previousGames = [], status, query, favorites, onToggleFavorite, onRetry, onOpenStatHub, onOpenTeamLog, initialGameId, openGameId, onSelectGame, onBackToGames, onDetailOpenChange, backLabel = 'All games', heading = 'The Wire' }: Props) {
   const [lastStatHub, setLastStatHub] = useState(readLastNBAStatHub);
   useEffect(() => subscribeRenderSnapshots(() => setLastStatHub(readLastNBAStatHub()), { kind: 'nbaStatHub', key: 'last' }), []);
-  useEffect(() => { if (mode === 'stats' && lastStatHub) saveLastNBAStatHub(lastStatHub); }, [mode, lastStatHub]);
   const nbaGames = useMemo(() => games.filter((game) => game.feedPath === 'basketball/nba'), [games]);
   const [selectedId, setSelectedId] = useState(initialGameId ?? '');
   const [openedGameId, setOpenedGameId] = useState<string | null>(null);

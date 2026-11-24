@@ -36,6 +36,8 @@
 .stat-hub-workspace .nfl-directory-player .nba-favorite { width: 44px; height: 44px; flex: 0 0 44px; }
 .stat-hub-workspace .nfl-directory-player-main .stat-hub-open { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; color: #adbed1; font-size: 10px; }
 .stat-hub-refresh-note { margin: 0; color: #b6c4d6; font-size: 12px; line-height: 1.5; }
+.stat-hub-library-status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #adbed1; font-size: 12px; }
+.stat-hub-library-status b { color: #edf2f8; }
 .stat-hub-workspace .nfl-empty-note { padding: 16px 0; color: #adbed1; font-size: 12px; line-height: 1.6; }
 @media (max-width:760px) {
   .stat-hub-workspace .nfl-directory-grid { grid-template-columns: minmax(0,1fr); }

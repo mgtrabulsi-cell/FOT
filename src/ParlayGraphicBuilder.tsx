@@ -35,15 +35,15 @@ export default function ParlayGraphicBuilder({ value, onChange, standalone = fal
   };
   return <section className="parlay-builder" aria-label="Parlay graphic builder">
     <header><span className="eyebrow">THE ANGLE / GRAPHIC STUDIO</span><h3>Build your parlay</h3>
-      <p>Mix any sports, players, teams, fighters, and games from one player / team picker. Two to eight legs; one tracked parlay. Lines and odds are your own editorial inputs, not live quotes. Verify availability.</p>
-      {new Set(value.legs.map((leg) => leg.sport)).size > 1 && <p className="parlay-warning">For mixed-sport result tracking, choose Combo in the Angle's Matchup selector above.</p>}</header>
+      {!standalone && <p>Mix any sports, players, teams, fighters, and games from one player / team picker. Two to eight legs; one tracked parlay. Lines and odds are your own editorial inputs, not live quotes. Verify availability.</p>}
+      {!standalone && new Set(value.legs.map((leg) => leg.sport)).size > 1 && <p className="parlay-warning">For mixed-sport result tracking, choose Combo in the Angle's Matchup selector above.</p>}</header>
     <fieldset disabled={rendering}><legend>Graphic details</legend><div className="parlay-fields">
       <label>Graphic title<select value={value.title} onChange={(e) => update({ title: e.target.value as ParlayGraphic['title'] })}>
         <option>PARLAY</option><option>SAME GAME PARLAY</option><option>CROSS GAME PARLAY</option></select></label>
       <label>Combined odds (optional)<input maxLength={12} inputMode="text" placeholder="+1360" value={value.odds} onChange={(e) => update({ odds: e.target.value })} /></label>
       <label className="parlay-wide">Matchup / slate label (optional)<input maxLength={100} placeholder="76ers @ Pacers / 7:10 PM ET" value={value.subtitle} onChange={(e) => update({ subtitle: e.target.value })} /></label>
     </div><label className="parlay-checkbox"><input type="checkbox" checked={value.images} onChange={(e) => update({ images: e.target.checked })} />Include attached photos</label>
-    <small>Combined odds are never calculated from individual legs. Verify the actual sportsbook price. Photos are never auto-filled; attach your own artwork per leg or turn off images for a name-only graphic that renders offline.</small></fieldset>
+    {!standalone && <small>Combined odds are never calculated from individual legs. Verify the actual sportsbook price. Photos are never auto-filled; attach your own artwork per leg or turn off images for a name-only graphic that renders offline.</small>}</fieldset>
     <fieldset disabled={rendering || value.legs.length >= 8}><legend>Add player / team name · {value.legs.length}/8</legend>
       <BestBetSubjectPicker sport={value.legs.at(-1)?.sport ?? 'NFL'} onChoose={(league, participant) => {
         if (!participant || value.legs.length >= 8) return;
@@ -96,7 +96,6 @@ export default function ParlayGraphicBuilder({ value, onChange, standalone = fal
       <button type="button" disabled={rendering} onClick={() => { if (window.confirm('Remove this parlay add-on from the draft? Other picks and attachments stay.')) onChange(null); }}>Remove parlay add-on</button></div>
     {previewError && <p role="alert" className="feed-warning">{previewError}</p>}
     {preview && <div className="parlay-preview"><img src={preview} alt={`Parlay graphic preview: ${value.legs.map((leg) => `${leg.subject.name} ${parlayLegLabel(leg)}`).join('; ')}`} /><a href={preview} download="GameWire-Parlay.png">Download PNG</a></div>}
-    <p className="parlay-save-note">{standalone ? 'Preview the graphic, then download its PNG. This simulation draft does not publish an Angle post or place a wager.'
-      : 'Your working template saves with this Angle on this device. Saving or publishing the Angle generates the current graphic as one photo and adds one parlay to its picks. Incomplete templates can stay in your local draft; complete them before saving to the server.'}</p>
+    {!standalone && <p className="parlay-save-note">Your working template saves with this Angle on this device. Saving or publishing the Angle generates the current graphic as one photo and adds one parlay to its picks. Incomplete templates can stay in your local draft; complete them before saving to the server.</p>}
   </section>;
 }

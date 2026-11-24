@@ -32,6 +32,7 @@ import SplashScreen from './SplashScreen';
 import PullToRefresh from './PullToRefresh';
 import BannerSearch from './BannerSearch';
 import StatHubHeader from './StatHubHeader';
+import StatHubLibrary from './StatHubLibrary';
 import PrimaryNavigation from './PrimaryNavigation';
 import { useAnalystUnread } from './useAnalystUnread';
 import ProfilePage from './ProfilePage';
@@ -250,11 +251,14 @@ function NFLPlayerMiniWindow({ player, team, isFavorite, onToggleFavorite, onClo
   const selectedOption = options.find((option) => option.key === selectedStat) ?? options[0];
   const chartValues = playerGames.map((game) => getNFLPlayerStatValue(game.stats, selectedStat));
   const maximumValue = Math.max(1, ...chartValues.filter((value): value is number => value !== undefined));
+  const recordedValues = chartValues.filter((value): value is number => value !== undefined);
+  const total = recordedValues.reduce((sum, value) => sum + value, 0);
 
   return <div className="nfl-player-modal" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section ref={dialogRef} tabIndex={-1} className="nfl-player-dialog" role="dialog" aria-modal="true" aria-labelledby="nfl-player-dialog-title" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }}>
       <header className="nfl-player-dialog-heading"><span className="nfl-player-avatar nfl-player-avatar-large">{playerInitials(player.name)}</span><div><span className="eyebrow">{team.abbr} · RECENT PERFORMANCE</span><h3 id="nfl-player-dialog-title">{player.name}</h3><small>{player.position}{player.jersey && ` · #${player.jersey}`}</small></div><FavoriteStarButton favorite={isFavorite} label={player.name} onClick={() => onToggleFavorite(nflPlayerFavoriteTarget(player, team))} /><button className="icon-button" aria-label="Close player stats" onClick={onClose}><X size={16} /></button></header>
       <div className="nfl-player-stat-picker"><span className="nfl-player-stat-label">GAME STAT</span><DraggableTabs options={options} ariaLabel={`${player.position} game stats`} className="nfl-player-stat-tabs" selected={selectedStat} onSelect={setSelectedStat} /></div>
+      {recordedValues.length > 0 && <div className="stat-hub-library-status"><b>{(total / recordedValues.length).toFixed(1)} per recorded game</b><span>{total.toLocaleString('en-US')} total · {recordedValues.length} recorded games</span></div>}
       <div className="nfl-game-chart-heading"><b>{selectedOption.label} · EACH GAME</b><span>LAST {playerGames.length || 5} GAMES</span></div>
       {playerGames.length === 0 ? <p className="nfl-player-games-message">Game-by-game stats are unavailable from the feed.</p> : <div className="nfl-player-game-chart">{[...playerGames].reverse().map((game) => { const value = getNFLPlayerStatValue(game.stats, selectedStat); const barHeight = value === undefined ? 0 : Math.max(5, value / maximumValue * 100); return <div className="nfl-game-bar" key={game.gameId} aria-label={`${game.opponent}, ${selectedOption.label}: ${value ?? 'unavailable'}`}><strong className="nfl-game-bar-value">{value === undefined ? '—' : value.toLocaleString('en-US')}</strong><div className="nfl-game-bar-track"><i style={{ height: `${barHeight}%` }} /></div><b title={game.opponent}>{game.opponentAbbreviation}</b><small>{formatNFLDate(game.date)}</small><span className={`nfl-game-result${game.result === 'W' ? ' is-win' : game.result === 'L' ? ' is-loss' : ''}`}>{game.result || '—'}</span></div>; })}</div>}
       <p className="nfl-data-note">Game values are read from each game's box score. Missing entries are not estimated.</p>
@@ -514,7 +518,7 @@ function App() {
   const [notificationHash, setNotificationHash] = useState(window.location.hash);
   const [storyOpenKey, setStoryOpenKey] = useState(0);
   const [view, setView] = useState<AppView>(() => viewFromHash(window.location.hash) ?? 'Wire');
-  const [statHubMode, setStatHubMode] = useState<'Players' | 'Teams'>('Players');
+  const [statHubMode, setStatHubMode] = useState<'Players' | 'Teams' | 'Matchups'>('Players');
   const [teamLogTarget, setTeamLogTarget] = useState<{ league: 'NFL' | 'NBA'; team: Team; season: number } | null>(null);
   const teamLogsOpen = view === 'Players' && statHubMode === 'Teams';
   const [sportLeague, setSportLeague] = useState<'NFL' | 'NBA'>('NFL');
@@ -710,6 +714,15 @@ function App() {
   const [wireBoardKey, setWireBoardKey] = useState(0);
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [wirePlayerCard, setWirePlayerCard] = useState<{ player: NFLSkillPlayer; team: Team } | null>(null);
+  useEffect(() => subscribeRenderSnapshots(() => {
+    const season = readRenderSnapshot('teamDirectory', 'NFL')?.season;
+    if (!season) return;
+    setWirePlayerCard(current => {
+      if (!current) return current;
+      const saved = readRenderSnapshot('nflStatHubTeam', `${current.team.id}:${season}`)?.players.find(player => player.id === current.player.id);
+      return saved && saved !== current.player ? { ...current, player: saved } : current;
+    });
+  }, { kind: 'nflStatHubTeam' }), []);
   const [games, setGames] = useState<Game[]>(() => readRenderSnapshot('scoreboard', 'current')?.games ?? []);
   const wireTeams = useWireTeamPicks(sportLeague === 'NBA' ? nbaGames : games.filter(game => game.league === 'NFL'),
     sportLeague === 'NBA' ? 'NBA' : 'NFL', authUser?.id, view === 'Wire');
@@ -1375,6 +1388,7 @@ function App() {
         {view === 'Players' && <div className="player-mode-tabs" role="group" aria-label="Stat Hub view">
           <button type="button" className={statHubMode === 'Players' ? 'active' : ''} aria-pressed={statHubMode === 'Players'} onClick={() => { setStatHubMode('Players'); setWirePlayerCard(null); }}>Players</button>
           <button type="button" className={statHubMode === 'Teams' ? 'active' : ''} aria-pressed={statHubMode === 'Teams'} onClick={() => { setStatHubMode('Teams'); setWirePlayerCard(null); }}>Team Game Logs</button>
+          <button type="button" className={statHubMode === 'Matchups' ? 'active' : ''} aria-pressed={statHubMode === 'Matchups'} onClick={() => { setStatHubMode('Matchups'); setWirePlayerCard(null); }}>Matchup players</button>
         </div>}
         {favoriteSyncError && <div className="feed-warning" role="status">{favoriteSyncError}
           {authUser && <button type="button" onClick={() => { void favoritePersistence.current?.retry(); }}>Retry favorites sync</button>}
@@ -1466,6 +1480,8 @@ function App() {
           </>
         ) : view === 'Players' ? (
           statHubMode === 'Teams' ? <TeamGameLogs key={`${sportLeague}:${teamLogTarget?.league === sportLeague ? `${teamLogTarget.team.id}:${teamLogTarget.season}` : ''}`} league={sportLeague} initialTeam={teamLogTarget?.league === sportLeague ? teamLogTarget.team : undefined} initialSeason={teamLogTarget?.league === sportLeague ? teamLogTarget.season : undefined} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenPlayer={(player, team) => setWirePlayerCard({ player, team })} />
+          : statHubMode === 'Players' ? <StatHubLibrary key={sportLeague} league={sportLeague} query={playerSearchQuery} favorites={favorites}
+              toggle={toggleFavorite} openNFL={(player, team) => setWirePlayerCard({ player, team })} />
           : sportLeague === 'NBA'
             ? <NBAExperience mode="stats" games={nbaGames} status={nbaStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} onRetry={() => setNBARetry((value) => value + 1)} initialGameId={nbaSelectedGameId} onSelectGame={setNBASelectedGameId} onOpenTeamLog={(team, season) => openTeamGameLog('NBA', team, season)} />
             : <NFLPlayersDirectory games={games} scoreboardStatus={scoreboardStatus} query={playerSearchQuery} favorites={favorites} onToggleFavorite={toggleFavorite} initialGameId={selectedGameId} />

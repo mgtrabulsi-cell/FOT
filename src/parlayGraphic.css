@@ -27,6 +27,12 @@
 .parlay-preview img { width: min(100%, 380px); height: auto; border: 1px solid var(--line); border-radius: 10px; }
 .parlay-preview a { color: var(--ink); padding: 12px; }
 .parlay-builder .parlay-save-note { font-size: 12px; }
+.simulation-parlay { display: grid; gap: 12px; margin: 16px 0; min-width: 0; }
+.simulation-parlay-create { justify-self: start; min-height: 44px; padding: 11px 18px; border: 1px solid var(--coral); border-radius: 9px; background: var(--paper); color: var(--ink); font: inherit; font-weight: 700; font-size: 13px; cursor: pointer; }
+.simulation-parlay-create:hover:not(:disabled) { background: #382733; }
+.simulation-parlay-create:disabled { opacity: .55; cursor: default; }
+.simulation-parlay-create:focus-visible { outline: 3px solid var(--coral); outline-offset: 3px; }
+.simulation-parlay > ol { display: grid; gap: 6px; margin: 0; padding-left: 22px; color: var(--ink); font-size: 12px; }
 @media (max-width: 600px) {
   .parlay-builder, .parlay-add-on { padding: 12px; }
   .parlay-fields { grid-template-columns: minmax(0, 1fr); }

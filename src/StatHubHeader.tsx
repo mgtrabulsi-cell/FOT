@@ -19,7 +19,7 @@ export default function StatHubHeader({ sport }: { sport: 'NFL' | 'NBA' }) {
   }, []);
   return <header className="stat-hub-heading">
     <div><span className="eyebrow">PLAYER LIBRARY</span><h2>{sport} player stats</h2>
-      <p>Choose a matchup. Open a player for game-by-game stats.</p></div>
+      <p>Search players or choose a team. Open saved game logs and stats.</p></div>
     <div className="stat-hub-device" role="status">
       <b>{storage.error ? 'Check device storage' : storage.restoring ? 'Restoring saved stats' : storage.saving ? 'Saving stats'
         : storage.savedAt ? online ? 'Saved on this device' : 'Browsing saved stats' : online ? 'Saves as you browse' : 'Offline'}</b>
