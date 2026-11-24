@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { defaultSettings, markets, readQuotes, readSettings, soccerSports } from '../supabase/functions/_shared/gamewaire.ts';
-import { soccerScoreDistribution, soccerTeamSamples, soccerPlayerObservation, evaluateSoccer, resolveSoccerMatchup } from '../supabase/functions/_shared/gamewaireSoccer.ts';
+import { collectSoccerEvidence, soccerScoreDistribution, soccerTeamSamples, soccerPlayerObservation, evaluateSoccer, resolveSoccerMatchup } from '../supabase/functions/_shared/gamewaireSoccer.ts';
 import { scheduleEvents } from '../supabase/functions/_shared/gamewaireSchedule.ts';
 const now = Date.parse('2026-11-07T12:00:00Z');
 const date = new Date(now - 86400000).toISOString();
@@ -56,6 +56,47 @@ const scheduleEvent = (league = 'eng.1') => ({ id: 'g', date, season: { year: 20
   competitors: [{ team: { id: '1' }, homeAway: 'home', score: { value: 1, $ref: `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${league}/events/g/scores/1` } },
     { team: { id: '2' }, homeAway: 'away', score: { value: 1, $ref: `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${league}/events/g/scores/2` } }],
 }] });
+test('Champions League combines four current games with verified prior competition seasons without relaxing eight-game eligibility', async () => {
+  const q = { ...quote, sport: 'Champions League' }, requested = [];
+  const fetcher = async url => {
+    const season = Number(new URL(url).searchParams.get('season'));
+    requested.push(season);
+    const events = Array.from({ length: season === 2024 ? 0 : 4 }, (_, index) => {
+      const row = scheduleEvent('uefa.champions');
+      row.id = `${season}-${index}`; row.season.year = season;
+      row.date = season === 2026 ? new Date(now - (index + 1) * 86400000).toISOString() : new Date(Date.UTC(season, 10, index + 1)).toISOString();
+      return row;
+    });
+    return new Response(JSON.stringify({ season: { year: 2026 }, requestedSeason: { year: season }, events }));
+  };
+  const report = await collectSoccerEvidence([q], { season: 2026, home: { id: '1', name: 'Home' }, away: { id: '2', name: 'Away' } }, now, fetcher);
+  assert.deepEqual(requested.sort(), [2024, 2024, 2025, 2025, 2026, 2026]);
+  assert.deepEqual(report.coverage.seasons, [2026, 2025, 2024]);
+  assert.ok(report.coverage.teamGames.every(team => team.games === 8 && team.currentSeasonGames === 4));
+  assert.equal(report.evidence.get(q.key).eligible, true);
+  assert.equal(evaluateSoccer([q], report.evidence, settings, now).picks.length, 1);
+  const sparseFetcher = async url => {
+    const season = Number(new URL(url).searchParams.get('season'));
+    if (season !== 2026) return new Response('Unavailable', { status: 503 });
+    return fetcher(url);
+  };
+  const sparse = await collectSoccerEvidence([q], { season: 2026, home: { id: '1', name: 'Home' }, away: { id: '2', name: 'Away' } }, now, sparseFetcher);
+  assert.equal(sparse.evidence.get(q.key).eligible, false);
+  assert.ok(sparse.warnings.some(warning => warning.includes('season 2025 unavailable')));
+});
+test('Three-season scope is Champions-League-only; old/future seasons cannot masquerade as supported evidence', () => {
+  const q = { ...quote, sport: 'Champions League', market: 'player_shots', side: 'Over', subject: 'Player', line: 1.5 };
+  const samples = games.slice(0, 8).map((row, index) => ({ ...row, season: index < 4 ? 2026 : 2025, value: index < 4 ? 3 : 1 }));
+  const data = { ...evidence, soccerLeague: 'Champions League', soccerSeasons: [2026, 2025, 2024], samples };
+  const result = evaluate([q], data);
+  assert.equal(result.picks.length, 1);
+  assert.equal(result.picks[0].projection, 2);
+  assert.equal(result.picks[0].seasonAverage, 3);
+  assert.match(result.picks[0].baseline, /2026, 2025, 2024/);
+  assert.equal(evaluate([{ ...q, sport: 'EPL' }], { ...data, soccerLeague: 'EPL' }).picks.length, 0);
+  assert.equal(evaluate([q], { ...data, soccerSeasons: [2026, 2025, 2023] }).picks.length, 0);
+  assert.equal(evaluate([q], { ...data, samples: samples.map(row => ({ ...row, season: 2023 })) }).picks.length, 0);
+});
 test('schedule evidence isolates the selected league, season, final regulation time and cutoff', () => {
   const good = scheduleEvent();
   const data = { season: { year: 2026 }, events: [good, good, scheduleEvent('esp.1'), { ...good, id: 'future', date: start }] };

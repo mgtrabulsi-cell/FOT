@@ -43,7 +43,7 @@ export async function resolveSoccerMatchup(quote: Quote, fetcher: typeof fetch =
 }
 export function soccerTeamSamples(value: unknown, teamId: string, sport: SoccerSport, season: number, cutoff: number): Observation[] {
   const data = object(value), league = soccerPaths[sport].split('/')[1];
-  if (numeric(object(data.season).year) !== season) throw new Error('Soccer schedule season mismatch.');
+  if (numeric(object(data.requestedSeason ?? data.season).year) !== season) throw new Error('Soccer schedule season mismatch.');
   const seen = new Set<string>();
   return array(data.events).flatMap(raw => {
     const event = object(raw), c = object(array(event.competitions)[0]), status = object(c.status), sides = array(c.competitors).map(object);
@@ -82,10 +82,23 @@ export async function collectSoccerEvidence(quotes: Quote[], matchup: Matchup, n
   const sport = quotes[0].sport;
   if (!isSoccer(sport) || quotes.some(row => row.sport !== sport)) throw new Error('Soccer league evidence cannot be mixed.');
   const cutoff = Math.min(now, Date.parse(quotes[0].start)), path = soccerPaths[sport];
-  const teams = await Promise.all([matchup.home, matchup.away].map(async team => ({
-    team, games: soccerTeamSamples(await publicJSON(`https://site.api.espn.com/apis/site/v2/sports/${path}/teams/${team.id}/schedule?season=${matchup.season}`, fetcher), team.id, sport, matchup.season, cutoff),
-  })));
+  const seasons = sport === 'Champions League' ? [matchup.season, matchup.season - 1, matchup.season - 2] : [matchup.season];
   const warnings: string[] = ['Experimental soccer analysis; probabilities are not calibrated guarantees. Only the selected competition is used. Regulation time (90 minutes plus stoppage time) only; extra time and shootouts excluded.'];
+  if (seasons.length > 1) warnings.push(`Champions League evidence uses seasons ${seasons.join(', ')} only, with at least eight verified games per team/player. Domestic games are excluded; prior-season squads and opponent strength may differ. Team records and season averages remain current-season only.`);
+  const teams = await Promise.all([matchup.home, matchup.away].map(async team => {
+    const histories = await Promise.all(seasons.map(async season => {
+      try {
+        return soccerTeamSamples(await publicJSON(`https://site.api.espn.com/apis/site/v2/sports/${path}/teams/${team.id}/schedule?season=${season}`, fetcher), team.id, sport, season, cutoff);
+      } catch (cause) {
+        if (season === matchup.season) throw cause;
+        warnings.push(`${team.name}: Champions League season ${season} unavailable (${cause instanceof Error ? cause.message : String(cause)}). No replacement games or zeros were supplied.`);
+        return [];
+      }
+    }));
+    const games = [...new Map(histories.flat().map(game => [game.eventId!, game])).values()]
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 20);
+    return { team, games };
+  }));
   const summaries = new Map<string, unknown>();
   const offered = [...new Set(quotes.filter(row => row.market.startsWith('player_')).map(row => row.subject))];
   if (quotes.some(row => row.priceCoverage === 'single-sided')) warnings.push('Some player markets provide only one side. These use actual offered prices and verified appearance statistics; opposite odds and no-vig comparisons remain unavailable.');
@@ -114,16 +127,17 @@ export async function collectSoccerEvidence(quotes: Quote[], matchup: Matchup, n
     }))).map(row => [row.eventId!, row])).values()];
     const eligible = teams.every(row => row.games.length >= 8 && now - Date.parse(row.games[0].date) <= 35 * 86_400_000)
       && (!quote.market.startsWith('player_') || samples.length >= 8 && now - Date.parse(samples[0].date) <= 21 * 86_400_000);
-    evidence.set(quote.key, { eligible, soccerLeague: sport, reason: eligible ? undefined : 'Insufficient verified same-league current-season completed games or individual appearances (minimum eight per team/player). Missing statistics and non-playing games are excluded.',
+    evidence.set(quote.key, { eligible, soccerLeague: sport, soccerSeasons: seasons, reason: eligible ? undefined : `Insufficient verified same-competition completed games or individual appearances in seasons ${seasons.join(', ')} (minimum eight per team/player). Missing statistics and non-playing games are excluded.`,
       samples, fetchedAt: new Date(now).toISOString(), quality: .75, currentSeason: matchup.season,
       risks: [...warnings.slice(0, 1), 'Unfitted scoring baseline; opponent strength, injuries and confirmed upcoming lineups are not modeled. Individual stats describe verified appearances, not future playing time.'],
       identifiers: { espnEventId: matchup.eventId, playerId },
       matchupForm: teams.map(row => ({ team: row.team.name, season: matchup.season, record: {
-        wins: row.games.filter(game => game.value > 0).length, losses: row.games.filter(game => game.value < 0).length, ties: row.games.filter(game => game.value === 0).length,
+        wins: row.games.filter(game => game.season === matchup.season && game.value > 0).length, losses: row.games.filter(game => game.season === matchup.season && game.value < 0).length, ties: row.games.filter(game => game.season === matchup.season && game.value === 0).length,
       }, recent: row.games })),
     });
   }
-  return { evidence, warnings, coverage: { league: sport, season: matchup.season, teamGames: teams.map(row => ({ team: row.team.name, games: row.games.length })),
+  return { evidence, warnings, coverage: { league: sport, season: matchup.season, seasons, teamGames: teams.map(row => ({ team: row.team.name, games: row.games.length,
+    currentSeasonGames: row.games.filter(game => game.season === matchup.season).length })),
     playerCount: offered.length, playerLimit: 24, supportedMarkets: ['h2h', 'totals', ...Object.keys(statNames)], settlement: '90 minutes plus stoppage time' } };
 }
 export function soccerScoreDistribution(homeRate: number, awayRate: number) {
@@ -154,15 +168,20 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
   for (const quote of best.values()) {
     const data = evidence.get(quote.key), reject = (reason: string) => rejected.push({ key: quote.key, reason });
     if (!data?.eligible || data.soccerLeague !== quote.sport) { reject(data?.reason ?? 'Verified same-league soccer evidence unavailable.'); continue; }
+    const allowedSeasons = quote.sport === 'Champions League' ? [data.currentSeason, data.currentSeason! - 1, data.currentSeason! - 2] : [data.currentSeason];
+    const seasons = data.soccerSeasons ?? [data.currentSeason];
+    if (!seasons.length || new Set(seasons).size !== seasons.length || seasons.some(season => !Number.isInteger(season) || !allowedSeasons.includes(season))) { reject('Invalid competition history seasons.'); continue; }
     if (!Number.isFinite(data.quality) || data.quality > 1 || data.quality < settings.minQuality || !Number.isFinite(Date.parse(data.fetchedAt)) || now - Date.parse(data.fetchedAt) > 3_600_000 || Date.parse(data.fetchedAt) > now + 60_000
-      || data.samples.some(row => !Number.isFinite(row.value) || !Number.isFinite(Date.parse(row.date)) || Date.parse(row.date) >= Math.min(now, Date.parse(quote.start)) || row.season !== data.currentSeason)) { reject('Stale, future, invalid or wrong-season evidence.'); continue; }
+      || data.samples.some(row => !Number.isFinite(row.value) || !Number.isFinite(Date.parse(row.date)) || Date.parse(row.date) >= Math.min(now, Date.parse(quote.start)) || !seasons.includes(row.season))) { reject('Stale, future, invalid or wrong-season evidence.'); continue; }
+    const currentSamples = data.samples.filter(row => row.season === data.currentSeason);
+    if (!currentSamples.length) { reject('At least one verified current-season observation is required; no current-season average is invented.'); continue; }
     let win = 0, push = 0, projection = 0;
     const average = (rows: Observation[], key: 'pointsFor' | 'pointsAgainst') => rows.reduce((sum, row) => sum + row[key]!, 0) / rows.length;
     if (quote.market === 'h2h' || quote.market === 'totals') {
       const home = data.matchupForm?.find(row => soccerName(row.team) === soccerName(quote.home))?.recent;
       const away = data.matchupForm?.find(row => soccerName(row.team) === soccerName(quote.away))?.recent;
-      if (!home || !away || home.length < 8 || away.length < 8 || [...home, ...away].some(row => row.season !== data.currentSeason
-        || Date.parse(row.date) >= Math.min(now, Date.parse(quote.start)) || !Number.isFinite(row.pointsFor) || !Number.isFinite(row.pointsAgainst))) { reject('Both same-league verified scoring histories are required.'); continue; }
+      if (!home || !away || home.length < 8 || away.length < 8 || [...home, ...away].some(row => !seasons.includes(row.season)
+        || !Number.isFinite(Date.parse(row.date)) || Date.parse(row.date) >= Math.min(now, Date.parse(quote.start)) || !Number.isFinite(row.pointsFor) || !Number.isFinite(row.pointsAgainst))) { reject('Both same-league verified scoring histories are required.'); continue; }
       const h = Math.max(.1, (average(home, 'pointsFor') + average(away, 'pointsAgainst')) / 2);
       const a = Math.max(.1, (average(away, 'pointsFor') + average(home, 'pointsAgainst')) / 2);
       const distribution = soccerScoreDistribution(h, a);
@@ -190,7 +209,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     const conservativeEV = expectedValue(Math.max(0, conditional - uncertainty) * (1 - push), push, quote.american);
     const implied = impliedProbability(quote.american), edge = conditional - implied, ev = expectedValue(win, push, quote.american);
     const facts = [`Experimental ${quote.sport} regulation-time estimate: ${(win * 100).toFixed(1)}% win, ${(push * 100).toFixed(1)}% push.`,
-      `${n} verified current-season observations per limiting team/player; scoring baseline is not a fitted or calibrated forecasting model.`,
+      `${n} verified same-competition observations per limiting team/player in seasons ${seasons.join(', ')}; scoring baseline is not a fitted or calibrated forecasting model.`,
       `Projection ${projection.toFixed(2)}; sportsbook ${quote.book} at ${quote.american > 0 ? '+' : ''}${quote.american}.`];
     const observedAverage = (count: number) => {
       const rows = [...data.samples].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, count);
@@ -199,10 +218,11 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     const priceRisks = quote.priceCoverage === 'single-sided'
       ? [...data.risks, 'Single-sided sportsbook player market: no opposite price was supplied. No no-vig probability or opposite selection is inferred. The verified appearance estimate, not the offered price or EV, determines ranking.'] : data.risks;
     const pick: Candidate = { ...quote, modelVersion: soccerModelVersion, probability: win, pushProbability: push, implied, edge, ev, conservativeEV,
-      projection, sampleSize: data.samples.length, effectiveSample: n, last5: observedAverage(5), last10: observedAverage(10), seasonAverage: observedAverage(data.samples.length),
+      projection, sampleSize: data.samples.length, effectiveSample: n, last5: observedAverage(5), last10: observedAverage(10),
+      seasonAverage: currentSamples.reduce((sum, row) => sum + row.value, 0) / currentSamples.length,
       quality: data.quality, dataAt: data.fetchedAt, samples: data.samples, risks: priceRisks, facts, explanation: [...facts, ...priceRisks].join(' '),
       identifiers: data.identifiers, matchupForm: data.matchupForm, fairAmerican: fairAmericanOdds(conditional), noVigEdge: quote.noVig === null ? null : conditional - quote.noVig,
-      baseline: 'Experimental same-league current-season scoring/appearance baseline; no guarantee.' };
+      baseline: `Experimental same-competition scoring/appearance baseline for seasons ${seasons.join(', ')}; no guarantee.` };
     pick.valueClass = valueClassification(pick);
     supported.push(pick);
   }

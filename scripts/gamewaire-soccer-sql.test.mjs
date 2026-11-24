@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import assert from 'node:assert/strict';
 test('soccer migration preserves permissions, locks, manual review, settlement/audit and NFL/NBA archives', async () => {
   const db = new PGlite();
   try {
@@ -24,5 +25,13 @@ test('soccer migration preserves permissions, locks, manual review, settlement/a
     for (let iteration = 0; iteration < 2; iteration++)
       await db.exec(readFileSync(new URL('../supabase/gamewaire-prop-upgrade.sql', import.meta.url), 'utf8'));
     await db.exec(readFileSync(new URL('../supabase/tests/gamewaire-prop-upgrade.sql', import.meta.url), 'utf8'));
+    for (let iteration = 0; iteration < 2; iteration++)
+      await db.exec(readFileSync(new URL('../supabase/gamewaire-champions-history.sql', import.meta.url), 'utf8'));
+    const functions = await db.query(`select pg_get_functiondef(oid) as definition from pg_proc where oid in
+      ('public.gamewaire_publish_lean(uuid)'::regprocedure, 'public.gamewaire_soccer_publication_guard()'::regprocedure,
+      'public.gamewaire_schedule_plan(text,date,jsonb,text,text,text)'::regprocedure, 'public.gamewaire_schedule_claim()'::regprocedure)`);
+    assert.equal(functions.rows.length, 4);
+    assert.ok(functions.rows.every(row => !row.definition.includes("'soccer-probability-v3'")));
+    assert.ok(functions.rows.some(row => row.definition.includes("'soccer-probability-v4'")));
   } finally { await db.close(); }
 });
