@@ -189,6 +189,7 @@ test('Wire live indicators remain red without live-only red card borders, retain
 function research() {
   return moduleFor('../src/services/playerLabResearch.ts', {
     './gamewireBot': {}, './nbaData': {}, './nbaStats': { nbaStatValue }, './renderSnapshots': {}, './teamGameLogs': {}, './sportsData': {},
+    '../../supabase/functions/_shared/gamewireBot': {}, './sportsDatabase': {},
   });
 }
 function chat() {

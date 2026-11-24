@@ -1,10 +1,12 @@
-import { loadBotHistory, readDirectorySnapshot } from './gamewireBot';
+import { readDirectorySnapshot } from './gamewireBot';
+import { botLogRows } from '../../supabase/functions/_shared/gamewireBot';
 import type { LabPlayer } from './playerLabChat';
 import { fetchNBAPlayerProfile } from './nbaData';
 import { nbaStatValue } from './nbaStats';
 import { readRenderSnapshot, restoreStatSnapshots } from './renderSnapshots';
 import { fetchTeamGameLog, fetchTeamLogDirectory } from './teamGameLogs';
 import { fetchNFLHistoricalSummary } from './sportsData';
+import { fetchStaticSports } from './sportsDatabase';
 import type { Team } from './sportsData';
 
 export type ResearchMetric = 'receivingYards' | 'rushingYards' | 'passingYards' | 'receptions'
@@ -66,9 +68,7 @@ export async function playerHitReport(entry: LabPlayer, question: string, signal
     return buildHitReport(entry.player.name, request, profile.games.map(game => ({ id: game.id, date: game.date,
       value: metric === 'points' || metric === 'rebounds' || metric === 'assists' || metric === 'pra' || metric === 'threePointersMade' ? nbaStatValue(game.stats, metric) : undefined })));
   }
-  const market: Partial<Record<ResearchMetric, string>> = { receivingYards: 'player_reception_yds', rushingYards: 'player_rush_yds',
-    passingYards: 'player_pass_yds', receptions: 'player_receptions' };
-  if (!market[request.metric] && !request.metric.endsWith('Touchdowns')) throw new Error('For NFL players, choose passing/rushing/receiving yards, receptions or a position-specific touchdown statistic.');
+  if (!['receivingYards', 'rushingYards', 'passingYards', 'receptions', 'receivingTouchdowns', 'rushingTouchdowns', 'passingTouchdowns'].includes(request.metric)) throw new Error('For NFL players, choose passing/rushing/receiving yards, receptions or a position-specific touchdown statistic.');
   await restoreStatSnapshots();
   const season = readDirectorySnapshot()?.season ?? (await fetchTeamLogDirectory('NFL', signal)).season;
   const saved = readRenderSnapshot('nflStatHubTeam', `${entry.player.teamId}:${season}`, 7 * 86400000);
@@ -80,12 +80,13 @@ export async function playerHitReport(entry: LabPlayer, question: string, signal
         || metric === 'receptions' || metric === 'receivingTouchdowns' || metric === 'rushingTouchdowns' || metric === 'passingTouchdowns' ? game.stats[metric] : undefined,
     })));
   }
-  if (!market[request.metric]) throw new Error('Touchdown game logs have not downloaded yet. Open NFL Stat Hub to save this team’s verified logs, then retry.');
-  const history = await loadBotHistory(entry.player.id, season, 'ppr', signal);
+  const response = await fetchStaticSports(`https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${entry.player.id}/gamelog?season=${season}`, signal);
+  if (!response.ok) throw new Error(`NFL player game logs returned HTTP ${response.status}.`);
+  const rows = botLogRows(await response.json(), Date.now(), season);
   signal.throwIfAborted();
-  return buildHitReport(entry.player.name, request, history.weeks.filter(week => week.actuals !== null).map(week => ({
-    id: week.event_id, date: week.event_start, value: week.actuals?.[market[request.metric]!] ?? undefined,
-  })), history.issues);
+  return buildHitReport(entry.player.name, request, rows.map(row => ({
+    id: row.eventId, date: row.date, value: row.stats[request.metric],
+  })));
 }
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export async function teamHitReport(question: string, signal: AbortSignal): Promise<HitReport> {

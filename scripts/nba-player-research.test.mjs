@@ -3,6 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { botLogRows } from '../supabase/functions/_shared/gamewireBot.ts';
 function load(path, imports) {
   const context = vm.createContext({ exports: {}, console, Date, AbortSignal, require(name) {
     if (name in imports) return imports[name];
@@ -15,6 +16,7 @@ function load(path, imports) {
 }
 const research = load('../src/services/playerLabResearch.ts', {
   './gamewireBot': {}, './nbaData': {}, './nbaStats': {}, './renderSnapshots': {}, './teamGameLogs': {}, './sportsData': {},
+  '../../supabase/functions/_shared/gamewireBot': {}, './sportsDatabase': {},
 });
 test('Natural language thresholds do not confuse the game window or 3PM with a stat line', () => {
   const request = research.hitRequest('T Higgins receiving yard hit rates last 10 games at 50, 75, 100');
@@ -64,6 +66,7 @@ test('Team name matching does not confuse Hornets with Nets and reads actual fin
   const teams = [{ id: '1', name: 'Charlotte Hornets', abbr: 'CHA', score: 111 }, { id: '2', name: 'Brooklyn Nets', abbr: 'BKN', score: 99 }];
   const api = load('../src/services/playerLabResearch.ts', {
     './gamewireBot': {}, './nbaData': {}, './nbaStats': {}, './renderSnapshots': {}, './sportsData': {},
+    '../../supabase/functions/_shared/gamewireBot': {}, './sportsDatabase': {},
     './teamGameLogs': { fetchTeamLogDirectory: async () => ({ season: 2027, teams }),
       fetchTeamGameLog: async () => [{ seasonType: 2, game: { eventId: '900', date: '2026-01-01', home: teams[0], away: teams[1] } }] },
   });
@@ -100,4 +103,25 @@ test('Research chat is reachable without removing the original player cards', ()
   assert.match(cards, /Ask GamewAIre/);
   assert.match(cards, /PlayerLabChat initiallyOpen/);
   assert.match(cards, /NBAPlayerCard report=/);
+});
+test('NFL fallback uses the full verified game log, not the subset of games with archived forecasts', async () => {
+  const payload = { names: ['receivingYards'], events: {
+    '1': { gameDate: '2026-01-03', opponent: { id: '2' } },
+    '2': { gameDate: '2026-01-02', opponent: { id: '2' } },
+    '3': { gameDate: '2026-01-01', opponent: { id: '2' } },
+  }, seasonTypes: [{ type: 2, displayName: '2026 Regular Season', categories: [{ events: [
+    { eventId: '1', stats: ['100'] }, { eventId: '2', stats: ['50'] }, { eventId: '3', stats: ['0'] },
+  ] }] }] };
+  const api = load('../src/services/playerLabResearch.ts', {
+    './gamewireBot': { readDirectorySnapshot: () => ({ season: 2026 }) },
+    '../../supabase/functions/_shared/gamewireBot': { botLogRows },
+    './nbaData': {}, './nbaStats': {}, './teamGameLogs': {}, './sportsData': {},
+    './renderSnapshots': { restoreStatSnapshots: async () => {}, readRenderSnapshot: () => null },
+    './sportsDatabase': { fetchStaticSports: async url => { assert.match(url, /athletes\/123\/gamelog\?season=2026/); return { ok: true, json: async () => payload }; } },
+  });
+  const report = await api.playerHitReport({ sport: 'NFL', player: { id: '123', teamId: '1', name: 'Tee Higgins' } },
+    'T Higgins receiving yards hit rates last 5 games at 50, 100', new AbortController().signal);
+  assert.equal(report.rows[0].hits, 2);
+  assert.equal(report.rows[0].sample, 3);
+  assert.equal(report.rows[1].hits, 1);
 });
