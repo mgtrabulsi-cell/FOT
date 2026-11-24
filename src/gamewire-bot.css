@@ -9,13 +9,21 @@
 .gwb-chat-thread { max-height: min(620px, 65dvh); overflow-y: auto; overscroll-behavior: contain; margin: 14px 0; }
 .gwb-chat-message { padding: 14px; border: 1px solid #264663; border-radius: 12px; margin: 10px 0; min-width: 0; }
 .gwb-chat-message.is-user { margin-left: 24px; background: #123952; }
-.gwb-chat-message.is-assistant { margin-right: 12px; background: #071b2c; }
-.gwb-chat-message > strong { color: #71ceff; font-size: 13px; }
+.gwb-chat-message.is-assistant { margin-right: 12px; background: linear-gradient(135deg, #10253b, #030f1d); border-color: #365674; box-shadow: inset 3px 0 #087bc4; }
+.gwb-chat-message > strong { display: block; color: #71ceff; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .gwb-chat-panel details { margin: 12px 0; }
 .gwb-chat-panel summary { cursor: pointer; min-height: 44px; padding: 8px 0; box-sizing: border-box; }
-.gwb-chat-table { overflow-x: auto; }
+.gwb-chat-table { overflow-x: auto; border: 1px solid #264663; border-radius: 12px; background: #030f1d; }
 .gwb-chat-table table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 12px; }
 .gwb-chat-table th, .gwb-chat-table td { padding: 9px; text-align: left; border-bottom: 1px solid #264663; }
+.gwb-chat-table caption { padding: 12px; text-align: left; color: #71ceff; font-weight: 800; background: #10253b; white-space: normal; }
+.gwb-chat-table thead { background: #10253b; color: #a8bdd5; text-transform: uppercase; letter-spacing: .05em; }
+.gwb-chat-table tbody tr:last-child th, .gwb-chat-table tbody tr:last-child td { border-bottom: 0; }
+.gwb-chat-table tbody tr:hover { background: #10253b; }
+.gwb-hit-results { margin-top: 14px; }
+.gwb-hit-results td { font-variant-numeric: tabular-nums; }
+.gwb-percentage { color: #edf2f7; font-weight: 800; font-variant-numeric: tabular-nums; }
+.gwb .gwb-percentage.is-above-half { color: #65e6a0; }
 .gwb-chat-choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .gwb-chat-choices button { display: grid; gap: 4px; text-align: left; }
 .gwb-chat-choices small { color: #a8bdd5; }

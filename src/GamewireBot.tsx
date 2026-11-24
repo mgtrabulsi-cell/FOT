@@ -90,19 +90,19 @@ function PropLab({ report }: { report: BotReport }) {
         {projection.distribution && <details><summary>Experimental outcome range &amp; thresholds</summary>
           <p>Expected {projection.distribution.expected} · Median {projection.distribution.median} · 25th percentile {projection.distribution.p25} · 75th percentile {projection.distribution.p75}.</p>
           <p>Empirical residual model · {projection.distribution.samples} unique games · Not calibrated. This range is not a guaranteed prediction interval. Injury, role and matchup uncertainty may be understated.</p>
-          <p>{(projection.unit === 'receptions' ? [2, 4, 6, 8, 10] : [40, 50, 60, 70, 80, 90, 100]).map(threshold => {
+          <p>{(projection.unit === 'receptions' ? [2, 4, 6, 8, 10] : [40, 50, 60, 70, 80, 90, 100]).map((threshold, index) => {
             const distribution = projection.distribution!;
             const chance = distribution.outcomes.filter(value => value >= threshold).length / distribution.outcomes.length;
-            return `${threshold}+: ${(chance * 100).toFixed(0)}%`;
-          }).join(' · ')}</p>
+            return <span key={threshold}>{index > 0 ? ' · ' : ''}{threshold}+: <GamewirePercentage value={chance * 100} digits={0} /></span>;
+          })}</p>
           <p>No verified current sportsbook price is connected here. Projection only, not a confirmed betting value selection.</p>
         </details>}
         </div>)}</>}
     {report.props.map((prop) => <div className="gwb-prop" key={prop.selection}><div className="gwb-published-brand"><span className="gamewaire-name">Gamew<strong>AI</strong>re</span><small>PUBLISHED TOP PICK</small></div><b>{prop.selection}</b><span>{prop.american > 0 ? '+' : ''}{prop.american} · {prop.book} · Saved line {stamp(prop.savedAt)}</span><GamewaireBreakdown text={prop.breakdown} />
       {prop.comparison && <p>{prop.comparison.assessment} · Difference {prop.comparison.difference > 0 ? '+' : ''}{prop.comparison.difference}.
-        {prop.comparison.games > 0 ? ` Recorded games: ${prop.comparison.over} over / ${prop.comparison.under} under / ${prop.comparison.pushes} pushes (${prop.comparison.games} samples; ${prop.comparison.observedOverRate}% observed over, ${prop.comparison.observedUnderRate}% under).` : ' No verified hit-rate sample.'}
+        {prop.comparison.games > 0 ? <> Recorded games: {prop.comparison.over} over / {prop.comparison.under} under / {prop.comparison.pushes} pushes ({prop.comparison.games} samples; <GamewirePercentage value={prop.comparison.observedOverRate} /> observed over, <GamewirePercentage value={prop.comparison.observedUnderRate} /> under).</> : ' No verified hit-rate sample.'}
         {' '}Historical counts, not forecast probabilities. Saved line only, not a current market edge.</p>}
-      {prop.modeled && <p>Experimental model versus saved line: over {(prop.modeled.over * 100).toFixed(0)}% · under {(prop.modeled.under * 100).toFixed(0)}% · push {(prop.modeled.push * 100).toFixed(0)}%. Uncalibrated; not current-price value.</p>}
+      {prop.modeled && <p>Experimental model versus saved line: over <GamewirePercentage value={prop.modeled.over * 100} digits={0} /> · under <GamewirePercentage value={prop.modeled.under * 100} digits={0} /> · push <GamewirePercentage value={prop.modeled.push * 100} digits={0} />. Uncalibrated; not current-price value.</p>}
     </div>)}
     {!report.props.length && !report.projections.length && report.production.map((stat) => <div className="gwb-prop-empty" key={stat.label}><div><b>{stat.label}</b><span>Recent recorded average, not a projection</span></div><div><strong>{stat.average.toFixed(1)}<small> avg</small></strong><span>No published line</span></div></div>)}
     <p className="gwb-muted">{report.propNote}</p></section>;
@@ -488,6 +488,7 @@ export function NFLPlayerLab() {
 }
 import GamewaireBreakdown from './GamewaireBreakdown';
 import PlayerLabChat from './PlayerLabChat';
+import GamewirePercentage from './GamewirePercentage';
 export default function GamewireBot() {
   return <PlayerLabChat initiallyOpen renderNFL={(report, remove) => <Breakdown report={report} onClear={remove} busy={false} />} />;
 }

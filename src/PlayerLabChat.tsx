@@ -7,6 +7,7 @@ import { findLabPlayers, labFollowup, labPlayerKey, loadLabAnswer, startOpinion 
 import { isHitQuestion, isStartQuestion, teamHitReport } from './services/playerLabResearch';
 import type { LabAnswer, LabPlayer } from './services/playerLabChat';
 import { NBAPlayerCard } from './PlayerLabCards';
+import GamewirePercentage from './GamewirePercentage';
 import { subscribeRenderSnapshots } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
@@ -150,12 +151,12 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
         {messages.map(message => <article key={message.id} className={`gwb-chat-message is-${message.role}`}>
           <strong>{message.role === 'user' ? 'You' : message.player ? `GamewAIre / ${message.player.sport} / ${message.player.player.name}` : 'GamewAIre'}</strong>
           {message.text.filter(Boolean).map((text, index) => <p key={index}>{text}</p>)}
-          {message.answer?.hitRates && <section aria-label={`${message.answer.hitRates.name} historical hit rates`}>
+          {message.answer?.hitRates && <section className="gwb-hit-results" aria-label={`${message.answer.hitRates.name} historical hit rates`}>
             <div className="gwb-chat-table"><table>
               <caption>{message.answer.hitRates.metric} · {message.answer.hitRates.request.comparison} each threshold</caption>
               <thead><tr><th scope="col">Threshold</th><th scope="col">Games hit</th><th scope="col">Hit rate</th></tr></thead>
               <tbody>{message.answer.hitRates.rows.map(row => <tr key={row.level}><th scope="row">{row.level}</th>
-                <td>{row.hits} / {row.sample}</td><td>{row.percent === null ? 'Unavailable' : `${row.percent.toFixed(1)}%`}</td></tr>)}</tbody>
+                <td>{row.hits} / {row.sample}</td><td><GamewirePercentage value={row.percent} /></td></tr>)}</tbody>
             </table></div>
             {message.answer.hitRates.issues.map((issue, index) => <p className="gwb-warning" key={index}>{issue}</p>)}
             <details><summary>Games used</summary><div className="gwb-chat-table"><table><thead><tr><th>Date</th><th>{message.answer.hitRates.metric}</th></tr></thead>

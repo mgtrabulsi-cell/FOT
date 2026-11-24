@@ -269,6 +269,7 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
     './services/nbaStats': { nbaStatValue }, './services/renderSnapshots': {}, './services/foregroundRefresh': {},
     './services/playerLabResearch': research(),
     './PlayerLabCards': { NBAPlayerCard: nbaCard },
+    './GamewirePercentage': { default: () => null },
   });
 
   const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];

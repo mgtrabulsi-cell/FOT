@@ -10,7 +10,7 @@ function load(path, imports) {
     throw Error(`Unexpected dependency ${name}`);
   } });
   vm.runInContext(ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText, context);
   return context.exports;
 }
@@ -122,6 +122,20 @@ test('NFL fallback uses the full verified game log, not the subset of games with
     './nbaData': {}, './nbaStats': {}, './teamGameLogs': {}, './sportsData': {},
     './renderSnapshots': { restoreStatSnapshots: async () => {}, readRenderSnapshot: () => null },
     './sportsDatabase': { fetchStaticSports: async url => { assert.match(url, /athletes\/123\/gamelog\?season=2026/); return { ok: true, json: async () => payload }; } },
+  });
+  test('GameWire result percentages are green only above 50, never at 50 or for unavailable values', () => {
+    const component = load('../src/GamewirePercentage.tsx', { 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) } }).default;
+    for (const value of [50.01, 60, 100]) {
+      assert.match(component({ value }).props.className, /is-above-half/);
+    }
+    for (const value of [0, 49.9, 50, null, NaN, Infinity]) {
+      assert.doesNotMatch(component({ value }).props.className, /is-above-half/);
+    }
+    assert.equal(component({ value: 60 }).props.children, '60.0%');
+    assert.equal(component({ value: null }).props.children, 'Unavailable');
+    const css = readFileSync(new URL('../src/gamewire-bot.css', import.meta.url), 'utf8');
+    assert.match(css, /\.gwb \.gwb-percentage\.is-above-half \{ color: #65e6a0; \}/);
+    assert.match(css, /\.gwb-chat-table caption \{[^}]*background: #10253b;/);
   });
   const report = await api.playerHitReport({ sport: 'NFL', player: { id: '123', teamId: '1', name: 'Tee Higgins' } },
     'T Higgins receiving yards hit rates last 5 games at 50, 100', new AbortController().signal);
