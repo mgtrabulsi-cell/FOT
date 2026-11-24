@@ -98,11 +98,15 @@ test('NFL multi-player opinion ranks verified simulation scoring, preserving the
   assert.match(incomplete.join(' '), /Cannot fairly rank/);
   assert.doesNotMatch(incomplete.join(' '), /start Receiver \d first/);
 });
-test('Research chat is reachable without removing the original player cards', () => {
+test('Primary Player Lab is one unified chat with direct NFL/NBA cards and no research launcher', () => {
+  const entry = readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8');
+  const chat = readFileSync(new URL('../src/PlayerLabChat.tsx', import.meta.url), 'utf8');
   const cards = readFileSync(new URL('../src/PlayerLabCards.tsx', import.meta.url), 'utf8');
-  assert.match(cards, /Ask GamewAIre/);
-  assert.match(cards, /PlayerLabChat initiallyOpen/);
-  assert.match(cards, /NBAPlayerCard report=/);
+  assert.match(entry, /return <PlayerLabChat initiallyOpen/);
+  assert.doesNotMatch(entry, /return <PlayerLabCards/);
+  assert.match(chat, /NBAPlayerCard report=/);
+  assert.match(chat, /message\.answer\?\.nfl && renderNFL/);
+  assert.doesNotMatch(cards, /Ask GamewAIre|gwb-research-chat|import PlayerLabChat/);
 });
 test('NFL fallback uses the full verified game log, not the subset of games with archived forecasts', async () => {
   const payload = { names: ['receivingYards'], events: {

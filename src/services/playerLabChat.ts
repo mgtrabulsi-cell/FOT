@@ -36,6 +36,7 @@ export function findLabPlayers(question: string, players: LabPlayer[]): LabPlaye
 }
 export function labFollowup(question: string) {
   return /\b(his|him|their|them|he|they)\b/i.test(question)
+    || /^(?:hit[\s-]*(?:rates?|percentages?)|last\s+\d+\s*(?:games?|appearances?))\b/i.test(question.trim())
     || /^(?:(?:what|how) about )?(?:pra|points|rebounds|assists|threes|3pm|passing|rushing|receiving|receptions|injury|availability|status|matchup|recent|projection|over|under)\b/i.test(question.trim())
     || /^(?:show|explain) (?:the |those )?(?:stats|projection|matchup|recent)/i.test(question.trim());
 }

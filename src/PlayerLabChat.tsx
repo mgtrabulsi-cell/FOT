@@ -6,7 +6,7 @@ import { loadNBAPlayerLabDirectory, readNBAPlayerLabDirectory } from './services
 import { findLabPlayers, labFollowup, labPlayerKey, loadLabAnswer, startOpinion } from './services/playerLabChat';
 import { isHitQuestion, isStartQuestion, teamHitReport } from './services/playerLabResearch';
 import type { LabAnswer, LabPlayer } from './services/playerLabChat';
-import { nbaStatValue } from './services/nbaStats';
+import { NBAPlayerCard } from './PlayerLabCards';
 import { subscribeRenderSnapshots } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
@@ -136,7 +136,7 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
   const suggestions = input.trim().length >= 2 ? findLabPlayers(input, players).slice(0, 8) : [];
   return <section className="gwb" aria-label="GamewAIre player analysis">
     <header className="gwb-chat-heading"><div><span className="gwb-hero-kicker">NFL + NBA / ONE CONVERSATION</span><h3>GamewAIre Player Lab</h3>
-      <p>Ask about either sport. Follow up without starting over.</p></div><button type="button" aria-expanded={open} aria-controls="gwb-chat-panel" onClick={() => setOpen(value => !value)}>{open ? 'Close chat' : 'Open chat'}</button></header>
+      <p>Player cards, projections, hit rates and start/sit advice. NFL + NBA in one conversation.</p></div><button type="button" aria-expanded={open} aria-controls="gwb-chat-panel" onClick={() => setOpen(value => !value)}>{open ? 'Close chat' : 'Open chat'}</button></header>
     {open && <div id="gwb-chat-panel" className="gwb-chat-panel">
       <div className="gwb-chat-tools"><label>NFL scoring<select value={format} disabled={busy} onChange={event => {
         const value = event.target.value; if (value === 'ppr' || value === 'half' || value === 'standard') setFormat(value);
@@ -165,14 +165,8 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
           {!!message.choices?.length && <div className="gwb-chat-choices">{message.choices.map(entry => <button key={labPlayerKey(entry)} type="button" disabled={busy} onClick={() => {
             append({ role: 'user', text: [`${entry.player.name} / ${entry.sport}`] }); void answer(message.question ?? entry.player.name, [entry]);
           }}>{entry.player.name}<small>{entry.sport} / {entry.sport === 'NFL' ? entry.player.teamAbbr : entry.player.team.abbr} / {entry.player.position}</small></button>)}</div>}
-          {message.answer?.nfl && <details><summary>Full NFL analysis and saved history</summary>{renderNFL(message.answer.nfl, () => setMessages(previous => previous.filter(row => row.id !== message.id)))}</details>}
-          {message.answer?.nba && <details><summary>Recent NBA games and source details</summary>
-            <p>Saved forecast: {message.answer.nba.forecastAt ? new Date(message.answer.nba.forecastAt).toLocaleString() : 'Unavailable'}. Missing values are not estimated.</p>
-            <div className="gwb-chat-table"><table><thead><tr><th>Date / opponent</th><th>PTS</th><th>REB</th><th>AST</th><th>PRA</th><th>3PM</th></tr></thead><tbody>
-              {message.answer.nba.profile?.games.slice(0, 15).map(game => <tr key={game.id}><th>{new Date(game.date).toLocaleDateString()} / {game.opponent}</th>
-                {(['points', 'rebounds', 'assists', 'pra', 'threePointersMade'] as const).map(key => <td key={key}>{nbaStatValue(game.stats, key) ?? 'Unavailable'}</td>)}</tr>)}
-            </tbody></table></div>{!message.answer.nba.profile?.games.length && <p>No verified game log is available.</p>}
-          </details>}
+          {message.answer?.nfl && renderNFL(message.answer.nfl, () => setMessages(previous => previous.filter(row => row.id !== message.id)))}
+          {message.answer?.nba && <NBAPlayerCard report={message.answer.nba} onClear={() => setMessages(previous => previous.filter(row => row.id !== message.id))} />}
         </article>)}
         {busy && <p role="status">Checking recorded stats and the saved matchup model...</p>}<div ref={end} />
       </div>

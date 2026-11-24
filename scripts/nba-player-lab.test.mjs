@@ -249,6 +249,7 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
   const jsx = (type, props) => ({ type, props });
   const nfl = { id: '1', teamId: '1', name: 'Josh Allen', teamAbbr: 'BUF', position: 'QB' };
   const nba = { ...player, id: '1', name: 'LeBron James' };
+  const nbaCard = () => null;
   const api = moduleFor('../src/PlayerLabChat.tsx', {
     react: {
       useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial;
@@ -259,14 +260,19 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
     './services/gamewireBot': { readDirectorySnapshot: () => ({ players: [nfl] }) },
     './services/nbaPlayerLab': { readNBAPlayerLabDirectory: () => ({ season: 2027, players: [nba] }) },
     './services/playerLabChat': { ...chat(), async loadLabAnswer(entry, question, format) {
-      calls.push({ entry, question, format }); return { text: [`Verified ${entry.sport} answer for ${entry.player.name}`] };
+      calls.push({ entry, question, format });
+      const text = [`Verified ${entry.sport} answer for ${entry.player.name}`];
+      if (research().isHitQuestion(question)) return { text, hitRates: research().buildHitReport(entry.player.name,
+        research().hitRequest(question), [{ id: 'game', date: '2026-01-01', value: 25 }]) };
+      return entry.sport === 'NFL' ? { text, nfl: { player: entry.player } } : { text, nba: { player: entry.player } };
     } },
     './services/nbaStats': { nbaStatValue }, './services/renderSnapshots': {}, './services/foregroundRefresh': {},
     './services/playerLabResearch': research(),
+    './PlayerLabCards': { NBAPlayerCard: nbaCard },
   });
 
   const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];
-  const render = () => { stateIndex = 0; refIndex = 0; return walk(api.default({ renderNFL: () => null })); };
+  const render = () => { stateIndex = 0; refIndex = 0; return walk(api.default({ renderNFL: report => jsx('nfl-player-card', { report }) })); };
   let nodes = render();
   nodes.find(node => node.props?.['aria-controls'] === 'gwb-chat-panel').props.onClick();
   async function send(question) {
@@ -284,9 +290,17 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
   assert.equal(nodes.filter(node => node.props?.className === 'gwb-chat-message is-user').length, 3);
   assert.equal(nodes.filter(node => node.props?.className === 'gwb-chat-message is-assistant').length, 3);
   assert.ok(!nodes.some(node => node.props?.['aria-label'] === 'Player Lab league'), 'No separate sport tabs');
+  assert.ok(nodes.some(node => node.type === 'nfl-player-card'), 'NFL projections stay directly in the conversation');
+  assert.ok(nodes.some(node => node.type === nbaCard), 'NBA cards stay directly in the conversation');
+  await send('LeBron points hit rates last 10 games over 20');
+  assert.equal(nodes.filter(node => node.type === 'textarea').length, 1);
+  assert.equal(nodes.filter(node => node.props?.className === 'gwb-chat-thread').length, 1);
+  assert.ok(nodes.some(node => node.type === 'table'), 'Research results use the same conversation');
+  await send('Hit rates for points last 5 games over 20');
+  assert.equal(calls.at(-1).entry.player.name, 'LeBron James', 'Research follow-ups retain the selected player');
 });
 
-test('Primary Player Lab restores direct cards with one NFL/NBA search, scoring and comparison', async () => {
+test('Reusable player cards retain NFL/NBA projections and scoring while the primary Lab uses one chat', async () => {
     const states = [], refs = [], calls = [];
     let stateIndex = 0, refIndex = 0;
     const jsx = (type, props) => ({ type, props });
@@ -344,5 +358,5 @@ test('Primary Player Lab restores direct cards with one NFL/NBA search, scoring 
     assert.match(populated, /No saved estimate/, 'Absent threes stay unavailable');
     assert.doesNotMatch(populated, /10th|90th|model reference games|Verified opponent adjustment/);
     assert.doesNotMatch(populated, /"type":"img"/, 'Player cards do not load provider face photos');
-    assert.match(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'), /return <PlayerLabCards/);
+    assert.match(readFileSync(new URL('../src/GamewireBot.tsx', import.meta.url), 'utf8'), /return <PlayerLabChat initiallyOpen/);
 });

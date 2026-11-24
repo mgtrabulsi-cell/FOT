@@ -487,7 +487,7 @@ export function NFLPlayerLab() {
   </section>;
 }
 import GamewaireBreakdown from './GamewaireBreakdown';
-import PlayerLabCards from './PlayerLabCards';
+import PlayerLabChat from './PlayerLabChat';
 export default function GamewireBot() {
-  return <PlayerLabCards renderNFL={(report, remove) => <Breakdown report={report} onClear={remove} busy={false} />} />;
+  return <PlayerLabChat initiallyOpen renderNFL={(report, remove) => <Breakdown report={report} onClear={remove} busy={false} />} />;
 }
