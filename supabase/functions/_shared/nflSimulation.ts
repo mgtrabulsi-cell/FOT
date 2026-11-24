@@ -3,10 +3,10 @@ import { overtimeRulesSource, readOvertimeDrives, simulateOvertime, validateOver
 import type { OvertimeDrive, OvertimeEvidence } from './nflSimulationOvertime.ts';
 import type { SimulationQBMatchup } from './nflSimulationMatchup.ts';
 
-export const nflSimulationVersion = 'nfl-joint-bootstrap-v7';
-export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v6';
+export const nflSimulationVersion = 'nfl-joint-bootstrap-v8';
+export const previousNFLSimulationVersion = 'nfl-joint-bootstrap-v7';
 export const legacyNFLSimulationVersion = 'nfl-joint-bootstrap-v1';
-export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v5', 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3', 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
+export const readableNFLSimulationVersions = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v6', 'nfl-joint-bootstrap-v5', 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3', 'nfl-joint-bootstrap-v2', legacyNFLSimulationVersion];
 export const nflSimulationRuns = 1000;
 export type SimulationPosition = 'QB' | 'RB' | 'WR' | 'TE';
 export type SimulationStat = { passingAttempts: number; completions: number; passingYards: number; passingTouchdowns: number; rushingAttempts: number; rushingYards: number; rushingTouchdowns: number; receptions: number; receivingYards: number; receivingTouchdowns: number };
@@ -21,7 +21,7 @@ export type SimulationPlayerResult = { id: string; name: string; position: Simul
 type BaseTotal = 'passingYards' | 'rushingYards' | 'receptions' | 'otherReceivingYards' | 'otherReceptions' | 'otherRushingYards';
 type TouchdownTotal = 'passingTouchdowns' | 'rushingTouchdowns' | 'otherReceivingTouchdowns' | 'otherRushingTouchdowns';
 export type SimulationTeamTotals = Record<BaseTotal, SimulationRange> & Partial<Record<TouchdownTotal, SimulationRange>>;
-export type SimulationTeamResult = { id: string; name: string; abbr: string; score: SimulationRange; winProbability: number; players: SimulationPlayerResult[]; teamOnly?: boolean; matchup?: { passingYardsMultiplier: number; rushingYardsMultiplier: number }; totals: SimulationTeamTotals | null };
+export type SimulationTeamResult = { id: string; name: string; abbr: string; score: SimulationRange; winProbability: number; players: SimulationPlayerResult[]; teamOnly?: boolean; matchup?: { passingYardsMultiplier: number; rushingYardsMultiplier: number; qbRushingYardsMultiplier?: number }; totals: SimulationTeamTotals | null };
 export type SimulationScenario = { id: string; label: string; quarterbacks: { home: string; away: string }; issue: string | null; home: SimulationTeamResult | null; away: SimulationTeamResult | null; tieProbability: number | null; projectedOvertime?: { method: 'empirical-score-continuation-v1'; home: number; away: number; startingScore: number; source: 'pregame' | 'archive-extension'; runs: number; decisiveRuns: number }; overtime?: { method: 'empirical-possession-bootstrap-v1'; rules: string; rulesSource: string; evidenceEvents: { home: string[]; away: string[] }; probability: number; samples: { home: number; away: number }; attribution: 'score-only'; seasonType: 2 | 3 } };
 export type SimulationLearningMetric = 'score' | 'passingYards' | 'rushingYards';
 export type SimulationPlayerLearningKey = `${SimulationPosition}:${keyof SimulationStat}`;
@@ -38,7 +38,7 @@ export const simulationStatKeys: Array<keyof SimulationStat> = ['passingAttempts
 
 export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: string, teams: { home: string; away: string }): NFLGameSimulation {
   const row = object(value), progress = object(row.progress), history = object(row.history);
-  const flexible = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v5', 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3'].includes(String(row.version));
+  const flexible = [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v6', 'nfl-joint-bootstrap-v5', 'nfl-joint-bootstrap-v4', 'nfl-joint-bootstrap-v3'].includes(String(row.version));
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   const integer = (n: unknown) => finite(n) && Number.isInteger(n) && n >= 0;
   const strings = (values: unknown) => Array.isArray(values) && values.every(n => typeof n === 'string');
@@ -87,8 +87,9 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
   const team = (value: unknown, id: string) => {
     const t = object(value), totals = object(t.totals);
     if (t.id !== id || typeof t.name !== 'string' || typeof t.abbr !== 'string' || !range(t.score) || !probability(t.winProbability)) return false;
-    if (t.matchup !== undefined && !['passingYardsMultiplier', 'rushingYardsMultiplier'].every(key => {
+    if (t.matchup !== undefined && !['passingYardsMultiplier', 'rushingYardsMultiplier', 'qbRushingYardsMultiplier'].every(key => {
       const factor = object(t.matchup)[key];
+      if (key === 'qbRushingYardsMultiplier' && factor === undefined) return true;
       return typeof factor === 'number' && Number.isFinite(factor) && factor >= Math.sqrt(.5) && factor <= Math.sqrt(1.5);
     })) return false;
     if (t.teamOnly === true) return flexible && row.evidenceMode === 'team-only' && t.totals === null && Array.isArray(t.players) && t.players.length === 0;
@@ -98,12 +99,12 @@ export function readNFLGameSimulation(value: unknown, eventId: string, kickoff: 
       && Array.isArray(t.players) && t.players.every(raw => {
         const p = object(raw), stats = object(p.stats);
         return typeof p.id === 'string' && /^\d{1,12}$/.test(p.id) && typeof p.name === 'string' && ['QB', 'RB', 'WR', 'TE'].includes(String(p.position))
-          && integer(p.games) && Number(p.games) <= ([nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v5'].includes(String(row.version)) ? 100 : 30) && integer(p.headToHeadGames) && Number(p.headToHeadGames) <= Number(p.games)
+          && integer(p.games) && Number(p.games) <= ([nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v6', 'nfl-joint-bootstrap-v5'].includes(String(row.version)) ? 100 : 30) && integer(p.headToHeadGames) && Number(p.headToHeadGames) <= Number(p.games)
           && strings(p.priorTeams) && (p.priorTeams as string[]).every(id => /^\d{1,12}$/.test(id))
           && typeof p.status === 'string' && typeof p.role === 'string' && (p.issue === null || typeof p.issue === 'string')
           && (flexible ? typeof p.limited === 'boolean' : p.limited === undefined || typeof p.limited === 'boolean')
           && (row.evidenceMode !== 'full' || p.limited !== true)
-          && (p.estimate === undefined || [nflSimulationVersion, previousNFLSimulationVersion].includes(String(row.version)) && row.evidenceMode === 'limited'
+          && (p.estimate === undefined || [nflSimulationVersion, previousNFLSimulationVersion, 'nfl-joint-bootstrap-v6'].includes(String(row.version)) && row.evidenceMode === 'limited'
             && p.limited === true && object(p.estimate).method === 'team-position-average-v1'
             && integer(object(p.estimate).games) && Number(object(p.estimate).games) >= 4 && Number(object(p.estimate).games) <= 100)
           && p.stats !== null && typeof p.stats === 'object' && !Array.isArray(p.stats)
@@ -374,6 +375,33 @@ export function simulationPlayerWeights(rows: SimulationObservation[], season: n
 }
 function weighted<T>(rows: T[], weight: number[], value: (row: T) => number) {
   return rows.reduce((sum, row, i) => sum + weight[i] * value(row), 0) / weight.reduce((a, b) => a + b, 0);
+}
+export function simulationPasserRushingAdjustment(reference: SimulationSide[], referenceWeights: number[],
+  defense: SimulationSide[], defenseWeights: number[]): number | null {
+  const evidence = (sides: SimulationSide[], weights: number[]) => {
+    if (sides.length !== weights.length || weights.some(value => !Number.isFinite(value) || value <= 0))
+      throw new Error('Passer rushing evidence requires matching, positive finite weights.');
+    let games = 0, attempts = 0, weightedAttempts = 0, weightedYards = 0;
+    for (const [index, side] of sides.entries()) {
+      const passers = Object.values(side.players).filter(player => (player.passingAttempts ?? 0) >= 10);
+      // A missing rushing row is not an observed zero; do not use partially recorded games.
+      if (!passers.length || passers.some(player => player.rushingAttempts === undefined || player.rushingYards === undefined)) continue;
+      for (const player of passers) {
+        if (!Number.isInteger(player.passingAttempts) || !Number.isInteger(player.rushingAttempts) || player.rushingAttempts! < 0 || !Number.isFinite(player.rushingYards)
+          || player.rushingAttempts === 0 && player.rushingYards !== 0)
+          throw new Error('Passer rushing evidence contains invalid recorded production.');
+        attempts += player.rushingAttempts!;
+        weightedAttempts += player.rushingAttempts! * weights[index];
+        weightedYards += player.rushingYards! * weights[index];
+      }
+      games++;
+    }
+    return games >= 8 && attempts >= 40 ? { rate: weightedYards / weightedAttempts, attempts } : null;
+  };
+  const baseline = evidence(reference, referenceWeights), allowed = evidence(defense, defenseWeights);
+  if (!baseline || !allowed || baseline.rate <= 0) return null;
+  const confidence = Math.min(baseline.attempts, allowed.attempts) / (Math.min(baseline.attempts, allowed.attempts) + 40);
+  return Math.max(.9, Math.min(1.1, 1 + confidence * (Math.sqrt(Math.max(0, allowed.rate) / baseline.rate) - 1)));
 }
 const cumulativeWeights = new WeakMap<number[], number[]>();
 function draw<T>(rows: T[], weight: number[], random: () => number): T {
@@ -678,8 +706,13 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
       const ratio = (a: number, b: number) => Math.sqrt(Math.max(.5, Math.min(1.5, a / Math.max(.01, b))));
       const upside = new Map<string, number>();
       const personalQB = cohorts.get(`${qb.id}:passing`)?.rows.filter(row => !row.basis) ?? [];
+      const qbRushRows = cohorts.get(`${qb.id}:rushing`)?.rows ?? [];
+      const qbRushAdjustment = !qb.uncertain && qbRushRows.length >= 8 && qbRushRows.every(row => !row.basis)
+        ? simulationPasserRushingAdjustment(reference.map(row => row.opponent), referenceWeight,
+          defenseRows.map(row => row.opponent), defenseWeights) : null;
       const recentDefense = defenseRows.filter(row => Date.parse(row.date) >= Date.UTC(game.season, 6, 1)).slice(0, 5);
       for (const p of usable) for (const market of ['receiving', 'rushing'] as const) {
+        if (p.position === 'QB' && market === 'rushing' && qbRushAdjustment !== null) continue;
         const cohort = cohorts.get(`${p.id}:${market}`);
         if (!cohort || cohort.rows.some(row => row.basis) || p.uncertain || personalQB.length < 4 || recentDefense.length < 4) continue;
         const rows = cohort.rows, opportunity = market === 'receiving' ? 'receptions' : 'rushingAttempts';
@@ -701,6 +734,7 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
         upside.set(`${p.id}:${market}`, Math.max(1, Math.min(1.35, recentRate / Math.max(.01, referenceRate)) / ordinary));
       }
       return { active, usable, cohorts, upside, passAdjustment: ratio(allowedPass, referencePass), rushAdjustment: ratio(allowedRush, referenceRush),
+        qbRushAdjustment: qbRushAdjustment ?? ratio(allowedRush, referenceRush),
         scoringAdjustment: ratio(allowedScoring, referenceScoring), passTDAdjustment: ratio(allowedPassTD, referencePassTD), rushTDAdjustment: ratio(allowedRushTD, referenceRushTD) };
     };
     const homeSetup = setup(game.home.id, homeQB, awayRows, awayWeight), awaySetup = setup(game.away.id, awayQB, homeRows, homeWeight);
@@ -737,7 +771,8 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
         rushers.map(p => context.cohorts.get(`${p.id}:rushing`)!.rows.some(row => !!row.basis)));
       const baseRushing = rushers.map((_p, i) => {
         const observed = rushingSamples[i].player;
-        return Math.max(0, Math.round(carries[i] * observed.rushingYards! / Math.max(1, observed.rushingAttempts!) * context.rushAdjustment
+        const adjustment = rushers[i].position === 'QB' ? context.qbRushAdjustment : context.rushAdjustment;
+        return Math.max(0, Math.round(carries[i] * observed.rushingYards! / Math.max(1, observed.rushingAttempts!) * adjustment
           * (context.upside.get(`${rushers[i].id}:rushing`) ?? 1)));
       });
       const rushing = baseRushing.map((yards, i) => Math.round(yards * factor(rushers[i], 'rushingYards', learned.rushingYards)));
@@ -775,7 +810,7 @@ export function simulateNFLGame(game: SimulationGame, history: { home: Simulatio
     }
     const finish = (team: SimulationGame['home'], context: ReturnType<typeof setup>, draws: TeamDraw[], wins: number): SimulationTeamResult => ({
       ...team, score: simulationRange(draws.map(row => row.points)), winProbability: wins / runs,
-      matchup: { passingYardsMultiplier: context.passAdjustment, rushingYardsMultiplier: context.rushAdjustment },
+      matchup: { passingYardsMultiplier: context.passAdjustment, rushingYardsMultiplier: context.rushAdjustment, qbRushingYardsMultiplier: context.qbRushAdjustment },
       totals: Object.fromEntries((['passingYards', 'rushingYards', 'receptions', 'otherReceivingYards', 'otherReceptions', 'otherRushingYards',
         'passingTouchdowns', 'rushingTouchdowns', 'otherReceivingTouchdowns', 'otherRushingTouchdowns'] as const)
         .map(key => [key, simulationRange(draws.map(row => row[key]))])) as SimulationTeamTotals,

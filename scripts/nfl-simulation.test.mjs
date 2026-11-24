@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as jsxRuntime from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { archivedProjectionOvertimeEvidence, modelProjectedOvertime, projectedSimulationScore, selectedSimulationScenario, legacyNFLSimulationVersion, previousNFLSimulationVersion, nflSimulationVersion, readNFLGameSimulation, roundedSimulationBox, simulateNFLGame, simulateNFLTeamScore, simulationBox, simulationGame, simulationObservations, simulationPlayerWeights, simulationPlayerLogs, simulationPlayerSeasons, simulationSchedule } from '../supabase/functions/_shared/nflSimulation.ts';
+import { simulationPasserRushingAdjustment } from '../supabase/functions/_shared/nflSimulation.ts';
 import * as qbMatchup from '../supabase/functions/_shared/nflSimulationMatchup.ts';
 import { alignSimulationEvidence, matchesSimulationAlignment, reconcileSimulationProjections, simulationAlignmentStamp, simulationAllowsMoneyline, simulationAllowsTeamPick } from '../supabase/functions/_shared/nflSimulationAlignment.ts';
 import { modelVersion } from '../supabase/functions/_shared/gamewaire.ts';
@@ -20,6 +21,72 @@ import { readOvertimeDrives, simulateOvertime, validateOvertimeEvidence } from '
 import { PGlite } from '@electric-sql/pglite';
 
 const now = Date.parse('2026-11-05T18:00:00Z');
+test('Passer rushing matchup requires recorded role evidence and shrinks bounded efficiency, not all-rusher totals', () => {
+  const rows = (yards, attempts = 5, count = 8) => Array.from({ length: count }, () => ({
+    ...side('3', false), players: { '31': { passingAttempts: 30, rushingAttempts: attempts, rushingYards: yards },
+      '33': { rushingAttempts: 20, rushingYards: 2000 } },
+  }));
+  const weights = Array(8).fill(1), baseline = rows(20);
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, baseline, weights), 1);
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, rows(80), weights), 1.1);
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, rows(0), weights), .9);
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, rows(-5), weights), .9, 'Recorded kneel losses are valid evidence');
+  const moderate = simulationPasserRushingAdjustment(baseline, weights, rows(24), weights);
+  assert.ok(Math.abs(moderate - (1 + .5 * (Math.sqrt(1.2) - 1))) < 1e-12);
+  const sparse = rows(100, 5, 7);
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, sparse, weights.slice(1)), null);
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, rows(80, 4), weights), null);
+  const missing = rows(80);
+  delete missing[0].players['31'].rushingYards;
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, missing, weights), null);
+  const unqualified = rows(80);
+  unqualified[0].players['31'].passingAttempts = 9;
+  assert.equal(simulationPasserRushingAdjustment(baseline, weights, unqualified, weights), null);
+  assert.equal(simulationPasserRushingAdjustment([], [], baseline, weights), null);
+  assert.equal(simulationPasserRushingAdjustment(rows(0), weights, baseline, weights), null);
+  assert.throws(() => simulationPasserRushingAdjustment(baseline, [], baseline, weights), /weights/);
+  assert.throws(() => simulationPasserRushingAdjustment(baseline, weights, baseline, weights.map(() => NaN)), /weights/);
+  const invalid = rows(80);
+  invalid[0].players['31'].rushingAttempts = -1;
+  assert.throws(() => simulationPasserRushingAdjustment(baseline, weights, invalid, weights), /invalid/);
+});
+test('Role-specific QB rushing replaces aggregate adjustment without boosting RBs or changing carries', () => {
+  const f = fixture();
+  for (const box of [...f.history.home, ...f.history.away]) {
+    const opponent = box.teams[1];
+    opponent.players = { passer: { passingAttempts: 30, rushingAttempts: 5, rushingYards: 20 } };
+  }
+  const simulate = () => simulateNFLGame(game, f.history, f.players, f.observations, 500)[0];
+  const original = simulate();
+  for (const box of f.history.away) box.teams[1].players.passer.rushingYards = 80;
+  const changed = simulate();
+  const find = (scenario, id) => scenario.home.players.find(player => player.id === id);
+  assert.ok(changed.home.matchup.qbRushingYardsMultiplier > original.home.matchup.qbRushingYardsMultiplier);
+  assert.ok(find(changed, '11').stats.rushingYards.mean > find(original, '11').stats.rushingYards.mean);
+  assert.deepEqual(find(changed, '11').stats.rushingAttempts, find(original, '11').stats.rushingAttempts);
+  assert.deepEqual(find(changed, '13').stats.rushingYards, find(original, '13').stats.rushingYards);
+  for (const row of f.observations.get('11')) row.basis = 'team-position-average-v1';
+  const estimated = simulate();
+  assert.equal(estimated.home.matchup.qbRushingYardsMultiplier, estimated.home.matchup.rushingYardsMultiplier);
+  for (const row of f.observations.get('11')) delete row.basis;
+  f.players.find(player => player.id === '11').uncertain = true;
+  const uncertain = simulate();
+  assert.equal(uncertain.home.matchup.qbRushingYardsMultiplier, uncertain.home.matchup.rushingYardsMultiplier);
+});
+test('V6 and V7 cached forecast capabilities remain readable; QB multiplier metadata is validated', () => {
+  const f = fixture(), modeled = response(simulateNFLGame(game, f.history, f.players, f.observations, 500));
+  for (const version of ['nfl-joint-bootstrap-v6', 'nfl-joint-bootstrap-v7', nflSimulationVersion]) {
+    const forecast = structuredClone(modeled);
+    forecast.version = version;
+    forecast.evidenceMode = 'limited';
+    forecast.scenarios[0].home.players[0].games = 100;
+    forecast.scenarios[0].home.players[0].limited = true;
+    forecast.scenarios[0].home.players[0].estimate = { method: 'team-position-average-v1', games: 8 };
+    assert.equal(readNFLGameSimulation(forecast, game.id, game.date, { home: '1', away: '2' }), forecast);
+  }
+  modeled.scenarios[0].home.matchup.qbRushingYardsMultiplier = NaN;
+  assert.throws(() => readNFLGameSimulation(modeled, game.id, game.date, { home: '1', away: '2' }), /invalid/);
+});
 const game = { id: '90000', date: '2026-11-15T18:00:00Z', season: 2026, seasonType: 2,
   home: { id: '1', name: 'Home Team', abbr: 'HOM' }, away: { id: '2', name: 'Away Team', abbr: 'AWY' } };
 const date = i => new Date(now - (i + 1) * 7 * 86400000).toISOString();
@@ -239,6 +306,18 @@ test('SQL archives current overtime metadata and retains older v4 model rows wit
     assert.equal(rows.rows[0].model_version, 'nfl-joint-bootstrap-v4');
     assert.equal(rows.rows[0].payload.scenarios[0].overtime, undefined);
     readNFLGameSimulation(rows.rows[0].payload, game.id, kickoff, { home: '1', away: '2' });
+    await db.exec(sql.slice(sql.indexOf('alter table public.gamewire_simulation_jobs', sql.indexOf('create extension if not exists pg_cron')),
+      sql.indexOf('create or replace function public.gamewire_fail_simulation')));
+    for (const version of [previousNFLSimulationVersion, nflSimulationVersion]) {
+      await db.query('select public.gamewire_request_simulation($1,$2::timestamptz,$3)', ['90008', kickoff, version]);
+      await db.query('select public.gamewire_queue_simulations($1::jsonb)', [JSON.stringify([
+        { event_id: '90009', event_start: kickoff, model_version: version },
+      ])]);
+    }
+    const queued = await db.query("select model_version from public.gamewire_simulation_jobs where event_id in ('90008','90009')");
+    assert.ok(queued.rows.every(row => row.model_version === nflSimulationVersion));
+    await assert.rejects(db.query('select public.gamewire_request_simulation($1,$2::timestamptz,$3)',
+      ['90008', kickoff, 'nfl-joint-bootstrap-v6']), /upcoming NFL/);
   } finally { await db.close(); }
 });
 const partial = (passingAttempts, completions, passingYards, rushingAttempts, rushingYards, receptions, receivingYards) =>
