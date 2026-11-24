@@ -8,6 +8,9 @@ import { isHitQuestion, isStartQuestion, teamHitReport } from './services/player
 import type { LabAnswer, LabPlayer } from './services/playerLabChat';
 import { NBAPlayerCard } from './PlayerLabCards';
 import GamewirePercentage from './GamewirePercentage';
+import { isTeamTrendQuestion, teamTrendReport } from './services/teamLabResearch';
+import type { LabTeam } from './services/teamLabResearch';
+import { teamSeasonLabel } from './services/teamGameLogs';
 import { subscribeRenderSnapshots } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
 
@@ -21,6 +24,7 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
   const [open, setOpen] = useState(initiallyOpen), [input, setInput] = useState(''), [players, setPlayers] = useState(initialPlayers);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<LabPlayer | null>(null), [format, setFormat] = useState<BotFormat>('ppr');
+  const [selectedTeam, setSelectedTeam] = useState<LabTeam | null>(null);
   const [loadingDirectory, setLoadingDirectory] = useState(false), [busy, setBusy] = useState(false), [issues, setIssues] = useState<string[]>([]);
   const [revision, setRevision] = useState(0);
   const nextId = useRef(0), request = useRef<AbortController | null>(null), pending = useRef(false), end = useRef<HTMLDivElement>(null);
@@ -79,10 +83,20 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
     }, 75_000);
     try {
       if (!entries.length) {
-        const hitRates = await teamHitReport(question, controller.signal);
-        if (!controller.signal.aborted) append({ role: 'assistant', text: [`${hitRates.name}: last ${hitRates.request.games} completed games. Historical hit rates are not forecast probabilities.`], answer: { text: [], hitRates } });
+        if (isHitQuestion(question) && !isTeamTrendQuestion(question)) {
+          const hitRates = await teamHitReport(question, controller.signal);
+          if (!controller.signal.aborted) { setSelected(null); append({ role: 'assistant', text: [`${hitRates.name}: last ${hitRates.request.games} completed games. Historical hit rates are not forecast probabilities.`], answer: { text: [], hitRates } }); }
+        } else {
+          const followup = selectedTeam && /^(?:what|how|and|their|they|at|on|after|off|coming|home|away|record)\b/i.test(question);
+          const teamRecords = await teamTrendReport(question, controller.signal, followup ? selectedTeam : undefined);
+          if (!controller.signal.aborted) {
+            setSelected(null); setSelectedTeam(teamRecords.scope);
+            append({ role: 'assistant', text: [`${teamRecords.scope.team.name}: completed regular-season records across ${teamRecords.seasons.map(season => teamSeasonLabel(teamRecords.scope.league, season)).join(', ')}.`], answer: { text: [], teamRecords } });
+          }
+        }
         return;
       }
+      setSelectedTeam(null);
       const results = await Promise.allSettled(entries.map(async entry => ({ entry, response: await loadLabAnswer(entry, question, format, controller.signal) })));
       if (controller.signal.aborted) return;
       for (let index = 0; index < results.length; index++) {
@@ -113,6 +127,9 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
     const question = input.trim();
     if (!question || pending.current) return;
     setInput(''); append({ role: 'user', text: [question] });
+    if (isTeamTrendQuestion(question)) {
+      void answer(question, []); return;
+    }
     if (isStartQuestion(question) || /\b(?:compare|vs|versus)\b/i.test(question)) {
       const names = question.split(/\s*(?:,|\bor\b|\band\b|\bvs\.?\b|\bversus\b)\s*/i).filter(name => name.trim());
       const groups = names.map(name => findLabPlayers(name, players));
@@ -131,8 +148,7 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
     }
     if (selected && labFollowup(question)) { void answer(question, [selected]); return; }
     if (isHitQuestion(question)) { void answer(question, []); return; }
-    append({ role: 'assistant', text: [loadingDirectory ? 'Player lists are still refreshing. Try a full name in a moment, or select a saved player below.' : 'Include an NFL or NBA player’s full name or surname. I can explain recorded stats, matchup projections, availability and supported stat lines.'],
-      choices: players.filter(entry => `${entry.player.name} ${entry.sport}`.toLowerCase().includes(question.toLowerCase())).slice(0, 8), question });
+    void answer(question, []);
   }
   const suggestions = input.trim().length >= 2 ? findLabPlayers(input, players).slice(0, 8) : [];
   return <section className="gwb" aria-label="GamewAIre player analysis">
@@ -143,7 +159,7 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
         const value = event.target.value; if (value === 'ppr' || value === 'half' || value === 'standard') setFormat(value);
       }}><option value="ppr">PPR</option><option value="half">Half PPR</option><option value="standard">Standard</option></select></label>
         <button type="button" disabled={busy} onClick={() => setRevision(value => value + 1)}>Refresh players</button>
-        <button type="button" disabled={busy} onClick={() => { setMessages([]); setSelected(null); }}>New conversation</button></div>
+        <button type="button" disabled={busy} onClick={() => { setMessages([]); setSelected(null); setSelectedTeam(null); }}>New conversation</button></div>
       {loadingDirectory && <p role="status">Refreshing NFL and NBA players / {players.length} saved players searchable.</p>}
       {!!issues.length && <details className="gwb-warning"><summary>Some player sources could not refresh</summary>{issues.map((issue, index) => <p key={index}>{issue}</p>)}</details>}
       <div className="gwb-chat-thread" role="log" aria-label="NFL and NBA conversation" aria-live="polite" aria-relevant="additions">
@@ -151,6 +167,19 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
         {messages.map(message => <article key={message.id} className={`gwb-chat-message is-${message.role}`}>
           <strong>{message.role === 'user' ? 'You' : message.player ? `GamewAIre / ${message.player.sport} / ${message.player.player.name}` : 'GamewAIre'}</strong>
           {message.text.filter(Boolean).map((text, index) => <p key={index}>{text}</p>)}
+          {message.answer?.teamRecords && <section className="gwb-hit-results" aria-label={`${message.answer.teamRecords.scope.team.name} team records`}>
+            <div className="gwb-chat-table"><table>
+              <caption>Current season + previous two · Regular season only</caption>
+              <thead><tr><th scope="col">Split</th><th scope="col">Record</th><th scope="col">Games</th><th scope="col">Win %</th></tr></thead>
+              <tbody>{message.answer.teamRecords.rows.map(row => <tr key={row.label}><th scope="row">{row.label}</th>
+                <td>{row.label.includes('bye') && !message.answer!.teamRecords!.byeSupported ? 'Unavailable' : `${row.wins}-${row.losses}${message.answer!.teamRecords!.scope.league === 'NFL' ? `-${row.ties}` : ''}`}</td>
+                <td>{row.games}</td><td><GamewirePercentage value={row.percent} /></td></tr>)}</tbody>
+            </table></div>
+            <p className="gwb-muted">Loss streaks reset each season. Neutral-site games are excluded from home/away splits. NFL win percentage counts a tie as half a win; records are straight-up, not ATS.</p>
+            {message.answer.teamRecords.scope.league === 'NFL' ? <p className="gwb-muted">Bye records use the first scheduled regular-season game after the verified official bye, excluding playoff byes.</p> : <p className="gwb-muted">NBA has no NFL-style official bye; extended rest is not labeled a bye.</p>}
+            {message.answer.teamRecords.issues.map((issue, index) => <p className="gwb-warning" key={index}>{issue}</p>)}
+            {!!message.answer.teamRecords.issues.length && <p className="gwb-warning">Partial verified history only; unavailable seasons or bye schedules are excluded.</p>}
+          </section>}
           {message.answer?.hitRates && <section className="gwb-hit-results" aria-label={`${message.answer.hitRates.name} historical hit rates`}>
             <div className="gwb-chat-table"><table>
               <caption>{message.answer.hitRates.metric} · {message.answer.hitRates.request.comparison} each threshold</caption>
@@ -172,9 +201,10 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
         {busy && <p role="status">Checking recorded stats and the saved matchup model...</p>}<div ref={end} />
       </div>
       {selected && <p className="gwb-chat-context">Following {selected.player.name} / {selected.sport}. Name another player anytime.</p>}
+      {selectedTeam && <p className="gwb-chat-context">Following {selectedTeam.team.name} / {selectedTeam.league}. Ask about home/away or loss-streak records.</p>}
       <form className="gwb-chat-composer" onSubmit={event => { event.preventDefault(); send(); }}>
         <label htmlFor="gwb-chat-question">Ask about NFL/NBA players or teams</label><textarea id="gwb-chat-question" value={input} maxLength={1000} rows={2}
-          placeholder="T Higgins receiving yards hit rates last 10 games at 50, 75, 100—or should I start Higgins, Chase or Brown?" onChange={event => setInput(event.target.value)} onKeyDown={event => {
+          placeholder="Bengals home record after a loss, Chiefs after a bye, or Higgins receiving-yard hit rates..." onChange={event => setInput(event.target.value)} onKeyDown={event => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send(); }
           }} />
         <button type="submit" disabled={busy || !input.trim()}>Send</button>

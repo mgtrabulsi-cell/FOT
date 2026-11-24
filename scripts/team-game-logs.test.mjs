@@ -42,6 +42,20 @@ test('directory validates identities and season; season labels preserve NBA endi
   data.sports[0].leagues[0].teams[0].team = { id: '2' };
   assert.throws(() => api.parseTeamLogDirectory(data), /identities/);
 });
+test('Regular-season research does not depend on empty postseason feeds or overwrite all-phase caches', async () => {
+  const f = service();
+  f.respond(async url => {
+    assert.match(url, /seasontype=2/);
+    return { ok: true, json: async () => payload() };
+  });
+  const entries = await f.api.fetchTeamRegularGameLog('NFL', '1', 2025);
+  assert.equal(entries.length, 1);
+  assert.equal(f.requests.length, 1);
+  assert.ok(f.saved.has('teamGameLog:NFL:1:2025:regular'));
+  assert.ok(!f.saved.has('teamGameLog:NFL:1:2025'));
+  await f.api.fetchTeamRegularGameLog('NFL', '1', 2025);
+  assert.equal(f.requests.length, 1);
+});
 test('completed games normalize score objects, sort, deduplicate and preserve zero scores', () => {
   const { api } = service();
   const zero = event('402', '2025-01-04T00:00:00Z');

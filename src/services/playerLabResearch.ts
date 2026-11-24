@@ -7,7 +7,7 @@ import { readRenderSnapshot, restoreStatSnapshots } from './renderSnapshots';
 import { fetchTeamGameLog, fetchTeamLogDirectory } from './teamGameLogs';
 import { fetchNFLHistoricalSummary } from './sportsData';
 import { fetchStaticSports } from './sportsDatabase';
-import type { Team } from './sportsData';
+import { resolveLabTeam } from './teamLabResearch';
 
 export type ResearchMetric = 'receivingYards' | 'rushingYards' | 'passingYards' | 'receptions'
   | 'receivingTouchdowns' | 'rushingTouchdowns' | 'passingTouchdowns'
@@ -88,19 +88,8 @@ export async function playerHitReport(entry: LabPlayer, question: string, signal
     id: row.eventId, date: row.date, value: row.stats[request.metric],
   })));
 }
-const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export async function teamHitReport(question: string, signal: AbortSignal): Promise<HitReport> {
-  const request = hitRequest(question), leagues = /\bnba\b/i.test(question) ? ['NBA'] as const : /\bnfl\b/i.test(question) ? ['NFL'] as const : ['NFL', 'NBA'] as const;
-  const matches: { league: 'NFL' | 'NBA'; season: number; team: Team }[] = [];
-  for (const league of leagues) {
-    const directory = await fetchTeamLogDirectory(league, signal);
-    const query = ` ${normalize(question)} `;
-    for (const team of directory.teams) if (query.includes(` ${normalize(team.name)} `)
-      || new RegExp(`\\b${team.abbr}\\b`, 'i').test(question)
-      || query.includes(` ${normalize(team.name.split(' ').at(-1)!)} `)) matches.push({ league, season: directory.season, team });
-  }
-  if (matches.length !== 1) throw new Error(matches.length ? 'Use the full team name and NFL or NBA to disambiguate this request.' : 'Name an NFL or NBA player or team. For teams, try “Bengals points hit rates last 10 games”.');
-  const { team, league, season } = matches[0];
+  const request = hitRequest(question), { team, league, season } = await resolveLabTeam(question, signal);
   if (league === 'NBA' && !request.explicitLevels && ['points', 'pointsAllowed', 'totalPoints'].includes(request.metric)) {
     request.levels = request.metric === 'totalPoints' ? [180, 200, 220, 240, 260] : [90, 100, 110, 120, 130];
   }

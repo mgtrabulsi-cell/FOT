@@ -17,6 +17,7 @@ function load(path, imports) {
 const research = load('../src/services/playerLabResearch.ts', {
   './gamewireBot': {}, './nbaData': {}, './nbaStats': {}, './renderSnapshots': {}, './teamGameLogs': {}, './sportsData': {},
   '../../supabase/functions/_shared/gamewireBot': {}, './sportsDatabase': {},
+  './teamLabResearch': {},
 });
 test('Natural language thresholds do not confuse the game window or 3PM with a stat line', () => {
   const request = research.hitRequest('T Higgins receiving yard hit rates last 10 games at 50, 75, 100');
@@ -67,6 +68,7 @@ test('Team name matching does not confuse Hornets with Nets and reads actual fin
   const api = load('../src/services/playerLabResearch.ts', {
     './gamewireBot': {}, './nbaData': {}, './nbaStats': {}, './renderSnapshots': {}, './sportsData': {},
     '../../supabase/functions/_shared/gamewireBot': {}, './sportsDatabase': {},
+    './teamLabResearch': { resolveLabTeam: async () => ({ team: teams[0], league: 'NBA', season: 2027 }) },
     './teamGameLogs': { fetchTeamLogDirectory: async () => ({ season: 2027, teams }),
       fetchTeamGameLog: async () => [{ seasonType: 2, game: { eventId: '900', date: '2026-01-01', home: teams[0], away: teams[1] } }] },
   });
@@ -122,6 +124,7 @@ test('NFL fallback uses the full verified game log, not the subset of games with
     './nbaData': {}, './nbaStats': {}, './teamGameLogs': {}, './sportsData': {},
     './renderSnapshots': { restoreStatSnapshots: async () => {}, readRenderSnapshot: () => null },
     './sportsDatabase': { fetchStaticSports: async url => { assert.match(url, /athletes\/123\/gamelog\?season=2026/); return { ok: true, json: async () => payload }; } },
+    './teamLabResearch': {},
   });
   test('GameWire result percentages are green only above 50, never at 50 or for unavailable values', () => {
     const component = load('../src/GamewirePercentage.tsx', { 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) } }).default;

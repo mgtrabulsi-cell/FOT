@@ -106,3 +106,16 @@ export async function fetchTeamGameLog(league: TeamLogLeague, teamId: string, se
   saveRenderSnapshot('teamGameLog', key, { entries: unique });
   return unique;
 }
+
+export async function fetchTeamRegularGameLog(league: TeamLogLeague, teamId: string, season: number, signal?: AbortSignal) {
+  if (!/^\d+$/.test(teamId) || !Number.isInteger(season) || season < 2002 || season > new Date().getFullYear() + 1)
+    throw new Error('Choose a valid team and season.');
+  const key = `${teamLogKey(league, teamId, season)}:regular`;
+  const saved = readRenderSnapshot('teamGameLog', key, 300000) ?? readRenderSnapshot('teamGameLog', teamLogKey(league, teamId, season), 300000);
+  if (saved) return saved.entries.filter(row => row.seasonType === 2);
+  const entries = parseTeamGameLog(await get(`${base}/${path(league)}/teams/${teamId}/schedule?season=${season}&seasontype=2&limit=1000`, signal),
+    league, teamId, season, 2);
+  signal?.throwIfAborted();
+  saveRenderSnapshot('teamGameLog', key, { entries });
+  return entries;
+}

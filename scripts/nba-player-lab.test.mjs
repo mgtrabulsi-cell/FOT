@@ -190,6 +190,7 @@ function research() {
   return moduleFor('../src/services/playerLabResearch.ts', {
     './gamewireBot': {}, './nbaData': {}, './nbaStats': { nbaStatValue }, './renderSnapshots': {}, './teamGameLogs': {}, './sportsData': {},
     '../../supabase/functions/_shared/gamewireBot': {}, './sportsDatabase': {},
+    './teamLabResearch': {},
   });
 }
 function chat() {
@@ -244,7 +245,7 @@ test('Conversational NBA stat lines ignore the 3 in 3-pointers and retain saved 
 });
 
 test('One real chat component keeps NFL, NBA and remembered-player follow-ups in the same conversation', async () => {
-  const states = [], refs = [], calls = [];
+  const states = [], refs = [], calls = [], teamCalls = [];
   let stateIndex = 0, refIndex = 0;
   const jsx = (type, props) => ({ type, props });
   const nfl = { id: '1', teamId: '1', name: 'Josh Allen', teamAbbr: 'BUF', position: 'QB' };
@@ -270,6 +271,14 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
     './services/playerLabResearch': research(),
     './PlayerLabCards': { NBAPlayerCard: nbaCard },
     './GamewirePercentage': { default: () => null },
+    './services/teamLabResearch': { isTeamTrendQuestion: question => /\brecord|home|away|bye\b/i.test(question),
+      teamTrendReport: async (question, _signal, context) => {
+        teamCalls.push({ question, context });
+        return { scope: { league: 'NFL', season: 2026, team: { id: '4', name: 'Cincinnati Bengals' } },
+          seasons: [2026, 2025, 2024], rows: [{ label: 'Home', wins: 6, losses: 4, ties: 0, games: 10, percent: 60 }],
+          issues: [], byeSupported: true };
+      } },
+    './services/teamGameLogs': { teamSeasonLabel: (_league, season) => String(season) },
   });
 
   const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];
@@ -299,6 +308,11 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
   assert.ok(nodes.some(node => node.type === 'table'), 'Research results use the same conversation');
   await send('Hit rates for points last 5 games over 20');
   assert.equal(calls.at(-1).entry.player.name, 'LeBron James', 'Research follow-ups retain the selected player');
+  await send('NFL Bengals home record after a loss');
+  assert.ok(nodes.some(node => node.props?.['aria-label'] === 'Cincinnati Bengals team records'));
+  await send('What about away?');
+  assert.equal(teamCalls.at(-1).context.team.name, 'Cincinnati Bengals', 'Team follow-ups preserve the same conversation context');
+  assert.equal(nodes.filter(node => node.type === 'textarea').length, 1);
 });
 
 test('Reusable player cards retain NFL/NBA projections and scoring while the primary Lab uses one chat', async () => {

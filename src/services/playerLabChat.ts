@@ -6,9 +6,10 @@ import { nbaStatValue } from './nbaStats';
 import { fetchScoreboards } from './sportsData';
 import { isHitQuestion, playerHitReport } from './playerLabResearch';
 import type { HitReport } from './playerLabResearch';
+import type { TeamTrendReport } from './teamLabResearch';
 
 export type LabPlayer = { sport: 'NFL'; player: BotPlayer } | { sport: 'NBA'; player: NBAPlayerLabPlayer; season: number };
-export type LabAnswer = { text: string[]; nfl?: BotReport; nba?: NBAPlayerLabReport; hitRates?: HitReport };
+export type LabAnswer = { text: string[]; nfl?: BotReport; nba?: NBAPlayerLabReport; hitRates?: HitReport; teamRecords?: TeamTrendReport };
 export const labPlayerKey = (entry: LabPlayer) => `${entry.sport}:${entry.player.teamId}:${entry.player.id}`;
 const normalized = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export function findLabPlayers(question: string, players: LabPlayer[]): LabPlayer[] {
