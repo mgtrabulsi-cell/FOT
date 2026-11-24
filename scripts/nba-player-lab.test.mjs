@@ -271,6 +271,7 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
     './services/playerLabResearch': research(),
     './PlayerLabCards': { NBAPlayerCard: nbaCard },
     './GamewirePercentage': { default: () => null },
+    'lucide-react': { RefreshCw: () => null },
     './services/teamLabResearch': { isTeamTrendQuestion: question => /\brecord|home|away|bye\b/i.test(question),
       teamTrendReport: async (question, _signal, context) => {
         teamCalls.push({ question, context });
@@ -285,6 +286,11 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
   const render = () => { stateIndex = 0; refIndex = 0; return walk(api.default({ renderNFL: report => jsx('nfl-player-card', { report }) })); };
   let nodes = render();
   nodes.find(node => node.props?.['aria-controls'] === 'gwb-chat-panel').props.onClick();
+  nodes = render();
+  const refresh = nodes.find(node => node.props?.['aria-label'] === 'Refresh players');
+  assert.equal(refresh.props.title, 'Refresh players');
+  assert.equal(typeof refresh.props.children.type, 'function', 'Refresh is an icon, not a text button');
+  assert.equal(refresh.props.children.props['aria-hidden'], 'true');
   async function send(question) {
     nodes = render();
     nodes.find(node => node.type === 'textarea').props.onChange({ target: { value: question } });

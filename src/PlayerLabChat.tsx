@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { loadBotDirectory, readDirectorySnapshot } from './services/gamewireBot';
 import type { BotFormat, BotReport } from './services/gamewireBot';
 import { loadNBAPlayerLabDirectory, readNBAPlayerLabDirectory } from './services/nbaPlayerLab';
@@ -158,7 +159,7 @@ export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { re
       <div className="gwb-chat-tools"><label>NFL scoring<select value={format} disabled={busy} onChange={event => {
         const value = event.target.value; if (value === 'ppr' || value === 'half' || value === 'standard') setFormat(value);
       }}><option value="ppr">PPR</option><option value="half">Half PPR</option><option value="standard">Standard</option></select></label>
-        <button type="button" disabled={busy} onClick={() => setRevision(value => value + 1)}>Refresh players</button>
+        <button type="button" className="gwb-chat-refresh" aria-label="Refresh players" title="Refresh players" disabled={busy} onClick={() => setRevision(value => value + 1)}><RefreshCw size={20} aria-hidden="true" /></button>
         <button type="button" disabled={busy} onClick={() => { setMessages([]); setSelected(null); setSelectedTeam(null); }}>New conversation</button></div>
       {loadingDirectory && <p role="status">Refreshing NFL and NBA players / {players.length} saved players searchable.</p>}
       {!!issues.length && <details className="gwb-warning"><summary>Some player sources could not refresh</summary>{issues.map((issue, index) => <p key={index}>{issue}</p>)}</details>}

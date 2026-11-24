@@ -6,6 +6,7 @@
 .gwb-chat-panel { padding: 16px; min-width: 0; }
 .gwb-chat-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
 .gwb-chat-tools label { display: grid; gap: 5px; font-size: 12px; }
+.gwb-chat-panel .gwb-chat-refresh { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; }
 .gwb-chat-thread { max-height: min(620px, 65dvh); overflow-y: auto; overscroll-behavior: contain; margin: 14px 0; }
 .gwb-chat-message { padding: 14px; border: 1px solid #264663; border-radius: 12px; margin: 10px 0; min-width: 0; }
 .gwb-chat-message.is-user { margin-left: 24px; background: #123952; }
