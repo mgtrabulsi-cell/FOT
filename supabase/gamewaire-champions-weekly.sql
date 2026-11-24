@@ -35,6 +35,9 @@ begin
   definition := replace(definition, 'below 2 credits', 'below 5 credits');
   if position('remaining<5' in definition)=0 then raise exception 'Soccer credit guard was not upgraded'; end if;
   execute definition;
+  definition := pg_get_functiondef('public.gamewaire_soccer_publication_guard()'::regprocedure);
+  definition := replace(definition, '''soccer-probability-v4''', '''soccer-probability-v5''');
+  execute definition;
 end $$;
 
 -- Retire only unstarted daily jobs superseded by this week's Monday plan.

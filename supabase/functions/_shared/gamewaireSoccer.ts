@@ -4,6 +4,7 @@ import { publicJSON } from './gamewaireSources.ts';
 import type { Matchup } from './gamewaireSources.ts';
 
 export const soccerPaths: Record<SoccerSport, string> = { EPL: 'soccer/eng.1', 'Serie A': 'soccer/ita.1', 'La Liga': 'soccer/esp.1', Bundesliga: 'soccer/ger.1', 'Champions League': 'soccer/uefa.champions' };
+const soccerSampleMinimum = (sport: SoccerSport) => sport === 'Champions League' ? 4 : 8;
 const aliases: Record<string, string> = {
   manchesterunited: 'manchesterunited', manunited: 'manchesterunited', manchestercity: 'manchestercity', mancity: 'manchestercity',
   wolverhamptonwanderers: 'wolves', wolves: 'wolves', tottenhamhotspur: 'tottenham', tottenham: 'tottenham',
@@ -82,9 +83,10 @@ export async function collectSoccerEvidence(quotes: Quote[], matchup: Matchup, n
   const sport = quotes[0].sport;
   if (!isSoccer(sport) || quotes.some(row => row.sport !== sport)) throw new Error('Soccer league evidence cannot be mixed.');
   const cutoff = Math.min(now, Date.parse(quotes[0].start)), path = soccerPaths[sport];
+  const minimumGames = soccerSampleMinimum(sport);
   const seasons = sport === 'Champions League' ? [matchup.season, matchup.season - 1, matchup.season - 2] : [matchup.season];
   const warnings: string[] = ['Experimental soccer analysis; probabilities are not calibrated guarantees. Only the selected competition is used. Regulation time (90 minutes plus stoppage time) only; extra time and shootouts excluded.'];
-  if (seasons.length > 1) warnings.push(`Champions League evidence uses seasons ${seasons.join(', ')} only, with at least eight verified games per team/player. Domestic games are excluded; prior-season squads and opponent strength may differ. Team records and season averages remain current-season only.`);
+  if (seasons.length > 1) warnings.push(`Champions League evidence uses seasons ${seasons.join(', ')} only, with at least four verified games per team/player. Fewer than eight games is limited evidence, not high confidence. Domestic games are excluded; prior-season squads and opponent strength may differ. Team records and season averages remain current-season only.`);
   const teams = await Promise.all([matchup.home, matchup.away].map(async team => {
     const histories = await Promise.all(seasons.map(async season => {
       try {
@@ -125,18 +127,19 @@ export async function collectSoccerEvidence(quotes: Quote[], matchup: Matchup, n
     } else if (!quote.market.startsWith('player_')) samples = [...new Map(teams.flatMap(row => row.games.map(game => ({
       ...game, value: quote.market === 'totals' ? game.total! : game.value,
     }))).map(row => [row.eventId!, row])).values()];
-    const eligible = teams.every(row => row.games.length >= 8 && now - Date.parse(row.games[0].date) <= 35 * 86_400_000)
-      && (!quote.market.startsWith('player_') || samples.length >= 8 && now - Date.parse(samples[0].date) <= 21 * 86_400_000);
-    evidence.set(quote.key, { eligible, soccerLeague: sport, soccerSeasons: seasons, reason: eligible ? undefined : `Insufficient verified same-competition completed games or individual appearances in seasons ${seasons.join(', ')} (minimum eight per team/player). Missing statistics and non-playing games are excluded.`,
+    const eligible = teams.every(row => row.games.length >= minimumGames && now - Date.parse(row.games[0].date) <= 35 * 86_400_000)
+      && (!quote.market.startsWith('player_') || samples.length >= minimumGames && now - Date.parse(samples[0].date) <= 21 * 86_400_000);
+    const limited = eligible && (teams.some(row => row.games.length < 8) || quote.market.startsWith('player_') && samples.length < 8);
+    evidence.set(quote.key, { eligible, soccerLeague: sport, soccerSeasons: seasons, reason: eligible ? undefined : `Insufficient verified same-competition completed games or individual appearances in seasons ${seasons.join(', ')} (minimum ${minimumGames} per team/player). Missing statistics and non-playing games are excluded.`,
       samples, fetchedAt: new Date(now).toISOString(), quality: .75, currentSeason: matchup.season,
-      risks: [...warnings.slice(0, 1), 'Unfitted scoring baseline; opponent strength, injuries and confirmed upcoming lineups are not modeled. Individual stats describe verified appearances, not future playing time.'],
+      risks: [...warnings.slice(0, 1), ...(limited ? ['Limited evidence: fewer than eight verified games per team/player. Small samples increase uncertainty; this is not a high-confidence selection.'] : []), 'Unfitted scoring baseline; opponent strength, injuries and confirmed upcoming lineups are not modeled. Individual stats describe verified appearances, not future playing time.'],
       identifiers: { espnEventId: matchup.eventId, playerId },
       matchupForm: teams.map(row => ({ team: row.team.name, season: matchup.season, record: {
         wins: row.games.filter(game => game.season === matchup.season && game.value > 0).length, losses: row.games.filter(game => game.season === matchup.season && game.value < 0).length, ties: row.games.filter(game => game.season === matchup.season && game.value === 0).length,
       }, recent: row.games })),
     });
   }
-  return { evidence, warnings, coverage: { league: sport, season: matchup.season, seasons, teamGames: teams.map(row => ({ team: row.team.name, games: row.games.length,
+  return { evidence, warnings, coverage: { league: sport, season: matchup.season, seasons, minimumGames, teamGames: teams.map(row => ({ team: row.team.name, games: row.games.length,
     currentSeasonGames: row.games.filter(game => game.season === matchup.season).length })),
     playerCount: offered.length, playerLimit: 24, supportedMarkets: ['h2h', 'totals', ...Object.keys(statNames)], settlement: '90 minutes plus stoppage time' } };
 }
@@ -167,7 +170,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
   }
   for (const quote of best.values()) {
     const data = evidence.get(quote.key), reject = (reason: string) => rejected.push({ key: quote.key, reason });
-    if (!data?.eligible || data.soccerLeague !== quote.sport) { reject(data?.reason ?? 'Verified same-league soccer evidence unavailable.'); continue; }
+    if (!data?.eligible || !data.soccerLeague || data.soccerLeague !== quote.sport) { reject(data?.reason ?? 'Verified same-league soccer evidence unavailable.'); continue; }
     const allowedSeasons = quote.sport === 'Champions League' ? [data.currentSeason, data.currentSeason! - 1, data.currentSeason! - 2] : [data.currentSeason];
     const seasons = data.soccerSeasons ?? [data.currentSeason];
     if (!seasons.length || new Set(seasons).size !== seasons.length || seasons.some(season => !Number.isInteger(season) || !allowedSeasons.includes(season))) { reject('Invalid competition history seasons.'); continue; }
@@ -177,10 +180,11 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     if (!currentSamples.length) { reject('At least one verified current-season observation is required; no current-season average is invented.'); continue; }
     let win = 0, push = 0, projection = 0;
     const average = (rows: Observation[], key: 'pointsFor' | 'pointsAgainst') => rows.reduce((sum, row) => sum + row[key]!, 0) / rows.length;
+    const minimumGames = soccerSampleMinimum(data.soccerLeague);
     if (quote.market === 'h2h' || quote.market === 'totals') {
       const home = data.matchupForm?.find(row => soccerName(row.team) === soccerName(quote.home))?.recent;
       const away = data.matchupForm?.find(row => soccerName(row.team) === soccerName(quote.away))?.recent;
-      if (!home || !away || home.length < 8 || away.length < 8 || [...home, ...away].some(row => !seasons.includes(row.season)
+      if (!home || !away || home.length < minimumGames || away.length < minimumGames || [...home, ...away].some(row => !seasons.includes(row.season)
         || !Number.isFinite(Date.parse(row.date)) || Date.parse(row.date) >= Math.min(now, Date.parse(quote.start)) || !Number.isFinite(row.pointsFor) || !Number.isFinite(row.pointsAgainst))) { reject('Both same-league verified scoring histories are required.'); continue; }
       const h = Math.max(.1, (average(home, 'pointsFor') + average(away, 'pointsAgainst')) / 2);
       const a = Math.max(.1, (average(away, 'pointsFor') + average(home, 'pointsAgainst')) / 2);
@@ -196,7 +200,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
         }
       }
     } else {
-      if (!statNames[quote.market] || data.samples.length < 8) { reject('Unsupported or incomplete individual game statistics.'); continue; }
+      if (!statNames[quote.market] || data.samples.length < minimumGames) { reject('Unsupported or incomplete individual game statistics.'); continue; }
       projection = data.samples.reduce((sum, row) => sum + row.value, 0) / data.samples.length;
       const wins = data.samples.filter(row => quote.side === 'Over' ? row.value > quote.line! : row.value < quote.line!).length;
       const pushes = data.samples.filter(row => row.value === quote.line).length;
@@ -211,6 +215,7 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
     const facts = [`Experimental ${quote.sport} regulation-time estimate: ${(win * 100).toFixed(1)}% win, ${(push * 100).toFixed(1)}% push.`,
       `${n} verified same-competition observations per limiting team/player in seasons ${seasons.join(', ')}; scoring baseline is not a fitted or calibrated forecasting model.`,
       `Projection ${projection.toFixed(2)}; sportsbook ${quote.book} at ${quote.american > 0 ? '+' : ''}${quote.american}.`];
+    if (n < 8) facts.push('Limited evidence: fewer than eight verified games. Small-sample estimates are not high-confidence selections.');
     const observedAverage = (count: number) => {
       const rows = [...data.samples].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, count);
       return rows.reduce((sum, row) => sum + row.value, 0) / rows.length;

@@ -71,6 +71,8 @@ export function PickCard({ pick, record, rank, selection, technical = false, str
       <div><dt>Est. EV</dt><dd>{pick.ev >= 0 ? '+' : ''}{percent(pick.ev)}</dd></div>
     </dl>}
     <p className="gai-note gai-estimate-note">Model hit chance {percent(pick.probability)} · Sportsbook implied {percent(pick.implied)}. Unvalidated estimate, not a guarantee of profit.</p>
+    {pick.sport === 'Champions League' && (pick.effectiveSample < 8 || pick.risks.some(risk => risk.startsWith('Limited evidence:'))) &&
+      <p className="feed-warning">Limited evidence · fewer than eight verified team/player games. Not a high-confidence selection.</p>}
     {pick.sequence && <p className="gai-note">Exact-line form, pushes excluded: last 5 {pick.sequence.last5.hits}/{pick.sequence.last5.games}, last 10 {pick.sequence.last10.hits}/{pick.sequence.last10.games}.
       {' '}{pick.sequence.streak ? `${pick.sequence.streak.games} consecutive ${pick.sequence.streak.outcome === 'hit' ? 'hits' : 'misses'}. ` : ''}
       {pick.sequence.active ? `Sequence adjustment ${(pick.sequence.adjustment * 100).toFixed(1)} pp passed chronological validation (${pick.sequence.validationGames} appearances).` : 'No validated sequence adjustment.'}

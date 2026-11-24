@@ -6,7 +6,7 @@ export const soccerSports = ['EPL', 'Serie A', 'La Liga', 'Bundesliga', 'Champio
 export type SoccerSport = typeof soccerSports[number];
 export type Sport = 'NFL' | 'NBA' | SoccerSport;
 export const isSoccer = (sport: string): sport is SoccerSport => (soccerSports as readonly string[]).includes(sport);
-export const soccerModelVersion = 'soccer-probability-v4';
+export const soccerModelVersion = 'soccer-probability-v5';
 export const modelVersion = 'probability-only-v14';
 export const probabilityModelVersion = 'probability-evidence-v14';
 export const markets = {

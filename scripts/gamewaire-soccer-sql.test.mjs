@@ -36,6 +36,8 @@ test('soccer migration preserves permissions, locks, manual review, settlement/a
     for (const name of ['gamewaire-full-analysis', 'gamewaire-prop-upgrade', 'gamewaire-champions-history',
       'gamewaire-champions-weekly', 'gamewaire-champions-weekly'])
       await db.exec(readFileSync(new URL(`../supabase/${name}.sql`, import.meta.url), 'utf8'));
+    const currentGuard = await db.query("select pg_get_functiondef('public.gamewaire_soccer_publication_guard()'::regprocedure) as definition");
+    assert.ok(currentGuard.rows[0].definition.includes("'soccer-probability-v5'"));
     await db.exec('delete from public.gamewaire_schedule_jobs; delete from public.gamewaire_schedule_batches; delete from public.gamewaire_soccer_schedule_budget;');
     const monday = (await db.query("select date_trunc('week',(now()+interval '7 days') at time zone 'America/New_York')::date::text as date")).rows[0].date;
     const tuesday = new Date(`${monday}T12:00:00Z`); tuesday.setUTCDate(tuesday.getUTCDate() + 1);

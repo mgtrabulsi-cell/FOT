@@ -69,7 +69,7 @@ const scheduleEvent = (league = 'eng.1') => ({ id: 'g', date, season: { year: 20
   competitors: [{ team: { id: '1' }, homeAway: 'home', score: { value: 1, $ref: `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${league}/events/g/scores/1` } },
     { team: { id: '2' }, homeAway: 'away', score: { value: 1, $ref: `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${league}/events/g/scores/2` } }],
 }] });
-test('Champions League combines four current games with verified prior competition seasons without relaxing eight-game eligibility', async () => {
+test('Champions League combines prior seasons and explicitly labels its four-game fallback', async () => {
   const q = { ...quote, sport: 'Champions League' }, requested = [];
   const fetcher = async url => {
     const season = Number(new URL(url).searchParams.get('season'));
@@ -94,8 +94,26 @@ test('Champions League combines four current games with verified prior competiti
     return fetcher(url);
   };
   const sparse = await collectSoccerEvidence([q], { season: 2026, home: { id: '1', name: 'Home' }, away: { id: '2', name: 'Away' } }, now, sparseFetcher);
-  assert.equal(sparse.evidence.get(q.key).eligible, false);
+  assert.equal(sparse.evidence.get(q.key).eligible, true);
+  assert.equal(sparse.coverage.minimumGames, 4);
+  assert.ok(sparse.evidence.get(q.key).risks.some(risk => risk.startsWith('Limited evidence:')));
   assert.ok(sparse.warnings.some(warning => warning.includes('season 2025 unavailable')));
+});
+test('Four verified Champions League games support four aligned props and one lean with limited-evidence facts', () => {
+  const current = games.slice(0, 4);
+  const data = { ...evidence, soccerLeague: 'Champions League', samples: current.map(row => ({ ...row, value: 3 })),
+    matchupForm: evidence.matchupForm.map(row => ({ ...row, recent: current })) };
+  const lean = { ...quote, sport: 'Champions League' };
+  const props = Array.from({ length: 4 }, (_, index) => ({ ...lean, key: `limited-${index}`, market: 'player_shots',
+    subject: `Player ${index}`, side: 'Over', line: .5 }));
+  const quotes = [lean, ...props];
+  const result = evaluateSoccer(quotes, new Map(quotes.map(row => [row.key, data])), settings, now, 4);
+  assert.equal(result.picks.length, 5);
+  assert.ok(result.picks.every(pick => pick.effectiveSample === 4 && pick.facts.some(fact => fact.startsWith('Limited evidence:'))));
+  const sparse = { ...data, samples: data.samples.slice(0, 3) };
+  assert.equal(evaluateSoccer(props, new Map(props.map(row => [row.key, sparse])), settings, now, 4).picks.length, 0);
+  const otherLeague = { ...data, soccerLeague: 'EPL' };
+  assert.equal(evaluateSoccer(props.map(row => ({ ...row, sport: 'EPL' })), new Map(props.map(row => [row.key, otherLeague])), settings, now, 4).picks.length, 0);
 });
 test('Three-season scope is Champions-League-only; old/future seasons cannot masquerade as supported evidence', () => {
   const q = { ...quote, sport: 'Champions League', market: 'player_shots', side: 'Over', subject: 'Player', line: 1.5 };
