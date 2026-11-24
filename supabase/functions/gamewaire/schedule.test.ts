@@ -46,7 +46,7 @@ for (const sport of ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga', 'C
       }), { get: name => values[name] }, mock);
       assert(response.status >= 400, 'Provider failure must remain explicit');
       assert(paid.length === 1, 'Only one paid request per worker invocation');
-      assert(paid[0].searchParams.get('markets') === [...markets[sport]].join(','), 'Every sport requests full game and player markets');
+      assert(paid[0].searchParams.get('markets') === [...markets[sport], ...(sport === 'NFL' ? ['player_anytime_td'] : [])].join(','), 'Every sport requests full markets; NFL also archives anytime touchdown odds');
       assert(paid[0].searchParams.get('regions') === 'us', 'Only one paid region');
       assert(updates.some(row => row.status === 'failed' && (row.provider_usage as { requestCost: number })?.requestCost === 2),
         'Failed queue outcomes and actual usage must persist');

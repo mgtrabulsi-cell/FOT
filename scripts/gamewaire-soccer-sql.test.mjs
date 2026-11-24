@@ -34,7 +34,7 @@ test('soccer migration preserves permissions, locks, manual review, settlement/a
     assert.ok(functions.rows.every(row => !row.definition.includes("'soccer-probability-v3'")));
     assert.ok(functions.rows.some(row => row.definition.includes("'soccer-probability-v4'")));
     for (const name of ['gamewaire-full-analysis', 'gamewaire-prop-upgrade', 'gamewaire-champions-history',
-      'gamewaire-champions-weekly', 'gamewaire-champions-weekly'])
+      'gamewaire-champions-weekly', 'gamewaire-champions-weekly', 'nfl-touchdown-odds', 'nfl-touchdown-odds'])
       await db.exec(readFileSync(new URL(`../supabase/${name}.sql`, import.meta.url), 'utf8'));
     const currentGuard = await db.query("select pg_get_functiondef('public.gamewaire_soccer_publication_guard()'::regprocedure) as definition");
     assert.ok(currentGuard.rows[0].definition.includes("'soccer-probability-v5'"));

@@ -7,6 +7,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as engine from '../supabase/functions/_shared/gamewaire.ts';
 import * as sources from '../supabase/functions/_shared/gamewaireSources.ts';
+import * as touchdownOdds from '../supabase/functions/_shared/nflTouchdownOdds.ts';
 import * as pickLearningTools from '../supabase/functions/_shared/gamewirePickLearning.ts';
 import * as settlementTools from '../supabase/functions/_shared/gamewaireSettlement.ts';
 import * as schedule from '../supabase/functions/_shared/gamewaireSchedule.ts';
@@ -1169,6 +1170,7 @@ function endpoint({ role = 'admin', allowed = role === 'admin' || role === 'owne
     require(name) {
       if (name.startsWith('npm:')) return { createClient: () => client };
       if (name.includes('gamewirePickLearning')) return pickLearningTools;
+      if (name.includes('nflTouchdownOdds')) return touchdownOdds;
       if (name.includes('gamewaireSettlement')) return settlementTools;
       if (name.includes('gamewaireAutomaticPicks')) return automaticTools;
       if (name.includes('gamewaireSchedule')) return { ...schedule, planScheduledAnalyses: async () => {} };
@@ -1218,7 +1220,7 @@ test('NFL publication and cache reuse require the exact saved simulation revisio
   const cacheSettings = { ...engine.defaultSettings, markets: ['h2h', 'spreads'] };
   const cachedRun = { id: body.runId, sport: 'NFL', event_id: 'event', event_start: quote.start,
     created_at: new Date(now - 1000).toISOString(), status: 'no_qualifying', settings: cacheSettings,
-    payload: { modelVersion: engine.modelVersion, playerPropMinimum: 0, picks: [], simulationAlignment: publicationAlignment } };
+    payload: { modelVersion: engine.modelVersion, playerPropMinimum: 0, picks: [], simulationAlignment: publicationAlignment, anytimeTouchdownOddsVersion: 'pregame-v1' } };
   const request = { action: 'analyze', sport: 'NFL', eventId: 'event', settings: cacheSettings };
   const cache = endpoint({ configured: true, cachedRun, savedSimulation: forecast });
   assert.equal((await (await cache.run(request)).json()).cached, true);
@@ -1678,7 +1680,7 @@ test('NFL scheduled requests include all game/player markets; explicit lean publ
     id: 'nfl-job', sport: 'NFL', event_id: 'event', event_start: quote.start, matchup: 'Away @ Home', selection_note: 'Weekly slate.',
   } });
   assert.equal((await api.cron()).status, 200);
-  assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), [...engine.markets.NFL]);
+  assert.deepEqual(new URL(api.fetches[0]).searchParams.get('markets').split(','), [...engine.markets.NFL, 'player_anytime_td']);
   assert.ok(api.rpc.every((call) => !['gamewaire_publish', 'gamewaire_publish_lean'].includes(call.name)), 'Scheduled NFL never publishes');
   const publish = endpoint();
   assert.equal((await publish.run({ action: 'publishLean', runId: '00000000-0000-0000-0000-000000000001' })).status, 200);

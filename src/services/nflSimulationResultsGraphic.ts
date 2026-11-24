@@ -6,6 +6,8 @@ import type { Game } from './sportsData';
 import { projectedSimulationScore, selectedSimulationScenario } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLGameSimulation } from '../../supabase/functions/_shared/nflSimulation';
 import type { NFLClosingSpread } from './nflClosingSpread';
+import { savedNFLTouchdownOdds } from '../../supabase/functions/_shared/nflTouchdownOdds';
+import type { NFLTouchdownOdds } from '../../supabase/functions/_shared/nflTouchdownOdds';
 
 export type SimulationResultsGraphicKind = 'games' | 'players' | 'performances' | 'slate' | 'winners' | 'player-summary' | 'touchdowns';
 export type SimulationWinnerRecord = { wins: number; losses: number; ties: number; noWinner: number };
@@ -14,6 +16,7 @@ export type SimulationResultsGraphicSnapshot = {
   kind: SimulationResultsGraphicKind; capturedAt: string; slate: string; statistic: string; minimum?: number;
   record: SimulationWinnerRecord; verified: number; pending: number; excluded: number;
   rows: Array<{ title: string; context: string; away: string; home: string; simulated: string; actual: string; difference: string;
+    touchdownOdds?: NFLTouchdownOdds;
     spread?: { margin: number | null; favorite: string | null; actualMargin: number | null;
       grade: SimulationSpreadGrade; awayName: string; homeName: string;
       awayColor: string; homeColor: string; projectedAway: number | null; projectedHome: number | null;
@@ -37,7 +40,7 @@ export async function renderSimulationTouchdownGraphics(snapshot: SimulationResu
 }
 
 export function simulationTouchdownSnapshot(report: SimulationAccuracyReport, games: Game[],
-  now = Date.now()): SimulationResultsGraphicSnapshot {
+  now = Date.now(), odds: NFLTouchdownOdds[] = []): SimulationResultsGraphicSnapshot {
   const rows = report.games.flatMap(game => {
     const players = new Map<string, SimulationAccuracyPlayer[]>();
     for (const player of game.players) {
@@ -55,7 +58,12 @@ export function simulationTouchdownSnapshot(report: SimulationAccuracyReport, ga
       const actual = stats.reduce((sum, row) => sum + row.actual, 0);
       if (projected < 1 || actual < 1) return [];
       const partial = stats.length < 2;
+      const selectedGame = games.find(row => row.eventId === game.eventId);
+      const ambiguous = game.players.some(row => row.name === stats[0].name && row.playerId !== stats[0].playerId);
+      const touchdownOdds = selectedGame && !ambiguous
+        ? savedNFLTouchdownOdds(odds, game.eventId, selectedGame.date, stats[0].name) : undefined;
       return [{ title: stats[0].name,
+        touchdownOdds: touchdownOdds ? { ...touchdownOdds } : undefined,
         context: `${stats[0].position} | ${stats[0].team} | ${game.away.abbr} at ${game.home.abbr}`,
         away: game.away.abbr, home: game.home.abbr, simulated: `${projected}${partial ? '+' : ''} TD`,
         actual: `${actual}${partial ? '+' : ''} TD`, difference: partial
@@ -331,18 +339,22 @@ export async function renderSimulationResultsGraphic(snapshot: SimulationResults
     text('GAMES', 650, 242, 17, 138, muted, true, 'center');
   }
   if (touchdowns) {
-    text(`VERIFIED SCORERS${snapshot.page ? ` / SLIDE ${snapshot.page.index} OF ${snapshot.page.count}` : ''}`, 44, 210, 18, 430, blue, true);
-    text('SIM TD', 510, 210, 14, 100, muted, false, 'center');
-    text('ACTUAL TD', 650, 210, 14, 120, muted, false, 'center');
+    text(`VERIFIED SCORERS${snapshot.page ? ` / SLIDE ${snapshot.page.index} OF ${snapshot.page.count}` : ''}`, 44, 210, 14, 295, blue, true);
+    text('SIM TD', 360, 210, 14, 90, muted, false, 'center');
+    text('ACTUAL TD', 465, 210, 14, 100, muted, false, 'center');
+    text('ANYTIME TD', 590, 210, 14, 155, muted, false, 'center');
     snapshot.rows.forEach((row, index) => {
       const y = 230 + index * 60;
       panel(y, 48, green);
-      text(`#${(snapshot.page?.offset ?? 0) + index + 1} ${row.title}`, 48, y + 22, 21, 390, white, true);
-      text(row.context, 48, y + 40, 12, 390, muted);
-      text(row.simulated, 510, y + 31, 22, 110, white, true, 'center');
-      text(row.actual, 650, y + 31, 22, 120, green, true, 'center');
+      text(`#${(snapshot.page?.offset ?? 0) + index + 1} ${row.title}`, 48, y + 22, 21, 290, white, true);
+      text(row.context, 48, y + 40, 12, 290, muted);
+      text(row.simulated, 360, y + 31, 22, 90, white, true, 'center');
+      text(row.actual, 465, y + 31, 22, 100, green, true, 'center');
+      text(row.touchdownOdds ? `${row.touchdownOdds.american > 0 ? '+' : ''}${row.touchdownOdds.american}` : 'Unavailable',
+        590, y + 22, row.touchdownOdds ? 22 : 14, 155, white, true, 'center');
+      if (row.touchdownOdds) text(row.touchdownOdds.provider, 590, y + 40, 11, 155, muted, false, 'center');
     });
-    text('Displayed pregame calls / Verified rushing + receiving scores only', 44, 879, 14, 680, muted);
+    text('Saved pregame sportsbook odds / Unavailable = no verified saved price', 44, 879, 14, 680, muted);
     text('+ means the other TD category is unavailable; shown total is a verified minimum.', 44, 903, 12, 680, muted);
     text(`${snapshot.pending} pending games / ${snapshot.excluded} excluded`, 44, 930, 13, 500, muted);
     text('gamewire.us', 600, 930, 18, 130, white, true);

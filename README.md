@@ -1,5 +1,7 @@
 # GameWire
 
+NFL analyses also request and save real anytime-touchdown prices before kickoff (one additional Odds API market credit when returned). Final touchdown-scorer graphics show the latest saved pregame price and its sportsbook, never reconstructed or live/postgame odds. Older games without a verified saved price show **Unavailable**. Apply `supabase/nfl-touchdown-odds.sql` before deploying the analysis backend; the 20,000-credit rolling budget remains unchanged.
+
 Search results use the shared sports theme: DM Sans typography, navy glass cards, blue accents and matching stat tables. Verified hit-rate percentages above 50% remain green; styling does not change the underlying research or projections.
 
 Champions League now accepts **four verified games per team/player** when longer history is unavailable, as an explicitly labeled **limited-evidence** estimate. Fewer than eight games is never presented as high confidence. Other soccer leagues retain the eight-game minimum; real prices, completed appearances, freshness, league/season identity and Over-projection agreement remain mandatory. Soccer model v5 invalidates older cached exclusions; apply the current weekly migration to update the publication guard. Historical published results are not rewritten.

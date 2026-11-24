@@ -7,6 +7,7 @@ import type { Game } from './services/sportsData';
 import type { SimulationStat } from '../supabase/functions/_shared/nflSimulation';
 import { fetchNFLClosingSpread } from './services/nflClosingSpread';
 import { useSimulationGraphicAccess } from './useSimulationGraphicAccess';
+import { loadSavedNFLTouchdownOdds } from './services/nflTouchdownOdds';
 
 export default function NFLSimulationResultsDownloads({ games, stat }: { games: Game[]; stat: keyof SimulationStat }) {
   const access = useSimulationGraphicAccess();
@@ -35,7 +36,8 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
           return null;
         }
       })) : Promise.resolve([])]);
-      const snapshot = kind === 'touchdowns' ? simulationTouchdownSnapshot(report, games)
+      const touchdownOdds = kind === 'touchdowns' ? await loadSavedNFLTouchdownOdds(games, controller.signal) : [];
+      const snapshot = kind === 'touchdowns' ? simulationTouchdownSnapshot(report, games, Date.now(), touchdownOdds)
         : kind === 'player-summary' ? simulationPlayerSummarySnapshot(report, games)
         : kind === 'slate' || kind === 'winners' ? simulationSlateGraphicSnapshot(report, games, forecasts, Date.now(), kind,
         closingSpreads.flatMap(row => row ? [row] : []))
@@ -56,7 +58,7 @@ export default function NFLSimulationResultsDownloads({ games, stat }: { games: 
         : kind === 'winners' ? '1080px-wide PNG · every game · simulated winner and win/loss record'
         : kind === 'slate' ? '1080px-wide PNG · every game · provider closing lines and simulation ATS grades'
         : '1080 x 1350 PNG · up to three qualifying results · selected-week winner record'}
-      alt={kind === 'touchdowns' ? 'Every projected touchdown scorer who scored, with simulated and actual rushing plus receiving touchdown totals'
+      alt={kind === 'touchdowns' ? 'Every projected touchdown scorer who scored, with simulated and actual touchdown totals, saved pregame anytime touchdown odds and sportsbook; unavailable when no saved price exists'
         : kind === 'player-summary' ? 'Top three passing, receiving, rushing and total touchdown simulation results with actual stats'
         : kind === 'winners' ? 'Every selected-slate game, simulated and final scores, predicted winner and win/loss grades'
         : kind === 'slate' ? 'Every selected-slate game, published simulated and final scores, provider closing lines and ATS pick grades'

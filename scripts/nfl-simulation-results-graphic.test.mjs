@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as accuracy from '../supabase/functions/_shared/nflSimulationAccuracy.ts';
 import * as simulation from '../supabase/functions/_shared/nflSimulation.ts';
+import * as touchdownOdds from '../supabase/functions/_shared/nflTouchdownOdds.ts';
 import { readNFLClosingSpread } from '../src/services/nflClosingSpread.ts';
 import { zipSync, unzipSync } from 'fflate';
 
@@ -70,7 +71,8 @@ function graphicHarness() {
     document: { createElement: () => canvas }, require(name) {
       if (name.includes('gamewaireResultsGraphic')) return { loadGamewireGraphicAssets: async () => ({ naturalWidth: 400, naturalHeight: 400 }) };
       if (name.includes('nflSimulationAccuracy')) return accuracy;
-      if (name.includes('nflSimulation')) return simulation;
+      if (name.includes('nflTouchdownOdds')) return touchdownOdds;
+        if (name.includes('nflSimulation')) return simulation;
       return {};
     } });
   const code = ts.transpileModule(readFileSync(new URL('../src/services/nflSimulationResultsGraphic.ts', import.meta.url), 'utf8'),
@@ -78,6 +80,24 @@ function graphicHarness() {
   vm.runInContext(code, context);
   return { ...context.exports, canvas, drawn, fontSizes, panels, scales, coloredText, accents, circles, labels };
 }
+test('Saved anytime touchdown odds render with sportsbook, without substituting prices for older games', async () => {
+  const h = graphicHarness(), data = report();
+  data.games = [data.games[0]];
+  data.games[0].players = [
+    { playerId: 'p1', name: 'Test Player', position: 'WR', team: 'HOM', stat: 'receivingTouchdowns', projected: 1, actual: 2 },
+    { playerId: 'p2', name: 'Older Player', position: 'RB', team: 'HOM', stat: 'rushingTouchdowns', projected: 1, actual: 1 },
+  ];
+  const game = { eventId: '1', date: data.games[0].kickoff };
+  const saved = { eventId: '1', kickoff: game.date, player: 'Test Player', provider: 'Test Book', american: 175,
+    updatedAt: '2026-11-08T17:00:00Z', capturedAt: '2026-11-08T17:01:00Z' };
+  const snapshot = h.simulationTouchdownSnapshot(data, [game], now, [saved]);
+  assert.equal(snapshot.rows[0].touchdownOdds.american, 175);
+  assert.equal(snapshot.rows[1].touchdownOdds, undefined);
+  await h.renderSimulationTouchdownGraphics(snapshot);
+  assert.ok(h.drawn.includes('+175'));
+  assert.ok(h.drawn.includes('Test Book'));
+  assert.ok(h.drawn.includes('Unavailable'));
+});
 test('Weekly winner record covers all verified games, with ties and no-winner forecasts separate', () => {
   const { simulationWinnerRecord } = graphicHarness();
   const record = simulationWinnerRecord(report().games);
@@ -315,6 +335,7 @@ test('Each download refreshes the entire selected week and uses the fresh winner
       simulationTouchdownSnapshot: h.simulationTouchdownSnapshot,
       renderSimulationTouchdownGraphics: async snapshot => [new Blob([JSON.stringify(snapshot)])],
       renderSimulationResultsGraphic: async snapshot => new Blob([JSON.stringify(snapshot)]) };
+    if (name.includes('nflTouchdownOdds')) return { loadSavedNFLTouchdownOdds: async () => [] };
     return {};
   } });
   const code = ts.transpileModule(readFileSync(new URL('../src/NFLSimulationResultsDownloads.tsx', import.meta.url), 'utf8'),

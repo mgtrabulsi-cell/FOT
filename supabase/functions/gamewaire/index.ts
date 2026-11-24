@@ -1,4 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { readNFLTouchdownOdds } from '../_shared/nflTouchdownOdds.ts';
+import type { NFLTouchdownOdds } from '../_shared/nflTouchdownOdds.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { array, decimalOdds, defaultSettings, evaluate, fullAnalysisSettings, isAllowedPickSide, isAllowedPropPrice, upcomingAnalysisEvents, markets, modelVersion, probabilityModelVersion, normalize, numeric, object, readQuotes, readSettings, text } from '../_shared/gamewaire.ts';
 import type { Candidate, Quote, Sport, TeamLean } from '../_shared/gamewaire.ts';
@@ -291,6 +293,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       && !array(object(cached.data?.payload).picks).length && !object(cached.data?.payload).teamLean;
     if (cached.data && ['completed', 'no_qualifying', 'insufficient_data'].includes(cached.data.status)
       && object(cached.data.payload).modelVersion === (isSoccer(sport) ? soccerModelVersion : modelVersion)
+      && (sport !== 'NFL' || !settings.markets.some(market => market.startsWith('player_'))
+        || object(cached.data.payload).anytimeTouchdownOddsVersion === 'pregame-v1')
       && (cachedAlignmentCurrent || cachedAbstention)
       && (!isSoccer(sport) || !playerAnalysis || object(cached.data.payload).soccerPropCoverageVersion === 'single-sided-v1')
       && (!minimumPlayerPicks || object(cached.data.payload).playerPropMinimum === minimumPlayerPicks)
@@ -323,7 +327,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
         retryAt: retryAt.toISOString() }, 429);
     }
     const learning = isSoccer(sport) ? new Map() : await loadPickLearning(admin, sport, probabilityModelVersion, Date.now());
-    const requestedMarkets = [...new Set([...settings.markets, 'h2h', ...(isSoccer(sport) ? [] : ['spreads'])])];
+    const requestedMarkets = [...new Set([...settings.markets, 'h2h', ...(isSoccer(sport) ? [] : ['spreads']),
+      ...(sport === 'NFL' && settings.markets.some(market => market.startsWith('player_')) ? ['player_anytime_td'] : [])])];
     const budget = await admin.rpc('gamewaire_reserve_credits', { max_cost: requestedMarkets.length });
     if (budget.error) throw new Error('Could not verify the shared Odds API credit budget.');
     if (!budget.data) throw new Error('The shared 20,000-credit rolling 31-day analysis budget is exhausted. Saved reports remain available; no paid request was made.');
@@ -342,11 +347,13 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (created.error) throw new Error('Could not start the analysis record.');
     runId = created.data.id;
     let report, forecast: NFLGameSimulation | undefined;
+    let anytimeTouchdownOdds: NFLTouchdownOdds[] = [];
     if (!quotes.length) report = { status: allQuotes.length ? 'no_qualifying' : 'insufficient_data', picks: [], rejected: [],
       warnings: [allQuotes.length ? 'No sportsbook player markets match the selected player.' : 'No supported sportsbook markets were returned. Check provider market entitlements.'] };
     else {
       const anchor: Quote = quotes[0];
       const matchup = await (isSoccer(sport) ? resolveSoccerMatchup(anchor, fetcher) : resolveMatchup(anchor, fetcher));
+      if (sport === 'NFL') anytimeTouchdownOdds = readNFLTouchdownOdds(raw, matchup.eventId, new Date(Date.now()).toISOString());
       const data = await (isSoccer(sport) ? collectSoccerEvidence(allQuotes, matchup, Date.now(), fetcher) : collectEvidence(allQuotes, matchup, Date.now(), fetcher));
       forecast = sport === 'NFL' ? await savedNFLGameSimulation(admin, matchup.eventId, start) : undefined;
       const alignedQuotes = sport === 'NFL' ? quotes.filter(quote => simulationAllowsMoneyline(quote, forecast)) : quotes;
@@ -362,9 +369,11 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       report.warnings.push(`Fewer than ${minimumPlayerPicks} distinct players have verified, fresh, complete markets and sufficient projection-supported data. Missing or unsafe player props were not invented.`);
     }
     const availableMarkets = new Set(allQuotes.map((quote) => quote.market));
+    if (anytimeTouchdownOdds.length) availableMarkets.add('player_anytime_td');
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));
     if (missingMarkets.length) report.warnings.push(`Requested markets not returned: ${missingMarkets.join(', ')}. These may not be posted yet or included in the subscription; no picks were invented for missing markets.`);
     report = { ...report, modelVersion: isSoccer(sport) ? soccerModelVersion : modelVersion, providerUsage, playerPropMinimum: minimumPlayerPicks,
+      ...(sport === 'NFL' ? { anytimeTouchdownOdds, anytimeTouchdownOddsVersion: 'pregame-v1' } : {}),
       ...(minimumPlayerPicks ? { pickLayoutVersion: 'one-lean-four-props-v1' } : {}),
       ...(sport === 'NFL' ? { simulationAlignment: simulationAlignmentStamp(forecast) } : {}),
       ...(isSoccer(sport) && playerAnalysis ? { soccerPropCoverageVersion: 'single-sided-v1' } : {}),
