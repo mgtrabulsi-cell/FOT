@@ -15,6 +15,19 @@ const games = Array.from({ length: 12 }, (_, index) => ({ eventId: `g${index}`, 
 const evidence = { eligible: true, soccerLeague: 'EPL', quality: .75, fetchedAt: new Date(now).toISOString(), currentSeason: 2026, samples: games, risks: ['Experimental'],
   matchupForm: [{ team: 'Home', season: 2026, recent: games }, { team: 'Away', season: 2026, recent: games }] };
 const evaluate = (quotes, data = evidence) => evaluateSoccer(quotes, new Map(quotes.map(row => [row.key, data])), settings, now);
+test('Full soccer analysis reserves exactly four distinct players plus one game lean; totals cannot crowd them out', () => {
+  const props = Array.from({ length: 6 }, (_, index) => ({ ...quote, key: `prop-${index}`, market: 'player_shots', subject: `Player ${index}`, side: 'Over', line: .5 }));
+  const total = { ...quote, key: 'total', market: 'totals', side: 'Over', line: 1.5 };
+  const quotes = [quote, total, ...props, { ...props[0], key: 'duplicate', american: 500 }];
+  const data = new Map(quotes.map(row => [row.key, { ...evidence, samples: games.map(game => ({ ...game, value: 3 })) }]));
+  const full = evaluateSoccer(quotes, data, settings, now, 4);
+  assert.equal(full.picks.length, 5);
+  assert.equal(full.picks.filter(pick => pick.market === 'h2h').length, 1);
+  assert.equal(full.picks.filter(pick => pick.market === 'totals').length, 0);
+  assert.equal(new Set(full.picks.filter(pick => pick.market.startsWith('player_')).map(pick => pick.subject)).size, 4);
+  const sparse = evaluateSoccer([quote, ...props.slice(0, 2)], data, settings, now, 4);
+  assert.equal(sparse.picks.length, 3, 'Only real aligned props and the lean are returned, not invented fills');
+});
 test('three-way odds normalize with draw and incomplete markets are excluded', () => {
   const raw = { id: 'soccer', home_team: 'Home', away_team: 'Away', commence_time: start,
     bookmakers: [{ key: 'book', markets: [{ key: 'h2h', last_update: date,

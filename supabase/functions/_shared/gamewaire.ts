@@ -26,7 +26,7 @@ export const defaultSettings: Settings = {
   markets: [], direction: 'over', player: '', minEV: 0, minEdge: 0, minQuality: 0.75, recentWeight: 0.4,
 };
 export function fullAnalysisSettings(settings: Settings, sport: Sport): Settings {
-  return { ...settings, direction: 'over', markets: isSoccer(sport) ? settings.markets : [...new Set([...settings.markets, ...markets[sport]])] };
+  return { ...settings, player: '', direction: 'over', markets: [...new Set([...settings.markets, ...markets[sport]])] };
 }
 export function isAllowedPickSide(pick: { market: string; side: string }) {
   return pick.market !== 'totals' && !pick.market.startsWith('player_') || pick.side === 'Over';
@@ -532,6 +532,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
     if (picks.length >= limit) break;
     if (candidate.key === plusMoneyProp?.key) continue;
     const player = candidate.market.startsWith('player_');
+    if (fourPlayerAnalysis && !player) continue;
     const identity = normalize(candidate.subject);
     if (player && fourPlayerAnalysis && picks.filter(pick => pick.market.startsWith('player_')).length >= 4) continue;
     if (player && minimumPlayerPicks === 8 && picks.filter((pick) => pick.market.startsWith('player_')).length >= 8) {
@@ -552,7 +553,7 @@ export function evaluate(quotes: Quote[], evidence: Map<string, Evidence>, setti
   if (teamLean?.qualifies && !teamMarket && !picks.some((pick) => pick.key === teamLean.pick.key)
     && (picks.length < limit || picks.some(pick => pick.key !== plusMoneyProp?.key))) {
     const existing = picks.findIndex((pick) => !pick.market.startsWith('player_'));
-    const displaced = existing >= 0 ? picks.splice(existing, 1)[0] : picks.length >= limit ? picks.pop() : undefined;
+    const displaced = existing >= 0 ? picks.splice(existing, 1)[0] : !fourPlayerAnalysis && picks.length >= limit ? picks.pop() : undefined;
     if (displaced) rejected.push({ key: displaced.key, reason: 'Excluded to reserve one qualifying moneyline/spread slot for this game.' });
     const previouslyRejected = rejected.findIndex((row) => row.key === teamLean.pick.key);
     if (previouslyRejected >= 0) rejected.splice(previouslyRejected, 1);

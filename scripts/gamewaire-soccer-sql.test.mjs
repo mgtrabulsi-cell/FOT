@@ -33,5 +33,28 @@ test('soccer migration preserves permissions, locks, manual review, settlement/a
     assert.equal(functions.rows.length, 4);
     assert.ok(functions.rows.every(row => !row.definition.includes("'soccer-probability-v3'")));
     assert.ok(functions.rows.some(row => row.definition.includes("'soccer-probability-v4'")));
+    for (const name of ['gamewaire-full-analysis', 'gamewaire-prop-upgrade', 'gamewaire-champions-history',
+      'gamewaire-champions-weekly', 'gamewaire-champions-weekly'])
+      await db.exec(readFileSync(new URL(`../supabase/${name}.sql`, import.meta.url), 'utf8'));
+    await db.exec('delete from public.gamewaire_schedule_jobs; delete from public.gamewaire_schedule_batches; delete from public.gamewaire_soccer_schedule_budget;');
+    const monday = (await db.query("select date_trunc('week',(now()+interval '7 days') at time zone 'America/New_York')::date::text as date")).rows[0].date;
+    const tuesday = new Date(`${monday}T12:00:00Z`); tuesday.setUTCDate(tuesday.getUTCDate() + 1);
+    const sunday = new Date(`${monday}T12:00:00Z`); sunday.setUTCDate(sunday.getUTCDate() + 6);
+    const events = [tuesday, sunday].map((date, index) => ({ event_id: `weekly-${index}`, event_start: date.toISOString(), matchup: 'A @ B', selection_note: 'Weekly' }));
+    await db.query('select public.gamewaire_schedule_plan($1,$2::date,$3::jsonb,null,$4,$5)',
+      ['Champions League', monday, JSON.stringify(events), 'Weekly Monday plan', 'soccer-probability-v4']);
+    const jobs = await db.query("select event_id from public.gamewaire_schedule_jobs where sport='Champions League'");
+    assert.equal(jobs.rows.length, 2);
+    await assert.rejects(db.query('select public.gamewaire_schedule_plan($1,$2::date,$3::jsonb,null,$4,$5)',
+      ['Champions League', tuesday.toISOString().slice(0, 10), JSON.stringify(events), 'Wrong weekday', 'soccer-probability-v4']), /Invalid/);
+    const outside = new Date(`${monday}T12:00:00Z`); outside.setUTCDate(outside.getUTCDate() + 7);
+    await assert.rejects(db.query('select public.gamewaire_schedule_plan($1,$2::date,$3::jsonb,null,$4,$5)',
+      ['Champions League', monday, JSON.stringify([{ ...events[0], event_start: outside.toISOString() }]), 'Outside week', 'soccer-probability-v4']), /Invalid scheduled game/);
+    const claimed = (await db.query('select public.gamewaire_schedule_claim() as job')).rows[0].job;
+    assert.equal(claimed.sport, 'Champions League');
+    await db.query("update public.gamewaire_schedule_jobs set status='completed',finished_at=now(),provider_usage='{\"creditsRemaining\":4}'::jsonb where id=$1", [claimed.id]);
+    assert.equal((await db.query('select public.gamewaire_schedule_claim() as job')).rows[0].job, null);
+    const skipped = await db.query("select error from public.gamewaire_schedule_jobs where status='skipped'");
+    assert.ok(skipped.rows.some(row => row.error.includes('below 5 credits')));
   } finally { await db.close(); }
 });

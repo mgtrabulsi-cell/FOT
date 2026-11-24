@@ -7,7 +7,7 @@ export type ScheduledJob = {
   id: string; sport: Sport; event_id: string; event_start: string; matchup: string; selection_note: string;
 };
 export const scheduledSports: Sport[] = ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga', 'Champions League'];
-export const scheduledMarkets = (sport: Sport) => isSoccer(sport) ? ['h2h', 'totals'] : [...markets[sport]];
+export const scheduledMarkets = (sport: Sport) => [...markets[sport]];
 export function easternClock(now: number) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit',
     day: '2-digit', hour: '2-digit', hourCycle: 'h23', weekday: 'short' }).formatToParts(new Date(now));
@@ -16,7 +16,7 @@ export function easternClock(now: number) {
 }
 export function scheduleWindow(sport: Sport, date: string) {
   const last = new Date(`${date}T12:00:00Z`);
-  if (sport === 'NFL') last.setUTCDate(last.getUTCDate() + 6);
+  if (sport === 'NFL' || sport === 'Champions League') last.setUTCDate(last.getUTCDate() + 6);
   return { first: date, last: last.toISOString().slice(0, 10) };
 }
 export function scheduledNFLDate(clock: { date: string; hour: number }) {
@@ -25,6 +25,12 @@ export function scheduledNFLDate(clock: { date: string; hour: number }) {
   tuesday.setUTCDate(tuesday.getUTCDate() - (weekday - 2 + 7) % 7 - (weekday === 2 && clock.hour < 12 ? 7 : 0));
   tuesday.setUTCDate(tuesday.getUTCDate() + 2);
   return tuesday.toISOString().slice(0, 10);
+}
+export function scheduledChampionsDate(clock: { date: string; hour: number }) {
+  const monday = new Date(`${clock.date}T12:00:00Z`);
+  const weekday = monday.getUTCDay();
+  monday.setUTCDate(monday.getUTCDate() - (weekday + 6) % 7 - (weekday === 1 && clock.hour < 1 ? 7 : 0));
+  return monday.toISOString().slice(0, 10);
 }
 export function scheduleEvents(events: ScheduleEvent[], sport: Sport, date: string, now: number) {
   const window = scheduleWindow(sport, date);
@@ -39,12 +45,13 @@ export async function planScheduledAnalyses(admin: SupabaseClient, listEvents: (
   if (clock.hour < 1) return;
   for (const sport of scheduledSports) {
     const version = isSoccer(sport) ? soccerModelVersion : modelVersion;
-    const date = sport === 'NFL' ? scheduledNFLDate(clock) : clock.date;
-    const note = `Every upcoming ${sport} game ${sport === 'NFL' ? 'Thursday through Wednesday (Tuesday noon week rollover)' : 'today'}. ${isSoccer(sport) ? 'Match result/totals only; up to 2 credits/game. No scheduled player markets. Shared soccer cap: 40 attempts / 80 credits per Eastern day; excess games are visibly skipped.'
+    const date = sport === 'NFL' ? scheduledNFLDate(clock) : sport === 'Champions League' ? scheduledChampionsDate(clock) : clock.date;
+    const note = `Every upcoming ${sport} game ${sport === 'NFL' ? 'Thursday through Wednesday (Tuesday noon week rollover)' : sport === 'Champions League' ? 'Monday through Sunday, analyzed Monday at 1 AM Eastern (catch up if missed)' : 'today'}. ${isSoccer(sport) ? 'One game lean and four distinct-player props, probability first; up to 5 credits/game. Shared soccer cap: 40 attempts / 200 credits per Eastern day; excess games are visibly skipped.'
       : 'Full game and four distinct-player props, probability first; up to 7 credits/run. Initial analysis and one refresh 60 minutes before the game; an initial analysis inside that window serves as the refresh. Shared 20,000-credit rolling 31-day cap.'} Saved leans stay private until owner review and explicit publication.`;
-    const existing = await admin.from('gamewaire_schedule_batches').select('id,model_version,updated_at').eq('sport', sport).eq('game_date', date).maybeSingle();
+    const existing = await admin.from('gamewaire_schedule_batches').select('id,model_version,updated_at,note').eq('sport', sport).eq('game_date', date).maybeSingle();
     if (existing.error) throw new Error('Could not read the scheduled analysis plan.');
-    if (existing.data?.model_version === version && (isSoccer(sport) || now - Date.parse(existing.data.updated_at ?? new Date(now).toISOString()) < 3_600_000)) continue;
+    if (existing.data?.model_version === version && (sport !== 'Champions League' || existing.data.note === note)
+      && (isSoccer(sport) || now - Date.parse(existing.data.updated_at ?? new Date(now).toISOString()) < 3_600_000)) continue;
     let games: Array<ScheduleEvent & { selection_note: string }> = [], error: string | null = null;
     try {
       const events = scheduleEvents(await listEvents(sport), sport, date, now);

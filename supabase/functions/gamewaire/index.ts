@@ -274,8 +274,8 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     if (body.action !== 'analyze' || !/^[a-zA-Z0-9_-]{1,100}$/.test(text(body.eventId))) return json({ error: 'Choose an event to analyze.' }, 400);
     let settings;
     try { settings = readSettings(body.settings, sport); } catch (error) { return json({ error: message(error) }, 400); }
-    if (body.fullAnalysis === true || scheduledJob && !isSoccer(sport)) settings = fullAnalysisSettings(settings, sport);
-    const playerAnalysis = !isSoccer(sport) && settings.markets.some((market) => market.startsWith('player_'));
+    if (body.fullAnalysis === true || scheduledJob) settings = fullAnalysisSettings(settings, sport);
+    const playerAnalysis = settings.markets.some((market) => market.startsWith('player_'));
     const expired = await admin.from('gamewaire_runs').update({ status: 'provider_error', payload: { error: 'Prior analysis was interrupted. Retry with fresh provider data.' }, finished_at: new Date().toISOString() })
       .eq('sport', sport).eq('event_id', body.eventId).eq('status', 'in_progress').lt('created_at', new Date(Date.now() - 180_000).toISOString());
     if (expired.error) throw new Error('Could not clear an interrupted analysis.');
@@ -294,6 +294,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       && (cachedAlignmentCurrent || cachedAbstention)
       && (!isSoccer(sport) || !playerAnalysis || object(cached.data.payload).soccerPropCoverageVersion === 'single-sided-v1')
       && (!minimumPlayerPicks || object(cached.data.payload).playerPropMinimum === minimumPlayerPicks)
+      && (!minimumPlayerPicks || object(cached.data.payload).pickLayoutVersion === 'one-lean-four-props-v1')
       && (!scheduledJob || Date.now() < Date.parse(cached.data.event_start) - 3_600_000
         || Date.parse(cached.data.created_at) >= Date.parse(cached.data.event_start) - 3_600_000)
       && Date.parse(cached.data.event_start) > Date.now() && Date.now() - Date.parse(cached.data.created_at) < 600_000
@@ -350,7 +351,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
       forecast = sport === 'NFL' ? await savedNFLGameSimulation(admin, matchup.eventId, start) : undefined;
       const alignedQuotes = sport === 'NFL' ? quotes.filter(quote => simulationAllowsMoneyline(quote, forecast)) : quotes;
       const alignedEvidence = sport === 'NFL' ? alignSimulationEvidence(alignedQuotes, data.evidence, forecast) : data.evidence;
-      report = { ...(isSoccer(sport) ? evaluateSoccer(alignedQuotes, data.evidence, settings, Date.now()) : evaluate(alignedQuotes, alignedEvidence, settings, Date.now(), playerAnalysis ? 5 : 8, minimumPlayerPicks, learning)), warnings: data.warnings, coverage: data.coverage,
+      report = { ...(isSoccer(sport) ? evaluateSoccer(alignedQuotes, data.evidence, settings, Date.now(), minimumPlayerPicks) : evaluate(alignedQuotes, alignedEvidence, settings, Date.now(), playerAnalysis ? 5 : 8, minimumPlayerPicks, learning)), warnings: data.warnings, coverage: data.coverage,
         explanationMode: aiKey ? 'AI-selected verified evidence' : 'Deterministic explanation (OpenAI not configured)' };
       if (alignedQuotes.length !== quotes.length) report.warnings.push('NFL moneyline markets opposing the saved simulation winner were excluded. If the simulation is missing or tied, moneyline selections wait; no replacement value pick is forced.');
       report.warnings.push('Probability-only selection: EV, odds value and payout do not determine eligibility or ranking. Estimates are experimental, not guarantees or betting recommendations. NFL player, spread and total projections follow the saved game simulation; NBA props must agree with the weighted analysis projection.');
@@ -364,6 +365,7 @@ export async function handleGamewaire(request: Request, env: Environment, fetche
     const missingMarkets = requestedMarkets.filter((market) => !availableMarkets.has(market));
     if (missingMarkets.length) report.warnings.push(`Requested markets not returned: ${missingMarkets.join(', ')}. These may not be posted yet or included in the subscription; no picks were invented for missing markets.`);
     report = { ...report, modelVersion: isSoccer(sport) ? soccerModelVersion : modelVersion, providerUsage, playerPropMinimum: minimumPlayerPicks,
+      ...(minimumPlayerPicks ? { pickLayoutVersion: 'one-lean-four-props-v1' } : {}),
       ...(sport === 'NFL' ? { simulationAlignment: simulationAlignmentStamp(forecast) } : {}),
       ...(isSoccer(sport) && playerAnalysis ? { soccerPropCoverageVersion: 'single-sided-v1' } : {}),
       ...(scheduledJob ? { scheduled: { jobId: scheduledJob.id, selectionNote: scheduledJob.selection_note } } : {}) };

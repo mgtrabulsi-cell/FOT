@@ -2,7 +2,7 @@ import { handleGamewaire } from './index.ts';
 import { isSoccer, markets, modelVersion, soccerModelVersion } from '../_shared/gamewaire.ts';
 
 const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
-for (const sport of ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga'] as const) {
+for (const sport of ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga', 'Champions League'] as const) {
   Deno.test(`Scheduled ${sport} uses one bounded paid request and saves provider failure without publication`, async () => {
     const original = globalThis.fetch;
     const paid: URL[] = [], updates: Record<string, unknown>[] = [];
@@ -15,7 +15,10 @@ for (const sport of ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga'] as
       const path = url.pathname;
       if (path.endsWith('/gamewaire_schedule_batches')) {
         const league = url.searchParams.get('sport')?.replace('eq.', '') ?? '';
-        return Response.json({ id: 'batch', model_version: isSoccer(league) ? soccerModelVersion : modelVersion });
+        return Response.json({ id: 'batch', model_version: isSoccer(league) ? soccerModelVersion : modelVersion,
+          note: league === 'Champions League'
+            ? 'Every upcoming Champions League game Monday through Sunday, analyzed Monday at 1 AM Eastern (catch up if missed). One game lean and four distinct-player props, probability first; up to 5 credits/game. Shared soccer cap: 40 attempts / 200 credits per Eastern day; excess games are visibly skipped. Saved leans stay private until owner review and explicit publication.'
+            : undefined });
       }
       if (path.endsWith('/rpc/gamewaire_schedule_claim')) return Response.json({
         id: 'scheduled-job', sport, event_id: 'test-event', event_start: new Date(Date.now() + 86400000).toISOString(),
@@ -29,7 +32,7 @@ for (const sport of ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga'] as
       }
       assert(!/publish|gamewaire_claim$/.test(path), 'Scheduled work must not publish or consume manual allowance');
       if (init?.method === 'PATCH' || init?.method === 'DELETE') return new Response(null, { status: 204 });
-      return Response.json(null);
+      return Response.json([]);
     };
     globalThis.fetch = mock;
     try {
@@ -43,7 +46,7 @@ for (const sport of ['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga'] as
       }), { get: name => values[name] }, mock);
       assert(response.status >= 400, 'Provider failure must remain explicit');
       assert(paid.length === 1, 'Only one paid request per worker invocation');
-      assert(paid[0].searchParams.get('markets') === (isSoccer(sport) ? 'h2h,totals' : [...markets[sport]].join(',')), 'Full NBA/NFL markets; unchanged soccer team markets');
+      assert(paid[0].searchParams.get('markets') === [...markets[sport]].join(','), 'Every sport requests full game and player markets');
       assert(paid[0].searchParams.get('regions') === 'us', 'Only one paid region');
       assert(updates.some(row => row.status === 'failed' && (row.provider_usage as { requestCost: number })?.requestCost === 2),
         'Failed queue outcomes and actual usage must persist');

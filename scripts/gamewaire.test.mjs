@@ -1073,7 +1073,7 @@ test('GamewAIre renders provider setup, real reports and complete metrics withou
 const endpointSource = readFileSync(new URL('../supabase/functions/gamewaire/index.ts', import.meta.url), 'utf8')
   .replace(/if \(import\.meta\.main\) Deno\.serve[^;]+;/, '');
 const endpointCode = ts.transpileModule(endpointSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-for (const sport of engine.soccerSports) test(`${sport} on-demand backend uses verified league games and player appearances, saves private results with no player quota or schedule`, async () => {
+for (const sport of engine.soccerSports) test(`${sport} on-demand backend targets four aligned player props and a private game lean`, async () => {
   const fixture = endpoint({ configured: true });
   const path = soccer.soccerPaths[sport], league = path.split('/')[1];
   const calls = [];
@@ -1109,7 +1109,8 @@ for (const sport of engine.soccerSports) test(`${sport} on-demand backend uses v
   const body = await response.json();
   assert.equal(body.run.payload.modelVersion, engine.soccerModelVersion);
   assert.equal(body.run.payload.coverage.league, sport);
-  assert.equal(body.run.payload.playerPropMinimum, 0);
+  assert.equal(body.run.payload.playerPropMinimum, 4);
+  assert.equal(body.run.payload.pickLayoutVersion, 'one-lean-four-props-v1');
   assert.ok(body.run.payload.teamLean.pick.pushProbability === 0);
   assert.ok(body.run.payload.picks.some(pick => pick.market === 'player_shots' && pick.identifiers.playerId === 'verified-player'));
   assert.equal(calls.filter(url => url.includes('api.the-odds-api.com')).length, 1);
@@ -1590,7 +1591,7 @@ test('Scheduled pregame refresh cannot reuse an initial report from just outside
   const start = new Date(now + 55 * 60000).toISOString();
   const cachedRun = { id: 'initial', status: 'no_qualifying', event_start: start, created_at: new Date(now - 9 * 60000).toISOString(),
     settings: { ...engine.defaultSettings, markets: [...engine.markets.NBA] },
-    payload: { modelVersion: engine.modelVersion, playerPropMinimum: 4, picks: [] } };
+    payload: { modelVersion: engine.modelVersion, playerPropMinimum: 4, pickLayoutVersion: 'one-lean-four-props-v1', picks: [] } };
   const job = { id: 'refresh', sport: 'NBA', event_id: 'event', event_start: start, matchup: 'Away @ Home', selection_note: 'Pregame' };
   const api = endpoint({ configured: true, scheduledJob: job, cachedRun });
   const response = await api.cron();
@@ -1814,13 +1815,17 @@ for (const sport of ['NBA', 'NFL']) test(`${sport} review buttons publish freely
   test('Fresh reports are reused for ten minutes only while actual quote and data timestamps remain valid', async () => {
     const candidate = evaluate().picks[0];
     const cachedRun = { id: 'cached', status: 'completed', event_start: quote.start, created_at: new Date(now - 9 * 60_000).toISOString(),
-      settings, payload: { modelVersion: engine.modelVersion, playerPropMinimum: 4, picks: [candidate] } };
+      settings, payload: { modelVersion: engine.modelVersion, playerPropMinimum: 4, pickLayoutVersion: 'one-lean-four-props-v1', picks: [candidate] } };
     const api = endpoint({ configured: true, failClaim: true, cachedRun });
     const response = await api.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).cached, true);
     assert.equal(api.rpc.length, 0);
     assert.equal(api.fetches.length, 0);
+    const oldLayout = endpoint({ configured: true, failClaim: true, cachedRun: { ...cachedRun,
+      payload: { ...cachedRun.payload, pickLayoutVersion: undefined } } });
+    assert.equal((await oldLayout.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 429,
+      'Older mixed totals/props layouts do not satisfy the one-lean-four-props report');
     const oldPolicy = endpoint({ configured: true, failClaim: true, cachedRun: { ...cachedRun,
       payload: { ...cachedRun.payload, playerPropMinimum: undefined } } });
     assert.equal((await oldPolicy.run({ action: 'analyze', sport: 'NBA', eventId: 'event', settings })).status, 429,

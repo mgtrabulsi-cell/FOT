@@ -147,7 +147,7 @@ export function soccerScoreDistribution(homeRate: number, awayRate: number) {
   const sum = rows.reduce((total, row) => total + row.probability, 0);
   return rows.map(row => ({ ...row, probability: row.probability / sum }));
 }
-export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number): Evaluation {
+export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>, settings: Settings, now: number, minimumPlayerPicks: 0 | 4 = 0): Evaluation {
   const rejected: Evaluation['rejected'] = [], supported: Candidate[] = [], best = new Map<string, Quote>();
   for (const quote of quotes) {
     if (!isSoccer(quote.sport)) throw new Error('Two-way sports must not use the soccer evaluator.');
@@ -236,11 +236,13 @@ export function evaluateSoccer(quotes: Quote[], evidence: Map<string, Evidence>,
   for (const pick of ordered.filter(pick => settings.markets.includes(pick.market) && qualified(pick))) {
     if (pick.key === plusMoneyProp?.key) continue;
     const player = pick.market.startsWith('player_'), identity = normalize(pick.subject);
+    if (minimumPlayerPicks === 4 && (!player || subjects.size >= 4)) continue;
     if (player ? subjects.has(identity) : gameMarket) continue;
     picks.push(pick);
     if (player) subjects.add(identity); else gameMarket = true;
     if (picks.length === 8) break;
   }
+  if (minimumPlayerPicks === 4 && teamLean) picks.push(teamLean.pick);
   for (const pick of supported.filter(pick => !qualified(pick))) rejected.push({ key: pick.key, reason: 'The model projection does not support the selected Over.' });
   return { status: picks.length ? 'completed' : supported.length ? 'no_qualifying' : 'insufficient_data', picks: rankTopPicks(picks), rejected, teamLean, winnerLean: teamLean, ...(plusMoneyProp ? { plusMoneyProp } : {}) };
 }

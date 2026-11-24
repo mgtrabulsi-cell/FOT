@@ -30,7 +30,19 @@ test('Both sports select the four highest-probability distinct players, not the 
     assert.equal(full.picks.length, 5);
     assert.equal(full.picks.filter(p => p.market.startsWith('player_')).length, 4);
     assert.equal(full.picks.filter(p => p.market === 'h2h').length, 1);
+    const total = { ...quotes[0], key: 'total', market: 'totals', subject: 'Game total' };
+    const withTotal = evaluate([...quotes, team, total], new Map([...data, [team.key, evidence(12)], [total.key, evidence(12)]]), settings, now, 5, 4);
+    assert.equal(withTotal.picks.filter(p => p.market.startsWith('player_')).length, 4);
+    assert.equal(withTotal.picks.filter(p => p.market === 'h2h').length, 1);
+    assert.equal(withTotal.picks.filter(p => p.market === 'totals').length, 0, 'Totals cannot take the game-lean slot');
     assert.deepEqual(fullAnalysisSettings({ ...settings, markets: ['h2h', 'spreads'] }, sport).markets, [...markets[sport]]);
+  }
+});
+test('Full analysis requests every supported market and clears single-player filters for all sports', () => {
+  for (const sport of Object.keys(markets)) {
+    const full = fullAnalysisSettings({ ...defaultSettings, markets: ['h2h'], player: 'One player' }, sport);
+    assert.deepEqual(full.markets, [...markets[sport]]);
+    assert.equal(full.player, '');
   }
 });
 test('Full analysis excludes high-hit-rate sides contradicted by projections and does not invent four picks', () => {

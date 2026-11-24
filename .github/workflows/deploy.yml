@@ -51,6 +51,8 @@ jobs:
         run: npx --yes deno test --no-lock --allow-env supabase/functions/poll-nba-games/index.test.ts
       - name: Check NBA simulation backend
         run: npx --yes deno check --no-lock supabase/functions/nba-simulation/index.ts
+      - name: Test GamewAIre scheduled endpoint
+        run: npx --yes deno test --no-lock --allow-env --allow-read supabase/functions/gamewaire/schedule.test.ts
       - name: Test Start/Sit roster gateway
         run: npx --yes deno test --config supabase/functions/send-x-posts/deno.json supabase/functions/fantasy-roster/index.test.ts
       - name: Test X dispatcher

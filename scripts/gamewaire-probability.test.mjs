@@ -60,17 +60,21 @@ test('Supported options have no fixed probability floor, but missing, stale, inv
   }
 });
 
-test('A higher-probability total is not displaced by a lower-probability moneyline', () => {
+test('Legacy ranking retains a stronger total; full layout explicitly reserves one lean and four props', () => {
   const props = Array.from({ length: 4 }, (_, i) => quote('NBA', `player-${i}`));
   const total = quote('NBA', 'total', { market: 'totals' });
   const ml = quote('NBA', 'moneyline', { market: 'h2h', subject: 'Home', side: 'Home', line: null });
   const data = new Map([...props, total, ml].map(q => [q.key, evidence(q === ml ? 18 : 26)]));
-  const report = evaluate([...props, ml, total], data, settings, now, 5, 4);
+  const report = evaluate([...props, ml, total], data, settings, now, 5, 0);
   assert.equal(report.picks.length, 5);
   assert.equal(report.picks.filter(p => p.market.startsWith('player_')).length, 4);
   assert.ok(report.picks.some(p => p.key === total.key));
   assert.ok(!report.picks.some(p => p.key === ml.key));
   assert.equal(report.teamLean.pick.key, ml.key, 'Separate lean remains available without overriding the stronger total');
+  const full = evaluate([...props, ml, total], data, settings, now, 5, 4);
+  assert.equal(full.picks.filter(pick => pick.market.startsWith('player_')).length, 4);
+  assert.ok(full.picks.some(pick => pick.key === ml.key));
+  assert.ok(!full.picks.some(pick => pick.key === total.key));
 });
 
 test('Soccer player estimates ignore price/value and retain projection, single-sided and evidence safeguards', () => {
