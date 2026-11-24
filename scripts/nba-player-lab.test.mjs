@@ -186,9 +186,15 @@ test('Wire live indicators remain red without live-only red card borders, retain
   assert.match(css, /\.wire-board-card:focus-visible \{[^}]*outline:/);
 });
 
+function research() {
+  return moduleFor('../src/services/playerLabResearch.ts', {
+    './gamewireBot': {}, './nbaData': {}, './nbaStats': { nbaStatValue }, './renderSnapshots': {}, './teamGameLogs': {}, './sportsData': {},
+  });
+}
 function chat() {
   return moduleFor('../src/services/playerLabChat.ts', {
     './gamewireBot': {}, './nbaPlayerLab': { nbaPlayerLabAnswer: service().api.nbaPlayerLabAnswer }, './nbaStats': { nbaStatValue },
+    './sportsData': {}, './playerLabResearch': research(),
   });
 }
 test('One chat matches both sports, disambiguates surnames, supports partial search and preserves cross-sport identities', () => {
@@ -255,6 +261,7 @@ test('One real chat component keeps NFL, NBA and remembered-player follow-ups in
       calls.push({ entry, question, format }); return { text: [`Verified ${entry.sport} answer for ${entry.player.name}`] };
     } },
     './services/nbaStats': { nbaStatValue }, './services/renderSnapshots': {}, './services/foregroundRefresh': {},
+    './services/playerLabResearch': research(),
   });
 
   const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];
@@ -299,6 +306,7 @@ test('Primary Player Lab restores direct cards with one NFL/NBA search, scoring 
         async loadNBAPlayerLabReport(row, season) { calls.push(['NBA', row.id, season]); return report; } },
       './services/playerLabChat': chat(), './services/nbaStats': { nbaStatValue },
       './services/renderSnapshots': {}, './services/foregroundRefresh': {},
+      './PlayerLabChat': { default: () => null },
       './MyGamePlan': { SaveResearchButton: () => null }, './services/researchCaptures': {},
     });
     const walk = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(walk) : [tree, ...walk(tree.props?.children)];

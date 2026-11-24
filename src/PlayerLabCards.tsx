@@ -10,6 +10,7 @@ import type { LabPlayer } from './services/playerLabChat';
 import { nbaStatValue } from './services/nbaStats';
 import { subscribeRenderSnapshots } from './services/renderSnapshots';
 import { subscribeForegroundRefresh } from './services/foregroundRefresh';
+import PlayerLabChat from './PlayerLabChat';
 
 type Outlook = { player: LabPlayer; nfl?: BotReport; nba?: NBAPlayerLabReport; error?: string };
 const initialPlayers = (): LabPlayer[] => {
@@ -82,6 +83,7 @@ export default function PlayerLabCards({ renderNFL }: { renderNFL: (report: BotR
   const [open, setOpen] = useState(false), [search, setSearch] = useState(''), [players, setPlayers] = useState(initialPlayers);
   const [format, setFormat] = useState<BotFormat>('ppr'), [outlooks, setOutlooks] = useState<Array<Outlook | null>>([null, null]);
   const [comparing, setComparing] = useState(false), [slot, setSlot] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false);
   const [loadingDirectory, setLoadingDirectory] = useState(false), [busy, setBusy] = useState(false), [issues, setIssues] = useState<string[]>([]);
   const [revision, setRevision] = useState(0);
   const request = useRef<AbortController | null>(null), pending = useRef(false), searchInput = useRef<HTMLInputElement>(null);
@@ -179,7 +181,11 @@ export default function PlayerLabCards({ renderNFL }: { renderNFL: (report: BotR
           <span>{entry.player.name}</span><small>{entry.sport} · {entry.sport === 'NFL' ? entry.player.teamAbbr : entry.player.team.abbr} · {entry.player.position}</small></button>)}
         {!matches.length && <p>{loadingDirectory ? 'Refreshing verified players… Saved rosters remain searchable.' : 'No matching player. Try a first or last name, or refresh players.'}</p>}
       </div>}
+      <button type="button" className="gwb-toggle" aria-expanded={chatOpen} aria-controls="gwb-research-chat" onClick={() => setChatOpen(value => !value)}>
+        {chatOpen ? 'Hide research chat' : 'Ask GamewAIre · Hit rates / Start-sit'}
+      </button>
     </div></header>
+    {chatOpen && <div id="gwb-research-chat"><PlayerLabChat initiallyOpen renderNFL={renderNFL} /></div>}
     {open && <div id="gamewire-bot-panel" className="gwb-panel">
       <div className="gwb-mode">Verified NFL + NBA data · Search-only player analysis · Experimental estimates</div>
       <div className="gwb-controls"><label>NFL scoring<select value={format} disabled={busy} onChange={event => {

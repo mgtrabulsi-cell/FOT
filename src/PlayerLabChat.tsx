@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import { loadBotDirectory, readDirectorySnapshot } from './services/gamewireBot';
 import type { BotFormat, BotReport } from './services/gamewireBot';
 import { loadNBAPlayerLabDirectory, readNBAPlayerLabDirectory } from './services/nbaPlayerLab';
-import { findLabPlayers, labFollowup, labPlayerKey, loadLabAnswer } from './services/playerLabChat';
+import { findLabPlayers, labFollowup, labPlayerKey, loadLabAnswer, startOpinion } from './services/playerLabChat';
+import { isHitQuestion, isStartQuestion, teamHitReport } from './services/playerLabResearch';
 import type { LabAnswer, LabPlayer } from './services/playerLabChat';
 import { nbaStatValue } from './services/nbaStats';
 import { subscribeRenderSnapshots } from './services/renderSnapshots';
@@ -15,8 +16,8 @@ const initialPlayers = (): LabPlayer[] => {
   return [...(nfl?.players.map(player => ({ sport: 'NFL' as const, player })) ?? []),
     ...(nba ? nba.players.map(player => ({ sport: 'NBA' as const, player, season: nba.season })) : [])];
 };
-export default function PlayerLabChat({ renderNFL }: { renderNFL: (report: BotReport, remove: () => void) => ReactNode }) {
-  const [open, setOpen] = useState(false), [input, setInput] = useState(''), [players, setPlayers] = useState(initialPlayers);
+export default function PlayerLabChat({ renderNFL, initiallyOpen = false }: { renderNFL: (report: BotReport, remove: () => void) => ReactNode; initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen), [input, setInput] = useState(''), [players, setPlayers] = useState(initialPlayers);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<LabPlayer | null>(null), [format, setFormat] = useState<BotFormat>('ppr');
   const [loadingDirectory, setLoadingDirectory] = useState(false), [busy, setBusy] = useState(false), [issues, setIssues] = useState<string[]>([]);
@@ -76,6 +77,11 @@ export default function PlayerLabChat({ renderNFL }: { renderNFL: (report: BotRe
       }
     }, 75_000);
     try {
+      if (!entries.length) {
+        const hitRates = await teamHitReport(question, controller.signal);
+        if (!controller.signal.aborted) append({ role: 'assistant', text: [`${hitRates.name}: last ${hitRates.request.games} completed games. Historical hit rates are not forecast probabilities.`], answer: { text: [], hitRates } });
+        return;
+      }
       const results = await Promise.allSettled(entries.map(async entry => ({ entry, response: await loadLabAnswer(entry, question, format, controller.signal) })));
       if (controller.signal.aborted) return;
       for (let index = 0; index < results.length; index++) {
@@ -84,13 +90,38 @@ export default function PlayerLabChat({ renderNFL }: { renderNFL: (report: BotRe
         else append({ role: 'assistant', player: entry, text: [`${entry.player.name}'s analysis could not load: ${result.reason instanceof Error ? result.reason.message : 'Source unavailable'}. Retry this question.`] });
       }
       if (entries.length === 1) setSelected(entries[0]);
-      else { setSelected(null); append({ role: 'assistant', text: ['Both players are shown using their own sport and scoring context. Name a player in your follow-up to choose one.'] }); }
+      else {
+        setSelected(null);
+        if (isStartQuestion(question)) {
+          if (results.some(result => result.status === 'rejected')) append({ role: 'assistant', text: ['One or more player reports failed. I cannot fairly recommend a starter until every named player has a supported projection.'] });
+          else {
+            const answers = results.flatMap(result => result.status === 'fulfilled' ? [result.value.response] : []);
+            const text = await startOpinion(answers, format, controller.signal);
+            if (!controller.signal.aborted) append({ role: 'assistant', text });
+          }
+        } else append({ role: 'assistant', text: ['Players are shown using their own sport and scoring context. Name a player in your follow-up to choose one.'] });
+      }
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        console.error('Player Lab research request failed', cause);
+        append({ role: 'assistant', text: [cause instanceof Error ? cause.message : 'Research could not load. Retry this question.'] });
+      }
     } finally { clearTimeout(timer); if (request.current === controller) { request.current = null; pending.current = false; setBusy(false); } }
   }
   function send() {
     const question = input.trim();
     if (!question || pending.current) return;
     setInput(''); append({ role: 'user', text: [question] });
+    if (isStartQuestion(question) || /\b(?:compare|vs|versus)\b/i.test(question)) {
+      const names = question.split(/\s*(?:,|\bor\b|\band\b|\bvs\.?\b|\bversus\b)\s*/i).filter(name => name.trim());
+      const groups = names.map(name => findLabPlayers(name, players));
+      const entries = [...new Map(groups.flat().map(player => [labPlayerKey(player), player])).values()];
+      if (isStartQuestion(question) && groups.length === 1 && entries.length === 1) { void answer(question, entries); return; }
+      if (groups.some(group => group.length !== 1) || entries.length < 2) {
+        append({ role: 'assistant', text: ['Name each player clearly, separated by “or” or commas—for example, “Should I start Tee Higgins, Ja’Marr Chase or A.J. Brown?” Ambiguous or unmatched names are not skipped.'] }); return;
+      }
+      void answer(question, entries); return;
+    }
     const matches = findLabPlayers(question, players);
     if (matches.length === 1) { void answer(question, matches); return; }
     if (matches.length === 2 && /\b(compare|vs|versus|and)\b/i.test(question)) { void answer(question, matches); return; }
@@ -98,6 +129,7 @@ export default function PlayerLabChat({ renderNFL }: { renderNFL: (report: BotRe
       append({ role: 'assistant', text: ['Which player did you mean?'], choices: matches.slice(0, 10), question }); return;
     }
     if (selected && labFollowup(question)) { void answer(question, [selected]); return; }
+    if (isHitQuestion(question)) { void answer(question, []); return; }
     append({ role: 'assistant', text: [loadingDirectory ? 'Player lists are still refreshing. Try a full name in a moment, or select a saved player below.' : 'Include an NFL or NBA player’s full name or surname. I can explain recorded stats, matchup projections, availability and supported stat lines.'],
       choices: players.filter(entry => `${entry.player.name} ${entry.sport}`.toLowerCase().includes(question.toLowerCase())).slice(0, 8), question });
   }
@@ -118,6 +150,18 @@ export default function PlayerLabChat({ renderNFL }: { renderNFL: (report: BotRe
         {messages.map(message => <article key={message.id} className={`gwb-chat-message is-${message.role}`}>
           <strong>{message.role === 'user' ? 'You' : message.player ? `GamewAIre / ${message.player.sport} / ${message.player.player.name}` : 'GamewAIre'}</strong>
           {message.text.filter(Boolean).map((text, index) => <p key={index}>{text}</p>)}
+          {message.answer?.hitRates && <section aria-label={`${message.answer.hitRates.name} historical hit rates`}>
+            <div className="gwb-chat-table"><table>
+              <caption>{message.answer.hitRates.metric} · {message.answer.hitRates.request.comparison} each threshold</caption>
+              <thead><tr><th scope="col">Threshold</th><th scope="col">Games hit</th><th scope="col">Hit rate</th></tr></thead>
+              <tbody>{message.answer.hitRates.rows.map(row => <tr key={row.level}><th scope="row">{row.level}</th>
+                <td>{row.hits} / {row.sample}</td><td>{row.percent === null ? 'Unavailable' : `${row.percent.toFixed(1)}%`}</td></tr>)}</tbody>
+            </table></div>
+            {message.answer.hitRates.issues.map((issue, index) => <p className="gwb-warning" key={index}>{issue}</p>)}
+            <details><summary>Games used</summary><div className="gwb-chat-table"><table><thead><tr><th>Date</th><th>{message.answer.hitRates.metric}</th></tr></thead>
+              <tbody>{message.answer.hitRates.games.map(game => <tr key={game.id}><th>{new Date(game.date).toLocaleDateString()}</th><td>{game.value ?? 'Unavailable'}</td></tr>)}</tbody>
+            </table></div></details>
+          </section>}
           {!!message.choices?.length && <div className="gwb-chat-choices">{message.choices.map(entry => <button key={labPlayerKey(entry)} type="button" disabled={busy} onClick={() => {
             append({ role: 'user', text: [`${entry.player.name} / ${entry.sport}`] }); void answer(message.question ?? entry.player.name, [entry]);
           }}>{entry.player.name}<small>{entry.sport} / {entry.sport === 'NFL' ? entry.player.teamAbbr : entry.player.team.abbr} / {entry.player.position}</small></button>)}</div>}
@@ -134,8 +178,8 @@ export default function PlayerLabChat({ renderNFL }: { renderNFL: (report: BotRe
       </div>
       {selected && <p className="gwb-chat-context">Following {selected.player.name} / {selected.sport}. Name another player anytime.</p>}
       <form className="gwb-chat-composer" onSubmit={event => { event.preventDefault(); send(); }}>
-        <label htmlFor="gwb-chat-question">Ask about an NFL or NBA player</label><textarea id="gwb-chat-question" value={input} maxLength={500} rows={2}
-          placeholder="Ask a player question or follow up..." onChange={event => setInput(event.target.value)} onKeyDown={event => {
+        <label htmlFor="gwb-chat-question">Ask about NFL/NBA players or teams</label><textarea id="gwb-chat-question" value={input} maxLength={1000} rows={2}
+          placeholder="T Higgins receiving yards hit rates last 10 games at 50, 75, 100—or should I start Higgins, Chase or Brown?" onChange={event => setInput(event.target.value)} onKeyDown={event => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send(); }
           }} />
         <button type="submit" disabled={busy || !input.trim()}>Send</button>
