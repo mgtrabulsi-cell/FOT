@@ -1,5 +1,7 @@
 # GameWire
 
+Champions League fixture matching uses verified provider aliases (including Bodo/Glimt, LASK, Porto, Feyenoord, Lens, Slovan Bratislava, Slavia Prague and Sporting CP). Both teams, the selected competition, a unique event and kickoff within five minutes are still required; name aliases never substitute another fixture or domestic competition.
+
 Availability safeguards: deployment retains the preceding build's JavaScript/CSS for cached sessions; the HTML shell offers bounded stale-bundle recovery and a manual reload without clearing saved data. Render failures show a recovery screen instead of a blank page. Deployment and 15-minute scheduled checks verify the homepage and asset responses; failed GitHub Actions runs surface availability failures (enable Actions failure notifications). These safeguards cannot guarantee third-party hosting or feed uptime.
 
 NFL analyses also request and save real anytime-touchdown prices before kickoff (one additional Odds API market credit when returned). Final touchdown-scorer graphics show the latest saved pregame price and its sportsbook, never reconstructed or live/postgame odds. Older games without a verified saved price show **Unavailable**. Apply `supabase/nfl-touchdown-odds.sql` before deploying the analysis backend; the 20,000-credit rolling budget remains unchanged.

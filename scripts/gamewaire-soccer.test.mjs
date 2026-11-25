@@ -188,6 +188,30 @@ test('soccer matchup requires exact league identity and tight kickoff alignment'
   event.date = new Date(Date.parse(start) + 6 * 60000).toISOString();
   await assert.rejects(resolveSoccerMatchup(quote, fetcher), /five minutes/);
 });
+test('Verified Champions League provider aliases match without weakening kickoff or ambiguity guards', async () => {
+  const fixtures = [
+    ['Bodø/Glimt', 'LASK', 'Bodo/Glimt', 'LASK Linz'],
+    ['Feyenoord', 'Porto', 'Feyenoord Rotterdam', 'FC Porto'],
+    ['RB Leipzig', 'RC Lens', 'RB Leipzig', 'Lens'],
+    ['ŠK Slovan Bratislava', 'Real Betis', 'Slovan Bratislava', 'Real Betis'],
+    ['Slavia Praha', 'Villarreal', 'Slavia Prague', 'Villarreal'],
+    ['Sporting Lisbon', 'Manchester United', 'Sporting CP', 'Manchester United'],
+  ];
+  for (const [home, away, espnHome, espnAway] of fixtures) {
+    const event = { id: 'verified', date: start, season: { year: 2026 }, competitions: [{
+      status: { type: { state: 'pre' } }, competitors: [
+        { homeAway: 'home', team: { id: '1', displayName: espnHome } },
+        { homeAway: 'away', team: { id: '2', displayName: espnAway } },
+      ],
+    }] };
+    const candidate = { ...quote, sport: 'Champions League', home, away };
+    const fetcher = async url => { assert.match(String(url), /soccer\/uefa.champions/); return Response.json({ events: [event] }); };
+    assert.equal((await resolveSoccerMatchup(candidate, fetcher)).eventId, 'verified');
+    await assert.rejects(resolveSoccerMatchup(candidate, async () => Response.json({ events: [event, event] })), /unambiguously/);
+    event.date = new Date(Date.parse(start) + 6 * 60000).toISOString();
+    await assert.rejects(resolveSoccerMatchup(candidate, fetcher), /five minutes/);
+  }
+});
 test('scheduler includes Champions League and domestic soccer without mixing NBA fixtures', () => {
   const source = readFileSync(new URL('../supabase/functions/_shared/gamewaireSchedule.ts', import.meta.url), 'utf8');
   assert.match(source, /scheduledSports: Sport\[\] = \['NBA', 'NFL', 'EPL', 'Serie A', 'La Liga', 'Bundesliga', 'Champions League'\]/);

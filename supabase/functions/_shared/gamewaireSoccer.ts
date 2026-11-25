@@ -22,6 +22,10 @@ const aliases: Record<string, string> = {
   augsburg: 'augsburg', fcaugsburg: 'augsburg', fcschalke04: 'schalke04', schalke04: 'schalke04',
   scpaderborn: 'paderborn', scpaderborn07: 'paderborn', elversberg: 'elversberg', svelversberg: 'elversberg',
   deportivolacoruna: 'deportivo', deportivo: 'deportivo',
+  bodglimt: 'bodoglimt', bodoglimt: 'bodoglimt', lask: 'lasklinz', lasklinz: 'lasklinz',
+  porto: 'fcporto', fcporto: 'fcporto', feyenoord: 'feyenoordrotterdam', feyenoordrotterdam: 'feyenoordrotterdam',
+  rclens: 'lens', lens: 'lens', skslovanbratislava: 'slovanbratislava', slovanbratislava: 'slovanbratislava',
+  slaviapraha: 'slaviaprague', slaviaprague: 'slaviaprague', sportinglisbon: 'sportingcp', sportingcp: 'sportingcp',
 };
 export const soccerName = (name: string) => aliases[normalize(name)] ?? normalize(name);
 export async function resolveSoccerMatchup(quote: Quote, fetcher: typeof fetch = fetch): Promise<Matchup> {
