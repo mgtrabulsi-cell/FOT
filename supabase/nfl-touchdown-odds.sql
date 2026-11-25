@@ -1,4 +1,8 @@
 -- Add one archived NFL market without increasing the rolling credit budget.
+begin;
+alter table public.gamewaire_credit_reservations drop constraint gamewaire_credit_reservations_cost_check;
+alter table public.gamewaire_credit_reservations add constraint gamewaire_credit_reservations_cost_check
+  check (cost between 1 and 8);
 do $$
 declare definition text;
 begin
@@ -19,3 +23,4 @@ begin
   end if;
   execute definition;
 end $$;
+commit;

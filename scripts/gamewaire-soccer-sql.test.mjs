@@ -38,6 +38,9 @@ test('soccer migration preserves permissions, locks, manual review, settlement/a
       await db.exec(readFileSync(new URL(`../supabase/${name}.sql`, import.meta.url), 'utf8'));
     const currentGuard = await db.query("select pg_get_functiondef('public.gamewaire_soccer_publication_guard()'::regprocedure) as definition");
     assert.ok(currentGuard.rows[0].definition.includes("'soccer-probability-v5'"));
+    const nflBudget = await db.query('select public.gamewaire_reserve_credits(8) as allowed');
+    assert.equal(nflBudget.rows[0].allowed, true, 'NFL eight-market reservations must fit both function and table guards');
+    await assert.rejects(db.query('select public.gamewaire_reserve_credits(9)'), /Invalid analysis credit reservation/);
     await db.exec('delete from public.gamewaire_schedule_jobs; delete from public.gamewaire_schedule_batches; delete from public.gamewaire_soccer_schedule_budget;');
     const monday = (await db.query("select date_trunc('week',(now()+interval '7 days') at time zone 'America/New_York')::date::text as date")).rows[0].date;
     const tuesday = new Date(`${monday}T12:00:00Z`); tuesday.setUTCDate(tuesday.getUTCDate() + 1);
