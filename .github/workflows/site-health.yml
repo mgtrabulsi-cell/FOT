@@ -1,19 +1,44 @@
 name: GameWire availability
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '7,22,37,52 * * * *'
+    - cron: '12 5-10 * * *'
   workflow_dispatch:
+  workflow_run:
+    workflows: ['Deploy to GitHub Pages']
+    types: [completed]
 permissions:
   contents: read
+  actions: write
+  issues: write
 concurrency:
   group: site-health
   cancel-in-progress: false
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/site-health.mjs
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Diagnose static assets and real browser sessions
+        id: health
+        run: node scripts/site-browser-health.mjs
+      - name: Save diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-health-report
+          path: site-health-report.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Recover missing assets and manage availability incident
+        if: always() && steps.health.outcome != 'skipped'
+        run: node scripts/site-recovery.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

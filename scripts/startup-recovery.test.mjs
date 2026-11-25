@@ -9,6 +9,7 @@ function fixture({ online = true, storageFails = false } = {}) {
   const handlers = {}, stored = new Map(), navigations = [], errors = [];
   const help = { hidden: true }, button = { hidden: true, addEventListener: (_type, callback) => { button.click = callback; } };
   let timeout, mounted = false;
+  const root = { childElementCount: 1 };
   class Script { type = 'module'; }
   vm.runInNewContext(source, {
     URL, Date, HTMLScriptElement: Script, navigator: { onLine: online },
@@ -17,13 +18,15 @@ function fixture({ online = true, storageFails = false } = {}) {
       getItem: key => { if (storageFails) throw Error('Storage denied'); return stored.get(key) ?? null; },
       setItem: (key, value) => stored.set(key, value),
     },
-    document: { getElementById: id => mounted ? null : id === 'gamewire-startup-help' ? help : button },
+    document: { hidden: false, addEventListener: (name, callback) => { handlers[`document:${name}`] = callback; },
+      getElementById: id => id === 'root' ? root : mounted ? null : id === 'gamewire-startup-help' ? help : button },
     window: { addEventListener: (name, callback) => { handlers[name] = callback; } },
     setTimeout: (callback, delay) => { assert.equal(delay, 15000); timeout = callback; },
     console: { error: (...values) => errors.push(values) },
   });
   return { handlers, help, button, stored, navigations, errors, timeout,
-    mount: () => { mounted = true; }, failure: () => handlers.error({ target: new Script(), preventDefault() {} }) };
+    mount: () => { mounted = true; }, blank: () => { root.childElementCount = 0; },
+    failure: () => handlers.error({ target: new Script(), preventDefault() {} }) };
 }
 test('Failed entry bundle reloads once with a cache-busting URL, retaining route and query', () => {
   const api = fixture();
@@ -56,5 +59,14 @@ test('Slow startup exposes help at fifteen seconds; successful mount is left alo
 test('Lazy preload failures use the same bounded recovery', () => {
   const api = fixture();
   api.handlers['vite:preloadError']({ preventDefault() {} });
+  assert.equal(api.navigations.length, 1);
+});
+test('An empty overnight-resumed app recovers once, while a mounted app stays untouched', () => {
+  const api = fixture();
+  api.handlers.pageshow();
+  assert.equal(api.navigations.length, 0);
+  api.blank();
+  api.handlers['document:visibilitychange']();
+  api.handlers.pageshow();
   assert.equal(api.navigations.length, 1);
 });

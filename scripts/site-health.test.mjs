@@ -28,3 +28,11 @@ test('Previous build assets are retained without overwriting the newly built fil
     assert.equal(await readFile(join(output, 'assets', 'lazy-old.js'), 'utf8'), 'previous build');
   } finally { await rm(output, { recursive: true }); }
 });
+test('Repair deployments can proceed when a previous chunk is already missing; health checks still fail', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'gamewire-repair-'));
+  try {
+    await checkSite({ fetcher: fixture('/assets/lazy-old.js'), preserve: true, output });
+    await assert.rejects(readFile(join(output, 'assets', 'lazy-old.js')), /ENOENT/);
+    await assert.rejects(checkSite({ fetcher: fixture('/assets/lazy-old.js') }), /HTTP 404/);
+  } finally { await rm(output, { recursive: true }); }
+});

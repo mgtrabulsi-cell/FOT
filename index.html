@@ -25,7 +25,7 @@
           location.replace(url.href);
         }
         function recover(event) {
-          console.error('GameWire could not load an application bundle.', event);
+          console.error('GameWire could not start or resume the application.', event);
           if (navigator.onLine) {
             try {
               const previous = Number(sessionStorage.getItem(key));
@@ -46,6 +46,12 @@
           if (event.target instanceof HTMLScriptElement && event.target.type === 'module') recover(event);
         }, true);
         window.addEventListener('vite:preloadError', recover);
+        function checkResume() {
+          if (!document.hidden && document.getElementById('root')?.childElementCount === 0)
+            recover({ preventDefault() {} });
+        }
+        window.addEventListener('pageshow', checkResume);
+        document.addEventListener('visibilitychange', checkResume);
         document.getElementById('gamewire-startup-reload').addEventListener('click', reload);
         setTimeout(() => {
           const help = document.getElementById('gamewire-startup-help');

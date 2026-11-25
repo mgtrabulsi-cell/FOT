@@ -22,14 +22,23 @@ export async function checkSite({ preserve = false, fetcher = fetch, output = 'd
   const assets = await deployedAssets(fetcher);
   const references = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map(match => match[1].replace(/^\.?\//, ''));
   if (!references.some(asset => asset.endsWith('.js'))) throw new Error('Homepage has no application entry');
+  let verified = 0, missing = 0;
   for (const asset of new Set([...assets, ...references])) {
     if (!/^assets\/[\w-]+\.(?:js|css)$/.test(asset)) throw new Error(`Unexpected application asset: ${asset}`);
     const result = await fetcher(new URL(asset, origin), { signal: AbortSignal.timeout(30000), cache: 'no-store' });
-    if (!result.ok) throw new Error(`${asset} returned HTTP ${result.status}`);
+    if (!result.ok) {
+      if (preserve && result.status === 404) {
+        missing++;
+        console.warn(`Previous asset ${asset} is already missing; rebuilding will repair current assets.`);
+        continue;
+      }
+      throw new Error(`${asset} returned HTTP ${result.status}`);
+    }
     const type = result.headers.get('content-type') ?? '';
     if (!(asset.endsWith('.js') ? /javascript/ : /text\/css/).test(type)) throw new Error(`${asset} returned an invalid content type`);
     const content = new Uint8Array(await result.arrayBuffer());
     if (!content.length) throw new Error(`${asset} is empty`);
+    verified++;
     if (preserve) {
       const file = resolve(output, asset);
       await mkdir(resolve(output, 'assets'), { recursive: true });
@@ -39,7 +48,7 @@ export async function checkSite({ preserve = false, fetcher = fetch, output = 'd
       });
     }
   }
-  console.log(`GameWire homepage and ${assets.length} deployed assets verified${preserve ? '; previous build retained' : ''}.`);
+  console.log(`GameWire homepage and ${verified} assets verified${preserve ? `; available previous assets retained (${missing} missing)` : ''}.`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
