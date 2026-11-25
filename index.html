@@ -11,7 +11,50 @@
     <title>GameWire | NFL &amp; NBA Live</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="gamewire-startup" role="status" style="padding:32px;font-family:Segoe UI,sans-serif;color:#dce6f2;background:#0b192a">
+      <strong>Opening GameWire...</strong>
+      <p id="gamewire-startup-help" hidden>Loading is taking longer than expected. Check your connection, then reload.</p>
+      <button id="gamewire-startup-reload" type="button" hidden>Reload GameWire</button>
+    </div></div>
+    <script>
+      (() => {
+        const key = 'gamewire:startup-recovery';
+        function reload() {
+          const url = new URL(location.href);
+          url.searchParams.set('gw-recover', String(Date.now()));
+          location.replace(url.href);
+        }
+        function recover(event) {
+          console.error('GameWire could not load an application bundle.', event);
+          if (navigator.onLine) {
+            try {
+              const previous = Number(sessionStorage.getItem(key));
+              if (!previous || Date.now() - previous > 300000) {
+                sessionStorage.setItem(key, String(Date.now()));
+                event.preventDefault();
+                reload();
+                return;
+              }
+            } catch (error) { console.error('GameWire recovery storage is unavailable.', error); }
+          }
+          const help = document.getElementById('gamewire-startup-help');
+          if (help) { help.hidden = false; help.textContent = 'GameWire could not load this version. Reconnect and reload to get the latest version. Your saved account data has not been cleared.'; }
+          const button = document.getElementById('gamewire-startup-reload');
+          if (button) button.hidden = false;
+        }
+        window.addEventListener('error', event => {
+          if (event.target instanceof HTMLScriptElement && event.target.type === 'module') recover(event);
+        }, true);
+        window.addEventListener('vite:preloadError', recover);
+        document.getElementById('gamewire-startup-reload').addEventListener('click', reload);
+        setTimeout(() => {
+          const help = document.getElementById('gamewire-startup-help');
+          const button = document.getElementById('gamewire-startup-reload');
+          if (help) help.hidden = false;
+          if (button) button.hidden = false;
+        }, 15000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

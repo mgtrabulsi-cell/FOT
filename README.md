@@ -1,5 +1,7 @@
 # GameWire
 
+Availability safeguards: deployment retains the preceding build's JavaScript/CSS for cached sessions; the HTML shell offers bounded stale-bundle recovery and a manual reload without clearing saved data. Render failures show a recovery screen instead of a blank page. Deployment and 15-minute scheduled checks verify the homepage and asset responses; failed GitHub Actions runs surface availability failures (enable Actions failure notifications). These safeguards cannot guarantee third-party hosting or feed uptime.
+
 NFL analyses also request and save real anytime-touchdown prices before kickoff (one additional Odds API market credit when returned). Final touchdown-scorer graphics show the latest saved pregame price and its sportsbook, never reconstructed or live/postgame odds. Older games without a verified saved price show **Unavailable**. Apply `supabase/nfl-touchdown-odds.sql` before deploying the analysis backend; the 20,000-credit rolling budget remains unchanged.
 
 Search results use the shared sports theme: DM Sans typography, navy glass cards, blue accents and matching stat tables. Verified hit-rate percentages above 50% remain green; styling does not change the underlying research or projections.
