@@ -72,6 +72,46 @@ test('Rejected session restoration stops loading and explicitly exposes its conn
     console: { error() { logged = true; } },
     setAuthLoading: value => loading.push(value), setAuthRestoreError: value => messages.push(value),
     setAuthUser() {}, setRecoveringPassword() {},
+    window: { setTimeout: (_callback, delay) => { assert.equal(delay, 18000); return 1; }, clearTimeout() {} },
+  });
+  test('Pending saved-session restoration leaves loading at eighteen seconds and accepts a late valid session', async () => {
+    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+    const parsed = ts.createSourceFile('App.tsx', app, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let effect;
+    function visit(node) {
+      if (ts.isCallExpression(node) && node.expression.getText(parsed) === 'useEffect'
+        && node.arguments[0]?.getText(parsed).includes('supabase.auth.getSession()')) effect = node.arguments[0];
+      ts.forEachChild(node, visit);
+    }
+    visit(parsed);
+    const code = ts.transpileModule(`globalThis.boot = ${effect.getText(parsed)};`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    let timeout, resolveSession, cleared = false;
+    const loading = [], messages = [], users = [];
+    const context = vm.createContext({
+      supabase: { auth: {
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+        getSession: () => new Promise(resolve => { resolveSession = resolve; }),
+      } },
+      console: { error() {} },
+      window: { setTimeout: (callback, delay) => { assert.equal(delay, 18000); timeout = callback; return 1; },
+        clearTimeout: () => { cleared = true; } },
+      setAuthLoading: value => loading.push(value), setAuthRestoreError: value => messages.push(value),
+      setAuthUser: value => users.push(value), setRecoveringPassword() {},
+    });
+    vm.runInContext(code, context);
+    const cleanup = context.boot();
+    assert.equal(loading.length, 0);
+    timeout();
+    assert.equal(loading.at(-1), false);
+    assert.match(messages.at(-1), /timed out/);
+    const user = { id: 'test-user' };
+    resolveSession({ data: { session: { user } }, error: null });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(users.at(-1), user);
+    assert.equal(cleared, true);
+    cleanup();
   });
   vm.runInContext(code, context);
   const cleanup = context.boot();

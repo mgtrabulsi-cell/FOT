@@ -1,5 +1,7 @@
 # GameWire
 
+Startup deadlines: a stalled HTML startup retries once with a fresh URL after 15 seconds; a pending saved-account restoration leaves the splash screen after 18 seconds and exposes sign-in/guest recovery without deleting credentials or favorites. Late successful session restoration is still accepted. Availability monitoring tests both fresh guest sessions and a deliberately blocked expired-session refresh in an isolated browser context.
+
 Automatic availability troubleshooting now checks real Chromium guest startup and cached-session reload, not just HTTP responses. It runs after deployments, on off-peak quarter-hour schedules, and at additional overnight UTC 05:12–10:12 checks. Diagnostics are saved for 14 days; persistent failures open/update an automatic GitHub incident, which closes after both checks recover. Confirmed missing JS/CSS can trigger a fully tested redeployment, capped at one automatic attempt per six hours; hosting, network and runtime errors are reported rather than blindly redeployed. GitHub schedules are best-effort and may be delayed. Empty browser sessions also attempt bounded recovery when resumed. No user account data is cleared.
 
 Champions League fixture matching uses verified provider aliases (including Bodo/Glimt, LASK, Porto, Feyenoord, Lens, Slovan Bratislava, Slavia Prague and Sporting CP). Both teams, the selected competition, a unique event and kickoff within five minutes are still required; name aliases never substitute another fixture or domestic competition.

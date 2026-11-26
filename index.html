@@ -58,6 +58,7 @@
           const button = document.getElementById('gamewire-startup-reload');
           if (help) help.hidden = false;
           if (button) button.hidden = false;
+          if (help) recover({ preventDefault() {} });
         }, 15000);
       })();
     </script>

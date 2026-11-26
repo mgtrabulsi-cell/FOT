@@ -862,8 +862,17 @@ function App() {
       return;
     }
     let active = true;
+    let sessionUpdated = false;
+    const restoreTimeout = window.setTimeout(() => {
+      if (!active) return;
+      console.error('Sign-in session restoration timed out after eighteen seconds.');
+      setAuthRestoreError('Restoring your saved session timed out. You can try signing in again or continue as guest. Your saved account data has not been deleted.');
+      setAuthLoading(false);
+    }, 18_000);
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
+      window.clearTimeout(restoreTimeout);
+      if (event !== 'INITIAL_SESSION' || session) sessionUpdated = true;
       if (event === 'PASSWORD_RECOVERY') setRecoveringPassword(true);
       if (session) setAuthRestoreError('');
       setAuthUser(session?.user ?? null);
@@ -871,20 +880,26 @@ function App() {
     });
     void supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
+      window.clearTimeout(restoreTimeout);
       if (error) {
         console.error('Sign-in session restoration failed', error);
+        if (sessionUpdated) return;
         setAuthRestoreError('Could not restore your session. Please try signing in again or continue as guest.');
-      }
+      } else if (!sessionUpdated) setAuthRestoreError('');
+      if (sessionUpdated) return;
       setAuthUser(data.session?.user ?? null);
       setAuthLoading(false);
     }).catch((error: unknown) => {
       if (!active) return;
+      window.clearTimeout(restoreTimeout);
       console.error('Sign-in session restoration failed', error);
+      if (sessionUpdated) return;
       setAuthRestoreError('Could not connect to the sign-in service. Please try again or continue as guest.');
       setAuthLoading(false);
     });
     return () => {
       active = false;
+      window.clearTimeout(restoreTimeout);
       subscription.unsubscribe();
     };
   }, []);
