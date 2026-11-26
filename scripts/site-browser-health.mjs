@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import { writeFile, appendFile } from 'node:fs/promises';
 import { checkSite } from './site-health.mjs';
-import { checkBlockedAuthStartup } from './auth-startup-health.mjs';
+import { checkBlockedAuthStartup, checkBlockedSignIn } from './auth-startup-health.mjs';
 
 const report = { checkedAt: new Date().toISOString(), static: { ok: false }, browser: { ok: false },
   recoveryAllowed: false, runtimeErrorCount: 0, failedResponses: [] };
@@ -43,6 +43,8 @@ try {
   if (report.runtimeErrorCount) throw new Error('Uncaught browser errors occurred');
   report.browser.stage = 'blocked-saved-session';
   report.savedSession = await checkBlockedAuthStartup(browser);
+  report.browser.stage = 'blocked-sign-in';
+  report.signIn = await checkBlockedSignIn(browser);
   report.browser.ok = true;
   report.browser.stage = 'complete';
 } catch (error) {

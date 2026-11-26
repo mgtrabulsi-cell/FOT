@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
 import { supabase } from './services/supabaseClient';
 import { getRememberDevice, setRememberDevice } from './services/authStorage';
+import { withAuthDeadline } from './services/authRequest';
 
 export function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
   const [password, setPassword] = useState('');
@@ -14,10 +15,13 @@ export function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
     if (!supabase) return;
     setBusy(true);
     setError('');
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    setBusy(false);
-    if (updateError) setError(updateError.message);
-    else onDone();
+    try {
+      const { error: updateError } = await withAuthDeadline(supabase.auth.updateUser({ password }));
+      if (updateError) setError(updateError.message);
+      else onDone();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Password update failed. Please retry.');
+    } finally { setBusy(false); }
   };
 
   return <main className="auth-page">
@@ -62,15 +66,15 @@ export default function AuthScreen({ onContinueGuest, connectionError }: { onCon
     setRememberDevice(remember);
     try {
       if (mode === 'signup') {
-        const { data, error: authError } = await supabase.auth.signUp({
+        const { data, error: authError } = await withAuthDeadline(supabase.auth.signUp({
           email: email.trim(),
           password,
           options: { data: { display_name: displayName.trim(), notification_onboarding_pending: true } },
-        });
+        }));
         if (authError) throw authError;
         if (!data.session) setNotice('Check your email to confirm your account, then sign in.');
       } else {
-        const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { error: authError } = await withAuthDeadline(supabase.auth.signInWithPassword({ email: email.trim(), password }));
         if (authError) throw authError;
       }
     } catch (authError) {
@@ -90,10 +94,13 @@ export default function AuthScreen({ onContinueGuest, connectionError }: { onCon
     }
     setBusy(true);
     const redirectTo = `${window.location.origin}${window.location.pathname}`;
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
-    setBusy(false);
-    if (resetError) setError(resetError.message);
-    else setNotice('If an account exists for that email, a reset link is on its way. Check your inbox.');
+    try {
+      const { error: resetError } = await withAuthDeadline(supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo }));
+      if (resetError) setError(resetError.message);
+      else setNotice('If an account exists for that email, a reset link is on its way. Check your inbox.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Password reset could not connect. Please retry.');
+    } finally { setBusy(false); }
   };
 
   return <main className="auth-page">
@@ -121,6 +128,11 @@ export default function AuthScreen({ onContinueGuest, connectionError }: { onCon
           </label>
           <label className="auth-remember"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span>Remember this device</span></label>
           {(error || connectionError) && <p className="auth-error" role="alert">{error || connectionError}</p>}
+          {(error || connectionError) && <button type="button" className="auth-mode-toggle" disabled={busy} onClick={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('gw-recover', String(Date.now()));
+            window.location.replace(url.href);
+          }}>Reload sign-in connection</button>}
           {notice && <p className="auth-notice" role="status">{notice}</p>}
           <button className="auth-submit" type="submit" disabled={busy}>{mode === 'signup' ? <UserPlus size={16} /> : <LogIn size={16} />}{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}</button>
           {mode === 'login' && <button className="auth-mode-toggle" type="button" disabled={busy} onClick={forgotPassword}>Forgot my password</button>}

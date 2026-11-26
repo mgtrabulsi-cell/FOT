@@ -23,3 +23,23 @@ export async function checkBlockedAuthStartup(browser) {
     return { ok: true, blockedRefresh: true, guestRecovery: true };
   } finally { await context.close(); }
 }
+
+export async function checkBlockedSignIn(browser, siteUrl = 'https://gamewire.us/') {
+  const context = await browser.newContext({ serviceWorkers: 'block' });
+  let blocked = 0;
+  try {
+    await context.route('**/auth/v1/**', () => { blocked++; return new Promise(() => {}); });
+    const page = await context.newPage();
+    const url = new URL(siteUrl);
+    url.searchParams.set('sign-in-check', String(Date.now()));
+    await page.goto(url.href, { waitUntil: 'domcontentloaded' });
+    await page.getByLabel('Email', { exact: true }).fill('monitor@example.invalid');
+    await page.locator('input[autocomplete="current-password"]').fill('isolated-monitor-placeholder');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.locator('.auth-error').waitFor({ state: 'visible', timeout: 25000 });
+    await page.getByRole('button', { name: 'Reload sign-in connection', exact: true }).waitFor({ state: 'visible' });
+    if (!blocked || !await page.getByRole('button', { name: 'Sign in', exact: true }).isEnabled())
+      throw new Error('Blocked sign-in did not release its loading state');
+    return { ok: true, blockedRequest: true, retryAvailable: true };
+  } finally { await context.close(); }
+}
